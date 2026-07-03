@@ -13,6 +13,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "vitest run --dir test/e2e",
+    "test:db": "vitest run --config vitest.db.config.ts",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "migrate": "node-pg-migrate"

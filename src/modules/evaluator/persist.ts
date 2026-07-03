@@ -35,7 +35,8 @@ export async function persistAuditRun(
 ): Promise<PersistedRun> {
   const { clientId, invoice, result } = input;
 
-  // 1. invoice + charge_fact rows (the billed side).
+  // 1. invoice header (always persisted — the audit trail covers rejected
+  // invoices too, via gate_failure below).
   const inv = await client.query<{ id: string }>(
     `INSERT INTO invoice (client_id, transaction_set, invoice_number, currency, parser_version)
      VALUES ($1, $2, $3, $4, $5) RETURNING id`,
@@ -43,16 +44,25 @@ export async function persistAuditRun(
   );
   const invoiceId = inv.rows[0]!.id;
 
-  for (const c of invoice.charges) {
-    await client.query(
-      `INSERT INTO charge_fact
-         (client_id, invoice_id, code, x12_element, category, amount, currency, basis, rate, raw_description, source_loop)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
-      [
-        clientId, invoiceId, c.code ?? null, c.x12Element ?? null, c.category ?? null,
-        c.amount, c.currency || 'XXX', c.basis ?? null, c.rate ?? null, c.rawDescription ?? null, c.sourceLoop ?? null,
-      ],
-    );
+  // charge_fact rows (the billed side) are only meaningful once the invoice has
+  // cleared the gate phase — charge_fact.currency is NOT NULL, and a
+  // REJECTED_REWORK invoice can have an unstated/unvalidated per-charge
+  // currency (§6: never default). Writing a sentinel here would silently
+  // fabricate billed-side data for an invoice the gate explicitly rejected;
+  // the gate_failure kickback (step 3) is the canonical record of why. Only
+  // persist charge_fact once the invoice is SCORED, i.e. currency is stated.
+  if (result.outcome === 'SCORED') {
+    for (const c of invoice.charges) {
+      await client.query(
+        `INSERT INTO charge_fact
+           (client_id, invoice_id, code, x12_element, category, amount, currency, basis, rate, raw_description, source_loop)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+        [
+          clientId, invoiceId, c.code ?? null, c.x12Element ?? null, c.category ?? null,
+          c.amount, c.currency, c.basis ?? null, c.rate ?? null, c.rawDescription ?? null, c.sourceLoop ?? null,
+        ],
+      );
+    }
   }
 
   // 2. audit_run pinned to the snapshot + engine spec.

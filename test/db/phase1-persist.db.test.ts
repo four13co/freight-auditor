@@ -3,9 +3,10 @@ import type pg from 'pg';
 import { getPool, closePool } from '../../src/db/pool.js';
 import { withTenantTx } from '../../src/db/tenant-context.js';
 import { parse210 } from '../../src/modules/ingestion/parse-210.js';
+import { parse310 } from '../../src/modules/ingestion/parse-310.js';
 import { evaluateInvoice } from '../../src/modules/evaluator/evaluate-invoice.js';
 import { persistAuditRun } from '../../src/modules/evaluator/persist.js';
-import { GOLDEN_210, MALFORMED_210_NOFOOT, testCategorize } from '../fixtures/edi-golden.js';
+import { GOLDEN_210, MALFORMED_210_NOFOOT, MALFORMED_310_NOCURRENCY, testCategorize } from '../fixtures/edi-golden.js';
 
 /**
  * Phase 1 persistence contract (ClickUp 86e24cy5r) — the e2e side of the
@@ -98,5 +99,23 @@ describe('Phase 1 persistence (DB)', () => {
     expect(row.gateFailures.every((g: { citation: string | null }) => g.citation)).toBe(true);
     expect(row.scorecardCount).toBe(0); // SCORE phase skipped
     expect(row.findingCount).toBe(0);
+  });
+
+  it('86e24cy5r fix: 310 with unstated currency → REJECTED_REWORK, NO charge_fact rows persisted', async () => {
+    const inv = parse310(MALFORMED_310_NOCURRENCY, testCategorize);
+    const result = evaluateInvoice(inv);
+    expect(result.outcome).toBe('REJECTED_REWORK'); // sanity: this invoice does fail the currency gate
+    const row = await withTenantTx({ clientIds: [clientId], internal: true }, async (c) => {
+      const p = await persistAuditRun(c, { clientId, invoice: inv, result, rubricSnapshotId: null });
+      createdRunIds.push(p.auditRunId);
+      const facts = await c.query(`SELECT count(*)::int AS n FROM charge_fact WHERE invoice_id = $1`, [p.invoiceId]);
+      const gf = await c.query(`SELECT defect FROM gate_failure WHERE audit_run_id = $1`, [p.auditRunId]);
+      return { chargeFactCount: facts.rows[0].n, gateFailures: gf.rows };
+    });
+    // The bug: persist.ts used to write a 'XXX' sentinel charge_fact row here.
+    // The fix: no charge_fact rows are written for a currency-gate rejection —
+    // the gate_failure kickback is the canonical record instead.
+    expect(row.chargeFactCount).toBe(0);
+    expect(row.gateFailures.length).toBeGreaterThanOrEqual(1);
   });
 });

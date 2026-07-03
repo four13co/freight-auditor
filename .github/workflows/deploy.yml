@@ -29,24 +29,11 @@ jobs:
           ENVIRONMENT="${{ github.ref_name == 'Production' && 'prod' || 'dev' }}"
           echo "OP_VAULT=${PROJECT_NAME}-${ENVIRONMENT}" >> $GITHUB_ENV
 
-      - name: Load secrets from 1Password
-        run: |
-          op inject -i .env.template -o .env
-        env:
-          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
-
       - name: Install dependencies
         run: npm ci
 
       - name: Build application
         run: npm run build
-
-      - name: Load CapRover credentials
-        run: |
-          echo "CAPROVER_URL=$(op read 'op://${{ env.OP_VAULT }}/CapRover/url')" >> $GITHUB_ENV
-          echo "CAPROVER_APP_TOKEN=$(op read 'op://${{ env.OP_VAULT }}/CapRover/app_token')" >> $GITHUB_ENV
-        env:
-          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
 
       - name: Create deployment tarball
         run: |
@@ -54,6 +41,10 @@ jobs:
 
       - name: Deploy to CapRover
         run: |
-          curl -X POST https://$CAPROVER_URL/api/v2/user/apps/webhooks/triggerbuild \
-            -H "x-captain-app-token: $CAPROVER_APP_TOKEN" \
-            -F "sourceFile=@deploy.tar.gz"
+          op run --env-file=.env.caprover -- bash -c '
+            curl -X POST "https://$CAPROVER_URL/api/v2/user/apps/webhooks/triggerbuild" \
+              -H "x-captain-app-token: $CAPROVER_APP_TOKEN" \
+              -F "sourceFile=@deploy.tar.gz"
+          '
+        env:
+          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}

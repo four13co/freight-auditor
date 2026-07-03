@@ -28,7 +28,8 @@ npm run typecheck
 ```
 
 Local dev with secrets: `op run --env-file=.env.op -- npm run dev` (references only; never
-write a populated `.env` locally — CI uses `.env.template` + `op inject`).
+write a populated `.env` locally — CI resolves secrets directly into each step's subprocess env
+via `op run --env-file=...`, never to disk or `$GITHUB_ENV`; see `.github/workflows/deploy.yml`).
 
 ## Decisions (ADR notes)
 

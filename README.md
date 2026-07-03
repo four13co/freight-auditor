@@ -41,6 +41,37 @@ write a populated `.env` locally — CI uses `.env.template` + `op inject`).
 - **Build layout:** `tsconfig.build.json` sets `rootDir: src` so `src/server/index.ts` compiles
   to `dist/server/index.js` — the path the existing `Dockerfile` `CMD` expects.
 
+## Data model (migrations)
+
+The canonical Postgres schema lives in `migrations/` (SQL, `node-pg-migrate`), unifying the
+Master Spec §6 audit spine with the TransportDocument extraction schema (as cited evidence).
+
+```bash
+# against an ephemeral local Postgres (never a protected host)
+DATABASE_URL=postgresql://user:pw@127.0.0.1:PORT/db npm run migrate up
+DATABASE_URL=postgresql://user:pw@127.0.0.1:PORT/db npm run test:db   # DB contract tests
+```
+
+Key invariants baked into the schema:
+
+- **Tenant isolation is structural** — every tenant table has `FORCE ROW LEVEL SECURITY` with a
+  policy keyed on the `app.current_client_ids` / `app.is_internal` GUCs (set per request via
+  `SET LOCAL` in Phase 0). The app connects as the non-superuser `freight_app` role so the
+  policy binds. Shared catalog rows (tenant column `NULL`) read across tenants.
+- **Append-only at the financial boundary** — the §11 ledger tables (`audit_event`,
+  `rule_version`, `contract_version`, `variance_finding`'s status events, `recovery_event`, …)
+  grant `freight_app` only `INSERT`/`SELECT`. No UPDATE/DELETE grant exists to revoke.
+- **Temporal resolution** — `contract_version` carries a GiST `EXCLUDE` constraint so exactly one
+  version is applicable per `(contract, ship-date)`.
+- **Money** is `numeric(18,4)` + per-row `currency char(3)`, never pre-converted.
+- **Transport documents** are stored as `jsonb` (full extracted structure) + typed projection
+  columns for the fields that need indexing/citation — see the header comment in
+  `migrations/0007_shipments_invoices_transport.sql` for the jsonb-vs-normalized rationale.
+
+> uuid PKs default to `gen_random_uuid()` (v4); swap the default to `uuidv7()` on PG18.
+> `criterion_key` governance (§14 #9) is deferred — modeled as a stable string + append-only
+> `criterion_alias` for renames.
+
 ## Module map (spec §2.2)
 
 `src/modules/` holds a placeholder folder per spec module: ingestion, contracts,

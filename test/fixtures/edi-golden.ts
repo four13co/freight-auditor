@@ -1,0 +1,109 @@
+/**
+ * Golden EDI fixtures for Phase 1 (Master Spec §13). Hand-checked: the expected
+ * charge facts and footing are asserted in the acceptance tests. Delimiters:
+ * element '*', segment '~', component '>'. The ISA envelope carries exactly 16
+ * elements so the delimiter reader can discover the terminators from ISA alone.
+ */
+
+// ISA (16 elements) + GS. GS01=IM marks a 210 (motor) functional group.
+const ISA_210 =
+  'ISA*00*          *00*          *ZZ*SENDER         *ZZ*RECEIVER       *260703*1200*U*00401*000000001*0*P*>~' +
+  'GS*IM*SENDER*RECEIVER*20260703*1200*1*X*004010~';
+
+// GS01=IO marks a 310 (ocean) functional group.
+const ISA_310 =
+  'ISA*00*          *00*          *ZZ*SENDER         *ZZ*RECEIVER       *260703*1200*U*00401*000000002*0*P*>~' +
+  'GS*IO*SENDER*RECEIVER*20260703*1200*2*X*004010~';
+
+/**
+ * GOLDEN 210 — a well-formed motor invoice that FOOTS.
+ * B3-07 declared total = 1250.00; two L1 charges: 1000.00 (LINEHAUL) + 250.00 (FUEL).
+ * Σ = 1250.00 → foots. B3-11 currency = USD.
+ */
+// L1 element positions (X12), read by el(seg,N)=elements[N-1]: L1-01 line no,
+// L1-04 charge amount, L1-08 special charge code, L1-12 description. The '*'
+// fillers place each value at its real element index. For 310, L1-20 = per-charge
+// currency. Element layout for a charge line:
+//   L1 *01 *02 *03 *04(amount) *05 *06 *07 *08(code) *09 *10 *11 *12(desc) ...
+export const GOLDEN_210 =
+  ISA_210 +
+  'ST*210*0001~' +
+  'B3**INV210001*****1250.00***USD~' +
+  'L1*1***1000.00****400****Linehaul~' +
+  'L1*2***250.00****405****Fuel Surcharge~' +
+  'SE*5*0001~';
+
+export const GOLDEN_210_EXPECTED = {
+  invoiceNumber: 'INV210001',
+  declaredTotal: '1250.0000',
+  lineSum: '1250.0000',
+  charges: [
+    { code: '400', amount: '1000.0000', currency: 'USD', category: 'LINEHAUL' },
+    { code: '405', amount: '250.0000', currency: 'USD', category: 'FUEL' },
+  ],
+};
+
+/**
+ * GOLDEN 310 — a well-formed ocean invoice with PER-CHARGE currency (never USD
+ * defaulted). C3 interchange currency = USD, but each L1 states its own via
+ * L1-20: 3000.00 USD (OCEAN_FREIGHT) + 150.00 EUR (DOC_FEE). Foots to B3-07.
+ */
+export const GOLDEN_310 =
+  ISA_310 +
+  'ST*310*0002~' +
+  'B3**INV310002*****3150.00***~' +
+  'C3*USD~' +
+  'L1*1***3000.00****500****Ocean Freight********USD~' +
+  'L1*2***150.00****510****Documentation Fee********EUR~' +
+  'SE*6*0002~';
+
+export const GOLDEN_310_EXPECTED = {
+  invoiceNumber: 'INV310002',
+  declaredTotal: '3150.0000',
+  lineSum: '3150.0000',
+  charges: [
+    { code: '500', amount: '3000.0000', currency: 'USD', category: 'OCEAN_FREIGHT' },
+    { code: '510', amount: '150.0000', currency: 'EUR', category: 'DOC_FEE' },
+  ],
+};
+
+/**
+ * MALFORMED 210 — does NOT foot: B3-07 says 1250.00 but the lines sum to 1050.00
+ * (200 short). Should REJECT_REWORK on the footing gate. It still has valid
+ * currency + charges, so footing is the SOLE gate failure.
+ */
+export const MALFORMED_210_NOFOOT =
+  ISA_210 +
+  'ST*210*0003~' +
+  'B3**INV210003*****1250.00***USD~' +
+  'L1*1***800.00****400****Linehaul~' +
+  'L1*2***250.00****405****Fuel Surcharge~' +
+  'SE*5*0003~';
+
+/**
+ * MALFORMED 310 — currency NOT stated on a charge (no C3, no L1-20). Ocean must
+ * state currency; this should REJECT_REWORK on the currency-stated gate.
+ */
+export const MALFORMED_310_NOCURRENCY =
+  ISA_310 +
+  'ST*310*0004~' +
+  'B3**INV310004*****500.00***~' +
+  'L1*1***500.00****500****Ocean Freight~' +
+  'SE*4*0004~';
+
+/**
+ * A minimal crosswalk categorizer for tests — mirrors the DB crosswalk boundary
+ * (§13): audit logic reads canonical categories, never raw codes. Unknown codes
+ * return undefined → the parser quarantines them.
+ */
+const CROSSWALK: Record<string, string> = {
+  '400': 'LINEHAUL',
+  '405': 'FUEL',
+  '500': 'OCEAN_FREIGHT',
+  '510': 'DOC_FEE',
+};
+
+export function testCategorize(code: string | undefined): string | undefined {
+  if (code === undefined) return undefined;
+  return CROSSWALK[code];
+}

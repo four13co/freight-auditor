@@ -106,6 +106,31 @@ export const MALFORMED_210_BADAMOUNT =
   'SE*5*0005~';
 
 /**
+ * MISMATCHED GROUP — a 210-shaped envelope (ST*210) whose GS01 says IO (the 310
+ * group code) instead of IM. Both parsers assert their own expected GS01; this
+ * exercises the negative case for parse210 (86e25tdgt: refactor must preserve
+ * the same error, raised from a shared envelope helper).
+ */
+export const MISMATCHED_GROUP_210 =
+  ISA_310 +
+  'ST*210*0006~' +
+  'B3**INV210006*****100.00***USD~' +
+  'L1*1***100.00****400****Linehaul~' +
+  'SE*4*0006~';
+
+/**
+ * Mirror for 310: an ocean-shaped envelope (ST*310) whose GS01 says IM instead
+ * of IO.
+ */
+export const MISMATCHED_GROUP_310 =
+  ISA_210 +
+  'ST*310*0007~' +
+  'B3**INV310007*****100.00***~' +
+  'C3*USD~' +
+  'L1*1***100.00****500****Ocean Freight~' +
+  'SE*5*0007~';
+
+/**
  * A minimal crosswalk categorizer for tests — mirrors the DB crosswalk boundary
  * (§13): audit logic reads canonical categories, never raw codes. Unknown codes
  * return undefined → the parser quarantines them.

@@ -10,6 +10,7 @@ import {
   GOLDEN_210, GOLDEN_210_EXPECTED,
   GOLDEN_310, GOLDEN_310_EXPECTED,
   MALFORMED_210_NOFOOT, MALFORMED_310_NOCURRENCY, MALFORMED_210_BADAMOUNT,
+  MISMATCHED_GROUP_210, MISMATCHED_GROUP_310,
   testCategorize,
 } from '../fixtures/edi-golden.js';
 
@@ -176,5 +177,19 @@ describe('Phase 1 engine (pure)', () => {
     expect(r.gateFailures.map((g) => g.criterionKey)).toContain('STD.AMOUNT_STATED');
     expect(r.findings).toEqual([]); // SCORE phase never ran
     expect(r.scorecard).toBeNull();
+  });
+
+  // 86e25tdgt — parser unification must preserve the GS01 functional-group
+  // assertion identically for both transaction sets.
+  it('86e25tdgt: parse210 rejects a GS01 that is not IM', () => {
+    expect(() => parse210(MISMATCHED_GROUP_210, testCategorize)).toThrow(
+      /expected GS01=IM.*got IO/,
+    );
+  });
+
+  it('86e25tdgt: parse310 rejects a GS01 that is not IO', () => {
+    expect(() => parse310(MISMATCHED_GROUP_310, testCategorize)).toThrow(
+      /expected GS01=IO.*got IM/,
+    );
   });
 });

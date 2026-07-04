@@ -7,7 +7,7 @@ import {
   type ComposedRubric,
   type StandardCriterion,
 } from '../rubric-resolver/standard-rubric.js';
-import { buildFactBundle } from './fact-bundle.js';
+import { buildFactBundle, type ContractFacts } from './fact-bundle.js';
 import { rubricContentHash } from './snapshot.js';
 
 /**
@@ -64,8 +64,9 @@ export interface AuditResult {
 export function evaluateInvoice(
   invoice: ParsedInvoice,
   rubric: ComposedRubric = STANDARD_RUBRIC,
+  contract?: ContractFacts,
 ): AuditResult {
-  const facts = buildFactBundle(invoice);
+  const facts = buildFactBundle(invoice, contract);
   const pins = {
     parserVersion: invoice.parserVersion,
     engineSpecVersion: ENGINE_SPEC_VERSION,
@@ -102,13 +103,25 @@ export function evaluateInvoice(
   let conformed = 0;
   let variance = 0;
   let unassessable = 0;
+  let totalOvercharge = new Decimal(0);
+  let totalUndercharge = new Decimal(0);
   for (const c of scoring) {
     const ev = evaluate(c.ast, facts);
     const v = verdict(ev);
     const result = v === 'PASS' ? 'CONFORMED' : v === 'FAIL' ? 'VARIANCE' : 'UNASSESSABLE';
     if (result === 'CONFORMED') conformed += 1;
-    else if (result === 'VARIANCE') variance += 1;
-    else unassessable += 1;
+    else if (result === 'VARIANCE') {
+      variance += 1;
+      // A dollar-variance criterion's AST bottoms out at a money `compare`
+      // (billed vs. expected/contracted) — extract the delta from the
+      // evaluated tree itself (§3.2: the evaluated AST IS the explanation,
+      // never a separately-computed side value that could drift from it).
+      const delta = moneyVarianceDelta(ev);
+      if (delta !== null) {
+        if (delta.isPositive()) totalOvercharge = totalOvercharge.plus(delta);
+        else totalUndercharge = totalUndercharge.plus(delta.abs());
+      }
+    } else unassessable += 1;
     findings.push({ criterionKey: c.criterionKey, result, evaluatedExpr: ev });
   }
 
@@ -116,11 +129,12 @@ export function evaluateInvoice(
     conformedCount: conformed,
     varianceCount: variance,
     unassessableCount: unassessable,
-    // Phase 1 STANDARD scoring criteria are pass/fail integrity checks, not
-    // dollar-variance rules, so the $ rollups are zero here; the columns exist
-    // for the dollar-variance criteria that arrive with contract data (Phase 2+).
-    totalOvercharge: new Decimal(0).toFixed(4),
-    totalUndercharge: new Decimal(0).toFixed(4),
+    // Phase 1 STANDARD scoring criteria are pass/fail integrity checks (no $
+    // rollup); Phase 2's CONTRACT.RATE_VARIANCE is the first criterion to
+    // populate these columns for real (reserved for this since evaluate-invoice
+    // was written — see the original Phase 1 comment this replaces).
+    totalOvercharge: totalOvercharge.toFixed(4),
+    totalUndercharge: totalUndercharge.toFixed(4),
   };
 
   return { outcome: 'SCORED', gateFailures: [], findings, scorecard, pins };
@@ -130,4 +144,22 @@ function orderedCriteria(rubric: ComposedRubric, kind: StandardCriterion['kind']
   return rubric.criteria
     .filter((c) => c.kind === kind)
     .sort((a, b) => a.evalOrder - b.evalOrder || a.criterionKey.localeCompare(b.criterionKey));
+}
+
+/**
+ * Unwrap `require` wrappers to find the bottom `compare` node (billed vs.
+ * expected) and, if both operands evaluated to money, return billed - expected
+ * (positive = overcharge, negative = undercharge). Returns null for a
+ * criterion that isn't shaped as a money comparison (e.g. STANDARD's
+ * pass/fail integrity checks) — those correctly contribute $0 to the rollup.
+ */
+function moneyVarianceDelta(ev: EvalNode): Decimal | null {
+  let node = ev;
+  while (node.node.type === 'require' && node.children?.[0]) {
+    node = node.children[0];
+  }
+  if (node.node.type !== 'compare') return null;
+  const [left, right] = node.children ?? [];
+  if (!left || !right || left.value.kind !== 'money' || right.value.kind !== 'money') return null;
+  return new Decimal(left.value.amount).minus(new Decimal(right.value.amount));
 }

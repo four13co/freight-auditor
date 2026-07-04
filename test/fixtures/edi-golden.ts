@@ -131,6 +131,23 @@ export const MISMATCHED_GROUP_310 =
   'SE*5*0007~';
 
 /**
+ * MIXED-CURRENCY LINEHAUL — a 310 (ocean) invoice with TWO LINEHAUL-categorized
+ * (code 400) charges in different per-charge currencies (L1-20): 1000.00 USD +
+ * 1000.00 EUR. Ocean legitimately supports per-charge currency (never USD
+ * defaulted, §13), so a single invoice can carry a split-currency LINEHAUL
+ * total (86e25urnj: buildFactBundle must not sum these into one Decimal tagged
+ * with only the first charge's currency).
+ */
+export const MIXED_CURRENCY_LINEHAUL_310 =
+  ISA_310 +
+  'ST*310*0008~' +
+  'B3**INV310008*****2000.00***~' +
+  'C3*USD~' +
+  'L1*1***1000.00****400****Linehaul Leg 1********USD~' +
+  'L1*2***1000.00****400****Linehaul Leg 2********EUR~' +
+  'SE*6*0008~';
+
+/**
  * A minimal crosswalk categorizer for tests — mirrors the DB crosswalk boundary
  * (§13): audit logic reads canonical categories, never raw codes. Unknown codes
  * return undefined → the parser quarantines them.

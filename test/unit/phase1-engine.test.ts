@@ -5,10 +5,11 @@ import { parse310 } from '../../src/modules/ingestion/parse-310.js';
 import { evaluate } from '../../src/modules/rule-engine/interpreter.js';
 import type { AstNode } from '../../src/modules/rule-engine/ast.js';
 import { evaluateInvoice } from '../../src/modules/evaluator/evaluate-invoice.js';
+import { money } from '../../src/modules/ingestion/charge-fact.js';
 import {
   GOLDEN_210, GOLDEN_210_EXPECTED,
   GOLDEN_310, GOLDEN_310_EXPECTED,
-  MALFORMED_210_NOFOOT, MALFORMED_310_NOCURRENCY,
+  MALFORMED_210_NOFOOT, MALFORMED_310_NOCURRENCY, MALFORMED_210_BADAMOUNT,
   testCategorize,
 } from '../fixtures/edi-golden.js';
 
@@ -141,5 +142,39 @@ describe('Phase 1 engine (pure)', () => {
     const ast: AstNode = { type: 'require', key: 'absent', then: { type: 'lit', value: true } };
     const ev = evaluate(ast, {});
     expect(ev.value.kind).toBe('unassessable');
+  });
+
+  // 86e25tdce — a non-numeric L1-04 amount used to crash the parser (uncaught
+  // decimal.js DecimalError). It must now be reported honestly, never guessed.
+  it('86e25tdce: money() never throws on garbage input — returns undefined', () => {
+    expect(() => money('N/A')).not.toThrow();
+    expect(money('N/A')).toBeUndefined();
+    expect(() => money('***')).not.toThrow();
+    expect(money('***')).toBeUndefined();
+    // Sanity: valid input still parses normally.
+    expect(money('123.45')).toBe('123.4500');
+    expect(money(undefined)).toBe('0.0000');
+  });
+
+  it('86e25tdce: a 210 with a non-numeric charge amount parses without throwing and quarantines the line', () => {
+    expect(() => parse210(MALFORMED_210_BADAMOUNT, testCategorize)).not.toThrow();
+    const inv = parse210(MALFORMED_210_BADAMOUNT, testCategorize);
+    const badCharge = inv.charges.find((c) => c.code === '400');
+    expect(badCharge?.amount).toBeUndefined();
+    expect(badCharge?.quarantined).toBe(true);
+    // The other, well-formed charge line is unaffected.
+    const goodCharge = inv.charges.find((c) => c.code === '405');
+    expect(goodCharge?.amount).toBe('250.0000');
+    expect(goodCharge?.quarantined).toBe(false);
+  });
+
+  it('86e25tdce: an unparseable amount fails the STD.AMOUNT_STATED gate → REJECTED_REWORK, never a crash', () => {
+    const inv = parse210(MALFORMED_210_BADAMOUNT, testCategorize);
+    expect(() => evaluateInvoice(inv)).not.toThrow();
+    const r = evaluateInvoice(inv);
+    expect(r.outcome).toBe('REJECTED_REWORK');
+    expect(r.gateFailures.map((g) => g.criterionKey)).toContain('STD.AMOUNT_STATED');
+    expect(r.findings).toEqual([]); // SCORE phase never ran
+    expect(r.scorecard).toBeNull();
   });
 });

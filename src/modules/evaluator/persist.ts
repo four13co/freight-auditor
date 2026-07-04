@@ -53,6 +53,13 @@ export async function persistAuditRun(
   // persist charge_fact once the invoice is SCORED, i.e. currency is stated.
   if (result.outcome === 'SCORED') {
     for (const c of invoice.charges) {
+      // STD.AMOUNT_STATED gates SCORED, so every charge here must have a
+      // parseable amount by construction — this assertion documents that
+      // invariant and fails loudly rather than silently writing NULL into
+      // the NOT NULL amount column if the gate is ever weakened.
+      if (c.amount === undefined) {
+        throw new Error(`invariant violated: charge ${c.code ?? '(no code)'} has no amount on a SCORED invoice`);
+      }
       await client.query(
         `INSERT INTO charge_fact
            (client_id, invoice_id, code, x12_element, category, amount, currency, basis, rate, raw_description, source_loop)

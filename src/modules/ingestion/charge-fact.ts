@@ -18,8 +18,8 @@ export interface NormalizedCharge {
   code?: string; // raw carrier charge code
   x12Element?: string; // source element, e.g. "L108"
   category?: string; // canonical, via crosswalk — undefined if unresolved
-  quarantined: boolean; // true when the code could not be resolved to a category
-  amount: string; // decimal string, 4dp canonical
+  quarantined: boolean; // true when the code could not be resolved to a category, OR the amount was unparseable
+  amount: string | undefined; // decimal string, 4dp canonical; undefined if the raw value couldn't be parsed as money (never guessed — a malformed amount fails the STD.AMOUNT_STATED gate instead of silently becoming 0)
   currency: string; // ISO-4217, per charge — never defaulted
   basis?: string;
   rate?: string;
@@ -51,13 +51,26 @@ export interface ParsedInvoice {
 /** A crosswalk categorizer: raw code → canonical category (or undefined if unknown). */
 export type Categorize = (code: string | undefined) => string | undefined;
 
-/** Canonicalize a money string to 4dp via decimal.js (no float drift, §5). */
-export function money(raw: string | number | undefined): string {
+/**
+ * Canonicalize a money string to 4dp via decimal.js (no float drift, §5).
+ * Returns undefined if `raw` is present but not parseable as a number — a
+ * malformed carrier value (e.g. "N/A") is reported honestly as unparseable,
+ * never guessed as 0 or any other value (§10: "a missing value reported
+ * honestly is correct; a guessed value is a defect").
+ */
+export function money(raw: string | number | undefined): string | undefined {
   if (raw === undefined || raw === '') return '0.0000';
-  return new Decimal(raw).toFixed(4);
+  try {
+    return new Decimal(raw).toFixed(4);
+  } catch {
+    return undefined;
+  }
 }
 
-/** Sum decimal money strings exactly. */
-export function sumMoney(values: string[]): string {
-  return values.reduce((acc, v) => acc.plus(new Decimal(v)), new Decimal(0)).toFixed(4);
+/** Sum decimal money strings exactly. Unparseable (undefined) values are excluded from the sum. */
+export function sumMoney(values: (string | undefined)[]): string {
+  return values
+    .filter((v): v is string => v !== undefined)
+    .reduce((acc, v) => acc.plus(new Decimal(v)), new Decimal(0))
+    .toFixed(4);
 }

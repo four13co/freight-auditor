@@ -50,8 +50,11 @@ export function parse310(raw: string, categorize: Categorize): ParsedInvoice {
     // Per-charge wins; fall back to the interchange currency; NEVER default USD.
     const currency = perChargeCurrency ?? interchangeCurrency ?? '';
     const category = categorize(code);
-    const quarantined = code !== undefined && category === undefined;
-    if (quarantined && code) quarantinedCodes.push(code);
+    // A charge is quarantined if its code can't be categorized OR its amount
+    // couldn't be parsed as money (a malformed L1-04 is a structural defect,
+    // never guessed as 0 — the STD.AMOUNT_STATED gate rejects the invoice).
+    const quarantined = (code !== undefined && category === undefined) || amount === undefined;
+    if (code !== undefined && category === undefined) quarantinedCodes.push(code);
     charges.push({
       code,
       x12Element: 'L1',

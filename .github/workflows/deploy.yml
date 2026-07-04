@@ -42,9 +42,20 @@ jobs:
       - name: Deploy to CapRover
         run: |
           op run --env-file=.env.caprover -- bash -c '
-            curl -X POST "https://$CAPROVER_URL/api/v2/user/apps/webhooks/triggerbuild" \
+            set -euo pipefail
+            response="$(curl -sS --fail-with-body -X POST "https://$CAPROVER_URL/api/v2/user/apps/webhooks/triggerbuild" \
               -H "x-captain-app-token: $CAPROVER_APP_TOKEN" \
-              -F "sourceFile=@deploy.tar.gz"
+              -F "sourceFile=@deploy.tar.gz")"
+            echo "$response"
+            # CapRover always responds HTTP 200 even on failure; the real
+            # success/error signal is the JSON body'"'"'s status field
+            # (100 = ok, per CapRover'"'"'s API; anything else, e.g. 1106
+            # "Auth token corrupted", is a failed deploy that must not go green).
+            status="$(echo "$response" | jq -r ".status // \"missing\"")"
+            if [ "$status" != "100" ]; then
+              echo "::error::CapRover deploy failed (status=$status): $response"
+              exit 1
+            fi
           '
         env:
           OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}

@@ -81,4 +81,37 @@ describe('Phase 2 CONTRACT-tier rubric (pure)', () => {
     expect(contractScoring).toContain('STD.NO_QUARANTINED_CODES');
     expect(contractScoring).toContain('STD.FUEL_PRESENT');
   });
+
+  // 86e25ug1p — PR #13 code review finding: the criterion was currency-agnostic.
+  describe('86e25ug1p: CONTRACT.RATE_VARIANCE rejects cross-currency comparisons', () => {
+    it('same currency (USD/USD) → unaffected, still CONFORMED (regression)', () => {
+      const inv = parse210(GOLDEN_210, testCategorize); // billed LINEHAUL = 1000.00 USD
+      const r = evaluateInvoice(inv, CONTRACT_RUBRIC, {
+        linehaulRate: { amount: '1000.0000', currency: 'USD', clauseId: null },
+      });
+      const finding = r.findings.find((f) => f.criterionKey === 'CONTRACT.RATE_VARIANCE');
+      expect(finding?.result).toBe('CONFORMED');
+    });
+
+    it('equal magnitude, different currency (1000 USD billed vs. 1000 EUR contracted) → UNASSESSABLE, never CONFORMED', () => {
+      const inv = parse210(GOLDEN_210, testCategorize); // billed LINEHAUL = 1000.00 USD
+      const r = evaluateInvoice(inv, CONTRACT_RUBRIC, {
+        linehaulRate: { amount: '1000.0000', currency: 'EUR', clauseId: null },
+      });
+      const finding = r.findings.find((f) => f.criterionKey === 'CONTRACT.RATE_VARIANCE');
+      expect(finding?.result).toBe('UNASSESSABLE');
+      // A rejected mismatch contributes nothing to the $ rollup — never guessed.
+      expect(r.scorecard!.totalOvercharge).toBe('0.0000');
+      expect(r.scorecard!.totalUndercharge).toBe('0.0000');
+    });
+
+    it('contract rate with an unstated currency → UNASSESSABLE', () => {
+      const inv = parse210(GOLDEN_210, testCategorize);
+      const r = evaluateInvoice(inv, CONTRACT_RUBRIC, {
+        linehaulRate: { amount: '1000.0000', currency: '', clauseId: null },
+      });
+      const finding = r.findings.find((f) => f.criterionKey === 'CONTRACT.RATE_VARIANCE');
+      expect(finding?.result).toBe('UNASSESSABLE');
+    });
+  });
 });

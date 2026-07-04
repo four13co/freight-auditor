@@ -40,29 +40,58 @@ function toDecimal(v: EvalValue): Decimal | null {
   return null;
 }
 
+/**
+ * Safely construct a Decimal from a raw numeric-ish input, honoring the
+ * module's total contract: an invalid string (decimal.js throws), NaN, or
+ * Infinity all become UNASSESSABLE rather than a thrown error or a value that
+ * silently propagates NaN/Infinity through downstream arithmetic.
+ */
+function safeDecimal(raw: string | number): Decimal | undefined {
+  if (typeof raw === 'number' && !Number.isFinite(raw)) return undefined; // NaN or +/-Infinity
+  try {
+    const d = new Decimal(raw);
+    if (!d.isFinite()) return undefined; // decimal.js accepts "NaN"/"Infinity" strings without throwing
+    return d;
+  } catch {
+    return undefined;
+  }
+}
+
 export function evaluate(node: AstNode, facts: FactBundle): EvalNode {
   switch (node.type) {
     case 'lit': {
       const v = node.value;
-      const value: EvalValue =
-        typeof v === 'boolean'
-          ? { kind: 'bool', value: v }
-          : typeof v === 'number'
-            ? { kind: 'number', value: new Decimal(v).toString() }
-            : { kind: 'string', value: v };
-      return { node, value };
+      if (typeof v === 'boolean') return { node, value: { kind: 'bool', value: v } };
+      if (typeof v === 'number') {
+        const d = safeDecimal(v);
+        if (d === undefined) return { node, value: UNASSESSABLE('non-finite literal') };
+        return { node, value: { kind: 'number', value: d.toString() } };
+      }
+      return { node, value: { kind: 'string', value: v } };
     }
-    case 'money':
-      return { node, value: { kind: 'money', amount: new Decimal(node.amount).toFixed(4), currency: node.currency } };
+    case 'money': {
+      const d = safeDecimal(node.amount);
+      if (d === undefined) return { node, value: UNASSESSABLE('non-numeric money amount') };
+      return { node, value: { kind: 'money', amount: d.toFixed(4), currency: node.currency } };
+    }
 
     case 'fact': {
       const raw = facts[node.key];
       if (raw === undefined || raw === '') return { node, value: UNASSESSABLE(`fact '${node.key}' absent`) };
       let value: EvalValue;
-      if (typeof raw === 'boolean') value = { kind: 'bool', value: raw };
-      else if (typeof raw === 'number') value = { kind: 'number', value: new Decimal(raw).toString() };
-      else if (typeof raw === 'object') value = { kind: 'money', amount: new Decimal(raw.amount).toFixed(4), currency: raw.currency };
-      else value = { kind: 'string', value: raw };
+      if (typeof raw === 'boolean') {
+        value = { kind: 'bool', value: raw };
+      } else if (typeof raw === 'number') {
+        const d = safeDecimal(raw);
+        if (d === undefined) return { node, value: UNASSESSABLE(`fact '${node.key}' is NaN/Infinity`) };
+        value = { kind: 'number', value: d.toString() };
+      } else if (typeof raw === 'object') {
+        const d = safeDecimal(raw.amount);
+        if (d === undefined) return { node, value: UNASSESSABLE(`fact '${node.key}' has a non-numeric money amount`) };
+        value = { kind: 'money', amount: d.toFixed(4), currency: raw.currency };
+      } else {
+        value = { kind: 'string', value: raw };
+      }
       return { node, value };
     }
 
@@ -82,16 +111,22 @@ export function evaluate(node: AstNode, facts: FactBundle): EvalNode {
       const decs = children.map((c) => toDecimal(c.value));
       if (decs.some((d) => d === null)) return { node, value: UNASSESSABLE('non-numeric operand'), children };
       const nums = decs as Decimal[];
+      // A malformed AST (e.g. div/mul with zero args, sub with one) must not
+      // silently return an identity value — that's a structural defect, not a
+      // valid zero/one-operand computation.
+      const minArgs = node.op === 'abs' ? 1 : 2;
+      if (nums.length < minArgs) return { node, value: UNASSESSABLE(`${node.op}: too few operands`), children };
+      const first = nums[0] as Decimal; // length checked above against minArgs (>=1 for every op)
       let result: Decimal;
       switch (node.op) {
         case 'add': result = nums.reduce((a, b) => a.plus(b), new Decimal(0)); break;
-        case 'sub': result = nums.slice(1).reduce((a, b) => a.minus(b), nums[0] ?? new Decimal(0)); break;
+        case 'sub': result = nums.slice(1).reduce((a, b) => a.minus(b), first); break;
         case 'mul': result = nums.reduce((a, b) => a.times(b), new Decimal(1)); break;
         case 'div':
           if (nums.slice(1).some((d) => d.isZero())) return { node, value: UNASSESSABLE('division by zero'), children };
-          result = nums.slice(1).reduce((a, b) => a.dividedBy(b), nums[0] ?? new Decimal(0));
+          result = nums.slice(1).reduce((a, b) => a.dividedBy(b), first);
           break;
-        case 'abs': result = (nums[0] ?? new Decimal(0)).abs(); break;
+        case 'abs': result = first.abs(); break;
       }
       return { node, value: { kind: 'number', value: result.toString() }, children };
     }

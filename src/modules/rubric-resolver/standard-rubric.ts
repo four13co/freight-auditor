@@ -33,7 +33,7 @@ export interface ComposedRubric {
   criteria: StandardCriterion[];
 }
 
-export const RESOLVER_VERSION = 'standard-resolver-v1';
+export const RESOLVER_VERSION = 'standard-resolver-v2';
 export const ENGINE_SPEC_VERSION = 'engine-v1';
 
 /**
@@ -76,6 +76,20 @@ export const STANDARD_RUBRIC: ComposedRubric = {
         type: 'compare',
         op: 'eq',
         left: { type: 'fact', key: 'all_currencies_stated' },
+        right: { type: 'lit', value: true },
+      },
+    },
+    {
+      criterionKey: 'STD.AMOUNT_STATED',
+      kind: 'GATING',
+      evalOrder: 25,
+      description: 'Every charge has a parseable amount (never guessed — a malformed L1-04 is a structural defect).',
+      citation: 'Each charge line must state a numeric amount (L1-04); an unparseable value cannot be certified.',
+      ast: {
+        // all_amounts_stated is precomputed into the fact bundle as a bool.
+        type: 'compare',
+        op: 'eq',
+        left: { type: 'fact', key: 'all_amounts_stated' },
         right: { type: 'lit', value: true },
       },
     },

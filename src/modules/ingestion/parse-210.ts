@@ -43,8 +43,11 @@ export function parse210(raw: string, categorize: Categorize): ParsedInvoice {
     const code = el(l1, 8); // L1-08 = special charge code
     const rawDescription = el(l1, 12); // L1-12 = description
     const category = categorize(code);
-    const quarantined = code !== undefined && category === undefined;
-    if (quarantined && code) quarantinedCodes.push(code);
+    // A charge is quarantined if its code can't be categorized OR its amount
+    // couldn't be parsed as money (a malformed L1-04 is a structural defect,
+    // never guessed as 0 — the STD.AMOUNT_STATED gate rejects the invoice).
+    const quarantined = (code !== undefined && category === undefined) || amount === undefined;
+    if (code !== undefined && category === undefined) quarantinedCodes.push(code);
     charges.push({
       code,
       x12Element: 'L1',

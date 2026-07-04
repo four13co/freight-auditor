@@ -92,6 +92,20 @@ export const MALFORMED_310_NOCURRENCY =
   'SE*4*0004~';
 
 /**
+ * MALFORMED 210 — a charge line's amount (L1-04) is non-numeric garbage
+ * ("N/A") rather than a number. Before the STD.AMOUNT_STATED fix this crashed
+ * the parser (an uncaught decimal.js DecimalError); it must now quarantine the
+ * charge and REJECT_REWORK on the new gate instead (86e25tdce).
+ */
+export const MALFORMED_210_BADAMOUNT =
+  ISA_210 +
+  'ST*210*0005~' +
+  'B3**INV210005*****1250.00***USD~' +
+  'L1*1***N/A****400****Linehaul~' +
+  'L1*2***250.00****405****Fuel Surcharge~' +
+  'SE*5*0005~';
+
+/**
  * A minimal crosswalk categorizer for tests — mirrors the DB crosswalk boundary
  * (§13): audit logic reads canonical categories, never raw codes. Unknown codes
  * return undefined → the parser quarantines them.

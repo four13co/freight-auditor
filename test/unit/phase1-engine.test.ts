@@ -10,6 +10,7 @@ import {
   GOLDEN_210, GOLDEN_210_EXPECTED,
   GOLDEN_310, GOLDEN_310_EXPECTED,
   MALFORMED_210_NOFOOT, MALFORMED_310_NOCURRENCY, MALFORMED_210_BADAMOUNT,
+  MALFORMED_310_BADAMOUNT,
   MISMATCHED_GROUP_210, MISMATCHED_GROUP_310,
   testCategorize,
 } from '../fixtures/edi-golden.js';
@@ -177,6 +178,16 @@ describe('Phase 1 engine (pure)', () => {
     expect(r.gateFailures.map((g) => g.criterionKey)).toContain('STD.AMOUNT_STATED');
     expect(r.findings).toEqual([]); // SCORE phase never ran
     expect(r.scorecard).toBeNull();
+  });
+
+  it('86e25ujx3: a 310 with a non-numeric B3-07 declared total parses without throwing and drops the footing total', () => {
+    expect(() => parse310(MALFORMED_310_BADAMOUNT, testCategorize)).not.toThrow();
+    const inv = parse310(MALFORMED_310_BADAMOUNT, testCategorize);
+    expect(inv.footing?.declaredTotal).toBeUndefined();
+    // The one L1 charge is otherwise well-formed and unaffected.
+    const charge = inv.charges.find((c) => c.code === '500');
+    expect(charge?.amount).toBe('500.0000');
+    expect(charge?.quarantined).toBe(false);
   });
 
   // 86e25tdgt — parser unification must preserve the GS01 functional-group

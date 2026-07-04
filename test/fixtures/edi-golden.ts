@@ -106,6 +106,21 @@ export const MALFORMED_210_BADAMOUNT =
   'SE*5*0005~';
 
 /**
+ * MALFORMED 310 — the B3-07 declared total is non-numeric garbage ("N/A")
+ * rather than a number. money() no longer throws on this (916cab7), so
+ * parse310() must degrade footing.declaredTotal to undefined without
+ * throwing — the same way a legitimately-absent B3 segment already does
+ * (86e25ujx3). The one L1 charge is otherwise well-formed and unaffected.
+ */
+export const MALFORMED_310_BADAMOUNT =
+  ISA_310 +
+  'ST*310*0007~' +
+  'B3**INV310007*****N/A***~' +
+  'C3*USD~' +
+  'L1*1***500.00****500****Ocean Freight********USD~' +
+  'SE*5*0007~';
+
+/**
  * MISMATCHED GROUP — a 210-shaped envelope (ST*210) whose GS01 says IO (the 310
  * group code) instead of IM. Both parsers assert their own expected GS01; this
  * exercises the negative case for parse210 (86e25tdgt: refactor must preserve

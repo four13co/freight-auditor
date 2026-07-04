@@ -1,17 +1,6 @@
-import {
-  parseX12,
-  segmentsByTag,
-  firstSegment,
-  el,
-  type X12Interchange,
-} from './x12.js';
-import {
-  money,
-  sumMoney,
-  type Categorize,
-  type NormalizedCharge,
-  type ParsedInvoice,
-} from './charge-fact.js';
+import { firstSegment, el } from './x12.js';
+import { type Categorize, type ParsedInvoice } from './charge-fact.js';
+import { parseEdiEnvelope, readB3Header, buildCharges, buildFooting } from './edi-envelope.js';
 
 export const PARSER_310_VERSION = '310-v1';
 
@@ -28,44 +17,20 @@ export const PARSER_310_VERSION = '310-v1';
  * Category via crosswalk boundary; unknown codes quarantined.
  */
 export function parse310(raw: string, categorize: Categorize): ParsedInvoice {
-  const ix: X12Interchange = parseX12(raw);
-  assertFunctionalGroup(ix, 'IO');
-
-  const b3 = firstSegment(ix, 'B3');
-  const invoiceNumber = el(b3, 2);
-  const declaredTotal = el(b3, 7);
+  const ix = parseEdiEnvelope(raw, 'IO');
+  const { invoiceNumber, declaredTotal } = readB3Header(ix);
 
   // C3 = currency segment; C3-01 is the interchange-level currency, if declared.
   const c3 = firstSegment(ix, 'C3');
   const interchangeCurrency = el(c3, 1); // may be undefined — do NOT default to USD
 
-  const charges: NormalizedCharge[] = [];
-  const quarantinedCodes: string[] = [];
-
-  for (const l1 of segmentsByTag(ix, 'L1')) {
-    const amount = money(el(l1, 4)); // L1-04 = charge amount
-    const code = el(l1, 8); // L1-08 = special charge code
-    const rawDescription = el(l1, 12); // L1-12 = description
-    const perChargeCurrency = el(l1, 20); // L1-20 = per-charge currency (ocean)
-    // Per-charge wins; fall back to the interchange currency; NEVER default USD.
-    const currency = perChargeCurrency ?? interchangeCurrency ?? '';
-    const category = categorize(code);
-    // A charge is quarantined if its code can't be categorized OR its amount
-    // couldn't be parsed as money (a malformed L1-04 is a structural defect,
-    // never guessed as 0 — the STD.AMOUNT_STATED gate rejects the invoice).
-    const quarantined = (code !== undefined && category === undefined) || amount === undefined;
-    if (code !== undefined && category === undefined) quarantinedCodes.push(code);
-    charges.push({
-      code,
-      x12Element: 'L1',
-      category,
-      quarantined,
-      amount,
-      currency,
-      rawDescription,
-      sourceLoop: 'L1',
-    });
-  }
+  // Per-charge (L1-20) wins; fall back to the interchange currency; NEVER default USD.
+  const { charges, quarantinedCodes } = buildCharges(
+    ix,
+    categorize,
+    (l1) => el(l1, 20) ?? interchangeCurrency,
+    'L1',
+  );
 
   return {
     transactionSet: '310',
@@ -73,18 +38,7 @@ export function parse310(raw: string, categorize: Categorize): ParsedInvoice {
     invoiceNumber,
     headerCurrency: interchangeCurrency,
     charges,
-    footing: {
-      declaredTotal: declaredTotal === undefined ? undefined : money(declaredTotal),
-      lineSum: sumMoney(charges.map((c) => c.amount)),
-    },
+    footing: buildFooting(declaredTotal, charges),
     quarantinedCodes,
   };
-}
-
-function assertFunctionalGroup(ix: X12Interchange, expected: string): void {
-  const gs = firstSegment(ix, 'GS');
-  const gs01 = el(gs, 1);
-  if (gs01 !== undefined && gs01 !== expected) {
-    throw new Error(`expected GS01=${expected} for this transaction set, got ${gs01}`);
-  }
 }

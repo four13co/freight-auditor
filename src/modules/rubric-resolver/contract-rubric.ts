@@ -27,7 +27,7 @@ const RATE_VARIANCE_CRITERION: StandardCriterion = {
   criterionKey: 'CONTRACT.RATE_VARIANCE',
   kind: 'SCORING',
   evalOrder: 200,
-  description: 'Billed linehaul charge matches the contracted rate within tolerance.',
+  description: 'Billed linehaul charge matches the contracted rate within tolerance, in the same currency.',
   ast: {
     type: 'require',
     key: 'billed_linehaul',
@@ -35,11 +35,23 @@ const RATE_VARIANCE_CRITERION: StandardCriterion = {
       type: 'require',
       key: 'contract_linehaul_rate',
       then: {
-        type: 'compare',
-        op: 'approx',
-        tolerance: RATE_VARIANCE_TOLERANCE,
-        left: { type: 'fact', key: 'billed_linehaul' },
-        right: { type: 'fact', key: 'contract_linehaul_rate' },
+        // 86e25ug1p: `compare` op:approx only ever compares magnitude — it
+        // does not check currency (interpreter.ts's toDecimal() reads only
+        // the .amount off a money value). `linehaul_currencies_match` is
+        // precomputed in fact-bundle.ts and left ABSENT (not `false`) unless
+        // both sides state a currency AND those currencies are equal, so this
+        // `require` gates the comparison closed: a mismatch or an unstated
+        // currency on either side resolves the whole criterion to
+        // UNASSESSABLE, never a magnitude-only false CONFORMED.
+        type: 'require',
+        key: 'linehaul_currencies_match',
+        then: {
+          type: 'compare',
+          op: 'approx',
+          tolerance: RATE_VARIANCE_TOLERANCE,
+          left: { type: 'fact', key: 'billed_linehaul' },
+          right: { type: 'fact', key: 'contract_linehaul_rate' },
+        },
       },
     },
   },

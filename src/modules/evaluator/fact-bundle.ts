@@ -47,14 +47,30 @@ export function buildFactBundle(inv: ParsedInvoice, contract?: ContractFacts): F
     const linehaulCharges = inv.charges.filter((c) => c.category === 'LINEHAUL' && !c.quarantined && c.amount !== undefined);
     const billedLinehaul = linehaulCharges.reduce((acc, c) => acc.plus(new Decimal(c.amount!)), new Decimal(0));
     const hasLinehaulCharge = linehaulCharges.length > 0;
+    const billedCurrency = hasLinehaulCharge ? linehaulCharges[0]!.currency : undefined;
+    const rateCurrency = contract.linehaulRate === null ? undefined : contract.linehaulRate.currency;
 
     bundle.billed_linehaul = hasLinehaulCharge
-      ? { amount: billedLinehaul.toFixed(4), currency: linehaulCharges[0]!.currency }
+      ? { amount: billedLinehaul.toFixed(4), currency: billedCurrency! }
       : undefined;
     bundle.contract_linehaul_rate =
       contract.linehaulRate === null
         ? undefined
-        : { amount: contract.linehaulRate.amount, currency: contract.linehaulRate.currency };
+        : { amount: contract.linehaulRate.amount, currency: rateCurrency! };
+    // 86e25ug1p: the interpreter's `compare` op:approx compares money amounts
+    // only, never currency (see toDecimal in interpreter.ts) — so a naive
+    // approx comparison silently treats 500 USD and 500 EUR as CONFORMED.
+    // The criterion's AST gates its money comparison behind a `require` on
+    // this fact — and `require` treats only undefined/'' as absent, NOT
+    // `false` — so this must be `true` or omitted entirely, never `false`.
+    // A currency mismatch (or either side unstated) leaves it absent, which
+    // correctly resolves the whole criterion to UNASSESSABLE rather than
+    // falling through into a magnitude-only comparison.
+    const currenciesStatedAndEqual =
+      billedCurrency !== undefined && rateCurrency !== undefined && billedCurrency !== '' && rateCurrency !== ''
+        ? billedCurrency === rateCurrency
+        : false;
+    bundle.linehaul_currencies_match = currenciesStatedAndEqual ? true : undefined;
   }
 
   return bundle;

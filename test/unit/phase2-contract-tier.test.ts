@@ -1,9 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import { parse210 } from '../../src/modules/ingestion/parse-210.js';
+import { parse310 } from '../../src/modules/ingestion/parse-310.js';
 import { evaluateInvoice } from '../../src/modules/evaluator/evaluate-invoice.js';
 import { CONTRACT_RUBRIC } from '../../src/modules/rubric-resolver/contract-rubric.js';
 import { STANDARD_RUBRIC } from '../../src/modules/rubric-resolver/standard-rubric.js';
-import { GOLDEN_210, MALFORMED_210_NOFOOT, testCategorize } from '../fixtures/edi-golden.js';
+import {
+  GOLDEN_210, MALFORMED_210_NOFOOT, MIXED_CURRENCY_LINEHAUL_310, testCategorize,
+} from '../fixtures/edi-golden.js';
 
 /**
  * Phase 2 CONTRACT-tier rubric contract (ClickUp 86e25te91). Pure — no DB (the
@@ -112,6 +115,33 @@ describe('Phase 2 CONTRACT-tier rubric (pure)', () => {
       });
       const finding = r.findings.find((f) => f.criterionKey === 'CONTRACT.RATE_VARIANCE');
       expect(finding?.result).toBe('UNASSESSABLE');
+    });
+  });
+
+  // 86e25urnj — orphaned W27 maintenance finding: buildFactBundle summed ALL
+  // LINEHAUL charges into one Decimal before any per-charge currency check,
+  // tagging the sum with only the first charge's currency. PR #14 (86e25ug1p)
+  // only guarded the final compare against the contract rate, not this summation.
+  describe('86e25urnj: mixed-currency LINEHAUL summation never produces a wrong magnitude', () => {
+    it('two LINEHAUL charges, both USD → unaffected, sum computed normally (regression)', () => {
+      const inv = parse210(GOLDEN_210, testCategorize); // single LINEHAUL charge, 1000.00 USD
+      const r = evaluateInvoice(inv, CONTRACT_RUBRIC, {
+        linehaulRate: { amount: '1000.0000', currency: 'USD', clauseId: null },
+      });
+      const finding = r.findings.find((f) => f.criterionKey === 'CONTRACT.RATE_VARIANCE');
+      expect(finding?.result).toBe('CONFORMED');
+    });
+
+    it('two LINEHAUL charges, USD + EUR → CONTRACT.RATE_VARIANCE is UNASSESSABLE, never a magnitude summed across currencies', () => {
+      const inv = parse310(MIXED_CURRENCY_LINEHAUL_310, testCategorize); // 1000 USD + 1000 EUR, both code 400/LINEHAUL
+      const r = evaluateInvoice(inv, CONTRACT_RUBRIC, {
+        linehaulRate: { amount: '2000.0000', currency: 'USD', clauseId: null },
+      });
+      const finding = r.findings.find((f) => f.criterionKey === 'CONTRACT.RATE_VARIANCE');
+      expect(finding?.result).toBe('UNASSESSABLE');
+      // A rejected mismatch contributes nothing to the $ rollup — never guessed.
+      expect(r.scorecard!.totalOvercharge).toBe('0.0000');
+      expect(r.scorecard!.totalUndercharge).toBe('0.0000');
     });
   });
 });

@@ -45,14 +45,25 @@ export function buildFactBundle(inv: ParsedInvoice, contract?: ContractFacts): F
     // comparison. Excludes quarantined charges (an unparseable/uncategorized
     // amount can't be compared; the STANDARD gates already handle that defect).
     const linehaulCharges = inv.charges.filter((c) => c.category === 'LINEHAUL' && !c.quarantined && c.amount !== undefined);
-    const billedLinehaul = linehaulCharges.reduce((acc, c) => acc.plus(new Decimal(c.amount!)), new Decimal(0));
     const hasLinehaulCharge = linehaulCharges.length > 0;
-    const billedCurrency = hasLinehaulCharge ? linehaulCharges[0]!.currency : undefined;
+    // 86e25urnj: ocean (310) supports per-charge currency (never USD defaulted,
+    // §13), so a single invoice can legitimately carry multiple LINEHAUL
+    // charges in different currencies. Summing them into one Decimal before
+    // checking this would produce a magnitude that doesn't correspond to any
+    // single currency, tagged with an arbitrary one (the first charge's) — a
+    // silently wrong number. Require all contributing charges to share the
+    // same currency before computing the sum at all; otherwise the fact is
+    // absent, same as any other unassessable-input case (§10: never guessed).
+    const linehaulCurrenciesConsistent =
+      hasLinehaulCharge && linehaulCharges.every((c) => c.currency === linehaulCharges[0]!.currency);
+    const billedCurrency = linehaulCurrenciesConsistent ? linehaulCharges[0]!.currency : undefined;
+    const billedLinehaul = linehaulCurrenciesConsistent
+      ? linehaulCharges.reduce((acc, c) => acc.plus(new Decimal(c.amount!)), new Decimal(0))
+      : undefined;
     const rateCurrency = contract.linehaulRate === null ? undefined : contract.linehaulRate.currency;
 
-    bundle.billed_linehaul = hasLinehaulCharge
-      ? { amount: billedLinehaul.toFixed(4), currency: billedCurrency! }
-      : undefined;
+    bundle.billed_linehaul =
+      billedLinehaul === undefined ? undefined : { amount: billedLinehaul.toFixed(4), currency: billedCurrency! };
     bundle.contract_linehaul_rate =
       contract.linehaulRate === null
         ? undefined

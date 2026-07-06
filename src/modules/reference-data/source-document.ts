@@ -8,9 +8,15 @@ import type { ObjectStore } from './object-store.js';
  *
  *   - the object store writes the bytes at most once;
  *   - the row insert uses `ON CONFLICT (sha256) DO NOTHING` and returns the
- *     existing row, so re-ingesting identical bytes returns the same document
- *     ref rather than duplicating it — even across tenants, since sha256 is a
- *     global unique index while the table itself is RLS-scoped by client_id.
+ *     existing row, so re-ingesting identical bytes never duplicates storage
+ *     — even across tenants, since sha256 is a global unique index while the
+ *     table itself is RLS-scoped by client_id.
+ *
+ * This is dedup, not tenant-symmetric idempotency: on a cross-tenant sha256
+ * collision, the returned `id` belongs to whichever tenant stored the bytes
+ * first, and `ownedByCaller` on the result is `false` for every other tenant
+ * — that id is invisible to their own future non-internal queries (RLS), so
+ * callers must not persist it as a foreign key into a tenant-scoped table.
  *
  * Must be called inside a tenant transaction (withTenantTx) — the insert is
  * subject to RLS on source_document.
@@ -28,6 +34,14 @@ export interface SourceDocumentRef {
   byteSize: number;
   /** true when this call created the row; false when an identical one existed. */
   created: boolean;
+  /**
+   * true when the returned row's client_id matches the caller's input.clientId.
+   * false on a cross-tenant sha256 collision: the id belongs to a different
+   * tenant and will be invisible to this caller's own future non-internal
+   * queries (RLS-scoped) — callers must not persist it as a foreign key into a
+   * tenant-scoped table without accounting for that.
+   */
+  ownedByCaller: boolean;
 }
 
 export async function storeSourceDocument(
@@ -46,7 +60,14 @@ export async function storeSourceDocument(
   );
 
   if (inserted.rows.length === 1) {
-    return { id: inserted.rows[0]!.id, sha256, storageUri: uri, byteSize, created: true };
+    return {
+      id: inserted.rows[0]!.id,
+      sha256,
+      storageUri: uri,
+      byteSize,
+      created: true,
+      ownedByCaller: true,
+    };
   }
 
   // Conflict: an identical document already exists. The UNIQUE(sha256) index is
@@ -61,10 +82,10 @@ export async function storeSourceDocument(
     `SELECT current_setting('app.is_internal', true) AS v`,
   );
   await client.query(`SELECT set_config('app.is_internal', 'true', true)`);
-  let row: { id: string } | undefined;
+  let row: { id: string; client_id: string | null } | undefined;
   try {
-    const existing = await client.query<{ id: string }>(
-      `SELECT id FROM source_document WHERE sha256 = $1`,
+    const existing = await client.query<{ id: string; client_id: string | null }>(
+      `SELECT id, client_id FROM source_document WHERE sha256 = $1`,
       [sha256],
     );
     row = existing.rows[0];
@@ -84,5 +105,6 @@ export async function storeSourceDocument(
     storageUri: uri,
     byteSize,
     created: false,
+    ownedByCaller: row.client_id === input.clientId,
   };
 }

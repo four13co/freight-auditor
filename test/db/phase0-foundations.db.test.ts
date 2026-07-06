@@ -177,6 +177,29 @@ describe('Phase 0 foundations (runtime)', () => {
     expect((await store.get(expectedSha)).equals(bytes)).toBe(true);
   });
 
+  it('AC4b: cross-tenant sha256 collision returns the existing ref instead of throwing', async () => {
+    const store = new LocalDiskObjectStore(storeRoot);
+    const bytes = Buffer.from('ISA*00*...shared-carrier-boilerplate...~');
+    const expectedSha = sha256Hex(bytes);
+
+    // Tenant A stores the bytes first, under a genuinely restricted (non-internal) scope.
+    const first = await withTenantTx({ clientIds: [clientA], internal: false }, async (c) =>
+      storeSourceDocument(c, store, { clientId: clientA, bytes, contentType: 'application/edi-x12' }),
+    );
+    // Tenant B stores byte-identical content, also non-internal — B's RLS scope
+    // cannot see A's row, yet the global UNIQUE(sha256) index still conflicts.
+    const second = await withTenantTx({ clientIds: [clientB], internal: false }, async (c) =>
+      storeSourceDocument(c, store, { clientId: clientB, bytes, contentType: 'application/edi-x12' }),
+    );
+
+    expect(first.created).toBe(true);
+    expect(second.created).toBe(false); // no duplicate row inserted for B
+    expect(second.id).toBe(first.id);
+    expect(second.sha256).toBe(expectedSha);
+    expect(second.storageUri).toBe(first.storageUri);
+    expect(second.byteSize).toBe(first.byteSize);
+  });
+
   it('AC5: crosswalk resolves the most-specific rule per precedence', async () => {
     // Client A has a client+carrier+code override (rank 4) → wins.
     const forA = await withTenantTx({ clientIds: [clientA], internal: false }, async (c) =>

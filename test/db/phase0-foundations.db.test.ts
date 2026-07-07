@@ -200,6 +200,21 @@ describe('Phase 0 foundations (runtime)', () => {
     expect(second.byteSize).toBe(first.byteSize);
   });
 
+  it('AC4c: ownedByCaller distinguishes the creating tenant from a cross-tenant collision', async () => {
+    const store = new LocalDiskObjectStore(storeRoot);
+    const bytes = Buffer.from('ISA*00*...another-shared-boilerplate...~');
+
+    const first = await withTenantTx({ clientIds: [clientA], internal: false }, async (c) =>
+      storeSourceDocument(c, store, { clientId: clientA, bytes, contentType: 'application/edi-x12' }),
+    );
+    const second = await withTenantTx({ clientIds: [clientB], internal: false }, async (c) =>
+      storeSourceDocument(c, store, { clientId: clientB, bytes, contentType: 'application/edi-x12' }),
+    );
+
+    expect(first.ownedByCaller).toBe(true);
+    expect(second.ownedByCaller).toBe(false);
+  });
+
   it('AC5: crosswalk resolves the most-specific rule per precedence', async () => {
     // Client A has a client+carrier+code override (rank 4) → wins.
     const forA = await withTenantTx({ clientIds: [clientA], internal: false }, async (c) =>

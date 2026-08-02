@@ -142,40 +142,13 @@ jobs:
 
       - name: Roll back to the last known-good revision
         if: failure() && steps.healthcheck.outcome == 'failure'
-        run: |
-          if ! git rev-parse "$LAST_GOOD_TAG" >/dev/null 2>&1; then
-            echo "::error::No ${LAST_GOOD_TAG} tag exists yet — nothing to roll back to. This is the first deploy or the tag was never set; manual recovery required."
-            exit 1
-          fi
-
-          last_good_sha="$(git rev-parse "$LAST_GOOD_TAG")"
-          echo "::error::Rolling back to ${LAST_GOOD_TAG} (${last_good_sha})"
-
-          git checkout --detach "$last_good_sha"
-          npm ci
-          npm run build
-          echo "$last_good_sha" > dist/server/BUILD_SHA
-          tar -czf deploy.tar.gz captain-definition package.json package-lock.json dist/
-
-          op run --env-file=.env.caprover -- bash -c '
-            set -euo pipefail
-            response="$(curl -sS --fail-with-body -X POST "https://$CAPROVER_URL/api/v2/user/apps/webhooks/triggerbuild" \
-              -H "x-captain-app-token: $CAPROVER_APP_TOKEN" \
-              -F "sourceFile=@deploy.tar.gz")"
-            echo "$response"
-            status="$(echo "$response" | jq -r ".status // \"missing\"")"
-            if [ "$status" != "100" ]; then
-              echo "::error::Rollback deploy also failed (status=$status): $response"
-              exit 1
-            fi
-          '
+        run: op run --env-file=.env.caprover -- node scripts/rollback-deploy.mjs
         env:
           OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
 
-      # Runs whether or not the rollback fired above — a healthy poll (job continues past
-      # here without the rollback step running) also needs the tag advanced. `if: success()`
-      # ensures this never runs after a failed rollback, since the overall job must stay
-      # failed (humans need to see it) even when service was restored.
+      # Gated on success() rather than always() — after a failing health-check, this step
+      # must NOT run (regardless of whether the rollback above succeeded), so the overall
+      # job stays failed and humans are alerted even though service was restored.
       - name: Advance last-good tag
         if: success()
         run: |

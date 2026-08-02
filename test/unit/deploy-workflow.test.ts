@@ -86,6 +86,17 @@ describe('deploy.yml (unit, job-dependency + guard wiring)', () => {
       expect(rollbackStep!.if).toContain("steps.healthcheck.outcome == 'failure'");
     });
 
+    it('runs the rollback via the testable script, not inline bash (AC2 wiring)', () => {
+      const workflow = loadDeployWorkflow();
+      const rollbackStep = getJob(workflow, 'post-deployment').steps.find((s) =>
+        s.name?.toLowerCase().includes('roll back'),
+      );
+      expect(rollbackStep!.run).toContain('rollback-deploy.mjs');
+      // the same env-file convention as the primary "Deploy to CapRover" step —
+      // rollback needs CAPROVER_URL/CAPROVER_APP_TOKEN, not a bespoke source
+      expect(rollbackStep!.run).toContain('op run --env-file=.env.caprover');
+    });
+
     it('gates advancing the last-good tag on overall job success — so a failed health-check (even after a successful rollback) still leaves the job failed', () => {
       const workflow = loadDeployWorkflow();
       const tagStep = getJob(workflow, 'post-deployment').steps.find((s) =>

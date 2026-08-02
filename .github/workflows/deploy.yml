@@ -72,6 +72,9 @@ jobs:
       - name: Build application
         run: npm run build
 
+      - name: Write build identifier
+        run: echo "${{ github.sha }}" > dist/server/BUILD_SHA
+
       - name: Create deployment tarball
         run: |
           tar -czf deploy.tar.gz captain-definition package.json package-lock.json dist/
@@ -96,3 +99,85 @@ jobs:
           '
         env:
           OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+
+  post-deployment:
+    needs: deploy
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    environment:
+      name: ${{ github.ref_name == 'Production' && 'production' || 'preview' }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install 1Password CLI
+        uses: 1password/install-cli-action@v1
+
+      - name: Set vault name
+        run: |
+          PROJECT_NAME="${{ github.event.repository.name }}"
+          ENVIRONMENT="${{ github.ref_name == 'Production' && 'prod' || 'dev' }}"
+          echo "OP_VAULT=${PROJECT_NAME}-${ENVIRONMENT}" >> $GITHUB_ENV
+          echo "LAST_GOOD_TAG=last-good-${ENVIRONMENT}" >> $GITHUB_ENV
+
+      - name: Poll /health for the new revision
+        id: healthcheck
+        run: |
+          op run --env-file=.env.post-deploy -- node scripts/post-deploy-healthcheck.mjs
+        env:
+          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+          EXPECTED_BUILD_SHA: ${{ github.sha }}
+
+      - name: Roll back to the last known-good revision
+        if: failure() && steps.healthcheck.outcome == 'failure'
+        run: |
+          if ! git rev-parse "$LAST_GOOD_TAG" >/dev/null 2>&1; then
+            echo "::error::No ${LAST_GOOD_TAG} tag exists yet — nothing to roll back to. This is the first deploy or the tag was never set; manual recovery required."
+            exit 1
+          fi
+
+          last_good_sha="$(git rev-parse "$LAST_GOOD_TAG")"
+          echo "::error::Rolling back to ${LAST_GOOD_TAG} (${last_good_sha})"
+
+          git checkout --detach "$last_good_sha"
+          npm ci
+          npm run build
+          echo "$last_good_sha" > dist/server/BUILD_SHA
+          tar -czf deploy.tar.gz captain-definition package.json package-lock.json dist/
+
+          op run --env-file=.env.caprover -- bash -c '
+            set -euo pipefail
+            response="$(curl -sS --fail-with-body -X POST "https://$CAPROVER_URL/api/v2/user/apps/webhooks/triggerbuild" \
+              -H "x-captain-app-token: $CAPROVER_APP_TOKEN" \
+              -F "sourceFile=@deploy.tar.gz")"
+            echo "$response"
+            status="$(echo "$response" | jq -r ".status // \"missing\"")"
+            if [ "$status" != "100" ]; then
+              echo "::error::Rollback deploy also failed (status=$status): $response"
+              exit 1
+            fi
+          '
+        env:
+          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+
+      # Runs whether or not the rollback fired above — a healthy poll (job continues past
+      # here without the rollback step running) also needs the tag advanced. `if: success()`
+      # ensures this never runs after a failed rollback, since the overall job must stay
+      # failed (humans need to see it) even when service was restored.
+      - name: Advance last-good tag
+        if: success()
+        run: |
+          git tag -f "$LAST_GOOD_TAG" "${{ github.sha }}"
+          git push origin "$LAST_GOOD_TAG" --force

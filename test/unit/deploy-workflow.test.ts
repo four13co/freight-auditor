@@ -4,7 +4,8 @@ import { load } from 'js-yaml';
 
 interface WorkflowJob {
   needs?: string | string[];
-  steps: Array<{ name?: string; run?: string; uses?: string }>;
+  permissions?: Record<string, string>;
+  steps: Array<{ id?: string; name?: string; run?: string; uses?: string; if?: string }>;
 }
 
 interface Workflow {
@@ -54,5 +55,44 @@ describe('deploy.yml (unit, job-dependency + guard wiring)', () => {
     const deployStep = getJob(workflow, 'deploy').steps.find((step) => step.name === 'Deploy to CapRover');
     expect(deployStep).toBeDefined();
     expect(deployStep!.run).toContain('"$status" != "100"');
+  });
+
+  describe('post-deployment health-check + rollback (86e27d4rh)', () => {
+    it('gates on the deploy job via `needs`', () => {
+      const workflow = loadDeployWorkflow();
+      expect(getJob(workflow, 'post-deployment').needs).toBe('deploy');
+    });
+
+    it('grants contents:write so the last-good tag can be pushed', () => {
+      const workflow = loadDeployWorkflow();
+      expect(getJob(workflow, 'post-deployment').permissions?.contents).toBe('write');
+    });
+
+    it('runs the health-check poll via the testable script, not inline bash', () => {
+      const workflow = loadDeployWorkflow();
+      const healthcheckStep = getJob(workflow, 'post-deployment').steps.find((s) =>
+        s.run?.includes('post-deploy-healthcheck.mjs'),
+      );
+      expect(healthcheckStep).toBeDefined();
+    });
+
+    it('gates the rollback step on the health-check step having failed', () => {
+      const workflow = loadDeployWorkflow();
+      const rollbackStep = getJob(workflow, 'post-deployment').steps.find((s) =>
+        s.name?.toLowerCase().includes('roll back'),
+      );
+      expect(rollbackStep).toBeDefined();
+      expect(rollbackStep!.if).toContain('failure()');
+      expect(rollbackStep!.if).toContain("steps.healthcheck.outcome == 'failure'");
+    });
+
+    it('gates advancing the last-good tag on overall job success — so a failed health-check (even after a successful rollback) still leaves the job failed', () => {
+      const workflow = loadDeployWorkflow();
+      const tagStep = getJob(workflow, 'post-deployment').steps.find((s) =>
+        s.name?.toLowerCase().includes('advance last-good tag'),
+      );
+      expect(tagStep).toBeDefined();
+      expect(tagStep!.if).toBe('success()');
+    });
   });
 });

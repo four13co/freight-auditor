@@ -6,7 +6,44 @@ on:
   workflow_dispatch:
 
 jobs:
+  migrate-database:
+    runs-on: ubuntu-latest
+    environment:
+      name: ${{ github.ref_name == 'Production' && 'production' || 'preview' }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      - name: Install 1Password CLI
+        uses: 1password/install-cli-action@v1
+
+      - name: Set vault name
+        run: |
+          PROJECT_NAME="${{ github.event.repository.name }}"
+          ENVIRONMENT="${{ github.ref_name == 'Production' && 'prod' || 'dev' }}"
+          echo "OP_VAULT=${PROJECT_NAME}-${ENVIRONMENT}" >> $GITHUB_ENV
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run database migrations
+        run: |
+          op run --env-file=.env.migrate -- bash -c '
+            set -euo pipefail
+            node scripts/guard-protected-db.mjs
+            npm run migrate up
+          '
+        env:
+          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+
   deploy:
+    needs: migrate-database
     runs-on: ubuntu-latest
     environment:
       name: ${{ github.ref_name == 'Production' && 'production' || 'preview' }}

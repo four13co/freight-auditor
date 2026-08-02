@@ -9,6 +9,16 @@ export default [
   },
   js.configs.recommended,
   {
+    files: ['**/*.mjs'],
+    languageOptions: {
+      ecmaVersion: 2023,
+      sourceType: 'module',
+      globals: {
+        ...globals.node,
+      },
+    },
+  },
+  {
     files: ['**/*.ts'],
     languageOptions: {
       parser: tsparser,

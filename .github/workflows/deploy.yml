@@ -39,23 +39,18 @@ jobs:
         run: |
           tar -czf deploy.tar.gz captain-definition package.json package-lock.json dist/
 
+      - name: Install CapRover CLI
+        run: npm install -g caprover
+
+      # freight-auditor has one CapRover app today (no separate prod app yet),
+      # so both branches deploy to the same --appName. Split this per-environment
+      # (like OP_VAULT above) once a production app exists.
       - name: Deploy to CapRover
         run: |
-          op run --env-file=.env.caprover -- bash -c '
-            set -euo pipefail
-            response="$(curl -sS --fail-with-body -X POST "https://$CAPROVER_URL/api/v2/user/apps/webhooks/triggerbuild" \
-              -H "x-captain-app-token: $CAPROVER_APP_TOKEN" \
-              -F "sourceFile=@deploy.tar.gz")"
-            echo "$response"
-            # CapRover always responds HTTP 200 even on failure; the real
-            # success/error signal is the JSON body'"'"'s status field
-            # (100 = ok, per CapRover'"'"'s API; anything else, e.g. 1106
-            # "Auth token corrupted", is a failed deploy that must not go green).
-            status="$(echo "$response" | jq -r ".status // \"missing\"")"
-            if [ "$status" != "100" ]; then
-              echo "::error::CapRover deploy failed (status=$status): $response"
-              exit 1
-            fi
-          '
+          op run --env-file=.env.caprover -- caprover deploy \
+            --caproverUrl "https://$CAPROVER_URL" \
+            --appToken "$CAPROVER_APP_TOKEN" \
+            --appName "freight-auditor" \
+            --tarFile deploy.tar.gz
         env:
           OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}

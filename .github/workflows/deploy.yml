@@ -45,8 +45,6 @@ jobs:
   deploy:
     needs: migrate-database
     runs-on: ubuntu-latest
-    environment:
-      name: ${{ github.ref_name == 'Production' && 'production' || 'preview' }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -79,23 +77,26 @@ jobs:
         run: |
           tar -czf deploy.tar.gz captain-definition package.json package-lock.json dist/
 
+      - name: Install CapRover CLI
+        run: npm install -g caprover
+
+      # freight-auditor has one CapRover app today (no separate prod app yet),
+      # so both branches deploy to the same --appName. Split this per-environment
+      # (like OP_VAULT above) once a production app exists.
+      #
+      # The `bash -c '...'` wrapper is load-bearing, not stylistic: when caprover
+      # (a non-shell binary) is op run's direct trailing command, the resolved env
+      # vars don't reach its process image and --caproverUrl/--appToken end up
+      # empty even though `op run -- bash -c 'echo $SRC_CAPROVER_URL'` resolves
+      # them correctly. Routing through an intermediate shell fixes it.
       - name: Deploy to CapRover
         run: |
           op run --env-file=.env.caprover -- bash -c '
-            set -euo pipefail
-            response="$(curl -sS --fail-with-body -X POST "https://$CAPROVER_URL/api/v2/user/apps/webhooks/triggerbuild" \
-              -H "x-captain-app-token: $CAPROVER_APP_TOKEN" \
-              -F "sourceFile=@deploy.tar.gz")"
-            echo "$response"
-            # CapRover always responds HTTP 200 even on failure; the real
-            # success/error signal is the JSON body'"'"'s status field
-            # (100 = ok, per CapRover'"'"'s API; anything else, e.g. 1106
-            # "Auth token corrupted", is a failed deploy that must not go green).
-            status="$(echo "$response" | jq -r ".status // \"missing\"")"
-            if [ "$status" != "100" ]; then
-              echo "::error::CapRover deploy failed (status=$status): $response"
-              exit 1
-            fi
+            caprover deploy \
+              --caproverUrl "https://$SRC_CAPROVER_URL" \
+              --appToken "$SRC_CAPROVER_APP_TOKEN" \
+              --appName "freight-auditor" \
+              --tarFile deploy.tar.gz
           '
         env:
           OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}

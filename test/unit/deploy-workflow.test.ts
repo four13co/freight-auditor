@@ -5,7 +5,14 @@ import { load } from 'js-yaml';
 interface WorkflowJob {
   needs?: string | string[];
   permissions?: Record<string, string>;
-  steps: Array<{ id?: string; name?: string; run?: string; uses?: string; if?: string }>;
+  steps: Array<{
+    id?: string;
+    name?: string;
+    run?: string;
+    uses?: string;
+    if?: string;
+    env?: Record<string, unknown>;
+  }>;
 }
 
 interface Workflow {
@@ -48,6 +55,19 @@ describe('deploy.yml (unit, job-dependency + guard wiring)', () => {
       step.run?.includes('npm run migrate'),
     );
     expect(migrateStep!.run).toContain('op run --env-file=.env.migrate');
+  });
+
+  it('allows the guard to pass on Development (dedicated dev DB) but not on other branches (86e25uqxa)', () => {
+    // freight-auditor-dev's DATABASE_URL is a dedicated dev Neon instance, not shared/
+    // production, so CI is allowed to auto-migrate it. Production has no DATABASE_URL
+    // secret yet and gets no override — the guard stays live there.
+    const workflow = loadDeployWorkflow();
+    const migrateStep = getJob(workflow, 'migrate-database').steps.find((step) =>
+      step.run?.includes('npm run migrate'),
+    );
+    expect(migrateStep!.env?.ALLOW_PROTECTED_DB_HOST).toBe(
+      "${{ github.ref_name == 'Development' && '1' || '' }}",
+    );
   });
 
   it('deploys via the caprover CLI, not the raw webhook curl (86e25uqxa)', () => {

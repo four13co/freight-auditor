@@ -8,8 +8,6 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    environment:
-      name: ${{ github.ref_name == 'Production' && 'production' || 'preview' }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4

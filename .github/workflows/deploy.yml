@@ -43,10 +43,15 @@ jobs:
       # freight-auditor has one CapRover app today (no separate prod app yet),
       # so both branches deploy to the same --appName. Split this per-environment
       # (like OP_VAULT above) once a production app exists.
+      #
+      # The `bash -c '...'` wrapper is load-bearing, not stylistic: when caprover
+      # (a non-shell binary) is op run's direct trailing command, the resolved env
+      # vars don't reach its process image and --caproverUrl/--appToken end up
+      # empty even though `op run -- bash -c 'echo $SRC_CAPROVER_URL'` resolves
+      # them correctly. Routing through an intermediate shell fixes it.
       - name: Deploy to CapRover
         run: |
           op run --env-file=.env.caprover -- bash -c '
-            echo "AT-USE URL_LEN=${#SRC_CAPROVER_URL}"
             caprover deploy \
               --caproverUrl "https://$SRC_CAPROVER_URL" \
               --appToken "$SRC_CAPROVER_APP_TOKEN" \

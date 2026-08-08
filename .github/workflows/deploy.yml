@@ -43,6 +43,12 @@ jobs:
       # freight-auditor has one CapRover app today (no separate prod app yet),
       # so both branches deploy to the same --appName. Split this per-environment
       # (like OP_VAULT above) once a production app exists.
+      - name: Debug op run resolution (temporary)
+        run: |
+          op run --env-file=.env.caprover -- bash -c 'echo "URL_LEN=${#CAPROVER_URL}"; echo "TOKEN_LEN=${#CAPROVER_APP_TOKEN}"; echo "OP_VAULT_SEEN=$OP_VAULT"'
+        env:
+          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+
       - name: Deploy to CapRover
         run: |
           op run --env-file=.env.caprover -- caprover deploy \

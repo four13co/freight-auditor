@@ -69,11 +69,11 @@ async function defaultTriggerBuild(caproverUrl, caproverAppToken) {
 
 async function main() {
   const lastGoodTag = process.env.LAST_GOOD_TAG;
-  const caproverUrl = process.env.CAPROVER_URL;
-  const caproverAppToken = process.env.CAPROVER_APP_TOKEN;
+  const caproverUrl = process.env.SRC_CAPROVER_URL;
+  const caproverAppToken = process.env.SRC_CAPROVER_APP_TOKEN;
 
   if (!lastGoodTag || !caproverUrl || !caproverAppToken) {
-    console.error('::error::LAST_GOOD_TAG, CAPROVER_URL, and CAPROVER_APP_TOKEN must all be set');
+    console.error('::error::LAST_GOOD_TAG, SRC_CAPROVER_URL, and SRC_CAPROVER_APP_TOKEN must all be set');
     process.exit(1);
   }
 

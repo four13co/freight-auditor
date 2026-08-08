@@ -30,6 +30,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # freight-auditor-dev's DATABASE_URL is a dedicated dev Neon instance (not shared/
+      # production), so CI is allowed to migrate it automatically. Production has no
+      # DATABASE_URL secret yet and gets no override — the guard stays live there.
       - name: Run database migrations
         run: |
           op run --env-file=.env.migrate -- bash -c '
@@ -39,6 +42,7 @@ jobs:
           '
         env:
           OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+          ALLOW_PROTECTED_DB_HOST: ${{ github.ref_name == 'Development' && '1' || '' }}
 
   deploy:
     needs: migrate-database

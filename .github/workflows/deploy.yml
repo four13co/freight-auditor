@@ -45,10 +45,13 @@ jobs:
       # (like OP_VAULT above) once a production app exists.
       - name: Deploy to CapRover
         run: |
-          op run --env-file=.env.caprover -- caprover deploy \
-            --caproverUrl "https://$SRC_CAPROVER_URL" \
-            --appToken "$SRC_CAPROVER_APP_TOKEN" \
-            --appName "freight-auditor" \
-            --tarFile deploy.tar.gz
+          op run --env-file=.env.caprover -- bash -c '
+            echo "AT-USE URL_LEN=${#SRC_CAPROVER_URL}"
+            caprover deploy \
+              --caproverUrl "https://$SRC_CAPROVER_URL" \
+              --appToken "$SRC_CAPROVER_APP_TOKEN" \
+              --appName "freight-auditor" \
+              --tarFile deploy.tar.gz
+          '
         env:
           OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}

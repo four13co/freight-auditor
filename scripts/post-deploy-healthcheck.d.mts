@@ -1,0 +1,19 @@
+export declare const DEFAULT_RETRIES: number;
+export declare const DEFAULT_INTERVAL_MS: number;
+
+export interface PollHealthOptions {
+  healthUrl: string;
+  expectedBuild: string;
+  retries?: number;
+  intervalMs?: number;
+  fetchImpl?: typeof fetch;
+  sleepImpl?: (ms: number) => Promise<void>;
+}
+
+export interface PollHealthResult {
+  healthy: boolean;
+  lastBuild: string | null;
+  attempts: number;
+}
+
+export declare function pollHealth(options: PollHealthOptions): Promise<PollHealthResult>;

@@ -27,6 +27,6 @@ describe('server boots and serves /health over HTTP', () => {
   it('responds 200 {status:"ok"} on GET /health', async () => {
     const res = await fetch(`${baseUrl}/health`);
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ status: 'ok' });
+    expect(await res.json()).toMatchObject({ status: 'ok' });
   });
 });

@@ -32,6 +32,7 @@
     "@typescript-eslint/parser": "^8.18.0",
     "eslint": "^9.17.0",
     "globals": "^15.14.0",
+    "js-yaml": "^5.2.3",
     "node-pg-migrate": "^8.0.4",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2",

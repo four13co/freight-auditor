@@ -50,11 +50,17 @@ describe('deploy.yml (unit, job-dependency + guard wiring)', () => {
     expect(migrateStep!.run).toContain('op run --env-file=.env.migrate');
   });
 
-  it('leaves the existing deploy job status-check step unchanged', () => {
+  it('deploys via the caprover CLI, not the raw webhook curl (86e25uqxa)', () => {
+    // The webhook curl this test used to check for (`"$status" != "100"`) was replaced in
+    // PR #27: it authenticated with the app token as a header, but that endpoint expects it
+    // as a query param, so every deploy failed with status:1106 regardless of token validity.
+    // The caprover CLI sends auth the way the API actually expects.
     const workflow = loadDeployWorkflow();
     const deployStep = getJob(workflow, 'deploy').steps.find((step) => step.name === 'Deploy to CapRover');
     expect(deployStep).toBeDefined();
-    expect(deployStep!.run).toContain('"$status" != "100"');
+    expect(deployStep!.run).toContain('caprover deploy');
+    expect(deployStep!.run).toContain('--caproverUrl');
+    expect(deployStep!.run).toContain('--appToken');
   });
 
   describe('post-deployment health-check + rollback (86e27d4rh)', () => {

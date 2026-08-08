@@ -8,8 +8,6 @@ on:
 jobs:
   migrate-database:
     runs-on: ubuntu-latest
-    environment:
-      name: ${{ github.ref_name == 'Production' && 'production' || 'preview' }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -106,8 +104,6 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-    environment:
-      name: ${{ github.ref_name == 'Production' && 'production' || 'preview' }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4

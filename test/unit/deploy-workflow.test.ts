@@ -83,6 +83,43 @@ describe('deploy.yml (unit, job-dependency + guard wiring)', () => {
     expect(deployStep!.run).toContain('--appToken');
   });
 
+  describe('deployment tarball contents (86e25uqxa)', () => {
+    // CapRover untars the uploaded tarball and uses it as the ENTIRE Docker build
+    // context — nothing else from the repo is present. So every path the build
+    // touches has to be inside the tar, or the server-side build fails while the
+    // `caprover deploy` CLI still exits 0 (it confirms the upload, not the build).
+    // That combination is what made CI green while the app never actually ran:
+    // captain-definition pointed at ./Dockerfile, which was never shipped.
+    function getTarballCommand(): string {
+      const workflow = loadDeployWorkflow();
+      const step = getJob(workflow, 'deploy').steps.find((s) => s.run?.includes('tar -czf'));
+      if (!step) throw new Error('expected a step that creates the deployment tarball');
+      return step.run!;
+    }
+
+    it('ships the Dockerfile that captain-definition points at', () => {
+      const dockerfilePath = (
+        JSON.parse(
+          readFileSync(new URL('../../captain-definition', import.meta.url), 'utf8'),
+        ) as { dockerfilePath: string }
+      ).dockerfilePath;
+      // './Dockerfile' -> 'Dockerfile'
+      const relativePath = dockerfilePath.replace(/^\.\//, '');
+      expect(getTarballCommand()).toContain(relativePath);
+    });
+
+    it('ships captain-definition, the manifest CapRover reads first', () => {
+      expect(getTarballCommand()).toContain('captain-definition');
+    });
+
+    it('ships the build output and the manifests npm ci needs', () => {
+      const tarCommand = getTarballCommand();
+      for (const required of ['dist/', 'package.json', 'package-lock.json']) {
+        expect(tarCommand).toContain(required);
+      }
+    });
+  });
+
   describe('post-deployment health-check + rollback (86e27d4rh)', () => {
     it('gates on the deploy job via `needs`', () => {
       const workflow = loadDeployWorkflow();

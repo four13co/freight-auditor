@@ -120,6 +120,10 @@ jobs:
           name: caprover-deploy-log
           path: deploy.log
           retention-days: 30
+          # If `op run` itself fails (bad reference, expired token) the inner shell
+          # never runs and deploy.log is never created. Without this, upload-artifact@v4
+          # fails on the missing path and masks the real error with a second one.
+          if-no-files-found: ignore
 
   post-deployment:
     needs: deploy

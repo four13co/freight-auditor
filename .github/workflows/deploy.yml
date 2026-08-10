@@ -75,9 +75,15 @@ jobs:
       - name: Write build identifier
         run: echo "${{ github.sha }}" > dist/server/BUILD_SHA
 
+      # The tarball IS the entire Docker build context CapRover sees — nothing else
+      # from the repo reaches the builder. Dockerfile was missing here, so
+      # captain-definition's "./Dockerfile" resolved to nothing and every server-side
+      # build failed, while `caprover deploy` still exited 0 (it confirms the upload,
+      # not the build). That's what kept CI green over an app that never ran.
       - name: Create deployment tarball
         run: |
-          tar -czf deploy.tar.gz captain-definition package.json package-lock.json dist/
+          tar -czf deploy.tar.gz Dockerfile captain-definition package.json package-lock.json dist/
+          tar -tzf deploy.tar.gz
 
       - name: Install CapRover CLI
         run: npm install -g caprover
@@ -94,14 +100,26 @@ jobs:
       - name: Deploy to CapRover
         run: |
           op run --env-file=.env.caprover -- bash -c '
+            set -o pipefail
             caprover deploy \
               --caproverUrl "https://$SRC_CAPROVER_URL" \
               --appToken "$SRC_CAPROVER_APP_TOKEN" \
               --appName "$SRC_CAPROVER_APP_NAME" \
-              --tarFile deploy.tar.gz
+              --tarFile deploy.tar.gz 2>&1 | tee deploy.log
           '
         env:
           OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+
+      # The CLI streams CapRover's server-side build output; keeping it as an artifact
+      # means the next build failure is diagnosable from CI instead of requiring
+      # someone to open the CapRover dashboard and read Version History by hand.
+      - name: Upload deployment log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: caprover-deploy-log
+          path: deploy.log
+          retention-days: 30
 
   post-deployment:
     needs: deploy

@@ -106,6 +106,21 @@ export const MALFORMED_210_BADAMOUNT =
   'SE*5*0005~';
 
 /**
+ * MALFORMED 210 — a charge line's amount (L1-04) is blank/absent rather than
+ * merely non-numeric. Before 86e2t15kh, money() defaulted a missing amount to
+ * '0.0000', silently valuing the charge at zero and letting it pass the
+ * STD.AMOUNT_STATED gate; it must now quarantine the charge and REJECT_REWORK,
+ * same as the non-numeric case above.
+ */
+export const MALFORMED_210_MISSINGAMOUNT =
+  ISA_210 +
+  'ST*210*0006~' +
+  'B3**INV210006*****1250.00***USD~' +
+  'L1*1*******400****Linehaul~' +
+  'L1*2***250.00****405****Fuel Surcharge~' +
+  'SE*5*0006~';
+
+/**
  * MALFORMED 310 — the B3-07 declared total is non-numeric garbage ("N/A")
  * rather than a number. money() no longer throws on this (916cab7), so
  * parse310() must degrade footing.declaredTotal to undefined without

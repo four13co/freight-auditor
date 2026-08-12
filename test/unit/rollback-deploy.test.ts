@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { rollbackToLastGood } from '../../scripts/rollback-deploy.mjs';
+import { rollbackToLastGood, redactToken } from '../../scripts/rollback-deploy.mjs';
 
 describe('rollbackToLastGood (unit)', () => {
   it('checks out the last-good SHA, rebuilds, and re-triggers CapRover with it (AC2)', async () => {
@@ -75,5 +75,50 @@ describe('rollbackToLastGood (unit)', () => {
         triggerBuildImpl,
       }),
     ).rejects.toThrow(/rollback deploy also failed \(status=1106\)/);
+  });
+
+  it('redacts the CapRover app token from a failed trigger-build error before it propagates (86e2t15ka AC1)', async () => {
+    const secretToken = 'super-secret-caprover-token-xyz';
+    const runImpl = vi.fn().mockResolvedValue({ stdout: 'sha-last-good\n' });
+    const triggerBuildImpl = vi.fn().mockRejectedValue(
+      new Error(
+        `Command failed: curl -sS --fail-with-body -X POST https://captain.example.com/api/v2/user/apps/webhooks/triggerbuild -H "x-captain-app-token: ${secretToken}" -F sourceFile=@deploy.tar.gz`,
+      ),
+    );
+
+    await expect(
+      rollbackToLastGood({
+        lastGoodTag: 'last-good-dev',
+        caproverUrl: 'captain.example.com',
+        caproverAppToken: secretToken,
+        runImpl,
+        triggerBuildImpl,
+      }),
+    ).rejects.toThrow();
+
+    try {
+      await rollbackToLastGood({
+        lastGoodTag: 'last-good-dev',
+        caproverUrl: 'captain.example.com',
+        caproverAppToken: secretToken,
+        runImpl,
+        triggerBuildImpl,
+      });
+      expect.unreachable('expected rollbackToLastGood to throw');
+    } catch (err) {
+      expect((err as Error).message).not.toContain(secretToken);
+    }
+  });
+
+  describe('redactToken', () => {
+    it('replaces every occurrence of the token with a redaction marker', () => {
+      expect(redactToken('token=abc123 seen twice: abc123', 'abc123')).toBe(
+        'token=<redacted> seen twice: <redacted>',
+      );
+    });
+
+    it('is a no-op when there is no token to redact', () => {
+      expect(redactToken('no secrets here', undefined)).toBe('no secrets here');
+    });
   });
 });

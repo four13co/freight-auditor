@@ -10,7 +10,7 @@ export function extractHost(databaseUrl) {
   try {
     return new URL(databaseUrl).hostname;
   } catch {
-    throw new Error(`Could not parse DATABASE_URL as a URL: ${databaseUrl}`);
+    throw new Error('Could not parse DATABASE_URL as a URL — check its shape (scheme, encoding).');
   }
 }
 
@@ -25,7 +25,13 @@ function main() {
     process.exit(1);
   }
 
-  const host = extractHost(databaseUrl);
+  let host;
+  try {
+    host = extractHost(databaseUrl);
+  } catch (err) {
+    console.error(`::error::${err.message}`);
+    process.exit(1);
+  }
 
   if (isProtectedHost(host) && process.env.ALLOW_PROTECTED_DB_HOST !== '1') {
     console.error(

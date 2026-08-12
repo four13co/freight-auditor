@@ -24,3 +24,5 @@ export interface RollbackToLastGoodResult {
 export declare function rollbackToLastGood(
   options: RollbackToLastGoodOptions,
 ): Promise<RollbackToLastGoodResult>;
+
+export declare function redactToken(message: string, token: string | undefined): string;

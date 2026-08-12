@@ -1,4 +1,5 @@
 import pg from 'pg';
+import { setTenantTxScope, type TenantContext } from '../../src/db/tenant-context.js';
 
 /**
  * DB test helpers. These run against the ephemeral local Postgres pointed to by
@@ -6,6 +7,11 @@ import pg from 'pg';
  * is a superuser (the container's `fa`), so to exercise RLS and the append-only
  * grants we `SET ROLE freight_app` — dropping the superuser exemption — inside
  * a transaction that also sets the tenant GUCs the RLS policies read.
+ *
+ * The GUC/role setup itself is shared with the production path (`setTenantTxScope`
+ * in `src/db/tenant-context.ts`), not reimplemented here, so a future change to
+ * that setup (reordering, renaming the role) is visible to both call sites at
+ * once instead of silently drifting.
  */
 
 const { Pool } = pg;
@@ -32,19 +38,13 @@ export function makePool(): pg.Pool {
  */
 export async function withAppTx<T>(
   pool: pg.Pool,
-  opts: { clientIds?: string[]; internal?: boolean },
+  opts: TenantContext,
   fn: (client: pg.PoolClient) => Promise<T>,
 ): Promise<T> {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    await client.query("SELECT set_config('app.current_client_ids', $1, true)", [
-      (opts.clientIds ?? []).join(','),
-    ]);
-    await client.query("SELECT set_config('app.is_internal', $1, true)", [
-      opts.internal ? 'true' : 'false',
-    ]);
-    await client.query('SET LOCAL ROLE freight_app');
+    await setTenantTxScope(client, opts);
     const result = await fn(client);
     await client.query('ROLLBACK');
     return result;

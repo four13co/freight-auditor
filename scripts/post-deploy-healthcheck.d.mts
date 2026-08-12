@@ -17,3 +17,9 @@ export interface PollHealthResult {
 }
 
 export declare function pollHealth(options: PollHealthOptions): Promise<PollHealthResult>;
+
+/**
+ * Builds the `/health` URL from the app's base URL, prepending `https://` when the value
+ * carries no scheme (the 1Password vault stores bare hostnames).
+ */
+export declare function buildHealthUrl(appUrl: string): string;

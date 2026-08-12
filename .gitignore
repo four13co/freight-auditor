@@ -6,3 +6,10 @@ dist/
 .shopify/
 *.log
 .DS_Store
+# Machine-local loop run state. The loops' shared config
+# (.claude/clickup-build.config.json) IS tracked — only per-machine
+# run state is ignored, so a fresh clone gets the config but not
+# another machine's round history.
+.claude/loop-state/
+.claude/review-findings.jsonl
+.claude/scheduled_tasks.lock

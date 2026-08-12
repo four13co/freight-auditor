@@ -1,0 +1,53 @@
+{
+  "$comment": "Config for the loop pipeline (LOOP-ARCHITECTURE.md). Structure only — NEVER secret values. Bootstrapped 2026-07-02; committed 2026-08-12 (previously untracked, so the loops' source of truth existed only in one machine's working tree). Flat shape (no profiles{}) = single-stream repo: the loops run bare with no stream suffix.",
+  "queue": {
+    "space_id": "90175177055",
+    "space_name": "Freight Audit and Financing",
+    "lists": {
+      "backlog": "901714899445",
+      "bugs": "901714899445",
+      "features": "901714899445"
+    },
+    "ambiguous_status": "on hold",
+    "blocked_status": "on hold",
+    "review_status": "update required",
+    "done_status": "complete"
+  },
+  "git": {
+    "integration_branch": "Development",
+    "production_branch": "Production",
+    "$worktree_root_note": "Intentionally omitted: it was an absolute path under one developer's home dir, which cannot be correct for anyone else. The loops resolve worktrees relative to the checkout, matching the sibling repos (tzp-3plc, tzp-tiktok), which track no worktree_root either.",
+    "worktree_naming": "fa-<scope>",
+    "branch_naming": "<type>/<scope>-<item-id>"
+  },
+  "build": {
+    "commands": {
+      "test": "npm test",
+      "lint": "npm run lint",
+      "typecheck": "npm run typecheck",
+      "build": "npm run build",
+      "e2e": "npm run test:e2e"
+    },
+    "appetite_caps": { "S": 4, "M": 8, "L": 16 },
+    "pr_group_max": 6,
+    "bounce_due_hours": 24
+  },
+  "db": {
+    "method": "apple-container-postgres",
+    "runtime": "container",
+    "image": "docker.io/library/postgres:17-alpine",
+    "protected_db_hosts": ["neon.tech", "supabase.co", "rds.amazonaws.com"],
+    "ephemeral_recipe": {
+      "up": "container run -d --name <name> -e POSTGRES_PASSWORD=<pw> -e POSTGRES_USER=<user> -e POSTGRES_DB=<db> -p <hostport>:5432 docker.io/library/postgres:17-alpine",
+      "ready": "container exec <name> pg_isready -U <user> -d <db>  (loops until ready; ~1-2s)",
+      "url": "postgresql://<user>:<pw>@127.0.0.1:<hostport>/<db>",
+      "down": "container stop <name> && container rm <name>",
+      "hostport_strategy": "pick a free high port per item (e.g. 5+random) to avoid collisions across concurrent units"
+    },
+    "note": "Ephemeral local Postgres via Apple's `container` runtime (container v1.0.0), NOT Docker — the Docker daemon is not used on this machine. `-p <hostport>:5432` publishes to 127.0.0.1 so DATABASE_URL points at localhost. Verified end-to-end 2026-07-02: host psql -> 127.0.0.1 -> conn-ok, PostgreSQL 17.10. Spun up per-item and torn down. `container system status` must be running; DB-touching items park only if it is not. The container also has a routable IP (192.168.64.x) if localhost publish ever fails."
+  },
+  "owner": {
+    "clickup_handle": "greg@four13.co"
+  },
+  "_bootstrap_notes": "Status labels mapped from this workspace's custom statuses (no native In-Review/Needs-Info labels existed): review_status=update required, blocked/ambiguous=on hold, done=complete. Chosen unattended on 2026-07-02 with defaults; adjust if wrong. (The build/lint/typecheck/test scripts above were aspirational at bootstrap, pending item 86e24cy2d — that scaffolding has since landed and every command is real and passing as of 2026-08-12.)"
+}

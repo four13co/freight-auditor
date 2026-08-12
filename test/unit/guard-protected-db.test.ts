@@ -10,6 +10,17 @@ describe('guard-protected-db (unit)', () => {
     it('throws when the URL cannot be parsed', () => {
       expect(() => extractHost('not-a-url')).toThrow(/Could not parse DATABASE_URL/);
     });
+
+    it('does not leak the raw connection string (with embedded password) in the thrown message (86e2t15ka AC2)', () => {
+      const malformedUrlWithPassword = 'not a valid url but has a secretpassword123 in it';
+      try {
+        extractHost(malformedUrlWithPassword);
+        expect.unreachable('expected extractHost to throw');
+      } catch (err) {
+        expect((err as Error).message).not.toContain('secretpassword123');
+        expect((err as Error).message).not.toContain(malformedUrlWithPassword);
+      }
+    });
   });
 
   describe('isProtectedHost', () => {

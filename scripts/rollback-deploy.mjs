@@ -34,9 +34,14 @@ export async function rollbackToLastGood({
   await runImpl('node', ['-e', `require('fs').writeFileSync('dist/server/BUILD_SHA', '${lastGoodSha}')`]);
   await runImpl('tar', ['-czf', 'deploy.tar.gz', 'captain-definition', 'package.json', 'package-lock.json', 'dist/']);
 
-  const result = await triggerBuildImpl(caproverUrl, caproverAppToken);
+  let result;
+  try {
+    result = await triggerBuildImpl(caproverUrl, caproverAppToken);
+  } catch (err) {
+    throw new Error(redactToken(err.message, caproverAppToken));
+  }
   if (result.status !== '100') {
-    throw new Error(`rollback deploy also failed (status=${result.status}): ${result.raw}`);
+    throw new Error(redactToken(`rollback deploy also failed (status=${result.status}): ${result.raw}`, caproverAppToken));
   }
 
   return { rolledBack: true, lastGoodSha };
@@ -67,6 +72,10 @@ async function defaultTriggerBuild(caproverUrl, caproverAppToken) {
   return { status: String(body.status ?? 'missing'), raw: stdout };
 }
 
+export function redactToken(message, token) {
+  return token ? message.split(token).join('<redacted>') : message;
+}
+
 async function main() {
   const lastGoodTag = process.env.LAST_GOOD_TAG;
   const caproverUrl = process.env.SRC_CAPROVER_URL;
@@ -85,7 +94,7 @@ async function main() {
     }
     console.log(`Rolled back to ${lastGoodTag} (${result.lastGoodSha})`);
   } catch (err) {
-    console.error(`::error::${err.message}`);
+    console.error(`::error::${redactToken(err.message, caproverAppToken)}`);
     process.exit(1);
   }
 }

@@ -10,6 +10,7 @@ import {
   GOLDEN_210, GOLDEN_210_EXPECTED,
   GOLDEN_310, GOLDEN_310_EXPECTED,
   MALFORMED_210_NOFOOT, MALFORMED_310_NOCURRENCY, MALFORMED_210_BADAMOUNT,
+  MALFORMED_210_MISSINGAMOUNT,
   MALFORMED_310_BADAMOUNT,
   MISMATCHED_GROUP_210, MISMATCHED_GROUP_310,
   testCategorize,
@@ -155,7 +156,13 @@ describe('Phase 1 engine (pure)', () => {
     expect(money('***')).toBeUndefined();
     // Sanity: valid input still parses normally.
     expect(money('123.45')).toBe('123.4500');
-    expect(money(undefined)).toBe('0.0000');
+  });
+
+  // 86e2t15kh — money() used to default a missing amount to '0.0000', silently
+  // valuing an absent charge at zero instead of failing the AMOUNT_STATED gate.
+  it('86e2t15kh: money() reports a missing or blank amount as unstated, never as 0.0000', () => {
+    expect(money(undefined)).toBeUndefined();
+    expect(money('')).toBeUndefined();
   });
 
   it('86e25tdce: a 210 with a non-numeric charge amount parses without throwing and quarantines the line', () => {
@@ -178,6 +185,32 @@ describe('Phase 1 engine (pure)', () => {
     expect(r.gateFailures.map((g) => g.criterionKey)).toContain('STD.AMOUNT_STATED');
     expect(r.findings).toEqual([]); // SCORE phase never ran
     expect(r.scorecard).toBeNull();
+  });
+
+  // 86e2t15kh — a blank/absent L1-04 must quarantine exactly like a malformed
+  // one, never be silently valued at $0.00 and folded into line_sum.
+  it('86e2t15kh: a 210 with a blank/absent charge amount quarantines the line, never values it at zero', () => {
+    expect(() => parse210(MALFORMED_210_MISSINGAMOUNT, testCategorize)).not.toThrow();
+    const inv = parse210(MALFORMED_210_MISSINGAMOUNT, testCategorize);
+    const missingCharge = inv.charges.find((c) => c.code === '400');
+    expect(missingCharge?.amount).toBeUndefined();
+    expect(missingCharge?.quarantined).toBe(true);
+    // The other, well-formed charge line is unaffected.
+    const goodCharge = inv.charges.find((c) => c.code === '405');
+    expect(goodCharge?.amount).toBe('250.0000');
+    expect(goodCharge?.quarantined).toBe(false);
+  });
+
+  it('86e2t15kh: a missing amount fails the STD.AMOUNT_STATED gate → REJECTED_REWORK, and line_sum never includes it as zero', () => {
+    const inv = parse210(MALFORMED_210_MISSINGAMOUNT, testCategorize);
+    expect(() => evaluateInvoice(inv)).not.toThrow();
+    const r = evaluateInvoice(inv);
+    expect(r.outcome).toBe('REJECTED_REWORK');
+    expect(r.gateFailures.map((g) => g.criterionKey)).toContain('STD.AMOUNT_STATED');
+    expect(r.findings).toEqual([]); // SCORE phase never ran
+    expect(r.scorecard).toBeNull();
+    // footing.lineSum must not silently include the missing charge as 0.
+    expect(inv.footing?.lineSum).toBe('250.0000');
   });
 
   it('86e25ujx3: a 310 with a non-numeric B3-07 declared total parses without throwing and drops the footing total', () => {

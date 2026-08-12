@@ -53,13 +53,13 @@ export type Categorize = (code: string | undefined) => string | undefined;
 
 /**
  * Canonicalize a money string to 4dp via decimal.js (no float drift, §5).
- * Returns undefined if `raw` is present but not parseable as a number — a
- * malformed carrier value (e.g. "N/A") is reported honestly as unparseable,
- * never guessed as 0 or any other value (§10: "a missing value reported
- * honestly is correct; a guessed value is a defect").
+ * Returns undefined if `raw` is missing, blank, or not parseable as a number —
+ * a missing or malformed carrier value (e.g. absent, or "N/A") is reported
+ * honestly as unstated, never guessed as 0 or any other value (§10: "a missing
+ * value reported honestly is correct; a guessed value is a defect").
  */
 export function money(raw: string | number | undefined): string | undefined {
-  if (raw === undefined || raw === '') return '0.0000';
+  if (raw === undefined || raw === '') return undefined;
   try {
     return new Decimal(raw).toFixed(4);
   } catch {

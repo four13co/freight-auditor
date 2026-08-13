@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { rollbackToLastGood, redactToken } from '../../scripts/rollback-deploy.mjs';
 
 describe('rollbackToLastGood (unit)', () => {
@@ -108,6 +108,53 @@ describe('rollbackToLastGood (unit)', () => {
     } catch (err) {
       expect((err as Error).message).not.toContain(secretToken);
     }
+  });
+
+  describe('defaultTriggerBuild (86e2tmq3n AC1)', () => {
+    beforeEach(() => {
+      vi.resetModules();
+      vi.doUnmock('node:child_process');
+    });
+
+    it('invokes the caprover CLI, not the legacy webhook curl call', async () => {
+      const execFile = vi.fn((_cmd, _args, cb) => cb(null, { stdout: '', stderr: '' }));
+      vi.doMock('node:child_process', () => ({ execFile }));
+
+      const { defaultTriggerBuild } = await import('../../scripts/rollback-deploy.mjs');
+      const result = await defaultTriggerBuild('captain.example.com', 'test-token');
+
+      expect(result).toEqual({ status: '100', raw: '' });
+      expect(execFile).toHaveBeenCalledTimes(1);
+      const [cmd, args] = execFile.mock.calls[0] as [string, string[], ...unknown[]];
+      expect(cmd).toBe('caprover');
+      expect(args).toEqual([
+        'deploy',
+        '--caproverUrl',
+        'https://captain.example.com',
+        '--appToken',
+        'test-token',
+        '--tarFile',
+        'deploy.tar.gz',
+      ]);
+      // proves the legacy webhook path is gone, not just unused
+      expect(cmd).not.toBe('curl');
+      expect(args.join(' ')).not.toContain('webhooks/triggerbuild');
+    });
+
+    it('surfaces the CLI failure status when the rollback deploy itself is rejected', async () => {
+      const cliError = Object.assign(new Error('Command failed'), {
+        stdout: '',
+        stderr: '{"status":1106,"description":"Auth token corrupted"}',
+      });
+      const execFile = vi.fn((_cmd, _args, cb) => cb(cliError, undefined));
+      vi.doMock('node:child_process', () => ({ execFile }));
+
+      const { defaultTriggerBuild } = await import('../../scripts/rollback-deploy.mjs');
+      const result = await defaultTriggerBuild('captain.example.com', 'test-token');
+
+      expect(result.status).toBe('1106');
+      expect(result.raw).toContain('Auth token corrupted');
+    });
   });
 
   describe('redactToken', () => {

@@ -37,6 +37,33 @@ function isInvalidUrlError(err) {
 }
 
 /**
+ * True when `candidate` is a later commit than `base` (i.e. `base` is an ancestor of
+ * `candidate`) — meaning a newer deploy has already superseded the one this poll is
+ * waiting on, rather than the app simply being unhealthy. Swallows any git failure
+ * (unknown SHA, not a git repo, shallow clone missing history) as "can't prove it,"
+ * since a race we can't confirm must still be treated as a real failure (86e2tmq3n AC2).
+ *
+ * @param {string} base
+ * @param {string} candidate
+ * @param {(cmd: string, args: string[]) => Promise<unknown>} runImpl
+ * @returns {Promise<boolean>}
+ */
+async function isAncestor(base, candidate, runImpl) {
+  try {
+    await runImpl('git', ['merge-base', '--is-ancestor', base, candidate]);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function defaultRun(cmd, args) {
+  const { execFile } = await import('node:child_process');
+  const { promisify } = await import('node:util');
+  return promisify(execFile)(cmd, args);
+}
+
+/**
  * @param {object} opts
  * @param {string} opts.healthUrl - e.g. "https://app.example.com/health"
  * @param {string} opts.expectedBuild - the SHA the new revision should report
@@ -44,7 +71,8 @@ function isInvalidUrlError(err) {
  * @param {number} [opts.intervalMs]
  * @param {(url: string) => Promise<Response>} [opts.fetchImpl] - injectable for tests
  * @param {(ms: number) => Promise<void>} [opts.sleepImpl] - injectable for tests
- * @returns {Promise<{ healthy: boolean, lastBuild: string | null, attempts: number }>}
+ * @param {(cmd: string, args: string[]) => Promise<unknown>} [opts.runImpl] - injectable for tests; used only for the superseded-build ancestry check
+ * @returns {Promise<{ healthy: boolean, lastBuild: string | null, attempts: number, superseded?: boolean }>}
  */
 export async function pollHealth({
   healthUrl,
@@ -53,6 +81,7 @@ export async function pollHealth({
   intervalMs = DEFAULT_INTERVAL_MS,
   fetchImpl = fetch,
   sleepImpl = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+  runImpl = defaultRun,
 }) {
   let lastBuild = null;
 
@@ -81,6 +110,15 @@ export async function pollHealth({
     }
 
     if (attempt < retries) await sleepImpl(intervalMs);
+  }
+
+  // Two deploys landing within the poll window means the older commit's poller can
+  // observe the *newer* commit's SHA as "last build" and misreport failure — which
+  // would trigger a rollback of what is actually a healthy deploy (86e2tmq3n AC2). If
+  // the last-observed build is a later commit than the one we expected, the app is
+  // healthy on newer code, not unhealthy — treat it as superseded (pass/no-op).
+  if (lastBuild && lastBuild !== expectedBuild && (await isAncestor(expectedBuild, lastBuild, runImpl))) {
+    return { healthy: true, lastBuild, attempts: retries, superseded: true };
   }
 
   return { healthy: false, lastBuild, attempts: retries };
@@ -116,6 +154,14 @@ async function main() {
         `${result.attempts} attempts (last observed build: ${result.lastBuild ?? 'none'})`,
     );
     process.exit(1);
+  }
+
+  if (result.superseded) {
+    console.log(
+      `Revision ${expectedBuild} was superseded by a later healthy deploy (${result.lastBuild}) ` +
+        `on ${healthUrl} before this check completed — treating as pass, not triggering rollback.`,
+    );
+    return;
   }
 
   console.log(`Revision ${expectedBuild} is healthy on ${healthUrl} (attempt ${result.attempts})`);

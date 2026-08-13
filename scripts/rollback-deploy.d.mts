@@ -26,3 +26,8 @@ export declare function rollbackToLastGood(
 ): Promise<RollbackToLastGoodResult>;
 
 export declare function redactToken(message: string, token: string | undefined): string;
+
+export declare function defaultTriggerBuild(
+  caproverUrl: string,
+  caproverAppToken: string,
+): Promise<TriggerBuildResult>;

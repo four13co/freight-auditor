@@ -44,6 +44,9 @@ describe('pollHealth (unit)', () => {
   it('reports unhealthy once retries are exhausted without ever matching', async () => {
     const fetchImpl = vi.fn().mockResolvedValue(fakeResponse('sha-old'));
     const sleepImpl = vi.fn().mockResolvedValue(undefined);
+    // sha-old is not a later commit than sha-new, so the superseded check (AC2) must
+    // reject it and this must still report a genuine failure.
+    const runImpl = vi.fn().mockRejectedValue(new Error('fatal: not an ancestor'));
 
     const result = await pollHealth({
       healthUrl: 'http://app.test/health',
@@ -51,10 +54,81 @@ describe('pollHealth (unit)', () => {
       retries: 4,
       fetchImpl,
       sleepImpl,
+      runImpl,
     });
 
     expect(result).toEqual({ healthy: false, lastBuild: 'sha-old', attempts: 4 });
     expect(sleepImpl).toHaveBeenCalledTimes(3);
+  });
+
+  describe('superseded-build tolerance (86e2tmq3n AC2)', () => {
+    it('treats a later, healthy deploy observed during the poll as superseded, not a failure', async () => {
+      // Reproduces the logged race: PR #24 (f3b1bae) was still polling when PR #29
+      // (7e8a95a) landed and deployed healthy first, so the poller for f3b1bae saw
+      // 7e8a95a as "last observed build" and would otherwise report failure + trigger
+      // a rollback of a healthy app.
+      const fetchImpl = vi.fn().mockResolvedValue(fakeResponse('sha-newer-healthy'));
+      const sleepImpl = vi.fn().mockResolvedValue(undefined);
+      const runImpl = vi.fn().mockResolvedValue({ stdout: '' }); // git merge-base --is-ancestor: exit 0
+
+      const result = await pollHealth({
+        healthUrl: 'http://app.test/health',
+        expectedBuild: 'sha-expected-superseded',
+        retries: 3,
+        fetchImpl,
+        sleepImpl,
+        runImpl,
+      });
+
+      expect(result).toEqual({
+        healthy: true,
+        lastBuild: 'sha-newer-healthy',
+        attempts: 3,
+        superseded: true,
+      });
+      expect(runImpl).toHaveBeenCalledWith('git', [
+        'merge-base',
+        '--is-ancestor',
+        'sha-expected-superseded',
+        'sha-newer-healthy',
+      ]);
+    });
+
+    it('does not trigger the superseded path when the observed build is not provably a descendant', async () => {
+      // A genuinely broken deploy also never matches expectedBuild — this must not be
+      // mistaken for a race just because the SHAs differ.
+      const fetchImpl = vi.fn().mockResolvedValue(fakeResponse('sha-unrelated-or-older'));
+      const sleepImpl = vi.fn().mockResolvedValue(undefined);
+      const runImpl = vi.fn().mockRejectedValue(new Error('fatal: not an ancestor')); // git exits non-zero
+
+      const result = await pollHealth({
+        healthUrl: 'http://app.test/health',
+        expectedBuild: 'sha-expected',
+        retries: 3,
+        fetchImpl,
+        sleepImpl,
+        runImpl,
+      });
+
+      expect(result).toEqual({ healthy: false, lastBuild: 'sha-unrelated-or-older', attempts: 3 });
+    });
+
+    it('never runs the ancestry check when the expected build is already observed healthy', async () => {
+      const fetchImpl = vi.fn().mockResolvedValue(fakeResponse('sha-new'));
+      const sleepImpl = vi.fn().mockResolvedValue(undefined);
+      const runImpl = vi.fn();
+
+      await pollHealth({
+        healthUrl: 'http://app.test/health',
+        expectedBuild: 'sha-new',
+        retries: 3,
+        fetchImpl,
+        sleepImpl,
+        runImpl,
+      });
+
+      expect(runImpl).not.toHaveBeenCalled();
+    });
   });
 
   it('treats a transient fetch failure as "not yet healthy" and keeps polling', async () => {

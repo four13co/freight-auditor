@@ -53,23 +53,34 @@ async function defaultRun(cmd, args) {
   return promisify(execFile)(cmd, args);
 }
 
-async function defaultTriggerBuild(caproverUrl, caproverAppToken) {
+// Uses the same `caprover deploy` CLI path PR #27 already moved the main deploy step to
+// (.github/workflows/deploy.yml "Deploy to CapRover"), instead of the legacy
+// `/api/v2/user/apps/webhooks/triggerbuild` webhook this previously hand-rolled via curl.
+// That webhook is the same endpoint 86e25prau and 86e25uqxa both chased "Auth token
+// corrupted" (status 1106) failures on for the main deploy step — rollback shared the
+// defect only because it never got the CLI fix applied alongside it.
+export async function defaultTriggerBuild(caproverUrl, caproverAppToken) {
   const { execFile } = await import('node:child_process');
   const { promisify } = await import('node:util');
   const run = promisify(execFile);
-  const { stdout } = await run('curl', [
-    '-sS',
-    '--fail-with-body',
-    '-X',
-    'POST',
-    `https://${caproverUrl}/api/v2/user/apps/webhooks/triggerbuild`,
-    '-H',
-    `x-captain-app-token: ${caproverAppToken}`,
-    '-F',
-    'sourceFile=@deploy.tar.gz',
-  ]);
-  const body = JSON.parse(stdout);
-  return { status: String(body.status ?? 'missing'), raw: stdout };
+  try {
+    const { stdout } = await run('caprover', [
+      'deploy',
+      '--caproverUrl',
+      `https://${caproverUrl}`,
+      '--appToken',
+      caproverAppToken,
+      '--tarFile',
+      'deploy.tar.gz',
+    ]);
+    return { status: '100', raw: stdout };
+  } catch (err) {
+    // The CLI exits non-zero and reports the failure on stdout/stderr rather than
+    // throwing a structured error, so surface whatever it printed as `raw`.
+    const raw = [err.stdout, err.stderr].filter(Boolean).join('\n') || err.message;
+    const statusMatch = raw.match(/"status"\s*:\s*(\d+)/);
+    return { status: statusMatch ? statusMatch[1] : 'cli-error', raw };
+  }
 }
 
 export function redactToken(message, token) {

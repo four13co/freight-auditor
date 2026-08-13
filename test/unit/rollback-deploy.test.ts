@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { readFileSync } from 'node:fs';
 import { rollbackToLastGood, redactToken } from '../../scripts/rollback-deploy.mjs';
 
 describe('rollbackToLastGood (unit)', () => {
@@ -108,6 +109,58 @@ describe('rollbackToLastGood (unit)', () => {
     } catch (err) {
       expect((err as Error).message).not.toContain(secretToken);
     }
+  });
+
+  describe('rollback tarball contents (86e2tn08g)', () => {
+    // Mirrors test/unit/deploy-workflow.test.ts's "ships the Dockerfile that
+    // captain-definition points at" guard for the MAIN deploy step's tarball —
+    // the rollback tarball is the entire Docker build context CapRover sees for a
+    // rollback deploy too, so it needs the same files or the server-side build
+    // fails while `caprover deploy` still exits 0 (upload success, not build success).
+    function getTarCallArgs(runImpl: ReturnType<typeof vi.fn>): string[] {
+      const tarCall = runImpl.mock.calls.find(([cmd]) => cmd === 'tar');
+      if (!tarCall) throw new Error('expected rollbackToLastGood to run a tar command');
+      return tarCall[1] as string[];
+    }
+
+    it('ships the Dockerfile that captain-definition points at (AC1/AC2)', async () => {
+      const dockerfilePath = (
+        JSON.parse(readFileSync(new URL('../../captain-definition', import.meta.url), 'utf8')) as {
+          dockerfilePath: string;
+        }
+      ).dockerfilePath.replace(/^\.\//, '');
+
+      const runImpl = vi.fn().mockResolvedValue({ stdout: 'sha-last-good\n' });
+      const triggerBuildImpl = vi.fn().mockResolvedValue({ status: '100', raw: '{"status":100}' });
+
+      await rollbackToLastGood({
+        lastGoodTag: 'last-good-dev',
+        caproverUrl: 'captain.example.com',
+        caproverAppToken: 'test-token',
+        runImpl,
+        triggerBuildImpl,
+      });
+
+      expect(getTarCallArgs(runImpl)).toContain(dockerfilePath);
+    });
+
+    it('still ships the manifests and build output the main deploy step ships (AC3)', async () => {
+      const runImpl = vi.fn().mockResolvedValue({ stdout: 'sha-last-good\n' });
+      const triggerBuildImpl = vi.fn().mockResolvedValue({ status: '100', raw: '{"status":100}' });
+
+      await rollbackToLastGood({
+        lastGoodTag: 'last-good-dev',
+        caproverUrl: 'captain.example.com',
+        caproverAppToken: 'test-token',
+        runImpl,
+        triggerBuildImpl,
+      });
+
+      const tarArgs = getTarCallArgs(runImpl);
+      for (const required of ['captain-definition', 'package.json', 'package-lock.json', 'dist/']) {
+        expect(tarArgs).toContain(required);
+      }
+    });
   });
 
   describe('defaultTriggerBuild (86e2tmq3n AC1)', () => {

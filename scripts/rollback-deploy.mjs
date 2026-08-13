@@ -32,7 +32,19 @@ export async function rollbackToLastGood({
   await runImpl('npm', ['ci']);
   await runImpl('npm', ['run', 'build']);
   await runImpl('node', ['-e', `require('fs').writeFileSync('dist/server/BUILD_SHA', '${lastGoodSha}')`]);
-  await runImpl('tar', ['-czf', 'deploy.tar.gz', 'captain-definition', 'package.json', 'package-lock.json', 'dist/']);
+  // Must match .github/workflows/deploy.yml's "Create deployment tarball" file list —
+  // the tarball IS the entire Docker build context CapRover sees, and captain-definition
+  // points at "./Dockerfile", so omitting it here fails the rollback's server-side build
+  // exactly like PR #33 fixed for the main deploy step (86e2tn08g).
+  await runImpl('tar', [
+    '-czf',
+    'deploy.tar.gz',
+    'Dockerfile',
+    'captain-definition',
+    'package.json',
+    'package-lock.json',
+    'dist/',
+  ]);
 
   let result;
   try {

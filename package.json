@@ -17,7 +17,7 @@
     "test:db": "vitest run --config vitest.db.config.ts",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "migrate": "node-pg-migrate"
+    "migrate": "node scripts/migrate-with-retry.mjs"
   },
   "dependencies": {
     "@fastify/static": "^10.1.3",

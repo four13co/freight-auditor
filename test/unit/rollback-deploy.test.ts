@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { rollbackToLastGood, redactToken } from '../../scripts/rollback-deploy.mjs';
+import { rollbackToLastGood, redactToken, main } from '../../scripts/rollback-deploy.mjs';
 
 describe('rollbackToLastGood (unit)', () => {
   it('checks out the last-good SHA, rebuilds, and re-triggers CapRover with it (AC2)', async () => {
@@ -219,6 +219,68 @@ describe('rollbackToLastGood (unit)', () => {
 
     it('is a no-op when there is no token to redact', () => {
       expect(redactToken('no secrets here', undefined)).toBe('no secrets here');
+    });
+  });
+
+  /**
+   * Coverage-gap closure (86e2u72u2): main() (lines 103-121) — the actual rollback
+   * invocation path, not just detection — had zero test coverage. Driven in-process
+   * with injected env/exit/log/rollbackImpl so a mocked exit doesn't kill the runner
+   * and v8 coverage sees every branch.
+   */
+  describe('main() (in-process, injected env/exit/log/rollbackImpl)', () => {
+    const env = {
+      LAST_GOOD_TAG: 'last-good-dev',
+      SRC_CAPROVER_URL: 'captain.example.com',
+      SRC_CAPROVER_APP_TOKEN: 'test-token',
+    };
+
+    it('exits 1 when required env vars are missing', async () => {
+      const exit = vi.fn();
+      const logError = vi.fn();
+      await main({ env: {}, exit, logError, logInfo: vi.fn(), rollbackImpl: vi.fn() });
+      expect(exit).toHaveBeenCalledWith(1);
+      expect(logError).toHaveBeenCalledWith(
+        expect.stringContaining('LAST_GOOD_TAG, SRC_CAPROVER_URL, and SRC_CAPROVER_APP_TOKEN must all be set'),
+      );
+    });
+
+    it('logs success and does not exit non-zero on a successful rollback', async () => {
+      const exit = vi.fn();
+      const logInfo = vi.fn();
+      const rollbackImpl = vi.fn().mockResolvedValue({ rolledBack: true, lastGoodSha: 'sha-last-good' });
+      await main({ env, exit, logError: vi.fn(), logInfo, rollbackImpl });
+      expect(rollbackImpl).toHaveBeenCalledWith({
+        lastGoodTag: 'last-good-dev',
+        caproverUrl: 'captain.example.com',
+        caproverAppToken: 'test-token',
+      });
+      expect(exit).not.toHaveBeenCalled();
+      expect(logInfo).toHaveBeenCalledWith('Rolled back to last-good-dev (sha-last-good)');
+    });
+
+    it('exits 1 when the rollback reports rolledBack: false', async () => {
+      const exit = vi.fn();
+      const logError = vi.fn();
+      const rollbackImpl = vi
+        .fn()
+        .mockResolvedValue({ rolledBack: false, lastGoodSha: null, reason: 'no last-good-dev tag exists yet' });
+      await main({ env, exit, logError, logInfo: vi.fn(), rollbackImpl });
+      expect(exit).toHaveBeenCalledWith(1);
+      expect(logError).toHaveBeenCalledWith(
+        expect.stringContaining('no last-good-dev tag exists yet — manual recovery required'),
+      );
+    });
+
+    it('exits 1 and redacts the token when rollbackImpl throws', async () => {
+      const exit = vi.fn();
+      const logError = vi.fn();
+      const rollbackImpl = vi.fn().mockRejectedValue(new Error('deploy failed with token test-token embedded'));
+      await main({ env, exit, logError, logInfo: vi.fn(), rollbackImpl });
+      expect(exit).toHaveBeenCalledWith(1);
+      const loggedMessage = (logError.mock.calls[0] as [string])[0];
+      expect(loggedMessage).not.toContain('test-token');
+      expect(loggedMessage).toContain('<redacted>');
     });
   });
 });

@@ -179,4 +179,48 @@ describe('listFindings (DB)', () => {
     expect(rows).toHaveLength(1);
     expect(rows[0]?.carrierName).toBe(`Other-${tag}`);
   });
+
+  it('does not duplicate a finding when more than one expected_charge row exists for its charge_fact (Review finding)', async () => {
+    // expected_charge.charge_fact_id has no uniqueness constraint in the
+    // schema, so nothing prevents two rows from existing for one charge_fact
+    // -- a plain JOIN would row-multiply the finding. This seeds exactly that
+    // (two expected_charge rows, one charge_fact) and asserts a single row.
+    const rows = await withTenantTx({ clientIds: [clientAId], internal: true }, async (c) => {
+      const inv = await c.query(
+        `INSERT INTO invoice (client_id, carrier_id, transaction_set, invoice_number, currency, parser_version)
+         VALUES ($1, $2, '210', $3, 'USD', 'test') RETURNING id`,
+        [clientAId, carrierId, `INV-${tag}-dup-expected`],
+      );
+      const run = await c.query(
+        `INSERT INTO audit_run (client_id, invoice_id, engine_spec_version, outcome) VALUES ($1, $2, 'test', 'SCORED') RETURNING id`,
+        [clientAId, inv.rows[0].id],
+      );
+      const cf = await c.query(
+        `INSERT INTO charge_fact (client_id, invoice_id, code, category, amount, currency) VALUES ($1, $2, '400', 'LINEHAUL', '1000.0000', 'USD') RETURNING id`,
+        [clientAId, inv.rows[0].id],
+      );
+      // Two expected_charge rows for the same charge_fact -- e.g. a
+      // recompute superseding an earlier estimate. created_at ordering
+      // decides which one the LATERAL join picks (the later one, '850').
+      await c.query(
+        `INSERT INTO expected_charge (client_id, audit_run_id, charge_fact_id, category, expected_amount, currency, created_at)
+         VALUES ($1, $2, $3, 'LINEHAUL', '900.0000', 'USD', now() - interval '1 minute')`,
+        [clientAId, run.rows[0].id, cf.rows[0].id],
+      );
+      await c.query(
+        `INSERT INTO expected_charge (client_id, audit_run_id, charge_fact_id, category, expected_amount, currency, created_at)
+         VALUES ($1, $2, $3, 'LINEHAUL', '850.0000', 'USD', now())`,
+        [clientAId, run.rows[0].id, cf.rows[0].id],
+      );
+      await c.query(
+        `INSERT INTO variance_finding (client_id, audit_run_id, charge_fact_id, direction, variance_amount, currency, status)
+         VALUES ($1, $2, $3, 'OVERCHARGE', '150.0000', 'USD', 'open')`,
+        [clientAId, run.rows[0].id, cf.rows[0].id],
+      );
+      return listFindings(c, { clientIds: [clientAId], carrier: `Carrier-${tag}` });
+    });
+    const matching = rows.filter((r) => r.invoiceNumber === `INV-${tag}-dup-expected`);
+    expect(matching).toHaveLength(1);
+    expect(matching[0]?.expected).toBe('850.0000');
+  });
 });

@@ -87,4 +87,31 @@ describe('GET /api/findings (DB, e2e)', () => {
     expect(res.statusCode).toBe(200);
     expect(res.json().findings).toHaveLength(0);
   });
+
+  /**
+   * Review finding: app.ts read `query.minAmount` (camelCase) but the item's
+   * own AC names the param `min-amount` (kebab-case), and Fastify returns
+   * querystring keys literally as sent -- so the filter was silently dead for
+   * every real caller. These exercise the actual URL string, not a JS object,
+   * so a regression back to reading the wrong key fails loudly here.
+   */
+  it('AC3: min-amount query param excludes findings below the threshold', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/findings?min-amount=150',
+      headers: { 'x-client-id': clientId },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().findings).toHaveLength(0); // seeded finding's variance_amount is 100.0000
+  });
+
+  it('AC3: min-amount query param includes findings at or above the threshold', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/findings?min-amount=100',
+      headers: { 'x-client-id': clientId },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().findings).toHaveLength(1);
+  });
 });

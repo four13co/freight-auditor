@@ -92,7 +92,18 @@ export async function listFindings(
      JOIN charge_fact ON charge_fact.id = variance_finding.charge_fact_id
      JOIN invoice ON invoice.id = charge_fact.invoice_id
      LEFT JOIN carrier ON carrier.id = invoice.carrier_id
-     LEFT JOIN expected_charge ON expected_charge.charge_fact_id = charge_fact.id
+     -- expected_charge.charge_fact_id has no uniqueness constraint (migration
+     -- 0007), so a plain JOIN can row-multiply a finding if more than one
+     -- expected_charge row ever exists for the same charge. LATERAL + LIMIT 1
+     -- guarantees at most one expected_charge per finding regardless (86e2u7j0d
+     -- Review finding); most-recent by created_at is the deterministic pick.
+     LEFT JOIN LATERAL (
+       SELECT expected_amount
+       FROM expected_charge
+       WHERE expected_charge.charge_fact_id = charge_fact.id
+       ORDER BY expected_charge.created_at DESC
+       LIMIT 1
+     ) expected_charge ON true
      ${where}
      ORDER BY variance_finding.created_at DESC
      LIMIT $${params.length - 1} OFFSET $${params.length}`,

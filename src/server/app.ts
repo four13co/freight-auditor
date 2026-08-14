@@ -39,13 +39,17 @@ export function buildApp(): FastifyInstance {
   });
 
   app.get('/api/findings', async (request) => {
-    const query = request.query as { carrier?: string; status?: string; minAmount?: string };
+    // Fastify's querystring parser returns keys literally as sent -- the
+    // item's own AC names this param `min-amount` (kebab-case, conventional
+    // for query strings), so it must be read that way, not as `minAmount`
+    // (86e2u7j0d Review finding: the camelCase read left the filter dead).
+    const query = request.query as { carrier?: string; status?: string; 'min-amount'?: string };
     const ctx = resolveDevTenantContext(request);
     const findings = await withTenantTx(ctx, (client) =>
       listFindings(client, {
         carrier: query.carrier,
         status: query.status,
-        minAmount: query.minAmount,
+        minAmount: query['min-amount'],
       }),
     );
     return { findings };

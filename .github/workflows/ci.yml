@@ -114,9 +114,23 @@ jobs:
       - name: Run web component tests
         run: npm run web:test
 
+      # playwright.config.ts's webServer runs `vite preview`, which serves
+      # web/dist/ -- gitignored and never built otherwise. Without this step
+      # the e2e job hangs until config.webServer's timeout and fails.
+      - name: Build web
+        run: npm --prefix web run build
+
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
         working-directory: web
 
       - name: Run web e2e (Playwright)
         run: npm run web:e2e
+
+      - name: Upload dashboard render (perceptual review artifact)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dashboard-render
+          path: web/test-results/
+          retention-days: 14

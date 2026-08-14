@@ -42,7 +42,7 @@ export default [
     },
   },
   {
-    files: ['web/src/**/*.{ts,tsx}'],
+    files: ['web/src/**/*.{ts,tsx}', 'web/test/**/*.{ts,tsx}'],
     languageOptions: {
       parser: tsparser,
       parserOptions: {

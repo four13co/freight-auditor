@@ -15,6 +15,9 @@
     "test:watch": "vitest",
     "test:e2e": "vitest run --dir test/e2e",
     "test:db": "vitest run --config vitest.db.config.ts",
+    "web:test": "npm --prefix web run test",
+    "web:typecheck": "npm --prefix web run typecheck",
+    "web:e2e": "npm --prefix web run test:e2e",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "migrate": "node-pg-migrate"

@@ -1,6 +1,9 @@
 {
   "$comment": "Config for the loop pipeline (LOOP-ARCHITECTURE.md). Structure only — NEVER secret values. Bootstrapped 2026-07-02; committed 2026-08-12 (previously untracked, so the loops' source of truth existed only in one machine's working tree). Flat shape (no profiles{}) = single-stream repo: the loops run bare with no stream suffix.",
   "queue": {
+    "backend": "clickup",
+    "$transport_note": "Explicitly pinned to the cup CLI (LOOP-ARCHITECTURE.md → ClickUp transports, where 'cli' is already the documented default when absent). Made explicit 2026-08-14 after the ClickUp MCP hit a workspace rate limit and both the Plan and Build loops stalled on it — Plan self-gated a 17h freeze and Build blocked mid-round asking for a task's shape by hand — while `cup` was working the entire time and had just created the very task Build was blocked on. The loops were defaulting to MCP despite the spec's default; pinning it removes the ambiguity. Read the queue with `cup` (`cup task <id> --json`, `cup tasks --all --list <id> --json`); never hold a round waiting on the MCP transport.",
+    "transport": "cli",
     "space_id": "90175177055",
     "space_name": "Freight Audit and Financing",
     "lists": {

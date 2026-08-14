@@ -1,12 +1,12 @@
-import Fastify, { type FastifyInstance } from 'fastify';
+import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
 import fastifyStatic from '@fastify/static';
 import { readFileSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { join, dirname } from 'node:path';
-import { withTenantTx } from '../db/tenant-context.js';
+import { withTenantTx, type TenantContext } from '../db/tenant-context.js';
 import { listFindings } from '../modules/findings/list-findings.js';
 import { getFindingsSummary } from '../modules/findings/findings-summary.js';
-import { resolveDevTenantContext } from '../modules/findings/dev-tenant-stub.js';
+import { resolveAuthorizedTenantContext } from '../modules/findings/tenant-auth.js';
 
 /**
  * The running revision's build SHA, for a rolling-deploy health check to tell
@@ -53,27 +53,45 @@ export function buildApp(): FastifyInstance {
     return { status: 'ok', build: buildSha };
   });
 
-  app.get('/api/findings', async (request) => {
-    // Fastify's querystring parser returns keys literally as sent -- the
-    // item's own AC names this param `min-amount` (kebab-case, conventional
-    // for query strings), so it must be read that way, not as `minAmount`
-    // (86e2u7j0d Review finding: the camelCase read left the filter dead).
-    const query = request.query as { carrier?: string; status?: string; 'min-amount'?: string };
-    const ctx = resolveDevTenantContext(request);
-    const findings = await withTenantTx(ctx, (client) =>
-      listFindings(client, {
-        carrier: query.carrier,
-        status: query.status,
-        minAmount: query['min-amount'],
-      }),
+  // Encapsulated so the tenant-auth preHandler binds ONLY to these two
+  // routes -- registering it on `app` directly would also gate /health,
+  // breaking the rolling-deploy health check (and anything else mounted
+  // later) with a 401 it was never meant to see.
+  void app.register(async (findingsRoutes) => {
+    findingsRoutes.addHook(
+      'preHandler',
+      async (request: FastifyRequest, reply: FastifyReply) => {
+        const ctx = await resolveAuthorizedTenantContext(request);
+        if (!ctx) {
+          await reply.code(401).send({ error: 'unauthorized' });
+          return;
+        }
+        (request as FastifyRequest & { tenantContext: TenantContext }).tenantContext = ctx;
+      },
     );
-    return { findings };
-  });
 
-  app.get('/api/findings/summary', async (request) => {
-    const ctx = resolveDevTenantContext(request);
-    const summary = await withTenantTx(ctx, (client) => getFindingsSummary(client));
-    return summary;
+    findingsRoutes.get('/api/findings', async (request) => {
+      // Fastify's querystring parser returns keys literally as sent -- the
+      // item's own AC names this param `min-amount` (kebab-case, conventional
+      // for query strings), so it must be read that way, not as `minAmount`
+      // (86e2u7j0d Review finding: the camelCase read left the filter dead).
+      const query = request.query as { carrier?: string; status?: string; 'min-amount'?: string };
+      const ctx = (request as FastifyRequest & { tenantContext: TenantContext }).tenantContext;
+      const findings = await withTenantTx(ctx, (client) =>
+        listFindings(client, {
+          carrier: query.carrier,
+          status: query.status,
+          minAmount: query['min-amount'],
+        }),
+      );
+      return { findings };
+    });
+
+    findingsRoutes.get('/api/findings/summary', async (request) => {
+      const ctx = (request as FastifyRequest & { tenantContext: TenantContext }).tenantContext;
+      const summary = await withTenantTx(ctx, (client) => getFindingsSummary(client));
+      return summary;
+    });
   });
 
   const webDist = resolveWebDist();

@@ -6,13 +6,20 @@ import { withTenantTx } from '../../src/db/tenant-context.js';
 import { buildApp } from '../../src/server/app.js';
 
 /**
- * 86e2u7j0d AC1-3, exercised at the HTTP layer (GET /api/findings), using the
- * dev-only x-client-id header stub (no real auth yet -- see dev-tenant-stub.ts).
+ * 86e2u7j0d AC1-3, exercised at the HTTP layer (GET /api/findings).
+ *
+ * AC2's original contract ("no x-client-id -> 200, empty tenant scope") is
+ * superseded by 86e2u7j2y AC3 ("missing header(s) -> 401") -- membership
+ * validation now gates this route, so an unscoped/unauthenticated request is
+ * rejected outright rather than silently scoped to nothing. Updated in place
+ * per that item landing, not left asserting a contract this endpoint no
+ * longer has.
  */
 describe('GET /api/findings (DB, e2e)', () => {
   let pool: pg.Pool;
   let app: FastifyInstance;
   let clientId: string;
+  let userId: string;
   const tag = `fe-${Date.now()}`;
 
   beforeAll(async () => {
@@ -21,6 +28,12 @@ describe('GET /api/findings (DB, e2e)', () => {
     try {
       const c = await owner.query(`INSERT INTO client (name, slug) VALUES ('FE', $1) RETURNING id`, [tag]);
       clientId = c.rows[0].id;
+      const u = await owner.query(`INSERT INTO app_user (email) VALUES ($1) RETURNING id`, [`${tag}@example.com`]);
+      userId = u.rows[0].id;
+      await owner.query(
+        `INSERT INTO membership (user_id, client_id, role) VALUES ($1, $2, 'client_viewer')`,
+        [userId, clientId],
+      );
       const carrier = await owner.query(`INSERT INTO carrier (name) VALUES ($1) RETURNING id`, [`Carrier-${tag}`]);
       await withTenantTx({ clientIds: [clientId], internal: true }, async (c2) => {
         const inv = await c2.query(
@@ -57,6 +70,8 @@ describe('GET /api/findings (DB, e2e)', () => {
       await owner.query(`DELETE FROM audit_run WHERE client_id = $1`, [clientId]);
       await owner.query(`DELETE FROM invoice WHERE client_id = $1`, [clientId]);
       await owner.query(`DELETE FROM carrier WHERE name = $1`, [`Carrier-${tag}`]);
+      await owner.query(`DELETE FROM membership WHERE client_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM app_user WHERE id = $1`, [userId]);
       await owner.query(`DELETE FROM client WHERE id = $1`, [clientId]);
     } finally {
       owner.release();
@@ -64,25 +79,28 @@ describe('GET /api/findings (DB, e2e)', () => {
     await closePool();
   });
 
-  it('AC1: returns seeded rows for the client in the x-client-id header', async () => {
-    const res = await app.inject({ method: 'GET', url: '/api/findings', headers: { 'x-client-id': clientId } });
+  it('AC1: returns seeded rows for the client+user in the request headers', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/findings',
+      headers: { 'x-client-id': clientId, 'x-user-id': userId },
+    });
     expect(res.statusCode).toBe(200);
     const body = res.json();
     expect(body.findings).toHaveLength(1);
     expect(body.findings[0]).toMatchObject({ carrierName: `Carrier-${tag}`, billed: '1000.0000', status: 'open' });
   });
 
-  it('AC2: a request with no x-client-id header sees no rows (empty tenant scope)', async () => {
+  it('AC2 (superseded by 86e2u7j2y AC3): a request with no x-client-id header is rejected, not silently scoped to zero', async () => {
     const res = await app.inject({ method: 'GET', url: '/api/findings' });
-    expect(res.statusCode).toBe(200);
-    expect(res.json().findings).toHaveLength(0);
+    expect(res.statusCode).toBe(401);
   });
 
   it('AC3: status query param filters results', async () => {
     const res = await app.inject({
       method: 'GET',
       url: '/api/findings?status=closed',
-      headers: { 'x-client-id': clientId },
+      headers: { 'x-client-id': clientId, 'x-user-id': userId },
     });
     expect(res.statusCode).toBe(200);
     expect(res.json().findings).toHaveLength(0);
@@ -99,7 +117,7 @@ describe('GET /api/findings (DB, e2e)', () => {
     const res = await app.inject({
       method: 'GET',
       url: '/api/findings?min-amount=150',
-      headers: { 'x-client-id': clientId },
+      headers: { 'x-client-id': clientId, 'x-user-id': userId },
     });
     expect(res.statusCode).toBe(200);
     expect(res.json().findings).toHaveLength(0); // seeded finding's variance_amount is 100.0000
@@ -109,7 +127,7 @@ describe('GET /api/findings (DB, e2e)', () => {
     const res = await app.inject({
       method: 'GET',
       url: '/api/findings?min-amount=100',
-      headers: { 'x-client-id': clientId },
+      headers: { 'x-client-id': clientId, 'x-user-id': userId },
     });
     expect(res.statusCode).toBe(200);
     expect(res.json().findings).toHaveLength(1);

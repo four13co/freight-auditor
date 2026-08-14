@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { join, dirname } from 'node:path';
 import { withTenantTx } from '../db/tenant-context.js';
 import { listFindings } from '../modules/findings/list-findings.js';
+import { getFindingsSummary } from '../modules/findings/findings-summary.js';
 import { resolveDevTenantContext } from '../modules/findings/dev-tenant-stub.js';
 
 /**
@@ -67,6 +68,12 @@ export function buildApp(): FastifyInstance {
       }),
     );
     return { findings };
+  });
+
+  app.get('/api/findings/summary', async (request) => {
+    const ctx = resolveDevTenantContext(request);
+    const summary = await withTenantTx(ctx, (client) => getFindingsSummary(client));
+    return summary;
   });
 
   const webDist = resolveWebDist();

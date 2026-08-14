@@ -15,6 +15,7 @@ describe('listFindings (DB)', () => {
   let clientBId: string;
   let carrierId: string;
   const tag = `lf-${Date.now()}`;
+  const extraCarrierIds: string[] = [];
 
   beforeAll(async () => {
     pool = getPool();
@@ -39,7 +40,7 @@ describe('listFindings (DB)', () => {
       await owner.query(`DELETE FROM charge_fact WHERE client_id IN ($1, $2)`, [clientAId, clientBId]);
       await owner.query(`DELETE FROM audit_run WHERE client_id IN ($1, $2)`, [clientAId, clientBId]);
       await owner.query(`DELETE FROM invoice WHERE client_id IN ($1, $2)`, [clientAId, clientBId]);
-      await owner.query(`DELETE FROM carrier WHERE id = $1`, [carrierId]);
+      await owner.query(`DELETE FROM carrier WHERE id = ANY($1::uuid[])`, [[carrierId, ...extraCarrierIds]]);
       await owner.query(`DELETE FROM client WHERE id IN ($1, $2)`, [clientAId, clientBId]);
     } finally {
       owner.release();
@@ -122,7 +123,10 @@ describe('listFindings (DB)', () => {
 
   it('AC2: client B never sees client A rows (RLS isolation)', async () => {
     await withTenantTx({ clientIds: [clientAId], internal: true }, (c) => seedFinding(c, { clientId: clientAId }));
-    const bRows = await withTenantTx({ clientIds: [clientBId], internal: true }, async (c) => {
+    // internal: false here is load-bearing -- an internal analyst is
+    // deliberately granted cross-client visibility (RLS policy), so this must
+    // scope strictly to client B's own membership to actually test isolation.
+    const bRows = await withTenantTx({ clientIds: [clientBId], internal: false }, async (c) => {
       return listFindings(c, { clientIds: [clientBId] });
     });
     expect(bRows).toHaveLength(0);
@@ -139,40 +143,39 @@ describe('listFindings (DB)', () => {
   });
 
   it('AC3: carrier filter narrows the result set to that carrier only', async () => {
+    // Cleaned up in afterAll (via extraCarrierIds), not here -- invoice rows
+    // created below reference this carrier for the rest of the suite's run,
+    // and afterAll already deletes invoice before carrier in the right order.
     const otherCarrier = await withTenantTx({ clientIds: [clientAId], internal: true }, async (c) => {
       const oc = await c.query(`INSERT INTO carrier (name) VALUES ($1) RETURNING id`, [`Other-${tag}`]);
       return oc.rows[0].id as string;
     });
-    try {
-      const rows = await withTenantTx({ clientIds: [clientAId], internal: true }, async (c) => {
-        await seedFinding(c, { clientId: clientAId });
-        // seed a second finding under the other carrier by inserting invoice directly
-        const inv = await c.query(
-          `INSERT INTO invoice (client_id, carrier_id, transaction_set, invoice_number, currency, parser_version)
-           VALUES ($1, $2, '210', $3, 'USD', 'test') RETURNING id`,
-          [clientAId, otherCarrier, `INV-${tag}-other`],
-        );
-        const run = await c.query(
-          `INSERT INTO audit_run (client_id, invoice_id, engine_spec_version, outcome) VALUES ($1, $2, 'test', 'SCORED') RETURNING id`,
-          [clientAId, inv.rows[0].id],
-        );
-        const cf = await c.query(
-          `INSERT INTO charge_fact (client_id, invoice_id, code, category, amount, currency) VALUES ($1, $2, '400', 'LINEHAUL', '500.0000', 'USD') RETURNING id`,
-          [clientAId, inv.rows[0].id],
-        );
-        await c.query(
-          `INSERT INTO variance_finding (client_id, audit_run_id, charge_fact_id, direction, variance_amount, currency, status)
-           VALUES ($1, $2, $3, 'OVERCHARGE', '50.0000', 'USD', 'open')`,
-          [clientAId, run.rows[0].id, cf.rows[0].id],
-        );
-        return listFindings(c, { clientIds: [clientAId], carrier: `Other-${tag}` });
-      });
-      expect(rows).toHaveLength(1);
-      expect(rows[0].carrierName).toBe(`Other-${tag}`);
-    } finally {
-      await withTenantTx({ clientIds: [clientAId], internal: true }, (c) =>
-        c.query(`DELETE FROM carrier WHERE id = $1`, [otherCarrier]),
+    extraCarrierIds.push(otherCarrier);
+
+    const rows = await withTenantTx({ clientIds: [clientAId], internal: true }, async (c) => {
+      await seedFinding(c, { clientId: clientAId });
+      // seed a second finding under the other carrier by inserting invoice directly
+      const inv = await c.query(
+        `INSERT INTO invoice (client_id, carrier_id, transaction_set, invoice_number, currency, parser_version)
+         VALUES ($1, $2, '210', $3, 'USD', 'test') RETURNING id`,
+        [clientAId, otherCarrier, `INV-${tag}-other`],
       );
-    }
+      const run = await c.query(
+        `INSERT INTO audit_run (client_id, invoice_id, engine_spec_version, outcome) VALUES ($1, $2, 'test', 'SCORED') RETURNING id`,
+        [clientAId, inv.rows[0].id],
+      );
+      const cf = await c.query(
+        `INSERT INTO charge_fact (client_id, invoice_id, code, category, amount, currency) VALUES ($1, $2, '400', 'LINEHAUL', '500.0000', 'USD') RETURNING id`,
+        [clientAId, inv.rows[0].id],
+      );
+      await c.query(
+        `INSERT INTO variance_finding (client_id, audit_run_id, charge_fact_id, direction, variance_amount, currency, status)
+         VALUES ($1, $2, $3, 'OVERCHARGE', '50.0000', 'USD', 'open')`,
+        [clientAId, run.rows[0].id, cf.rows[0].id],
+      );
+      return listFindings(c, { clientIds: [clientAId], carrier: `Other-${tag}` });
+    });
+    expect(rows).toHaveLength(1);
+    expect(rows[0].carrierName).toBe(`Other-${tag}`);
   });
 });

@@ -2,6 +2,9 @@ import Fastify, { type FastifyInstance } from 'fastify';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { join, dirname } from 'node:path';
+import { withTenantTx } from '../db/tenant-context.js';
+import { listFindings } from '../modules/findings/list-findings.js';
+import { resolveDevTenantContext } from '../modules/findings/dev-tenant-stub.js';
 
 /**
  * The running revision's build SHA, for a rolling-deploy health check to tell
@@ -33,6 +36,19 @@ export function buildApp(): FastifyInstance {
 
   app.get('/health', async () => {
     return { status: 'ok', build: buildSha };
+  });
+
+  app.get('/api/findings', async (request) => {
+    const query = request.query as { carrier?: string; status?: string; minAmount?: string };
+    const ctx = resolveDevTenantContext(request);
+    const findings = await withTenantTx(ctx, (client) =>
+      listFindings(client, {
+        carrier: query.carrier,
+        status: query.status,
+        minAmount: query.minAmount,
+      }),
+    );
+    return { findings };
   });
 
   return app;

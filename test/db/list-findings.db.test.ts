@@ -109,7 +109,8 @@ describe('listFindings (DB)', () => {
       return listFindings(c, { clientIds: [clientAId] });
     });
     expect(rows).toHaveLength(1);
-    expect(rows[0]).toMatchObject({
+    const [row] = rows;
+    expect(row).toMatchObject({
       carrierName: `Carrier-${tag}`,
       billed: '1000.0000',
       expected: '900.0000',
@@ -117,8 +118,8 @@ describe('listFindings (DB)', () => {
       direction: 'OVERCHARGE',
       status: 'open',
     });
-    expect(typeof rows[0].invoiceNumber).toBe('string');
-    expect(typeof rows[0].createdAt).toBe('object'); // Date, via pg
+    expect(typeof row?.invoiceNumber).toBe('string');
+    expect(typeof row?.createdAt).toBe('object'); // Date, via pg
   });
 
   it('AC2: client B never sees client A rows (RLS isolation)', async () => {
@@ -176,6 +177,6 @@ describe('listFindings (DB)', () => {
       return listFindings(c, { clientIds: [clientAId], carrier: `Other-${tag}` });
     });
     expect(rows).toHaveLength(1);
-    expect(rows[0].carrierName).toBe(`Other-${tag}`);
+    expect(rows[0]?.carrierName).toBe(`Other-${tag}`);
   });
 });

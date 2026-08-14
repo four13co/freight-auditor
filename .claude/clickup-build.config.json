@@ -1,6 +1,8 @@
 {
   "$comment": "Config for the loop pipeline (LOOP-ARCHITECTURE.md). Structure only — NEVER secret values. Bootstrapped 2026-07-02; committed 2026-08-12 (previously untracked, so the loops' source of truth existed only in one machine's working tree). Flat shape (no profiles{}) = single-stream repo: the loops run bare with no stream suffix.",
   "queue": {
+    "backend": "clickup",
+    "transport": "cli",
     "space_id": "90175177055",
     "space_name": "Freight Audit and Financing",
     "lists": {
@@ -49,5 +51,5 @@
   "owner": {
     "clickup_handle": "greg@four13.co"
   },
-  "_bootstrap_notes": "Status labels mapped from this workspace's custom statuses (no native In-Review/Needs-Info labels existed): review_status=update required, blocked/ambiguous=on hold, done=complete. Chosen unattended on 2026-07-02 with defaults; adjust if wrong. (The build/lint/typecheck/test scripts above were aspirational at bootstrap, pending item 86e24cy2d — that scaffolding has since landed and every command is real and passing as of 2026-08-12.)"
+  "_bootstrap_notes": "Status labels mapped from this workspace's custom statuses (no native In-Review/Needs-Info labels existed): review_status=update required, blocked/ambiguous=on hold, done=complete. Chosen unattended on 2026-07-02 with defaults; adjust if wrong. (The build/lint/typecheck/test scripts above were aspirational at bootstrap, pending item 86e24cy2d — that scaffolding has since landed and every command is real and passing as of 2026-08-12.) queue.transport set to \"cli\" on 2026-08-14 after the MCP ClickUp transport hit a multi-hour rate limit mid-session (several rounds blocked on reads); the `cup` CLI was confirmed reachable and answering the same queries throughout, so every queue operation now goes through `cup` instead of mcp__claude_ai_ClickUp__* tools."
 }

@@ -18,30 +18,49 @@ export function isProtectedHost(hostname, protectedHosts = PROTECTED_DB_HOSTS) {
   return protectedHosts.some((protectedHost) => hostname.endsWith(protectedHost));
 }
 
-function main() {
-  const databaseUrl = process.env.DATABASE_URL;
+/**
+ * The CLI body, factored out so tests can drive it in-process (injectable env/exit/log)
+ * instead of only via a subprocess — a subprocess call exercises real behavior but is
+ * invisible to v8 coverage instrumentation in the parent process (86e2u72u2).
+ *
+ * @param {object} [opts]
+ * @param {NodeJS.ProcessEnv} [opts.env]
+ * @param {(code?: number) => void} [opts.exit]
+ * @param {(msg: string) => void} [opts.logError]
+ * @param {(msg: string) => void} [opts.logInfo]
+ */
+export function main({
+  env = process.env,
+  exit = process.exit,
+  logError = console.error,
+  logInfo = console.log,
+} = {}) {
+  const databaseUrl = env.DATABASE_URL;
   if (!databaseUrl) {
-    console.error('::error::DATABASE_URL is not set');
-    process.exit(1);
+    logError('::error::DATABASE_URL is not set');
+    exit(1);
+    return;
   }
 
   let host;
   try {
     host = extractHost(databaseUrl);
   } catch (err) {
-    console.error(`::error::${err.message}`);
-    process.exit(1);
+    logError(`::error::${err.message}`);
+    exit(1);
+    return;
   }
 
-  if (isProtectedHost(host) && process.env.ALLOW_PROTECTED_DB_HOST !== '1') {
-    console.error(
+  if (isProtectedHost(host) && env.ALLOW_PROTECTED_DB_HOST !== '1') {
+    logError(
       `::error::Refusing to run against protected host "${host}". ` +
         'Set ALLOW_PROTECTED_DB_HOST=1 to override.',
     );
-    process.exit(1);
+    exit(1);
+    return;
   }
 
-  console.log(`DATABASE_URL host "${host}" is not protected — proceeding.`);
+  logInfo(`DATABASE_URL host "${host}" is not protected — proceeding.`);
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

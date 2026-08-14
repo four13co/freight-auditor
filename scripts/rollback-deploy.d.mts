@@ -31,3 +31,13 @@ export declare function defaultTriggerBuild(
   caproverUrl: string,
   caproverAppToken: string,
 ): Promise<TriggerBuildResult>;
+
+export interface RollbackMainOptions {
+  env?: NodeJS.ProcessEnv;
+  exit?: (code?: number) => void;
+  logError?: (msg: string) => void;
+  logInfo?: (msg: string) => void;
+  rollbackImpl?: (options: RollbackToLastGoodOptions) => Promise<RollbackToLastGoodResult>;
+}
+
+export declare function main(options?: RollbackMainOptions): Promise<void>;

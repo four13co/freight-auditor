@@ -9,6 +9,10 @@ const run = promisify(execFile);
 
 const DATABASE_URL = process.env.TEST_DATABASE_URL;
 
+// Skipped whenever TEST_DATABASE_URL isn't set — these need a live ephemeral Postgres
+// (the loop's throwaway per-item local DB) and are never run against a shared/protected
+// host. This is why `npm test` reports 5 skipped by default: this describe block's tests
+// run explicitly via `npm run test:db`/CI's DB job, not the default gated suite (86e2u72u2).
 describe.skipIf(!DATABASE_URL)('migrate-database job (e2e, ephemeral local Postgres)', () => {
   it('guard-protected-db.mjs passes on the ephemeral local host', async () => {
     await expect(

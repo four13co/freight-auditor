@@ -11,6 +11,7 @@
     "build": "tsc -p tsconfig.build.json",
     "start": "node dist/server/index.js",
     "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
     "test:watch": "vitest",
     "test:e2e": "vitest run --dir test/e2e",
     "test:db": "vitest run --config vitest.db.config.ts",
@@ -19,6 +20,7 @@
     "migrate": "node-pg-migrate"
   },
   "dependencies": {
+    "@fastify/static": "^10.1.3",
     "decimal.js": "^10.4.3",
     "fastify": "^5.1.0",
     "pg": "^8.13.1",
@@ -30,6 +32,7 @@
     "@types/pg": "^8.11.10",
     "@typescript-eslint/eslint-plugin": "^8.18.0",
     "@typescript-eslint/parser": "^8.18.0",
+    "@vitest/coverage-v8": "^4.1.10",
     "eslint": "^9.17.0",
     "globals": "^15.14.0",
     "js-yaml": "^5.2.3",

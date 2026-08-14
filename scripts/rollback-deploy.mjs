@@ -99,26 +99,46 @@ export function redactToken(message, token) {
   return token ? message.split(token).join('<redacted>') : message;
 }
 
-async function main() {
-  const lastGoodTag = process.env.LAST_GOOD_TAG;
-  const caproverUrl = process.env.SRC_CAPROVER_URL;
-  const caproverAppToken = process.env.SRC_CAPROVER_APP_TOKEN;
+/**
+ * The CLI body, factored out so tests can drive it in-process (injectable env/exit/log/
+ * rollbackImpl) instead of only via a subprocess — a subprocess call is invisible to v8
+ * coverage instrumentation in the parent process (86e2u72u2).
+ *
+ * @param {object} [opts]
+ * @param {NodeJS.ProcessEnv} [opts.env]
+ * @param {(code?: number) => void} [opts.exit]
+ * @param {(msg: string) => void} [opts.logError]
+ * @param {(msg: string) => void} [opts.logInfo]
+ * @param {typeof rollbackToLastGood} [opts.rollbackImpl]
+ */
+export async function main({
+  env = process.env,
+  exit = process.exit,
+  logError = console.error,
+  logInfo = console.log,
+  rollbackImpl = rollbackToLastGood,
+} = {}) {
+  const lastGoodTag = env.LAST_GOOD_TAG;
+  const caproverUrl = env.SRC_CAPROVER_URL;
+  const caproverAppToken = env.SRC_CAPROVER_APP_TOKEN;
 
   if (!lastGoodTag || !caproverUrl || !caproverAppToken) {
-    console.error('::error::LAST_GOOD_TAG, SRC_CAPROVER_URL, and SRC_CAPROVER_APP_TOKEN must all be set');
-    process.exit(1);
+    logError('::error::LAST_GOOD_TAG, SRC_CAPROVER_URL, and SRC_CAPROVER_APP_TOKEN must all be set');
+    exit(1);
+    return;
   }
 
   try {
-    const result = await rollbackToLastGood({ lastGoodTag, caproverUrl, caproverAppToken });
+    const result = await rollbackImpl({ lastGoodTag, caproverUrl, caproverAppToken });
     if (!result.rolledBack) {
-      console.error(`::error::${result.reason} — manual recovery required`);
-      process.exit(1);
+      logError(`::error::${result.reason} — manual recovery required`);
+      exit(1);
+      return;
     }
-    console.log(`Rolled back to ${lastGoodTag} (${result.lastGoodSha})`);
+    logInfo(`Rolled back to ${lastGoodTag} (${result.lastGoodSha})`);
   } catch (err) {
-    console.error(`::error::${redactToken(err.message, caproverAppToken)}`);
-    process.exit(1);
+    logError(`::error::${redactToken(err.message, caproverAppToken)}`);
+    exit(1);
   }
 }
 

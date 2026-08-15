@@ -5,6 +5,17 @@ on:
     branches: [Development, Production]
   workflow_dispatch:
 
+# Serializes runs on the same branch so overlapping deploys queue instead of
+# racing (86e2urk0k). cancel-in-progress: false, not true -- a deploy that's
+# already migrated/deployed must run to completion (including its rollback
+# path), not be killed mid-way; queuing is what's needed, not cancellation.
+# This alone doesn't guarantee GitHub's queue preserves commit order, which
+# is why the "Advance last-good tag" step below also has its own independent
+# ancestor check (belt-and-suspenders, not a substitute for this).
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   migrate-database:
     runs-on: ubuntu-latest
@@ -172,8 +183,12 @@ jobs:
       # Gated on success() rather than always() — after a failing health-check, this step
       # must NOT run (regardless of whether the rollback above succeeded), so the overall
       # job stays failed and humans are alerted even though service was restored.
+      #
+      # Runs via the testable script, not inline bash (86e2urk0k) -- the ancestor
+      # check that prevents this tag from ever moving backward needs to be provable
+      # against a real git history, which inline bash in a workflow file isn't.
       - name: Advance last-good tag
         if: success()
-        run: |
-          git tag -f "$LAST_GOOD_TAG" "${{ github.sha }}"
-          git push origin "$LAST_GOOD_TAG" --force
+        run: node scripts/advance-last-good-tag.mjs
+        env:
+          GITHUB_SHA: ${{ github.sha }}

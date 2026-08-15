@@ -418,4 +418,24 @@ describe('Dashboard', () => {
     expect(screen.getByText('Estes accessorials').closest('button')).toBeDisabled();
     expect(screen.getByText('Aging > 5 days').closest('button')).toBeDisabled();
   });
+
+  it('86e2uv1ry AC1: every disabled sidebar entry has a visible "Soon" marker, not just opacity/hover', async () => {
+    render(<Dashboard />);
+    await waitFor(() => expect(screen.getAllByTestId('finding-row')).toHaveLength(3));
+
+    const disabledLabels = [
+      'Discrepancies',
+      'Invoices',
+      'Audit log',
+      'Settings',
+      'Mine, over $500',
+      'Estes accessorials',
+      'Aging > 5 days',
+    ];
+    for (const label of disabledLabels) {
+      const button = screen.getByText(label).closest('button');
+      expect(button).not.toBeNull();
+      expect(within(button!).getByText('Soon')).toBeInTheDocument();
+    }
+  });
 });

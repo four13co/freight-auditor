@@ -8,8 +8,10 @@ interface FindingsTableProps {
   rows: FindingRow[];
   carrierFilter: string;
   statusFilter: string;
+  minAmountFilter: string;
   onCarrierFilterChange: (value: string) => void;
   onStatusFilterChange: (value: string) => void;
+  onMinAmountFilterChange: (value: string) => void;
 }
 
 // The mockup's table has 9 columns including "Finding" (a rule description,
@@ -29,8 +31,10 @@ export function FindingsTable({
   rows,
   carrierFilter,
   statusFilter,
+  minAmountFilter,
   onCarrierFilterChange,
   onStatusFilterChange,
+  onMinAmountFilterChange,
 }: FindingsTableProps) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [detailRow, setDetailRow] = useState<FindingRow | null>(null);
@@ -108,6 +112,18 @@ export function FindingsTable({
               <option value="disputed">Disputed</option>
               <option value="closed">Closed</option>
             </select>
+          </label>
+          <label className="flex h-[30px] items-center gap-1.5 border border-[rgba(32,30,29,0.4)] px-2.5 text-xs text-[#201e1d]">
+            Min amount:
+            <input
+              type="number"
+              inputMode="decimal"
+              aria-label="Minimum amount filter"
+              value={minAmountFilter}
+              onChange={(e) => onMinAmountFilterChange(e.target.value)}
+              placeholder="Any"
+              className="w-16 bg-transparent outline-none placeholder:text-[rgba(32,30,29,0.5)]"
+            />
           </label>
         </div>
       </div>

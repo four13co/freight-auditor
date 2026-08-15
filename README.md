@@ -73,6 +73,22 @@ Key invariants baked into the schema:
 > `criterion_key` governance (§14 #9) is deferred — modeled as a stable string + append-only
 > `criterion_alias` for renames.
 
+## Dev dashboard setup
+
+The dashboard (`web/`) authenticates its API calls with fixed dev-mode headers
+(`x-client-id`/`x-user-id` — see `web/src/lib/api.ts`), which must be backed by a real
+`membership` row or every `/api/findings*` call 401s (tenant isolation checks membership, not
+just header presence). **After running migrations against a fresh DB, seed that row once:**
+
+```bash
+DATABASE_URL=postgresql://user:pw@127.0.0.1:PORT/db npm run seed:dev
+```
+
+This is a one-time manual step per environment/DB — not automated into CI or `deploy.yml`
+(seeding dev-fixture tenant data from CI would collide with `guard-protected-db.mjs`'s
+protected-host guard; this is fixture data, not schema DDL). Safe to re-run: it's idempotent
+(`ON CONFLICT DO NOTHING` throughout, see `scripts/seed-dev-tenant.mjs`).
+
 ## Module map (spec §2.2)
 
 `src/modules/` holds a placeholder folder per spec module: ingestion, contracts,

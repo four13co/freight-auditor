@@ -20,7 +20,8 @@
     "web:e2e": "npm --prefix web run test:e2e",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "migrate": "node scripts/migrate-with-retry.mjs"
+    "migrate": "node scripts/migrate-with-retry.mjs",
+    "seed:dev": "node scripts/seed-dev-tenant.mjs"
   },
   "dependencies": {
     "@fastify/static": "^10.1.3",

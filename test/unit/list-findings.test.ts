@@ -21,6 +21,7 @@ function mockRow() {
     direction: 'OVERCHARGE',
     status: 'open',
     created_at: new Date('2026-01-01T00:00:00Z'),
+    rule_description: 'Duplicate invoice for the same PRO' as string | null,
   };
 }
 
@@ -44,19 +45,27 @@ describe('listFindings (unit, mocked client)', () => {
         direction: 'OVERCHARGE',
         status: 'open',
         createdAt: new Date('2026-01-01T00:00:00Z'),
+        ruleDescription: 'Duplicate invoice for the same PRO',
       },
     ]);
+  });
+
+  it('maps a null rule_description (no criterion attached) to ruleDescription: null (86e2up8c8)', async () => {
+    const { client } = mockClient([{ ...mockRow(), rule_description: null }]);
+    const rows = await listFindings(client, {});
+    expect(rows[0]?.ruleDescription).toBeNull();
   });
 
   it('builds no outer filter WHERE clause and uses default LIMIT/OFFSET when no filters are given', async () => {
     const { client, query } = mockClient([]);
     await listFindings(client, {});
     const [sql, params] = query.mock.calls[0] as [string, unknown[]];
-    // The LATERAL subquery has its own inner WHERE (joining on charge_fact_id)
-    // regardless of filters -- assert no *outer* filter clause follows the
-    // LATERAL join's closing paren, rather than a blanket "no WHERE anywhere".
-    const afterLateral = sql.split('expected_charge ON true')[1];
-    expect(afterLateral).not.toMatch(/WHERE/);
+    // Two LATERAL subqueries each have their own inner WHERE (joining on
+    // charge_fact_id / criterion_id) regardless of filters -- assert no
+    // *outer* filter clause follows the LAST LATERAL join's closing paren,
+    // rather than a blanket "no WHERE anywhere".
+    const afterLastLateral = sql.split('criterion_version ON true')[1];
+    expect(afterLastLateral).not.toMatch(/WHERE/);
     expect(params).toEqual([50, 0]);
   });
 

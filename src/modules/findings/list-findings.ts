@@ -18,6 +18,7 @@ export interface FindingRow {
   direction: string | null;
   status: string;
   createdAt: Date;
+  ruleDescription: string | null;
 }
 
 export interface ListFindingsOptions {
@@ -77,6 +78,7 @@ export async function listFindings(
     direction: string | null;
     status: string;
     created_at: Date;
+    rule_description: string | null;
   }>(
     `SELECT
        variance_finding.id,
@@ -87,7 +89,8 @@ export async function listFindings(
        variance_finding.variance_amount,
        variance_finding.direction,
        variance_finding.status,
-       variance_finding.created_at
+       variance_finding.created_at,
+       criterion_version.description AS rule_description
      FROM variance_finding
      JOIN charge_fact ON charge_fact.id = variance_finding.charge_fact_id
      JOIN invoice ON invoice.id = charge_fact.invoice_id
@@ -104,6 +107,21 @@ export async function listFindings(
        ORDER BY expected_charge.created_at DESC
        LIMIT 1
      ) expected_charge ON true
+     -- criterion_version is bitemporal/append-only (migration 0006) -- many
+     -- rows can exist per criterion_id. variance_finding.criterion_id
+     -- references criterion, not a specific criterion_version, and nothing
+     -- in this codebase reads valid_from/valid_to yet, so this takes the
+     -- most-recently-recorded description rather than the one "valid at
+     -- finding time" (86e2up8c8 -- no existing convention to match, and the
+     -- item's own No-gos scope this to surfacing existing metadata, not
+     -- building point-in-time resolution).
+     LEFT JOIN LATERAL (
+       SELECT description
+       FROM criterion_version
+       WHERE criterion_version.criterion_id = variance_finding.criterion_id
+       ORDER BY criterion_version.recorded_at DESC
+       LIMIT 1
+     ) criterion_version ON true
      ${where}
      ORDER BY variance_finding.created_at DESC
      LIMIT $${params.length - 1} OFFSET $${params.length}`,
@@ -120,5 +138,6 @@ export async function listFindings(
     direction: row.direction,
     status: row.status,
     createdAt: row.created_at,
+    ruleDescription: row.rule_description,
   }));
 }

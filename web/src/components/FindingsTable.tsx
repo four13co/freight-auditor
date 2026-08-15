@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import type { FindingRow } from '../lib/api.js';
 import { formatMoney, formatVariance, formatAge } from '../lib/format.js';
 import { getStatusDisplay } from '../lib/status-display.js';
+import { FindingDetail } from './FindingDetail.js';
 
 interface FindingsTableProps {
   rows: FindingRow[];
@@ -32,6 +33,7 @@ export function FindingsTable({
   onStatusFilterChange,
 }: FindingsTableProps) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [detailRow, setDetailRow] = useState<FindingRow | null>(null);
 
   const selectedRows = useMemo(() => rows.filter((r) => selected.has(r.id)), [rows, selected]);
   const selectedTotal = useMemo(
@@ -143,7 +145,8 @@ export function FindingsTable({
               <div
                 key={row.id}
                 data-testid="finding-row"
-                className="grid items-center gap-0 border-b border-[rgba(32,30,29,0.14)] px-5 py-2.5"
+                onClick={() => setDetailRow(row)}
+                className="grid cursor-pointer items-center gap-0 border-b border-[rgba(32,30,29,0.14)] px-5 py-2.5"
                 style={{ gridTemplateColumns: COLUMNS }}
               >
                 <div>
@@ -152,6 +155,7 @@ export function FindingsTable({
                     aria-label={`Select finding ${row.invoiceNumber ?? row.id}`}
                     checked={selected.has(row.id)}
                     onChange={() => toggle(row.id)}
+                    onClick={(e) => e.stopPropagation()}
                     className="h-3.5 w-3.5"
                   />
                 </div>
@@ -181,6 +185,7 @@ export function FindingsTable({
           })
         )}
       </div>
+      {detailRow && <FindingDetail row={detailRow} onClose={() => setDetailRow(null)} />}
     </div>
   );
 }

@@ -191,4 +191,62 @@ describe('Dashboard', () => {
     render(<Dashboard />);
     await waitFor(() => expect(screen.getByText('No findings match these filters.')).toBeInTheDocument());
   });
+
+  it('86e2urn2t: shows a loading indicator before the initial fetches resolve', async () => {
+    let resolveSummary!: (res: Response) => void;
+    fetchMock.mockImplementation((input: string | URL | Request) => {
+      const url = input.toString();
+      if (url.includes('/api/findings/summary')) {
+        return new Promise((resolve) => {
+          resolveSummary = resolve;
+        });
+      }
+      return Promise.resolve(new Response(JSON.stringify({ findings: [] }), { status: 200 }));
+    });
+
+    render(<Dashboard />);
+    expect(screen.getByTestId('dashboard-loading')).toBeInTheDocument();
+    expect(screen.queryByTestId('kpi-row')).not.toBeInTheDocument();
+
+    resolveSummary(new Response(JSON.stringify(SUMMARY), { status: 200 }));
+    await waitFor(() => expect(screen.queryByTestId('dashboard-loading')).not.toBeInTheDocument());
+  });
+
+  it('86e2urn2t: shows a distinct error state (not the empty-table markup) when a fetch rejects', async () => {
+    fetchMock.mockImplementation(() => Promise.resolve(new Response('', { status: 500 })));
+
+    render(<Dashboard />);
+    await waitFor(() => expect(screen.getByTestId('dashboard-error')).toBeInTheDocument());
+
+    // Must NOT render the same markup a genuinely-empty tenant would show --
+    // that's the exact ambiguity this item exists to remove.
+    expect(screen.queryByText('No findings match these filters.')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('kpi-row')).not.toBeInTheDocument();
+  });
+
+  it('86e2urn2t: retrying after an error re-fetches, and success clears the error state', async () => {
+    let callCount = 0;
+    fetchMock.mockImplementation((input: string | URL | Request) => {
+      callCount += 1;
+      // First render's two calls (summary + findings) both fail; the retry's
+      // two calls both succeed.
+      if (callCount <= 2) {
+        return Promise.resolve(new Response('', { status: 500 }));
+      }
+      const url = input.toString();
+      if (url.includes('/api/findings/summary')) {
+        return Promise.resolve(new Response(JSON.stringify(SUMMARY), { status: 200 }));
+      }
+      return Promise.resolve(new Response(JSON.stringify({ findings: ROWS }), { status: 200 }));
+    });
+
+    render(<Dashboard />);
+    await waitFor(() => expect(screen.getByTestId('dashboard-error')).toBeInTheDocument());
+
+    fireEvent.click(screen.getByText('Retry'));
+
+    await waitFor(() => expect(screen.getByTestId('kpi-row')).toBeInTheDocument());
+    expect(screen.queryByTestId('dashboard-error')).not.toBeInTheDocument();
+    expect(screen.getAllByTestId('finding-row')).toHaveLength(3);
+  });
 });

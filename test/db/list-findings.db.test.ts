@@ -41,6 +41,8 @@ describe('listFindings (DB)', () => {
       await owner.query(`DELETE FROM audit_run WHERE client_id IN ($1, $2)`, [clientAId, clientBId]);
       await owner.query(`DELETE FROM invoice WHERE client_id IN ($1, $2)`, [clientAId, clientBId]);
       await owner.query(`DELETE FROM carrier WHERE id = ANY($1::uuid[])`, [[carrierId, ...extraCarrierIds]]);
+      await owner.query(`DELETE FROM criterion_version WHERE criterion_id IN (SELECT id FROM criterion WHERE criterion_key LIKE $1)`, [`${tag}%`]);
+      await owner.query(`DELETE FROM criterion WHERE criterion_key LIKE $1`, [`${tag}%`]);
       await owner.query(`DELETE FROM client WHERE id IN ($1, $2)`, [clientAId, clientBId]);
     } finally {
       owner.release();
@@ -222,5 +224,117 @@ describe('listFindings (DB)', () => {
     const matching = rows.filter((r) => r.invoiceNumber === `INV-${tag}-dup-expected`);
     expect(matching).toHaveLength(1);
     expect(matching[0]?.expected).toBe('850.0000');
+  });
+
+  /**
+   * 86e2up8c8: the dashboard's "Finding" column needs a human-readable
+   * description of the rule that produced the finding. Sourced from
+   * criterion_version.description via variance_finding.criterion_id.
+   */
+  it('86e2up8c8 AC1: includes the rule description for a finding with a criterion attached', async () => {
+    const rows = await withTenantTx({ clientIds: [clientAId], internal: true }, async (c) => {
+      const criterion = await c.query(
+        `INSERT INTO criterion (criterion_key, kind) VALUES ($1, 'SCORING') RETURNING id`,
+        [`${tag}-criterion`],
+      );
+      const criterionId = criterion.rows[0].id;
+      await c.query(
+        `INSERT INTO criterion_version (criterion_id, description) VALUES ($1, $2)`,
+        [criterionId, 'Duplicate invoice for the same PRO'],
+      );
+
+      const inv = await c.query(
+        `INSERT INTO invoice (client_id, carrier_id, transaction_set, invoice_number, currency, parser_version)
+         VALUES ($1, $2, '210', $3, 'USD', 'test') RETURNING id`,
+        [clientAId, carrierId, `INV-${tag}-with-criterion`],
+      );
+      const run = await c.query(
+        `INSERT INTO audit_run (client_id, invoice_id, engine_spec_version, outcome) VALUES ($1, $2, 'test', 'SCORED') RETURNING id`,
+        [clientAId, inv.rows[0].id],
+      );
+      const cf = await c.query(
+        `INSERT INTO charge_fact (client_id, invoice_id, code, category, amount, currency) VALUES ($1, $2, '400', 'LINEHAUL', '1000.0000', 'USD') RETURNING id`,
+        [clientAId, inv.rows[0].id],
+      );
+      await c.query(
+        `INSERT INTO variance_finding (client_id, audit_run_id, charge_fact_id, criterion_id, direction, variance_amount, currency, status)
+         VALUES ($1, $2, $3, $4, 'OVERCHARGE', '100.0000', 'USD', 'open')`,
+        [clientAId, run.rows[0].id, cf.rows[0].id, criterionId],
+      );
+      return listFindings(c, { clientIds: [clientAId], carrier: `Carrier-${tag}` });
+    });
+    const matching = rows.filter((r) => r.invoiceNumber === `INV-${tag}-with-criterion`);
+    expect(matching).toHaveLength(1);
+    expect(matching[0]?.ruleDescription).toBe('Duplicate invoice for the same PRO');
+  });
+
+  it('86e2up8c8: ruleDescription is null when the finding has no criterion attached (existing rows, no regression)', async () => {
+    const noCriterionInvoiceNumber = `INV-${tag}-no-criterion`;
+    const rows = await withTenantTx({ clientIds: [clientAId], internal: true }, async (c) => {
+      const inv = await c.query(
+        `INSERT INTO invoice (client_id, carrier_id, transaction_set, invoice_number, currency, parser_version)
+         VALUES ($1, $2, '210', $3, 'USD', 'test') RETURNING id`,
+        [clientAId, carrierId, noCriterionInvoiceNumber],
+      );
+      const run = await c.query(
+        `INSERT INTO audit_run (client_id, invoice_id, engine_spec_version, outcome) VALUES ($1, $2, 'test', 'SCORED') RETURNING id`,
+        [clientAId, inv.rows[0].id],
+      );
+      const cf = await c.query(
+        `INSERT INTO charge_fact (client_id, invoice_id, code, category, amount, currency) VALUES ($1, $2, '400', 'LINEHAUL', '1000.0000', 'USD') RETURNING id`,
+        [clientAId, inv.rows[0].id],
+      );
+      // No criterion_id passed -- variance_finding.criterion_id defaults NULL.
+      await c.query(
+        `INSERT INTO variance_finding (client_id, audit_run_id, charge_fact_id, direction, variance_amount, currency, status)
+         VALUES ($1, $2, $3, 'OVERCHARGE', '100.0000', 'USD', 'open')`,
+        [clientAId, run.rows[0].id, cf.rows[0].id],
+      );
+      return listFindings(c, { clientIds: [clientAId], carrier: `Carrier-${tag}` });
+    });
+    const matching = rows.filter((r) => r.invoiceNumber === noCriterionInvoiceNumber);
+    expect(matching).toHaveLength(1);
+    expect(matching[0]?.ruleDescription).toBeNull();
+  });
+
+  it('86e2up8c8: takes the most-recently-recorded criterion_version when more than one exists', async () => {
+    const rows = await withTenantTx({ clientIds: [clientAId], internal: true }, async (c) => {
+      const criterion = await c.query(
+        `INSERT INTO criterion (criterion_key, kind) VALUES ($1, 'SCORING') RETURNING id`,
+        [`${tag}-criterion-versioned`],
+      );
+      const criterionId = criterion.rows[0].id;
+      await c.query(
+        `INSERT INTO criterion_version (criterion_id, description, recorded_at) VALUES ($1, $2, now() - interval '1 day')`,
+        [criterionId, 'Old wording'],
+      );
+      await c.query(
+        `INSERT INTO criterion_version (criterion_id, description, recorded_at) VALUES ($1, $2, now())`,
+        [criterionId, 'New wording'],
+      );
+
+      const inv = await c.query(
+        `INSERT INTO invoice (client_id, carrier_id, transaction_set, invoice_number, currency, parser_version)
+         VALUES ($1, $2, '210', $3, 'USD', 'test') RETURNING id`,
+        [clientAId, carrierId, `INV-${tag}-versioned`],
+      );
+      const run = await c.query(
+        `INSERT INTO audit_run (client_id, invoice_id, engine_spec_version, outcome) VALUES ($1, $2, 'test', 'SCORED') RETURNING id`,
+        [clientAId, inv.rows[0].id],
+      );
+      const cf = await c.query(
+        `INSERT INTO charge_fact (client_id, invoice_id, code, category, amount, currency) VALUES ($1, $2, '400', 'LINEHAUL', '1000.0000', 'USD') RETURNING id`,
+        [clientAId, inv.rows[0].id],
+      );
+      await c.query(
+        `INSERT INTO variance_finding (client_id, audit_run_id, charge_fact_id, criterion_id, direction, variance_amount, currency, status)
+         VALUES ($1, $2, $3, $4, 'OVERCHARGE', '100.0000', 'USD', 'open')`,
+        [clientAId, run.rows[0].id, cf.rows[0].id, criterionId],
+      );
+      return listFindings(c, { clientIds: [clientAId], carrier: `Carrier-${tag}` });
+    });
+    const matching = rows.filter((r) => r.invoiceNumber === `INV-${tag}-versioned`);
+    expect(matching).toHaveLength(1);
+    expect(matching[0]?.ruleDescription).toBe('New wording');
   });
 });

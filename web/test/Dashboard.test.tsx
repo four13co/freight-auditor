@@ -361,7 +361,7 @@ describe('Dashboard', () => {
     expect(within(detail).getByText('Duplicate invoice for the same PRO')).toBeInTheDocument();
     expect(within(detail).getByText('$1,876.40')).toBeInTheDocument(); // billed
     expect(within(detail).getByText('+$1,876.40')).toBeInTheDocument(); // variance
-    expect(within(detail).getByText('OVERCHARGE')).toBeInTheDocument(); // direction
+    expect(within(detail).getByText('Overcharge')).toBeInTheDocument(); // direction (86e2uv1tb: formatted, not raw enum)
     // Not row2's invoice number, to prove this is row-specific, not a fixed panel.
     expect(within(detail).queryByText('INV-90408')).not.toBeInTheDocument();
   });
@@ -412,6 +412,55 @@ describe('Dashboard', () => {
     expect(within(detail).getByText('n/a')).toBeInTheDocument(); // varianceAmount
     // Expected and Finding are both null-driven em-dashes here.
     expect(within(detail).getAllByText('—').length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('86e2uv1tb AC1: the Direction field shows a human-readable label, never the raw enum string', async () => {
+    render(<Dashboard />);
+    const foundRows = await waitFor(() => {
+      const found = screen.getAllByTestId('finding-row');
+      expect(found).toHaveLength(3);
+      return found;
+    });
+
+    fireEvent.click(foundRows[2]!); // f3: direction is the raw enum 'INTEGRITY_ONLY'
+
+    const detail = await waitFor(() => screen.getByTestId('finding-detail'));
+    expect(within(detail).queryByText('INTEGRITY_ONLY')).not.toBeInTheDocument();
+    expect(within(detail).getByText('Integrity check')).toBeInTheDocument();
+  });
+
+  it('86e2uv1tb AC2: no field in the detail view displays a raw backend enum verbatim', async () => {
+    render(<Dashboard />);
+    const foundRows = await waitFor(() => {
+      const found = screen.getAllByTestId('finding-row');
+      expect(found).toHaveLength(3);
+      return found;
+    });
+
+    for (const row of foundRows) {
+      fireEvent.click(row);
+      const detail = await waitFor(() => screen.getByTestId('finding-detail'));
+      // Raw enum values are all-caps/underscore-separated; a formatted label
+      // never is. If any field regresses to rendering one verbatim, this
+      // pattern match catches it regardless of which field it lands in.
+      const rawEnumPattern = /^[A-Z]+(_[A-Z]+)*$/;
+      const textNodes = within(detail).queryAllByText(rawEnumPattern);
+      expect(textNodes).toHaveLength(0);
+      fireEvent.click(screen.getByLabelText('Close finding detail'));
+    }
+  });
+
+  it('86e2uv1tb: the redundant raw Status field is gone (the header pill already covers it)', async () => {
+    render(<Dashboard />);
+    const foundRows = await waitFor(() => {
+      const found = screen.getAllByTestId('finding-row');
+      expect(found).toHaveLength(3);
+      return found;
+    });
+
+    fireEvent.click(foundRows[0]!);
+    const detail = await waitFor(() => screen.getByTestId('finding-detail'));
+    expect(within(detail).queryByText('Status')).not.toBeInTheDocument();
   });
 
   it('86e2uutk8: clicking a row\'s checkbox toggles selection without opening the detail view', async () => {

@@ -39,15 +39,37 @@ function buildQuery(params: FindingsListParams): string {
   return s ? `?${s}` : '';
 }
 
+/**
+ * Dev-mode-only stub headers (86e2urebj) satisfying tenant-auth.ts's
+ * resolveAuthorizedTenantContext contract: a claimed client_id + user_id,
+ * no real session. NOT real auth -- see 86e2u7j2y for the deferred
+ * credential-scheme decision this explicitly does not make. Single source
+ * so both call sites stay in sync rather than duplicating string literals.
+ *
+ * These two UUIDs MUST match scripts/seed-dev-tenant.mjs's DEV_CLIENT_ID/
+ * DEV_USER_ID exactly -- that script inserts the client/app_user/membership
+ * rows that make this claimed pair real (membership carries FORCE RLS, so
+ * an unseeded pair still 401s even with both headers present). web/'s build
+ * doesn't share a module graph with the root scripts/ package, so the
+ * values are duplicated here rather than imported -- if you change one,
+ * change both.
+ */
+function authHeaders(): HeadersInit {
+  return {
+    'x-client-id': '11111111-1111-1111-1111-111111111111',
+    'x-user-id': '22222222-2222-2222-2222-222222222222',
+  };
+}
+
 export async function fetchFindings(params: FindingsListParams = {}): Promise<FindingRow[]> {
-  const res = await fetch(`/api/findings${buildQuery(params)}`);
+  const res = await fetch(`/api/findings${buildQuery(params)}`, { headers: authHeaders() });
   if (!res.ok) throw new Error(`GET /api/findings failed: ${res.status}`);
   const body = (await res.json()) as { findings: FindingRow[] };
   return body.findings;
 }
 
 export async function fetchFindingsSummary(): Promise<FindingsSummary> {
-  const res = await fetch('/api/findings/summary');
+  const res = await fetch('/api/findings/summary', { headers: authHeaders() });
   if (!res.ok) throw new Error(`GET /api/findings/summary failed: ${res.status}`);
   return (await res.json()) as FindingsSummary;
 }

@@ -22,13 +22,18 @@ export function Dashboard() {
   const [rows, setRows] = useState<FindingRow[]>([]);
   const [carrierFilter, setCarrierFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [minAmountFilter, setMinAmountFilter] = useState('');
   const [status, setStatus] = useState<LoadStatus>('loading');
 
   const load = useCallback(() => {
     setStatus('loading');
     Promise.all([
       fetchFindingsSummary(),
-      fetchFindings({ carrier: carrierFilter || undefined, status: statusFilter || undefined }),
+      fetchFindings({
+        carrier: carrierFilter || undefined,
+        status: statusFilter || undefined,
+        minAmount: minAmountFilter || undefined,
+      }),
     ]).then(
       ([summaryResult, rowsResult]) => {
         setSummary(summaryResult);
@@ -39,7 +44,11 @@ export function Dashboard() {
         setStatus('error');
       },
     );
-  }, [carrierFilter, statusFilter]);
+    // 86e2uuw7k: minAmountFilter MUST be in this dependency array -- the same
+    // defect class as PR #43's silently-broken filter, where a value used
+    // inside the callback but omitted from its deps meant the callback never
+    // re-created and the fetch never re-ran with the new value.
+  }, [carrierFilter, statusFilter, minAmountFilter]);
 
   useEffect(() => {
     load();
@@ -78,8 +87,10 @@ export function Dashboard() {
                 rows={rows}
                 carrierFilter={carrierFilter}
                 statusFilter={statusFilter}
+                minAmountFilter={minAmountFilter}
                 onCarrierFilterChange={setCarrierFilter}
                 onStatusFilterChange={setStatusFilter}
+                onMinAmountFilterChange={setMinAmountFilter}
               />
             </>
           )}

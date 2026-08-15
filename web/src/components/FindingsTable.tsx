@@ -8,8 +8,10 @@ interface FindingsTableProps {
   rows: FindingRow[];
   carrierFilter: string;
   statusFilter: string;
+  minAmountFilter: string;
   onCarrierFilterChange: (value: string) => void;
   onStatusFilterChange: (value: string) => void;
+  onMinAmountFilterChange: (value: string) => void;
 }
 
 // The mockup's table has 9 columns including "Finding" (a rule description,
@@ -29,8 +31,10 @@ export function FindingsTable({
   rows,
   carrierFilter,
   statusFilter,
+  minAmountFilter,
   onCarrierFilterChange,
   onStatusFilterChange,
+  onMinAmountFilterChange,
 }: FindingsTableProps) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [detailRow, setDetailRow] = useState<FindingRow | null>(null);
@@ -38,12 +42,40 @@ export function FindingsTable({
   // has one obvious place to extend rather than an inline condition that's
   // easy to leave stale after a disjoint-file merge.
   const hasActiveFilter = carrierFilter !== '' || statusFilter !== '';
+  const [sort, setSort] = useState<{ key: 'variance' | 'age'; dir: 'asc' | 'desc' } | null>(null);
 
   const selectedRows = useMemo(() => rows.filter((r) => selected.has(r.id)), [rows, selected]);
   const selectedTotal = useMemo(
     () => selectedRows.reduce((sum, r) => sum + (r.varianceAmount ? Number(r.varianceAmount) : 0), 0),
     [selectedRows],
   );
+
+  // 86e2uuw63: money fields are decimal-precision strings -- Number(...) for
+  // numeric comparison, never the default lexicographic Array.sort (same
+  // defect class PR #43 flagged for a different field). createdAt is
+  // ISO-8601 so a plain string compare is already chronological. Nulls
+  // (varianceAmount is nullable on FindingRow) always sort last, in either
+  // direction, so their position doesn't flip when the arrow is clicked.
+  const sortedRows = useMemo(() => {
+    if (!sort) return rows;
+    const dirMult = sort.dir === 'asc' ? 1 : -1;
+    return [...rows].sort((a, b) => {
+      if (sort.key === 'variance') {
+        if (a.varianceAmount === null && b.varianceAmount === null) return 0;
+        if (a.varianceAmount === null) return 1;
+        if (b.varianceAmount === null) return -1;
+        return (Number(a.varianceAmount) - Number(b.varianceAmount)) * dirMult;
+      }
+      return a.createdAt < b.createdAt ? -1 * dirMult : a.createdAt > b.createdAt ? 1 * dirMult : 0;
+    });
+  }, [rows, sort]);
+
+  function toggleSort(key: 'variance' | 'age') {
+    setSort((prev) => {
+      if (prev?.key === key) return { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' };
+      return { key, dir: 'asc' };
+    });
+  }
 
   function toggle(id: string) {
     setSelected((prev) => {
@@ -84,6 +116,18 @@ export function FindingsTable({
               <option value="disputed">Disputed</option>
               <option value="closed">Closed</option>
             </select>
+          </label>
+          <label className="flex h-[30px] items-center gap-1.5 border border-[rgba(32,30,29,0.4)] px-2.5 text-xs text-[#201e1d]">
+            Min amount:
+            <input
+              type="number"
+              inputMode="decimal"
+              aria-label="Minimum amount filter"
+              value={minAmountFilter}
+              onChange={(e) => onMinAmountFilterChange(e.target.value)}
+              placeholder="Any"
+              className="w-16 bg-transparent outline-none placeholder:text-[rgba(32,30,29,0.5)]"
+            />
           </label>
         </div>
       </div>
@@ -134,8 +178,20 @@ export function FindingsTable({
         <div>Carrier</div>
         <div className="text-right">Billed</div>
         <div className="text-right">Expected</div>
-        <div className="text-right">Variance</div>
-        <div className="text-right">Age</div>
+        <button
+          type="button"
+          onClick={() => toggleSort('variance')}
+          className="text-right font-extrabold uppercase tracking-[0.08em] text-[rgba(32,30,29,0.55)]"
+        >
+          Variance{sort?.key === 'variance' ? (sort.dir === 'asc' ? ' ↑' : ' ↓') : ''}
+        </button>
+        <button
+          type="button"
+          onClick={() => toggleSort('age')}
+          className="text-right font-extrabold uppercase tracking-[0.08em] text-[rgba(32,30,29,0.55)]"
+        >
+          Age{sort?.key === 'age' ? (sort.dir === 'asc' ? ' ↑' : ' ↓') : ''}
+        </button>
         <div className="text-right">Status</div>
       </div>
 
@@ -149,7 +205,7 @@ export function FindingsTable({
             </div>
           )
         ) : (
-          rows.map((row) => {
+          sortedRows.map((row) => {
             const display = getStatusDisplay(row);
             return (
               <div

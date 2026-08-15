@@ -169,6 +169,66 @@ describe('Dashboard', () => {
     });
   });
 
+  it('86e2uuw7k AC1: entering a min-amount value re-fetches /api/findings with the min-amount query param', async () => {
+    render(<Dashboard />);
+    await waitFor(() => expect(screen.getAllByTestId('finding-row')).toHaveLength(3));
+    fetchMock.mockClear();
+
+    fireEvent.change(screen.getByLabelText('Minimum amount filter'), { target: { value: '500' } });
+
+    await waitFor(() => {
+      const calledUrl = fetchMock.mock.calls.find((c) => String(c[0]).includes('/api/findings?'))?.[0];
+      expect(String(calledUrl)).toContain('min-amount=500');
+    });
+  });
+
+  it('86e2uuw7k AC2: carrier, status, and min-amount filters all persist together in the same refetch', async () => {
+    render(<Dashboard />);
+    await waitFor(() => expect(screen.getAllByTestId('finding-row')).toHaveLength(3));
+
+    fireEvent.change(screen.getByLabelText('Carrier filter'), { target: { value: 'Saia LTL' } });
+    await waitFor(() => {
+      const calledUrl = fetchMock.mock.calls.find((c) => String(c[0]).includes('/api/findings?'))?.[0];
+      expect(String(calledUrl)).toContain('carrier=Saia');
+    });
+
+    fetchMock.mockClear();
+    fireEvent.change(screen.getByLabelText('Status filter'), { target: { value: 'in_review' } });
+    await waitFor(() => {
+      const calledUrl = fetchMock.mock.calls.find((c) => String(c[0]).includes('/api/findings?'))?.[0];
+      expect(String(calledUrl)).toContain('carrier=Saia');
+      expect(String(calledUrl)).toContain('status=in_review');
+    });
+
+    fetchMock.mockClear();
+    fireEvent.change(screen.getByLabelText('Minimum amount filter'), { target: { value: '500' } });
+    await waitFor(() => {
+      const calledUrl = fetchMock.mock.calls.find((c) => String(c[0]).includes('/api/findings?'))?.[0];
+      expect(String(calledUrl)).toContain('carrier=Saia');
+      expect(String(calledUrl)).toContain('status=in_review');
+      expect(String(calledUrl)).toContain('min-amount=500');
+    });
+  });
+
+  it('86e2uuw7k AC3: clearing the min-amount filter omits min-amount from the refetch', async () => {
+    render(<Dashboard />);
+    await waitFor(() => expect(screen.getAllByTestId('finding-row')).toHaveLength(3));
+
+    fireEvent.change(screen.getByLabelText('Minimum amount filter'), { target: { value: '500' } });
+    await waitFor(() => {
+      const calledUrl = fetchMock.mock.calls.find((c) => String(c[0]).includes('/api/findings?'))?.[0];
+      expect(String(calledUrl)).toContain('min-amount=500');
+    });
+
+    fetchMock.mockClear();
+    fireEvent.change(screen.getByLabelText('Minimum amount filter'), { target: { value: '' } });
+    await waitFor(() => {
+      const calledUrl = fetchMock.mock.calls.find((c) => String(c[0]).includes('/api/findings?'));
+      // Either no query string at all, or one that omits min-amount.
+      expect(calledUrl === undefined || !String(calledUrl).includes('min-amount')).toBe(true);
+    });
+  });
+
   it('bulk-action buttons are visible but disabled (no backing write endpoint yet)', async () => {
     render(<Dashboard />);
     await waitFor(() => expect(screen.getAllByTestId('finding-row')).toHaveLength(3));

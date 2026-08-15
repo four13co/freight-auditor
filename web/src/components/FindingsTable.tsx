@@ -38,10 +38,13 @@ export function FindingsTable({
 }: FindingsTableProps) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [detailRow, setDetailRow] = useState<FindingRow | null>(null);
-  // 86e2uuw7t: named so a future filter dimension (e.g. min-amount, 86e2uuw7k)
-  // has one obvious place to extend rather than an inline condition that's
-  // easy to leave stale after a disjoint-file merge.
-  const hasActiveFilter = carrierFilter !== '' || statusFilter !== '';
+  // 86e2uuw7t: named so a future filter dimension has one obvious place to
+  // extend rather than an inline condition that's easy to leave stale after
+  // a disjoint-file merge. 86e2uv490 is exactly that: minAmountFilter (added
+  // by 86e2uuw7k) was missing here, so a tenant with only min-amount set and
+  // zero matching rows saw "No findings yet." instead of the filtered
+  // message -- the same bug this boolean exists to prevent, one dimension over.
+  const hasActiveFilter = carrierFilter !== '' || statusFilter !== '' || minAmountFilter !== '';
   const [sort, setSort] = useState<{ key: 'variance' | 'age'; dir: 'asc' | 'desc' } | null>(null);
 
   const selectedRows = useMemo(() => rows.filter((r) => selected.has(r.id)), [rows, selected]);

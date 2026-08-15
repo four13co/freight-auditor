@@ -1,7 +1,26 @@
 import { useEffect, type ReactNode } from 'react';
 import type { FindingRow } from '../lib/api.js';
 import { formatMoney, formatVariance } from '../lib/format.js';
-import { getStatusDisplay } from '../lib/status-display.js';
+import { getStatusDisplay, titleCase } from '../lib/status-display.js';
+
+/**
+ * Human-readable label for FindingRow.direction (86e2uv1tb). The header pill
+ * (getStatusDisplay) already surfaces status/direction information in
+ * polished form -- this only covers the raw enum leak in the Direction body
+ * field itself. INTEGRITY_ONLY gets a demo-appropriate label rather than the
+ * generic title-cased fallback, since "Integrity Only" reads as an internal
+ * implementation detail, not something a client-facing drawer should show.
+ */
+const DIRECTION_LABELS: Record<string, string> = {
+  OVERCHARGE: 'Overcharge',
+  UNDERCHARGE: 'Undercharge',
+  INTEGRITY_ONLY: 'Integrity check',
+};
+
+function formatDirection(direction: string | null): string {
+  if (direction === null) return '—';
+  return DIRECTION_LABELS[direction] ?? titleCase(direction);
+}
 
 interface FindingDetailProps {
   row: FindingRow;
@@ -63,8 +82,7 @@ export function FindingDetail({ row, onClose }: FindingDetailProps) {
             <Field label="Billed">{formatMoney(row.billed)}</Field>
             <Field label="Expected">{formatMoney(row.expected)}</Field>
             <Field label="Variance">{formatVariance(row.varianceAmount)}</Field>
-            <Field label="Direction">{row.direction ?? '—'}</Field>
-            <Field label="Status">{row.status ?? '—'}</Field>
+            <Field label="Direction">{formatDirection(row.direction)}</Field>
           </div>
         </div>
       </div>

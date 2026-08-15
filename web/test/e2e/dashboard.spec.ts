@@ -86,3 +86,31 @@ test('dashboard shows a distinct error state (not the empty-table markup) when a
 
   await page.screenshot({ path: 'test-results/dashboard-error.png', fullPage: true });
 });
+
+/**
+ * 86e2uutk8 AC1/AC2: clicking a row opens a detail view scoped to that row's
+ * own data (not any row's -- INV-90408 must not leak into the panel opened
+ * from row 1), and Escape closes it. Scoped queries throughout since the
+ * invoice number and other fields also appear in the table row behind the
+ * panel -- an unscoped getByText would be a strict-mode violation.
+ */
+test('clicking a finding row opens its detail view; Escape closes it', async ({ page }) => {
+  await page.route('**/api/findings**', (route) => route.fulfill({ json: { findings: ROWS } }));
+  await page.route('**/api/findings/summary', (route) => route.fulfill({ json: SUMMARY }));
+
+  await page.goto('/');
+  await expect(page.getByTestId('finding-row')).toHaveCount(3);
+
+  await page.getByTestId('finding-row').first().click();
+
+  const detail = page.getByTestId('finding-detail');
+  await expect(detail).toBeVisible();
+  await expect(detail.getByText('INV-90385')).toBeVisible();
+  await expect(detail.getByText('Saia LTL')).toBeVisible();
+  await expect(detail.getByText('INV-90408')).not.toBeVisible();
+
+  await page.screenshot({ path: 'test-results/dashboard-detail.png', fullPage: true });
+
+  await page.keyboard.press('Escape');
+  await expect(detail).not.toBeVisible();
+});

@@ -249,4 +249,96 @@ describe('Dashboard', () => {
     expect(screen.queryByTestId('dashboard-error')).not.toBeInTheDocument();
     expect(screen.getAllByTestId('finding-row')).toHaveLength(3);
   });
+
+  it('86e2uutk8 AC1: clicking a row opens a detail view showing that row\'s own values, not any row\'s', async () => {
+    render(<Dashboard />);
+    const foundRows = await waitFor(() => {
+      const found = screen.getAllByTestId('finding-row');
+      expect(found).toHaveLength(3);
+      return found;
+    });
+
+    fireEvent.click(foundRows[0]!);
+
+    const detail = await waitFor(() => screen.getByTestId('finding-detail'));
+    expect(within(detail).getByText('INV-90385')).toBeInTheDocument();
+    expect(within(detail).getByText('Saia LTL')).toBeInTheDocument();
+    expect(within(detail).getByText('Duplicate invoice for the same PRO')).toBeInTheDocument();
+    expect(within(detail).getByText('$1,876.40')).toBeInTheDocument(); // billed
+    expect(within(detail).getByText('+$1,876.40')).toBeInTheDocument(); // variance
+    expect(within(detail).getByText('OVERCHARGE')).toBeInTheDocument(); // direction
+    // Not row2's invoice number, to prove this is row-specific, not a fixed panel.
+    expect(within(detail).queryByText('INV-90408')).not.toBeInTheDocument();
+  });
+
+  it('86e2uutk8 AC2: closing the detail via its close button restores the closed state', async () => {
+    render(<Dashboard />);
+    const foundRows = await waitFor(() => {
+      const found = screen.getAllByTestId('finding-row');
+      expect(found).toHaveLength(3);
+      return found;
+    });
+
+    fireEvent.click(foundRows[0]!);
+    await waitFor(() => expect(screen.getByTestId('finding-detail')).toBeInTheDocument());
+
+    fireEvent.click(screen.getByLabelText('Close finding detail'));
+    expect(screen.queryByTestId('finding-detail')).not.toBeInTheDocument();
+  });
+
+  it('86e2uutk8 AC2: closing the detail via Escape restores the closed state', async () => {
+    render(<Dashboard />);
+    const foundRows = await waitFor(() => {
+      const found = screen.getAllByTestId('finding-row');
+      expect(found).toHaveLength(3);
+      return found;
+    });
+
+    fireEvent.click(foundRows[0]!);
+    await waitFor(() => expect(screen.getByTestId('finding-detail')).toBeInTheDocument());
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(screen.queryByTestId('finding-detail')).not.toBeInTheDocument();
+  });
+
+  it('86e2uutk8 AC3: a finding with null expected/varianceAmount renders the existing empty-value treatment, not "null"/"undefined"/blank', async () => {
+    render(<Dashboard />);
+    const foundRows = await waitFor(() => {
+      const found = screen.getAllByTestId('finding-row');
+      expect(found).toHaveLength(3);
+      return found;
+    });
+
+    fireEvent.click(foundRows[2]!); // f3: expected null, varianceAmount null, ruleDescription null
+
+    const detail = await waitFor(() => screen.getByTestId('finding-detail'));
+    expect(within(detail).queryByText('null')).not.toBeInTheDocument();
+    expect(within(detail).queryByText('undefined')).not.toBeInTheDocument();
+    expect(within(detail).getByText('n/a')).toBeInTheDocument(); // varianceAmount
+    // Expected and Finding are both null-driven em-dashes here.
+    expect(within(detail).getAllByText('—').length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('86e2uutk8: clicking a row\'s checkbox toggles selection without opening the detail view', async () => {
+    render(<Dashboard />);
+    await waitFor(() => expect(screen.getAllByTestId('finding-row')).toHaveLength(3));
+
+    fireEvent.click(screen.getByLabelText('Select finding INV-90385'));
+
+    await waitFor(() => expect(screen.getByText(/1 selected/)).toBeInTheDocument());
+    expect(screen.queryByTestId('finding-detail')).not.toBeInTheDocument();
+  });
+
+  it('86e2uutk8 AC4: sidebar entries are visibly non-interactive (disabled), not fake-clickable chrome', async () => {
+    render(<Dashboard />);
+    await waitFor(() => expect(screen.getAllByTestId('finding-row')).toHaveLength(3));
+
+    expect(screen.getByText('Discrepancies').closest('button')).toBeDisabled();
+    expect(screen.getByText('Invoices').closest('button')).toBeDisabled();
+    expect(screen.getByText('Audit log').closest('button')).toBeDisabled();
+    expect(screen.getByText('Settings').closest('button')).toBeDisabled();
+    expect(screen.getByText('Mine, over $500').closest('button')).toBeDisabled();
+    expect(screen.getByText('Estes accessorials').closest('button')).toBeDisabled();
+    expect(screen.getByText('Aging > 5 days').closest('button')).toBeDisabled();
+  });
 });

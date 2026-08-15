@@ -14,6 +14,7 @@ export interface FindingRow {
   direction: string | null;
   status: string;
   createdAt: string;
+  ruleDescription: string | null;
 }
 
 export interface FindingsSummary {

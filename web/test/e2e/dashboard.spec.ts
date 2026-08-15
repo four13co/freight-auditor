@@ -18,6 +18,7 @@ const ROWS = [
     direction: 'OVERCHARGE',
     status: 'open',
     createdAt: new Date().toISOString(),
+    ruleDescription: 'Duplicate invoice for the same PRO',
   },
   {
     id: 'f2',
@@ -29,6 +30,7 @@ const ROWS = [
     direction: 'OVERCHARGE',
     status: 'in_review',
     createdAt: new Date().toISOString(),
+    ruleDescription: 'Fuel surcharge above the indexed rate',
   },
   {
     id: 'f3',
@@ -40,6 +42,7 @@ const ROWS = [
     direction: 'INTEGRITY_ONLY',
     status: 'open',
     createdAt: new Date().toISOString(),
+    ruleDescription: null,
   },
 ];
 

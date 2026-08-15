@@ -68,3 +68,21 @@ test('dashboard renders the 1B Console layout with real (mocked) API data', asyn
 
   await page.screenshot({ path: 'test-results/dashboard-full.png', fullPage: true });
 });
+
+/**
+ * 86e2urn2t: the error state is new surface, not just a check that the
+ * happy path is unbroken -- captured for the same perceptual-review reason
+ * as the happy-path render above.
+ */
+test('dashboard shows a distinct error state (not the empty-table markup) when a fetch fails', async ({ page }) => {
+  await page.route('**/api/findings**', (route) => route.fulfill({ status: 500, body: '' }));
+  await page.route('**/api/findings/summary', (route) => route.fulfill({ status: 500, body: '' }));
+
+  await page.goto('/');
+
+  await expect(page.getByTestId('dashboard-error')).toBeVisible();
+  await expect(page.getByText('No findings match these filters.')).not.toBeVisible();
+  await expect(page.getByTestId('kpi-row')).not.toBeVisible();
+
+  await page.screenshot({ path: 'test-results/dashboard-error.png', fullPage: true });
+});

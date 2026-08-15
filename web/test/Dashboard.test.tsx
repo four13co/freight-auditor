@@ -21,6 +21,7 @@ const ROWS: FindingRow[] = [
     direction: 'OVERCHARGE',
     status: 'open',
     createdAt: '2026-08-14T00:00:00Z',
+    ruleDescription: 'Duplicate invoice for the same PRO',
   },
   {
     id: 'f2',
@@ -32,6 +33,7 @@ const ROWS: FindingRow[] = [
     direction: 'OVERCHARGE',
     status: 'in_review',
     createdAt: '2026-08-14T00:00:00Z',
+    ruleDescription: 'Fuel surcharge above the indexed rate',
   },
   {
     id: 'f3',
@@ -43,6 +45,7 @@ const ROWS: FindingRow[] = [
     direction: 'INTEGRITY_ONLY',
     status: 'open',
     createdAt: '2026-08-14T00:00:00Z',
+    ruleDescription: null,
   },
 ];
 
@@ -80,7 +83,41 @@ describe('Dashboard', () => {
     expect(within(row2!).getByText('In review')).toBeInTheDocument(); // f2: status=in_review
     expect(within(row3!).getByText('Needs data')).toBeInTheDocument(); // f3: expected=null
     expect(within(row3!).getByText('n/a')).toBeInTheDocument(); // f3 variance (null)
-    expect(within(row3!).getByText('—')).toBeInTheDocument(); // f3 expected (null) formats to em-dash
+    // f3 has TWO null-driven em-dash placeholders now (Expected, and Finding
+    // per 86e2up8c8 -- ruleDescription is also null for this row): assert
+    // count, not getByText, since getByText requires exactly one match.
+    expect(within(row3!).getAllByText('—')).toHaveLength(2);
+  });
+
+  it('86e2up8c8 AC1: a row with a populated ruleDescription shows that exact text in the Finding column', async () => {
+    render(<Dashboard />);
+    const foundRows = await waitFor(() => {
+      const found = screen.getAllByTestId('finding-row');
+      expect(found).toHaveLength(3);
+      return found;
+    });
+    const [row1, row2] = foundRows;
+    // The Finding cell is the row's 3rd direct child (checkbox, Invoice,
+    // Finding, ...) -- check it directly so this fails if the text renders
+    // in some other column instead of the intended one.
+    expect(row1!.children[2]).toHaveTextContent('Duplicate invoice for the same PRO');
+    expect(row2!.children[2]).toHaveTextContent('Fuel surcharge above the indexed rate');
+  });
+
+  it('86e2up8c8 AC2: a row with ruleDescription: null shows the placeholder, not a blank cell or "null"', async () => {
+    render(<Dashboard />);
+    const foundRows = await waitFor(() => {
+      const found = screen.getAllByTestId('finding-row');
+      expect(found).toHaveLength(3);
+      return found;
+    });
+    const [, , row3] = foundRows;
+    expect(within(row3!).queryByText('null')).not.toBeInTheDocument();
+    // The Finding cell is the row's 3rd direct child (checkbox, Invoice,
+    // Finding, ...) -- check it directly, not via a text-content count that
+    // could pass even if the placeholder landed in the wrong column.
+    const findingCell = row3!.children[2];
+    expect(findingCell).toHaveTextContent('—');
   });
 
   it('AC4: KPI endpoint values display in the 4 KPI cards exactly', async () => {

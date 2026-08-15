@@ -13,14 +13,16 @@ interface FindingsTableProps {
 
 // The mockup's table has 9 columns including "Finding" (a rule description,
 // e.g. "Duplicate invoice for the same PRO") and "lane" (part of "Carrier /
-// lane"). FindingRow has neither field: list-findings.ts's own comment says
-// lane/origin-dest was deliberately omitted (transport_document.document's
-// jsonb path for it is undocumented), and there's no rule-description field
-// on variance_finding at all. Rendered without those two -- Carrier stands
-// alone, Age is added in their place since createdAt is available and the
-// mockup shows it. See the PR body's Uncertainties for the follow-up this
-// implies (a findings-list response field for rule description).
-const COLUMNS = '36px 106px 138px 96px 96px 104px 88px 104px';
+// lane"). "lane" is still omitted: list-findings.ts's own comment says it
+// was deliberately left out (transport_document.document's jsonb path for
+// it is undocumented) -- no ETA on that one. "Finding" is now populated by
+// FindingRow.ruleDescription (86e2up8c8 AC1, PR #54), rendered here as its
+// own column matching the mockup's placement exactly: right after Invoice,
+// flexible width (1fr in the mockup) so it absorbs the row's remaining
+// space rather than a fixed px like the other columns. Age fills the slot
+// the mockup gives "lane" alongside Carrier, since createdAt is available
+// and the mockup shows an age-like value there too.
+const COLUMNS = '36px 106px 1fr 138px 96px 96px 104px 88px 104px';
 
 export function FindingsTable({
   rows,
@@ -122,6 +124,7 @@ export function FindingsTable({
       >
         <div />
         <div>Invoice</div>
+        <div>Finding</div>
         <div>Carrier</div>
         <div className="text-right">Billed</div>
         <div className="text-right">Expected</div>
@@ -153,6 +156,9 @@ export function FindingsTable({
                   />
                 </div>
                 <div className="text-[13px] font-semibold tabular-nums text-[#201e1d]">{row.invoiceNumber ?? '—'}</div>
+                <div className="pr-4 text-[14px] font-semibold tracking-[-0.005em] text-[#201e1d]">
+                  {row.ruleDescription ?? '—'}
+                </div>
                 <div className="text-[13px] text-[#201e1d]">{row.carrierName ?? '—'}</div>
                 <div className="text-right text-[13px] tabular-nums text-[#201e1d]">{formatMoney(row.billed)}</div>
                 <div className="text-right text-[13px] tabular-nums text-[rgba(32,30,29,0.6)]">

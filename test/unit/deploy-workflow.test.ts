@@ -17,6 +17,7 @@ interface WorkflowJob {
 
 interface Workflow {
   jobs: Record<string, WorkflowJob>;
+  concurrency?: { group: string; 'cancel-in-progress': boolean };
 }
 
 function loadDeployWorkflow(): Workflow {
@@ -167,6 +168,27 @@ describe('deploy.yml (unit, job-dependency + guard wiring)', () => {
       );
       expect(tagStep).toBeDefined();
       expect(tagStep!.if).toBe('success()');
+    });
+
+    it('advances the last-good tag via the testable script, not inline bash (86e2urk0k)', () => {
+      const workflow = loadDeployWorkflow();
+      const tagStep = getJob(workflow, 'post-deployment').steps.find((s) =>
+        s.name?.toLowerCase().includes('advance last-good tag'),
+      );
+      expect(tagStep!.run).toContain('advance-last-good-tag.mjs');
+      expect(tagStep!.env?.GITHUB_SHA).toBe('${{ github.sha }}');
+    });
+  });
+
+  describe('concurrency control (86e2urk0k)', () => {
+    it('serializes runs on the same branch so overlapping deploys queue rather than race', () => {
+      const workflow = loadDeployWorkflow();
+      expect(workflow.concurrency?.group).toBe('deploy-${{ github.ref }}');
+    });
+
+    it('does NOT cancel an in-progress run -- a deploy that already migrated/deployed must finish, not be killed mid-way', () => {
+      const workflow = loadDeployWorkflow();
+      expect(workflow.concurrency?.['cancel-in-progress']).toBe(false);
     });
   });
 });

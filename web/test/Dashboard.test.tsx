@@ -1,0 +1,157 @@
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { render, screen, waitFor, fireEvent, within } from '@testing-library/react';
+import { Dashboard } from '../src/components/Dashboard.js';
+import type { FindingRow, FindingsSummary } from '../src/lib/api.js';
+
+const SUMMARY: FindingsSummary = {
+  recoverableOpen: '148320.0000',
+  flaggedToday: 42,
+  withCarriers: 27,
+  recoveredLast30Days: '96411.0000',
+};
+
+const ROWS: FindingRow[] = [
+  {
+    id: 'f1',
+    invoiceNumber: 'INV-90385',
+    carrierName: 'Saia LTL',
+    billed: '1876.4000',
+    expected: '0.0000',
+    varianceAmount: '1876.4000',
+    direction: 'OVERCHARGE',
+    status: 'open',
+    createdAt: '2026-08-14T00:00:00Z',
+  },
+  {
+    id: 'f2',
+    invoiceNumber: 'INV-90408',
+    carrierName: 'Old Dominion',
+    billed: '5940.2000',
+    expected: '5118.6000',
+    varianceAmount: '821.6000',
+    direction: 'OVERCHARGE',
+    status: 'in_review',
+    createdAt: '2026-08-14T00:00:00Z',
+  },
+  {
+    id: 'f3',
+    invoiceNumber: 'INV-90331',
+    carrierName: 'XPO Logistics',
+    billed: '2077.3000',
+    expected: null,
+    varianceAmount: null,
+    direction: 'INTEGRITY_ONLY',
+    status: 'open',
+    createdAt: '2026-08-14T00:00:00Z',
+  },
+];
+
+let fetchMock: ReturnType<typeof vi.fn>;
+
+function mockFetchOnce(url: string) {
+  if (url.includes('/api/findings/summary')) {
+    return Promise.resolve(new Response(JSON.stringify(SUMMARY), { status: 200 }));
+  }
+  return Promise.resolve(new Response(JSON.stringify({ findings: ROWS }), { status: 200 }));
+}
+
+beforeEach(() => {
+  fetchMock = vi.fn((input: string | URL | Request) => mockFetchOnce(input.toString()));
+  vi.stubGlobal('fetch', fetchMock);
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
+describe('Dashboard', () => {
+  it('AC1: renders N rows with correct billed/expected/variance/status display', async () => {
+    render(<Dashboard />);
+    const foundRows = await waitFor(() => {
+      const found = screen.getAllByTestId('finding-row');
+      expect(found).toHaveLength(3);
+      return found;
+    });
+    const [row1, row2, row3] = foundRows;
+
+    expect(within(row1!).getByText('$1,876.40')).toBeInTheDocument(); // f1 billed
+    expect(within(row1!).getByText('+$1,876.40')).toBeInTheDocument(); // f1 variance
+    expect(within(row1!).getByText('Queued')).toBeInTheDocument(); // f1: status=open -> Queued
+    expect(within(row2!).getByText('In review')).toBeInTheDocument(); // f2: status=in_review
+    expect(within(row3!).getByText('Needs data')).toBeInTheDocument(); // f3: expected=null
+    expect(within(row3!).getByText('n/a')).toBeInTheDocument(); // f3 variance (null)
+    expect(within(row3!).getByText('—')).toBeInTheDocument(); // f3 expected (null) formats to em-dash
+  });
+
+  it('AC4: KPI endpoint values display in the 4 KPI cards exactly', async () => {
+    render(<Dashboard />);
+    await waitFor(() => expect(screen.getByTestId('kpi-row')).toBeInTheDocument());
+
+    expect(screen.getByText('$148,320.00')).toBeInTheDocument(); // recoverableOpen
+    expect(screen.getByText('42')).toBeInTheDocument(); // flaggedToday
+    expect(screen.getByText('27')).toBeInTheDocument(); // withCarriers
+    expect(screen.getByText('$96,411.00')).toBeInTheDocument(); // recoveredLast30Days
+  });
+
+  it('AC2: selecting 2+ rows shows the selection bar with count + summed amount', async () => {
+    render(<Dashboard />);
+    await waitFor(() => expect(screen.getAllByTestId('finding-row')).toHaveLength(3));
+
+    fireEvent.click(screen.getByLabelText('Select finding INV-90385')); // +1876.40
+    fireEvent.click(screen.getByLabelText('Select finding INV-90408')); // +821.60
+
+    await waitFor(() => {
+      expect(screen.getByText(/2 selected/)).toBeInTheDocument();
+    });
+    expect(screen.getByText(/\$2,698\.00/)).toBeInTheDocument(); // 1876.40 + 821.60 = 2698.00
+  });
+
+  it('AC3: changing the carrier filter re-fetches /api/findings with the carrier query param', async () => {
+    render(<Dashboard />);
+    await waitFor(() => expect(screen.getAllByTestId('finding-row')).toHaveLength(3));
+    fetchMock.mockClear();
+
+    fireEvent.change(screen.getByLabelText('Carrier filter'), { target: { value: 'Saia LTL' } });
+
+    await waitFor(() => {
+      const calledUrl = fetchMock.mock.calls.find((c) => String(c[0]).includes('/api/findings?'))?.[0];
+      expect(String(calledUrl)).toContain('carrier=Saia');
+    });
+  });
+
+  it('AC3: changing the status filter re-fetches /api/findings with the status query param', async () => {
+    render(<Dashboard />);
+    await waitFor(() => expect(screen.getAllByTestId('finding-row')).toHaveLength(3));
+    fetchMock.mockClear();
+
+    fireEvent.change(screen.getByLabelText('Status filter'), { target: { value: 'in_review' } });
+
+    await waitFor(() => {
+      const calledUrl = fetchMock.mock.calls.find((c) => String(c[0]).includes('/api/findings?'))?.[0];
+      expect(String(calledUrl)).toContain('status=in_review');
+    });
+  });
+
+  it('bulk-action buttons are visible but disabled (no backing write endpoint yet)', async () => {
+    render(<Dashboard />);
+    await waitFor(() => expect(screen.getAllByTestId('finding-row')).toHaveLength(3));
+    fireEvent.click(screen.getByLabelText('Select finding INV-90385'));
+
+    await waitFor(() => expect(screen.getByText('Open disputes')).toBeInTheDocument());
+    expect(screen.getByText('Open disputes').closest('button')).toBeDisabled();
+    expect(screen.getByText('Assign').closest('button')).toBeDisabled();
+    expect(screen.getByText('Dismiss').closest('button')).toBeDisabled();
+  });
+
+  it('renders "No findings match these filters." when the API returns zero rows', async () => {
+    fetchMock.mockImplementation((input: string | URL | Request) => {
+      const url = input.toString();
+      if (url.includes('/api/findings/summary')) {
+        return Promise.resolve(new Response(JSON.stringify(SUMMARY), { status: 200 }));
+      }
+      return Promise.resolve(new Response(JSON.stringify({ findings: [] }), { status: 200 }));
+    });
+    render(<Dashboard />);
+    await waitFor(() => expect(screen.getByText('No findings match these filters.')).toBeInTheDocument());
+  });
+});

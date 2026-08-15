@@ -79,3 +79,58 @@ jobs:
 
       - name: Run typecheck
         run: npm run typecheck
+
+  # web/ has its own package.json, tsconfig, and vitest config (component
+  # tests only -- no live backend needed). Kept as a separate job/config
+  # rather than folded into the root suite or coverage gate, mirroring the
+  # db-tests precedent: the root coverage gate's denominator must stay
+  # scoped to files it can deterministically exercise (86e2u72u2's rabbit
+  # hole), and web/src/** would otherwise show up there at low coverage.
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+          cache-dependency-path: |
+            package-lock.json
+            web/package-lock.json
+
+      - name: Install root dependencies
+        run: npm ci
+
+      - name: Install web dependencies
+        run: npm ci
+        working-directory: web
+
+      - name: Run web typecheck
+        run: npm run web:typecheck
+
+      - name: Run web component tests
+        run: npm run web:test
+
+      # playwright.config.ts's webServer runs `vite preview`, which serves
+      # web/dist/ -- gitignored and never built otherwise. Without this step
+      # the e2e job hangs until config.webServer's timeout and fails.
+      - name: Build web
+        run: npm --prefix web run build
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+        working-directory: web
+
+      - name: Run web e2e (Playwright)
+        run: npm run web:e2e
+
+      - name: Upload dashboard render (perceptual review artifact)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dashboard-render
+          path: web/test-results/
+          retention-days: 14

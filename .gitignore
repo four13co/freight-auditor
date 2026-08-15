@@ -8,6 +8,10 @@ coverage/
 *.log
 .DS_Store
 *.tsbuildinfo
+test-results/
+playwright-report/
+blob-report/
+playwright/.cache/
 # Machine-local loop run state. The loops' shared config
 # (.claude/clickup-build.config.json) IS tracked — only per-machine
 # run state is ignored, so a fresh clone gets the config but not

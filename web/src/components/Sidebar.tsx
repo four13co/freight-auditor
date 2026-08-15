@@ -11,7 +11,22 @@
  * match its own label, or leave inert chrome that LOOKS clickable, these are
  * marked visibly non-interactive -- the same disabled/cursor-not-allowed/
  * "Coming soon" convention FindingsTable's bulk-action buttons already use.
+ *
+ * 86e2uv1ry: opacity-60 alone was confirmed (live, not just in code) to be
+ * imperceptible against the dark sidebar background next to the surrounding
+ * muted-gray nav items -- the ONLY prior signal was the title tooltip, which
+ * requires a deliberate hover most viewers won't make. Each disabled entry
+ * now also carries a visible "Soon" badge (the SoonBadge below), reusing the
+ * app's existing pill/tag visual language (FindingsTable/FindingDetail's
+ * status tags) so it reads as an established UI pattern, not a one-off.
  */
+const SOON_BADGE_CLASS =
+  'px-1 py-px text-[9px] font-extrabold uppercase tracking-[0.04em] bg-[rgba(243,242,242,0.16)] text-[rgba(243,242,242,0.75)]';
+
+function SoonBadge() {
+  return <span className={SOON_BADGE_CLASS}>Soon</span>;
+}
+
 export function Sidebar() {
   return (
     <div className="flex w-[228px] flex-none flex-col bg-[#201e1d] text-[#f3f2f2]">
@@ -32,6 +47,7 @@ export function Sidebar() {
           className="flex cursor-not-allowed items-center justify-between px-[18px] py-[9px] text-left text-sm text-[rgba(243,242,242,0.85)] opacity-60"
         >
           <span>Discrepancies</span>
+          <SoonBadge />
         </button>
         <button
           type="button"
@@ -40,6 +56,7 @@ export function Sidebar() {
           className="flex cursor-not-allowed items-center justify-between px-[18px] py-[9px] text-left text-sm text-[rgba(243,242,242,0.85)] opacity-60"
         >
           <span>Invoices</span>
+          <SoonBadge />
         </button>
 
         <div className="px-[18px] pb-2 pt-[22px] text-[11px] font-extrabold uppercase tracking-[0.1em] text-[rgba(243,242,242,0.5)]">
@@ -49,17 +66,19 @@ export function Sidebar() {
           type="button"
           disabled
           title="Coming soon"
-          className="cursor-not-allowed px-[18px] py-[9px] text-left text-sm text-[rgba(243,242,242,0.85)] opacity-60"
+          className="flex cursor-not-allowed items-center justify-between px-[18px] py-[9px] text-left text-sm text-[rgba(243,242,242,0.85)] opacity-60"
         >
-          Audit log
+          <span>Audit log</span>
+          <SoonBadge />
         </button>
         <button
           type="button"
           disabled
           title="Coming soon"
-          className="cursor-not-allowed px-[18px] py-[9px] text-left text-sm text-[rgba(243,242,242,0.85)] opacity-60"
+          className="flex cursor-not-allowed items-center justify-between px-[18px] py-[9px] text-left text-sm text-[rgba(243,242,242,0.85)] opacity-60"
         >
-          Settings
+          <span>Settings</span>
+          <SoonBadge />
         </button>
 
         <div className="mt-[22px] border-t-2 border-[rgba(243,242,242,0.25)] pt-3.5">
@@ -70,25 +89,28 @@ export function Sidebar() {
             type="button"
             disabled
             title="Coming soon"
-            className="cursor-not-allowed px-[18px] py-[7px] text-left text-[13px] text-[rgba(243,242,242,0.75)] opacity-60"
+            className="flex w-full cursor-not-allowed items-center justify-between px-[18px] py-[7px] text-left text-[13px] text-[rgba(243,242,242,0.75)] opacity-60"
           >
-            Mine, over $500
+            <span>Mine, over $500</span>
+            <SoonBadge />
           </button>
           <button
             type="button"
             disabled
             title="Coming soon"
-            className="cursor-not-allowed px-[18px] py-[7px] text-left text-[13px] text-[rgba(243,242,242,0.75)] opacity-60"
+            className="flex w-full cursor-not-allowed items-center justify-between px-[18px] py-[7px] text-left text-[13px] text-[rgba(243,242,242,0.75)] opacity-60"
           >
-            Estes accessorials
+            <span>Estes accessorials</span>
+            <SoonBadge />
           </button>
           <button
             type="button"
             disabled
             title="Coming soon"
-            className="cursor-not-allowed px-[18px] py-[7px] text-left text-[13px] text-[rgba(243,242,242,0.75)] opacity-60"
+            className="flex w-full cursor-not-allowed items-center justify-between px-[18px] py-[7px] text-left text-[13px] text-[rgba(243,242,242,0.75)] opacity-60"
           >
-            Aging &gt; 5 days
+            <span>Aging &gt; 5 days</span>
+            <SoonBadge />
           </button>
         </div>
       </div>

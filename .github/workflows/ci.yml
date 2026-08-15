@@ -134,3 +134,79 @@ jobs:
           name: dashboard-render
           path: web/test-results/
           retention-days: 14
+
+  # 86e2uv4p0: browser -> real Fastify server -> real Postgres, no page.route
+  # mocking anywhere in this suite (unlike the `web` job's dashboard.spec.ts,
+  # which mocks every API call). This is the job that would have caught PRs
+  # #51+#52 shipping a dashboard where every data call 401'd -- both PRs were
+  # green because a mocked API returns 200 regardless of what headers the
+  # client sends. Separate job (not folded into `web`) because it needs the
+  # db-tests job's Postgres service and a migrate+seed step the `web` job has
+  # no reason to carry.
+  web-fullstack:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: ci
+          POSTGRES_PASSWORD: ci
+          POSTGRES_DB: ci
+        options: >-
+          --health-cmd pg_isready --health-interval 5s
+          --health-timeout 5s --health-retries 10
+        ports:
+          - 5432:5432
+    env:
+      DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+          cache-dependency-path: |
+            package-lock.json
+            web/package-lock.json
+
+      - name: Install root dependencies
+        run: npm ci
+
+      - name: Install web dependencies
+        run: npm ci
+        working-directory: web
+
+      - name: Apply migrations
+        run: npm run migrate -- up
+
+      - name: Seed dev tenant
+        run: npm run seed:dev
+
+      - name: Seed full-stack e2e fixture
+        run: npm run seed:e2e-fullstack-fixture
+
+      # The suite's webServer starts the real server, which only serves the
+      # frontend if web/dist exists (src/server/app.ts tolerates it being
+      # absent -- a running server with no UI, not a loud error). Must build
+      # BEFORE Playwright starts; the webServer.command itself runs under a
+      # startup timeout, so build prep does not belong there.
+      - name: Build web
+        run: npm --prefix web run build
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+        working-directory: web
+
+      - name: Run web full-stack e2e (Playwright, real server + real Postgres)
+        run: npm run web:e2e:fullstack
+
+      - name: Upload full-stack e2e artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dashboard-fullstack-e2e
+          path: web/test-results/
+          retention-days: 14

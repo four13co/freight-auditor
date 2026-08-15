@@ -257,6 +257,23 @@ describe('Dashboard', () => {
     await waitFor(() => expect(screen.getByText('No findings match these filters.')).toBeInTheDocument());
   });
 
+  it('86e2uv490: renders "No findings match these filters." when only the min-amount filter is active and zero rows come back', async () => {
+    fetchMock.mockImplementation((input: string | URL | Request) => {
+      const url = input.toString();
+      if (url.includes('/api/findings/summary')) {
+        return Promise.resolve(new Response(JSON.stringify(SUMMARY), { status: 200 }));
+      }
+      return Promise.resolve(new Response(JSON.stringify({ findings: [] }), { status: 200 }));
+    });
+    render(<Dashboard />);
+    await waitFor(() => expect(screen.getByText('No findings yet.')).toBeInTheDocument());
+
+    fireEvent.change(screen.getByLabelText('Minimum amount filter'), { target: { value: '500' } });
+
+    await waitFor(() => expect(screen.getByText('No findings match these filters.')).toBeInTheDocument());
+    expect(screen.queryByText('No findings yet.')).not.toBeInTheDocument();
+  });
+
   it('86e2uuw7t AC1: renders a distinct "No findings yet." message for a brand-new tenant with zero rows and no filters active', async () => {
     fetchMock.mockImplementation((input: string | URL | Request) => {
       const url = input.toString();
@@ -447,5 +464,25 @@ describe('Dashboard', () => {
     const search = screen.getByPlaceholderText('Search invoice, PRO, or claim ID') as HTMLInputElement;
     await userEvent.type(search, 'INV-90385');
     expect(search.value).toBe('');
+  });
+
+  it('86e2uv1ry AC1: every disabled sidebar entry has a visible "Soon" marker, not just opacity/hover', async () => {
+    render(<Dashboard />);
+    await waitFor(() => expect(screen.getAllByTestId('finding-row')).toHaveLength(3));
+
+    const disabledLabels = [
+      'Discrepancies',
+      'Invoices',
+      'Audit log',
+      'Settings',
+      'Mine, over $500',
+      'Estes accessorials',
+      'Aging > 5 days',
+    ];
+    for (const label of disabledLabels) {
+      const button = screen.getByText(label).closest('button');
+      expect(button).not.toBeNull();
+      expect(within(button!).getByText('Soon')).toBeInTheDocument();
+    }
   });
 });

@@ -18,10 +18,13 @@
     "web:test": "npm --prefix web run test",
     "web:typecheck": "npm --prefix web run typecheck",
     "web:e2e": "npm --prefix web run test:e2e",
+    "web:e2e:fullstack": "npm --prefix web run test:e2e:fullstack",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "migrate": "node scripts/migrate-with-retry.mjs",
-    "seed:dev": "node scripts/seed-dev-tenant.mjs"
+    "seed:dev": "node scripts/seed-dev-tenant.mjs",
+    "seed:e2e-fullstack-fixture": "tsx scripts/seed-fullstack-e2e-fixture.mjs",
+    "dev:fullstack-server": "PORT=4180 tsx src/server/index.ts"
   },
   "dependencies": {
     "@fastify/static": "^10.1.3",

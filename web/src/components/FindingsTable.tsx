@@ -34,6 +34,10 @@ export function FindingsTable({
 }: FindingsTableProps) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [detailRow, setDetailRow] = useState<FindingRow | null>(null);
+  // 86e2uuw7t: named so a future filter dimension (e.g. min-amount, 86e2uuw7k)
+  // has one obvious place to extend rather than an inline condition that's
+  // easy to leave stale after a disjoint-file merge.
+  const hasActiveFilter = carrierFilter !== '' || statusFilter !== '';
 
   const selectedRows = useMemo(() => rows.filter((r) => selected.has(r.id)), [rows, selected]);
   const selectedTotal = useMemo(
@@ -137,7 +141,13 @@ export function FindingsTable({
 
       <div className="flex-1 overflow-auto" data-testid="findings-rows" aria-label="Findings">
         {rows.length === 0 ? (
-          <div className="px-5 py-8 text-center text-sm text-[rgba(32,30,29,0.55)]">No findings match these filters.</div>
+          hasActiveFilter ? (
+            <div className="px-5 py-8 text-center text-sm text-[rgba(32,30,29,0.55)]">No findings match these filters.</div>
+          ) : (
+            <div data-testid="empty-no-findings-yet" className="px-5 py-8 text-center text-sm text-[rgba(32,30,29,0.55)]">
+              No findings yet.
+            </div>
+          )
         ) : (
           rows.map((row) => {
             const display = getStatusDisplay(row);

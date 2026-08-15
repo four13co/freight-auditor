@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor, fireEvent, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { Dashboard } from '../src/components/Dashboard.js';
 import type { FindingRow, FindingsSummary } from '../src/lib/api.js';
 
@@ -434,6 +435,35 @@ describe('Dashboard', () => {
     expect(screen.getByText('Mine, over $500').closest('button')).toBeDisabled();
     expect(screen.getByText('Estes accessorials').closest('button')).toBeDisabled();
     expect(screen.getByText('Aging > 5 days').closest('button')).toBeDisabled();
+  });
+
+  it('86e2uv1r6 AC1: the header search field is a real disabled input, not an inert div', async () => {
+    render(<Dashboard />);
+    await waitFor(() => expect(screen.getAllByTestId('finding-row')).toHaveLength(3));
+
+    const search = screen.getByPlaceholderText('Search invoice, PRO, or claim ID');
+    expect(search.tagName).toBe('INPUT');
+    expect(search).toBeDisabled();
+  });
+
+  it('86e2uv1r6 AC2: the Export and New audit run controls are disabled buttons', async () => {
+    render(<Dashboard />);
+    await waitFor(() => expect(screen.getAllByTestId('finding-row')).toHaveLength(3));
+
+    expect(screen.getByText('Export').closest('button')).toBeDisabled();
+    expect(screen.getByText('New audit run').closest('button')).toBeDisabled();
+  });
+
+  it('86e2uv1r6 AC3: typing into the search field is rejected (disabled input accepts no input)', async () => {
+    render(<Dashboard />);
+    await waitFor(() => expect(screen.getAllByTestId('finding-row')).toHaveLength(3));
+
+    // userEvent.type (unlike fireEvent.change) simulates real keystrokes and
+    // respects the disabled attribute -- fireEvent.change bypasses that and
+    // sets the DOM value directly, which would pass even on a broken input.
+    const search = screen.getByPlaceholderText('Search invoice, PRO, or claim ID') as HTMLInputElement;
+    await userEvent.type(search, 'INV-90385');
+    expect(search.value).toBe('');
   });
 
   it('86e2uv1ry AC1: every disabled sidebar entry has a visible "Soon" marker, not just opacity/hover', async () => {

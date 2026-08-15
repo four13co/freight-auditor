@@ -240,7 +240,7 @@ describe('Dashboard', () => {
     expect(screen.getByText('Dismiss').closest('button')).toBeDisabled();
   });
 
-  it('renders "No findings match these filters." when the API returns zero rows', async () => {
+  it('86e2uuw7t AC2: renders "No findings match these filters." when a filter is active and zero rows come back', async () => {
     fetchMock.mockImplementation((input: string | URL | Request) => {
       const url = input.toString();
       if (url.includes('/api/findings/summary')) {
@@ -249,7 +249,24 @@ describe('Dashboard', () => {
       return Promise.resolve(new Response(JSON.stringify({ findings: [] }), { status: 200 }));
     });
     render(<Dashboard />);
+    await waitFor(() => expect(screen.getByText('No findings yet.')).toBeInTheDocument());
+
+    fireEvent.change(screen.getByLabelText('Carrier filter'), { target: { value: 'Saia LTL' } });
+
     await waitFor(() => expect(screen.getByText('No findings match these filters.')).toBeInTheDocument());
+  });
+
+  it('86e2uuw7t AC1: renders a distinct "No findings yet." message for a brand-new tenant with zero rows and no filters active', async () => {
+    fetchMock.mockImplementation((input: string | URL | Request) => {
+      const url = input.toString();
+      if (url.includes('/api/findings/summary')) {
+        return Promise.resolve(new Response(JSON.stringify(SUMMARY), { status: 200 }));
+      }
+      return Promise.resolve(new Response(JSON.stringify({ findings: [] }), { status: 200 }));
+    });
+    render(<Dashboard />);
+    await waitFor(() => expect(screen.getByText('No findings yet.')).toBeInTheDocument());
+    expect(screen.queryByText('No findings match these filters.')).not.toBeInTheDocument();
   });
 
   it('86e2urn2t: shows a loading indicator before the initial fetches resolve', async () => {

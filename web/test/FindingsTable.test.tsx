@@ -66,6 +66,8 @@ function renderTable() {
       statusFilter=""
       onCarrierFilterChange={() => {}}
       onStatusFilterChange={() => {}}
+      minAmountFilter=""
+      onMinAmountFilterChange={() => {}}
     />,
   );
 }
@@ -109,6 +111,8 @@ describe('FindingsTable sorting (86e2uuw63)', () => {
         statusFilter=""
         onCarrierFilterChange={onCarrierFilterChange}
         onStatusFilterChange={() => {}}
+      minAmountFilter=""
+      onMinAmountFilterChange={() => {}}
       />,
     );
 

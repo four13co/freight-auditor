@@ -205,6 +205,15 @@ jobs:
           OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
           EXPECTED_BUILD_SHA: ${{ github.sha }}
 
+      # 86e2v0ked: scripts/rollback-deploy.mjs invokes the caprover CLI directly, but each
+      # job runs on a fresh runner -- the deploy job's own "Install CapRover CLI" step does
+      # not carry over. Confirmed live (run 31965676397): the health check correctly failed
+      # and triggered this step, which then failed itself with "spawn caprover ENOENT" --
+      # the rollback safety net was untested until the first real failure exercised it.
+      - name: Install CapRover CLI
+        if: failure() && steps.healthcheck.outcome == 'failure'
+        run: npm install -g caprover
+
       - name: Roll back to the last known-good revision
         if: failure() && steps.healthcheck.outcome == 'failure'
         run: op run --env-file=.env.caprover -- node scripts/rollback-deploy.mjs

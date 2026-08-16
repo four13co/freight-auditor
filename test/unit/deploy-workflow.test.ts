@@ -186,6 +186,16 @@ describe('deploy.yml (unit, job-dependency + guard wiring)', () => {
       expect(healthcheckStep).toBeDefined();
     });
 
+    it('installs the CapRover CLI before the rollback step (86e2v0ked -- each job is a fresh runner; the deploy job\'s own install does not carry over)', () => {
+      const workflow = loadDeployWorkflow();
+      const steps = getJob(workflow, 'post-deployment').steps;
+      const installIdx = steps.findIndex((s) => s.name?.toLowerCase().includes('install caprover cli'));
+      const rollbackIdx = steps.findIndex((s) => s.name?.toLowerCase().includes('roll back'));
+      expect(installIdx).toBeGreaterThanOrEqual(0);
+      expect(rollbackIdx).toBeGreaterThanOrEqual(0);
+      expect(installIdx).toBeLessThan(rollbackIdx);
+    });
+
     it('gates the rollback step on the health-check step having failed', () => {
       const workflow = loadDeployWorkflow();
       const rollbackStep = getJob(workflow, 'post-deployment').steps.find((s) =>

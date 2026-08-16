@@ -31,7 +31,7 @@ const TAGS: Record<string, { bg: string; fg: string }> = {
   'Needs data': { bg: '#d7d3d3', fg: '#2d2b2b' },
 };
 
-function titleCase(s: string): string {
+export function titleCase(s: string): string {
   return s.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 }
 

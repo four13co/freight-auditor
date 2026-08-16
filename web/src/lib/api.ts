@@ -57,7 +57,6 @@ function buildQuery(params: FindingsListParams): string {
  */
 function authHeaders(): HeadersInit {
   return {
-    'x-client-id': '11111111-1111-1111-1111-111111111111',
     'x-user-id': '22222222-2222-2222-2222-222222222222',
   };
 }

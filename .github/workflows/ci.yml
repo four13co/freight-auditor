@@ -14,7 +14,7 @@ on:
   pull_request:
     branches: [Development]
   push:
-    branches: [Development, feature/ci-on-merge-86e2uut65]
+    branches: [Development]
 
 jobs:
   db-tests:

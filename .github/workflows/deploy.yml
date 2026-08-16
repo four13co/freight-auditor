@@ -115,6 +115,39 @@ jobs:
       - name: Build web
         run: npm --prefix web run build
 
+      # 86e2v0acm: DATABASE_URL (and SESSION_SECRET/HOST) were never wired into the
+      # running container -- deploy.yml only ever resolved DATABASE_URL inside the
+      # migrate-database job, a CI subprocess that exits, and CapRover's own app
+      # config was never the source of runtime env here (confirmed: no envVars/
+      # setEnv anywhere in this file). This resolves .env from 1Password IN THIS CI
+      # JOB and ships the RESOLVED file in the tarball -- a deliberate, informed
+      # exception to "never write secrets to disk" for exactly the carve-out
+      # CLAUDE.md names ("the only place a plaintext secret may legitimately sit on
+      # disk is a production server, and the deployment system is responsible for
+      # putting it there"). Mirrors the working pattern in tranzetta-portal's
+      # deploy-development.yml (Dockerfile there: "runtime env comes from the .env
+      # the deploy workflow bakes into the image -- CapRover dashboard env is NOT
+      # the source"). The runner's own filesystem is the only place this transits;
+      # never printed, never $GITHUB_ENV, never persisted past this job.
+      #
+      # `.env.template`'s ${OP_VAULT} is NOT expanded by `op inject` itself (unlike
+      # `op run --env-file`, which does expand it) -- confirmed against
+      # tranzetta-portal's ops/env-map.json, which hardcodes a literal vault name
+      # per environment rather than relying on op inject to substitute a variable.
+      # So the substitution has to happen before op inject sees the template.
+      - name: Resolve runtime .env from 1Password
+        run: |
+          sed "s|\${OP_VAULT}|$OP_VAULT|g" .env.template > .env.tpl
+          op inject -i .env.tpl -o .env
+          rm .env.tpl
+          if grep -q 'op://' .env; then
+            echo "::error::.env still has unresolved op:// references after injection"
+            exit 1
+          fi
+          echo "Resolved $(wc -l < .env) variables into .env"
+        env:
+          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+
       # The tarball IS the entire Docker build context CapRover sees — nothing else
       # from the repo reaches the builder. Dockerfile was missing here, so
       # captain-definition's "./Dockerfile" resolved to nothing and every server-side
@@ -122,10 +155,17 @@ jobs:
       # not the build). That's what kept CI green over an app that never ran.
       # web/dist/ was the identical class of omission (86e2v07n3) -- verify with the
       # tar -tzf listing below, don't just assume the tar command is complete.
+      #
+      # .dockerignore is NOT consulted here -- CapRover builds from exactly what
+      # this tarball contains, nothing more (that's why `dist` being listed in
+      # .dockerignore has never stopped `COPY dist ./dist` from working). This
+      # explicit include-list is the only effective filter; .env must be named
+      # here or the COPY .env step below silently has nothing to copy.
       - name: Create deployment tarball
         run: |
-          tar -czf deploy.tar.gz Dockerfile captain-definition package.json package-lock.json dist/ web/dist/
+          tar -czf deploy.tar.gz Dockerfile captain-definition package.json package-lock.json dist/ web/dist/ .env
           tar -tzf deploy.tar.gz
+          rm .env
 
       - name: Install CapRover CLI
         run: npm install -g caprover

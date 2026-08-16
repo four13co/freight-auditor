@@ -12,5 +12,13 @@ COPY dist ./dist
 # verified empirically by running the compiled server against this exact
 # /app/dist + /app/web/dist layout before landing this path.
 COPY web/dist ./web/dist
+
+# 86e2v0acm: runtime config (DATABASE_URL, SESSION_SECRET, HOST) was never wired
+# into this container -- CapRover's app-level env config is NOT the source here.
+# deploy.yml resolves .env.template via 1Password and ships the RESOLVED .env in
+# the tarball; own layer so it doesn't bust the dependency-install cache above.
+# An image built without a .env (e.g. local `docker build` with no deploy.yml
+# pipeline) still boots -- --env-file-if-exists, not --env-file.
+COPY .env ./.env
 EXPOSE 80
-CMD ["node", "dist/server/index.js"]
+CMD ["node", "--env-file-if-exists=.env", "dist/server/index.js"]

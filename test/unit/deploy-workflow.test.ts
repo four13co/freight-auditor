@@ -119,6 +119,52 @@ describe('deploy.yml (unit, job-dependency + guard wiring)', () => {
         expect(tarCommand).toContain(required);
       }
     });
+
+    it('ships web/dist/ -- the dashboard has never been deployed without this (86e2v07n3)', () => {
+      // Same failure class as 86e2tn08g/PR #40 (rollback tarball omitted the
+      // Dockerfile): the tarball is the ENTIRE Docker build context, so
+      // web/dist/ absent here means the frontend never reaches the image
+      // regardless of what the Dockerfile does with it.
+      expect(getTarballCommand()).toContain('web/dist/');
+    });
+  });
+
+  describe('frontend build (86e2v07n3 -- the dashboard has never been deployed)', () => {
+    it('builds the frontend before packaging: npm ci --prefix web then npm --prefix web run build', () => {
+      const workflow = loadDeployWorkflow();
+      const steps = getJob(workflow, 'deploy').steps;
+      const webInstallStep = steps.find((s) => s.run?.includes('npm ci --prefix web'));
+      const webBuildStep = steps.find((s) => s.run?.includes('npm --prefix web run build'));
+      expect(webInstallStep).toBeDefined();
+      expect(webBuildStep).toBeDefined();
+    });
+
+    it('builds the frontend before creating the tarball, not after', () => {
+      const workflow = loadDeployWorkflow();
+      const steps = getJob(workflow, 'deploy').steps;
+      const webBuildIndex = steps.findIndex((s) => s.run?.includes('npm --prefix web run build'));
+      const tarIndex = steps.findIndex((s) => s.run?.includes('tar -czf'));
+      expect(webBuildIndex).toBeGreaterThan(-1);
+      expect(tarIndex).toBeGreaterThan(webBuildIndex);
+    });
+
+    it('does not build the frontend inside the Docker image -- it must arrive pre-built', () => {
+      const dockerfile = readFileSync(new URL('../../Dockerfile', import.meta.url), 'utf8');
+      expect(dockerfile).not.toContain('npm --prefix web run build');
+      expect(dockerfile).not.toContain('vite build');
+    });
+
+    it('copies web/dist to the exact path resolveWebDist() resolves to inside the image (/app/web/dist)', () => {
+      // src/server/app.ts's resolveWebDist() is import.meta.url-relative to the
+      // RUNNING compiled file. The Dockerfile's CMD runs dist/server/index.js,
+      // so app.js lives at /app/dist/server/app.js in this image (WORKDIR /app,
+      // COPY dist ./dist) -- ../../web/dist from there resolves to /app/web/dist,
+      // not /app/dist/web. Getting this wrong fails silently (the server
+      // tolerates a missing directory by design) -- verified empirically by
+      // running the compiled server against this exact directory layout.
+      const dockerfile = readFileSync(new URL('../../Dockerfile', import.meta.url), 'utf8');
+      expect(dockerfile).toContain('COPY web/dist ./web/dist');
+    });
   });
 
   describe('post-deployment health-check + rollback (86e27d4rh)', () => {

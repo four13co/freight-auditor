@@ -82,6 +82,9 @@ jobs:
         with:
           node-version: '24'
           cache: 'npm'
+          cache-dependency-path: |
+            package-lock.json
+            web/package-lock.json
 
       - name: Install 1Password CLI
         uses: 1password/install-cli-action@v1
@@ -101,14 +104,27 @@ jobs:
       - name: Write build identifier
         run: echo "${{ github.sha }}" > dist/server/BUILD_SHA
 
+      # 86e2v07n3: the dashboard has never been deployed -- `npm run build` is
+      # backend-only (tsc), so web/dist never existed at package time and the
+      # tarball below never shipped it, even though src/server/app.ts has been
+      # ready to serve it since 86e2u7j01. Built pre-package here, never inside
+      # the Docker image (npm ci --production there installs prod deps only).
+      - name: Install web dependencies
+        run: npm ci --prefix web
+
+      - name: Build web
+        run: npm --prefix web run build
+
       # The tarball IS the entire Docker build context CapRover sees — nothing else
       # from the repo reaches the builder. Dockerfile was missing here, so
       # captain-definition's "./Dockerfile" resolved to nothing and every server-side
       # build failed, while `caprover deploy` still exited 0 (it confirms the upload,
       # not the build). That's what kept CI green over an app that never ran.
+      # web/dist/ was the identical class of omission (86e2v07n3) -- verify with the
+      # tar -tzf listing below, don't just assume the tar command is complete.
       - name: Create deployment tarball
         run: |
-          tar -czf deploy.tar.gz Dockerfile captain-definition package.json package-lock.json dist/
+          tar -czf deploy.tar.gz Dockerfile captain-definition package.json package-lock.json dist/ web/dist/
           tar -tzf deploy.tar.gz
 
       - name: Install CapRover CLI

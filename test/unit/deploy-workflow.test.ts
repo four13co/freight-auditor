@@ -127,6 +127,82 @@ describe('deploy.yml (unit, job-dependency + guard wiring)', () => {
       // regardless of what the Dockerfile does with it.
       expect(getTarballCommand()).toContain('web/dist/');
     });
+
+    it('ships the resolved .env -- without it the container has no runtime config at all (86e2v0acm)', () => {
+      expect(getTarballCommand()).toContain('.env');
+    });
+
+    it('does NOT ship .dockerignore -- it is not consulted for a CapRover build, so it must never be relied on as a filter', () => {
+      expect(getTarballCommand()).not.toContain('.dockerignore');
+    });
+  });
+
+  describe('runtime env resolution (86e2v0acm)', () => {
+    function getEnvResolveStep() {
+      const workflow = loadDeployWorkflow();
+      const step = getJob(workflow, 'deploy').steps.find((s) => s.run?.includes('op inject'));
+      if (!step) throw new Error('expected a step that resolves .env via op inject');
+      return step;
+    }
+
+    it('resolves the runtime env file before the tarball is created', () => {
+      const workflow = loadDeployWorkflow();
+      const steps = getJob(workflow, 'deploy').steps;
+      const injectIndex = steps.findIndex((s) => s.run?.includes('op inject'));
+      const tarIndex = steps.findIndex((s) => s.run?.includes('tar -czf'));
+      expect(injectIndex).toBeGreaterThan(-1);
+      expect(tarIndex).toBeGreaterThan(injectIndex);
+    });
+
+    it('substitutes the vault placeholder before injection runs', () => {
+      const step = getEnvResolveStep();
+      const sedIndex = step.run!.indexOf('sed');
+      const injectIndex = step.run!.indexOf('op inject');
+      expect(sedIndex).toBeGreaterThan(-1);
+      expect(sedIndex).toBeLessThan(injectIndex);
+      expect(step.run).toContain('OP_VAULT');
+    });
+
+    it('deletes the resolved file from the runner after packaging -- it must not outlive this one job', () => {
+      // The delete happens in the SAME step's multi-line run block as the tar
+      // command (see the "Create deployment tarball" step) -- ordering is
+      // checked within that one string, not across separate steps.
+      const workflow = loadDeployWorkflow();
+      const tarStep = getJob(workflow, 'deploy').steps.find((s) => s.run?.includes('tar -czf'));
+      expect(tarStep).toBeDefined();
+      const tarIndex = tarStep!.run!.indexOf('tar -czf');
+      const cleanupIndex = tarStep!.run!.indexOf('rm .env');
+      expect(cleanupIndex).toBeGreaterThan(tarIndex);
+    });
+
+    it('fails the job when a reference is left unresolved after injection', () => {
+      const step = getEnvResolveStep();
+      expect(step.run).toContain('exit 1');
+    });
+  });
+
+  describe('Dockerfile loads the baked-in env file at boot (86e2v0acm)', () => {
+    it('copies the env file into the image, after the dependency install so it does not bust that layer', () => {
+      const dockerfile = readFileSync(new URL('../../Dockerfile', import.meta.url), 'utf8');
+      const npmCiIndex = dockerfile.indexOf('RUN npm ci');
+      const copyEnvIndex = dockerfile.indexOf('COPY .env');
+      expect(copyEnvIndex).toBeGreaterThan(-1);
+      expect(copyEnvIndex).toBeGreaterThan(npmCiIndex);
+    });
+
+    it('boots tolerating a missing env file -- an image built without one must still start', () => {
+      const dockerfile = readFileSync(new URL('../../Dockerfile', import.meta.url), 'utf8');
+      expect(dockerfile).toContain('--env-file-if-exists=.env');
+    });
+
+    it('does not depend on a dotenv package -- Node loads the file natively', () => {
+      const pkg = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8')) as {
+        dependencies?: Record<string, string>;
+        devDependencies?: Record<string, string>;
+      };
+      expect(pkg.dependencies?.dotenv).toBeUndefined();
+      expect(pkg.devDependencies?.dotenv).toBeUndefined();
+    });
   });
 
   describe('frontend build (86e2v07n3 -- the dashboard has never been deployed)', () => {

@@ -180,6 +180,56 @@ describe('deploy.yml (unit, job-dependency + guard wiring)', () => {
     });
   });
 
+  describe('auto-seed dev tenant after migrations (86e2uut65)', () => {
+    it('runs npm run seed:dev in the SAME op run block as the migration, not a separate step', () => {
+      const workflow = loadDeployWorkflow();
+      const migrateStep = getJob(workflow, 'migrate-database').steps.find((step) =>
+        step.run?.includes('npm run migrate'),
+      );
+      expect(migrateStep!.run).toContain('npm run seed:dev');
+      expect(migrateStep!.run).toContain('op run --env-file=.env.migrate');
+    });
+
+    it('runs the migration before the seed step, not the other way around', () => {
+      const workflow = loadDeployWorkflow();
+      const migrateStep = getJob(workflow, 'migrate-database').steps.find((step) =>
+        step.run?.includes('npm run migrate'),
+      );
+      const migrateIndex = migrateStep!.run!.indexOf('npm run migrate');
+      const seedIndex = migrateStep!.run!.indexOf('npm run seed:dev');
+      expect(migrateIndex).toBeGreaterThan(-1);
+      expect(seedIndex).toBeGreaterThan(migrateIndex);
+    });
+
+    it('still runs the protected-host guard before the migration (86e2uut65 must not reorder around it)', () => {
+      const workflow = loadDeployWorkflow();
+      const migrateStep = getJob(workflow, 'migrate-database').steps.find((step) =>
+        step.run?.includes('npm run migrate'),
+      );
+      const guardIndex = migrateStep!.run!.indexOf('guard-protected-db.mjs');
+      const migrateIndex = migrateStep!.run!.indexOf('npm run migrate');
+      expect(guardIndex).toBeGreaterThan(-1);
+      expect(guardIndex).toBeLessThan(migrateIndex);
+    });
+
+    it('gates the seed step on Development exactly like ALLOW_PROTECTED_DB_HOST (no seeding on Production)', () => {
+      const workflow = loadDeployWorkflow();
+      const migrateStep = getJob(workflow, 'migrate-database').steps.find((step) =>
+        step.run?.includes('npm run migrate'),
+      );
+      expect(migrateStep!.env?.SEED_DEV_ON_DEPLOY).toBe("${{ github.ref_name == 'Development' && '1' || '' }}");
+    });
+
+    it('does not add a DATABASE_URL secret or otherwise change how DATABASE_URL is sourced', () => {
+      const workflow = loadDeployWorkflow();
+      const migrateStep = getJob(workflow, 'migrate-database').steps.find((step) =>
+        step.run?.includes('npm run migrate'),
+      );
+      expect(migrateStep!.run).toContain('op run --env-file=.env.migrate');
+      expect(Object.keys(migrateStep!.env ?? {})).not.toContain('DATABASE_URL');
+    });
+  });
+
   describe('concurrency control (86e2urk0k)', () => {
     it('serializes runs on the same branch so overlapping deploys queue rather than race', () => {
       const workflow = loadDeployWorkflow();

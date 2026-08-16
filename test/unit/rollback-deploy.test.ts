@@ -4,20 +4,7 @@ import { rollbackToLastGood, redactToken, main } from '../../scripts/rollback-de
 
 describe('rollbackToLastGood (unit)', () => {
   it('checks out the last-good SHA, rebuilds, and re-triggers CapRover with it (AC2)', async () => {
-    const runImpl = vi
-      .fn()
-      // git rev-parse last-good-dev
-      .mockResolvedValueOnce({ stdout: 'sha-last-good\n' })
-      // git checkout --detach sha-last-good
-      .mockResolvedValueOnce({ stdout: '' })
-      // npm ci
-      .mockResolvedValueOnce({ stdout: '' })
-      // npm run build
-      .mockResolvedValueOnce({ stdout: '' })
-      // write BUILD_SHA
-      .mockResolvedValueOnce({ stdout: '' })
-      // tar
-      .mockResolvedValueOnce({ stdout: '' });
+    const runImpl = vi.fn().mockResolvedValue({ stdout: 'sha-last-good\n' });
     const triggerBuildImpl = vi.fn().mockResolvedValue({ status: '100', raw: '{"status":100}' });
 
     const result = await rollbackToLastGood({
@@ -38,6 +25,44 @@ describe('rollbackToLastGood (unit)', () => {
 
     // proves it re-invokes CapRover's trigger-build endpoint with the rebuilt last-good tarball
     expect(triggerBuildImpl).toHaveBeenCalledWith('captain.example.com', 'test-token');
+  });
+
+  it('builds the frontend too, not just the backend (86e2v1ccg)', async () => {
+    const runImpl = vi.fn().mockResolvedValue({ stdout: 'sha-last-good\n' });
+    const triggerBuildImpl = vi.fn().mockResolvedValue({ status: '100', raw: '{"status":100}' });
+
+    await rollbackToLastGood({
+      lastGoodTag: 'last-good-dev',
+      caproverUrl: 'captain.example.com',
+      caproverAppToken: 'test-token',
+      runImpl,
+      triggerBuildImpl,
+    });
+
+    const calls = runImpl.mock.calls;
+    expect(calls).toContainEqual(['npm', ['ci', '--prefix', 'web']]);
+    expect(calls).toContainEqual(['npm', ['--prefix', 'web', 'run', 'build']]);
+  });
+
+  it('resolves the runtime .env before packaging, matching deploy.yml (86e2v1ccg / 86e2v0acm)', async () => {
+    const runImpl = vi.fn().mockResolvedValue({ stdout: 'sha-last-good\n' });
+    const triggerBuildImpl = vi.fn().mockResolvedValue({ status: '100', raw: '{"status":100}' });
+
+    await rollbackToLastGood({
+      lastGoodTag: 'last-good-dev',
+      caproverUrl: 'captain.example.com',
+      caproverAppToken: 'test-token',
+      runImpl,
+      triggerBuildImpl,
+    });
+
+    const calls = runImpl.mock.calls;
+    expect(calls).toContainEqual(['op', ['inject', '-i', '.env.tpl', '-o', '.env']]);
+
+    const tarIdx = calls.findIndex(([cmd]) => cmd === 'tar');
+    const injectIdx = calls.findIndex(([cmd, args]) => cmd === 'op' && (args as string[])[0] === 'inject');
+    expect(injectIdx).toBeGreaterThan(-1);
+    expect(tarIdx).toBeGreaterThan(injectIdx);
   });
 
   it('fails loudly with no last-good tag rather than rolling back to an undefined ref', async () => {
@@ -160,6 +185,27 @@ describe('rollbackToLastGood (unit)', () => {
       for (const required of ['captain-definition', 'package.json', 'package-lock.json', 'dist/']) {
         expect(tarArgs).toContain(required);
       }
+    });
+
+    it('ships web/dist/ and the resolved .env, matching deploy.yml exactly (86e2v1ccg)', async () => {
+      // A rollback tarball missing either of these builds a container with no
+      // dashboard UI (86e2v07n3 regression) or no DATABASE_URL (86e2v0acm
+      // regression) -- and caprover deploy still exits 0, so rollbackToLastGood
+      // would report success while shipping something broken.
+      const runImpl = vi.fn().mockResolvedValue({ stdout: 'sha-last-good\n' });
+      const triggerBuildImpl = vi.fn().mockResolvedValue({ status: '100', raw: '{"status":100}' });
+
+      await rollbackToLastGood({
+        lastGoodTag: 'last-good-dev',
+        caproverUrl: 'captain.example.com',
+        caproverAppToken: 'test-token',
+        runImpl,
+        triggerBuildImpl,
+      });
+
+      const tarArgs = getTarCallArgs(runImpl);
+      expect(tarArgs).toContain('web/dist/');
+      expect(tarArgs).toContain('.env');
     });
   });
 

@@ -4,6 +4,7 @@ import { readFileSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { join, dirname } from 'node:path';
 import { withTenantTx, type TenantContext } from '../db/tenant-context.js';
+import { getPool } from '../db/pool.js';
 import { listFindings } from '../modules/findings/list-findings.js';
 import { getFindingsSummary } from '../modules/findings/findings-summary.js';
 import { resolveAuthorizedTenantContext } from '../modules/findings/tenant-auth.js';
@@ -49,8 +50,22 @@ export function buildApp(): FastifyInstance {
 
   const buildSha = resolveBuildSha();
 
+  // Deliberately never throws and never changes the response status: /health also
+  // functions as CapRover's container-liveness probe, and a 5xx or hang here would
+  // trigger restart-loop behavior unrelated to the actual DB outage. The `database`
+  // field is the signal for callers (post-deploy-healthcheck.mjs) who care about
+  // more than "the process is up" -- see 86e2v0acm, where DATABASE_URL was never
+  // wired into the running container and every data endpoint 500'd while /health
+  // stayed green because it never touched Postgres.
   app.get('/health', async () => {
-    return { status: 'ok', build: buildSha };
+    let database: 'ok' | 'unreachable';
+    try {
+      await getPool().query('SELECT 1');
+      database = 'ok';
+    } catch {
+      database = 'unreachable';
+    }
+    return { status: 'ok', build: buildSha, database };
   });
 
   // Encapsulated so the tenant-auth preHandler binds ONLY to these two

@@ -72,7 +72,7 @@ async function defaultRun(cmd, args) {
  * @param {(url: string) => Promise<Response>} [opts.fetchImpl] - injectable for tests
  * @param {(ms: number) => Promise<void>} [opts.sleepImpl] - injectable for tests
  * @param {(cmd: string, args: string[]) => Promise<unknown>} [opts.runImpl] - injectable for tests; used only for the superseded-build ancestry check
- * @returns {Promise<{ healthy: boolean, lastBuild: string | null, attempts: number, superseded?: boolean }>}
+ * @returns {Promise<{ healthy: boolean, lastBuild: string | null, attempts: number, superseded?: boolean, lastDatabase?: string | null }>}
  */
 export async function pollHealth({
   healthUrl,
@@ -84,14 +84,22 @@ export async function pollHealth({
   runImpl = defaultRun,
 }) {
   let lastBuild = null;
+  let lastDatabase = null;
 
   for (let attempt = 1; attempt <= retries; attempt += 1) {
     try {
       const res = await fetchImpl(healthUrl);
       const body = await res.json();
       lastBuild = typeof body.build === 'string' ? body.build : null;
-      if (lastBuild === expectedBuild) {
-        return { healthy: true, lastBuild, attempts: attempt };
+      lastDatabase = typeof body.database === 'string' ? body.database : null;
+      // 86e2v0acm: the right build landing is not "healthy" if it can't reach its
+      // database -- that's exactly the state that shipped silently (DATABASE_URL
+      // never wired into the running container, /health stayed green because it
+      // never touched Postgres, every data endpoint 500'd). Treat database:
+      // "unreachable" as not-yet-healthy so it either self-resolves within the
+      // retry budget or fails the deploy instead of reporting false success.
+      if (lastBuild === expectedBuild && lastDatabase !== 'unreachable') {
+        return { healthy: true, lastBuild, attempts: attempt, lastDatabase };
       }
     } catch (err) {
       // A malformed URL can never succeed, so retrying it just burns the full budget
@@ -116,12 +124,19 @@ export async function pollHealth({
   // observe the *newer* commit's SHA as "last build" and misreport failure — which
   // would trigger a rollback of what is actually a healthy deploy (86e2tmq3n AC2). If
   // the last-observed build is a later commit than the one we expected, the app is
-  // healthy on newer code, not unhealthy — treat it as superseded (pass/no-op).
-  if (lastBuild && lastBuild !== expectedBuild && (await isAncestor(expectedBuild, lastBuild, runImpl))) {
-    return { healthy: true, lastBuild, attempts: retries, superseded: true };
+  // healthy on newer code, not unhealthy — treat it as superseded (pass/no-op). Still
+  // require the newer build's database be reachable -- a superseded revision that
+  // itself can't reach Postgres is not a pass (86e2v0acm).
+  if (
+    lastBuild &&
+    lastBuild !== expectedBuild &&
+    lastDatabase !== 'unreachable' &&
+    (await isAncestor(expectedBuild, lastBuild, runImpl))
+  ) {
+    return { healthy: true, lastBuild, attempts: retries, superseded: true, lastDatabase };
   }
 
-  return { healthy: false, lastBuild, attempts: retries };
+  return { healthy: false, lastBuild, attempts: retries, lastDatabase };
 }
 
 async function main() {
@@ -151,7 +166,8 @@ async function main() {
   if (!result.healthy) {
     console.error(
       `::error::Revision ${expectedBuild} never became healthy on ${healthUrl} within ` +
-        `${result.attempts} attempts (last observed build: ${result.lastBuild ?? 'none'})`,
+        `${result.attempts} attempts (last observed build: ${result.lastBuild ?? 'none'}, ` +
+        `database: ${result.lastDatabase ?? 'unknown'})`,
     );
     process.exit(1);
   }

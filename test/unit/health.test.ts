@@ -49,4 +49,20 @@ describe('GET /health (unit, via inject)', () => {
       if (original !== undefined) process.env.BUILD_SHA = original;
     }
   });
+
+  it('reports database:"unreachable" (still HTTP 200) when DATABASE_URL is unset', async () => {
+    // 86e2v0acm: DATABASE_URL was never wired into the running container, so
+    // every data endpoint 500'd while /health stayed green -- it never touched
+    // Postgres. This is the regression test proving /health now surfaces that.
+    const original = process.env.DATABASE_URL;
+    delete process.env.DATABASE_URL;
+    try {
+      app = buildApp();
+      const res = await app.inject({ method: 'GET', url: '/health' });
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toMatchObject({ status: 'ok', database: 'unreachable' });
+    } finally {
+      if (original !== undefined) process.env.DATABASE_URL = original;
+    }
+  });
 });

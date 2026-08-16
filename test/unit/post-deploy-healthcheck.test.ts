@@ -1,8 +1,10 @@
 import { describe, it, expect, vi } from 'vitest';
 import { pollHealth, buildHealthUrl } from '../../scripts/post-deploy-healthcheck.mjs';
 
-function fakeResponse(build: string | null) {
-  return { json: async () => (build === null ? {} : { status: 'ok', build }) } as Response;
+function fakeResponse(build: string | null, database: string | null = 'ok') {
+  return {
+    json: async () => (build === null ? {} : { status: 'ok', build, database }),
+  } as Response;
 }
 
 describe('pollHealth (unit)', () => {
@@ -17,7 +19,7 @@ describe('pollHealth (unit)', () => {
       sleepImpl,
     });
 
-    expect(result).toEqual({ healthy: true, lastBuild: 'sha-new', attempts: 1 });
+    expect(result).toEqual({ healthy: true, lastBuild: 'sha-new', attempts: 1, lastDatabase: 'ok' });
     expect(sleepImpl).not.toHaveBeenCalled();
   });
 
@@ -37,7 +39,7 @@ describe('pollHealth (unit)', () => {
       sleepImpl,
     });
 
-    expect(result).toEqual({ healthy: true, lastBuild: 'sha-new', attempts: 3 });
+    expect(result).toEqual({ healthy: true, lastBuild: 'sha-new', attempts: 3, lastDatabase: 'ok' });
     expect(sleepImpl).toHaveBeenCalledTimes(2);
   });
 
@@ -57,7 +59,7 @@ describe('pollHealth (unit)', () => {
       runImpl,
     });
 
-    expect(result).toEqual({ healthy: false, lastBuild: 'sha-old', attempts: 4 });
+    expect(result).toEqual({ healthy: false, lastBuild: 'sha-old', attempts: 4, lastDatabase: 'ok' });
     expect(sleepImpl).toHaveBeenCalledTimes(3);
   });
 
@@ -85,6 +87,7 @@ describe('pollHealth (unit)', () => {
         lastBuild: 'sha-newer-healthy',
         attempts: 3,
         superseded: true,
+        lastDatabase: 'ok',
       });
       expect(runImpl).toHaveBeenCalledWith('git', [
         'merge-base',
@@ -110,7 +113,12 @@ describe('pollHealth (unit)', () => {
         runImpl,
       });
 
-      expect(result).toEqual({ healthy: false, lastBuild: 'sha-unrelated-or-older', attempts: 3 });
+      expect(result).toEqual({
+        healthy: false,
+        lastBuild: 'sha-unrelated-or-older',
+        attempts: 3,
+        lastDatabase: 'ok',
+      });
     });
 
     it('never runs the ancestry check when the expected build is already observed healthy', async () => {
@@ -146,7 +154,7 @@ describe('pollHealth (unit)', () => {
       sleepImpl,
     });
 
-    expect(result).toEqual({ healthy: true, lastBuild: 'sha-new', attempts: 2 });
+    expect(result).toEqual({ healthy: true, lastBuild: 'sha-new', attempts: 2, lastDatabase: 'ok' });
   });
 
   it('reports unhealthy with lastBuild null when the endpoint never returns a build field', async () => {
@@ -161,7 +169,7 @@ describe('pollHealth (unit)', () => {
       sleepImpl,
     });
 
-    expect(result).toEqual({ healthy: false, lastBuild: null, attempts: 2 });
+    expect(result).toEqual({ healthy: false, lastBuild: null, attempts: 2, lastDatabase: null });
   });
 
   it('fails fast on a malformed URL instead of burning the whole retry budget (86e25uqxa)', async () => {
@@ -206,7 +214,74 @@ describe('pollHealth (unit)', () => {
       sleepImpl,
     });
 
-    expect(result).toEqual({ healthy: true, lastBuild: 'sha-new', attempts: 2 });
+    expect(result).toEqual({ healthy: true, lastBuild: 'sha-new', attempts: 2, lastDatabase: 'ok' });
+  });
+});
+
+describe('pollHealth database-reachability gate (86e2v0acm)', () => {
+  it('does not report healthy when the expected build is observed but its database is unreachable', async () => {
+    // Reproduces the shipped bug: DATABASE_URL was never wired into the running
+    // container, so /health returned {status:'ok', build:<expected>} while every
+    // data endpoint 500'd. The old poller matched on build alone and reported
+    // healthy -- this is the regression test proving it now does not.
+    const fetchImpl = vi.fn().mockResolvedValue(fakeResponse('sha-new', 'unreachable'));
+    const sleepImpl = vi.fn().mockResolvedValue(undefined);
+
+    const result = await pollHealth({
+      healthUrl: 'http://app.test/health',
+      expectedBuild: 'sha-new',
+      retries: 3,
+      fetchImpl,
+      sleepImpl,
+    });
+
+    expect(result).toEqual({
+      healthy: false,
+      lastBuild: 'sha-new',
+      attempts: 3,
+      lastDatabase: 'unreachable',
+    });
+  });
+
+  it('recovers to healthy if the database becomes reachable within the retry budget', async () => {
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce(fakeResponse('sha-new', 'unreachable'))
+      .mockResolvedValueOnce(fakeResponse('sha-new', 'ok'));
+    const sleepImpl = vi.fn().mockResolvedValue(undefined);
+
+    const result = await pollHealth({
+      healthUrl: 'http://app.test/health',
+      expectedBuild: 'sha-new',
+      retries: 5,
+      fetchImpl,
+      sleepImpl,
+    });
+
+    expect(result).toEqual({ healthy: true, lastBuild: 'sha-new', attempts: 2, lastDatabase: 'ok' });
+  });
+
+  it('does not treat a superseded deploy as a pass if its own database is unreachable', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(fakeResponse('sha-newer', 'unreachable'));
+    const sleepImpl = vi.fn().mockResolvedValue(undefined);
+    const runImpl = vi.fn().mockResolvedValue({ stdout: '' }); // would be a provable ancestor
+
+    const result = await pollHealth({
+      healthUrl: 'http://app.test/health',
+      expectedBuild: 'sha-expected',
+      retries: 3,
+      fetchImpl,
+      sleepImpl,
+      runImpl,
+    });
+
+    expect(result).toEqual({
+      healthy: false,
+      lastBuild: 'sha-newer',
+      attempts: 3,
+      lastDatabase: 'unreachable',
+    });
+    expect(runImpl).not.toHaveBeenCalled();
   });
 });
 

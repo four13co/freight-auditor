@@ -16,6 +16,7 @@ export interface PollHealthResult {
   lastBuild: string | null;
   attempts: number;
   superseded?: boolean;
+  lastDatabase: string | null;
 }
 
 export declare function pollHealth(options: PollHealthOptions): Promise<PollHealthResult>;

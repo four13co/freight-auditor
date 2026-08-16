@@ -44,16 +44,31 @@ jobs:
       # freight-auditor-dev's DATABASE_URL is a dedicated dev Neon instance (not shared/
       # production), so CI is allowed to migrate it automatically. Production has no
       # DATABASE_URL secret yet and gets no override — the guard stays live there.
-      - name: Run database migrations
+      #
+      # 86e2uut65: npm run seed:dev runs in this SAME op run block (not a separate
+      # step) so it reuses the DATABASE_URL already resolved here rather than
+      # duplicating secret wiring. Gated on Development exactly like
+      # ALLOW_PROTECTED_DB_HOST above -- seed:dev inserts a fixture client_admin
+      # user (dev-dashboard@example.com) whose UUID pair alone is treated as
+      # access under the current dev-stub auth model (86e2urn3e); running this
+      # on Production would be a backdoor account, not a convenience. The
+      # script itself is ON CONFLICT DO NOTHING on all three inserts, so a
+      # second consecutive Development deploy re-running it is a no-op, not a
+      # duplicate-row risk.
+      - name: Run database migrations and seed dev tenant
         run: |
           op run --env-file=.env.migrate -- bash -c '
             set -euo pipefail
             node scripts/guard-protected-db.mjs
             npm run migrate up
+            if [ "$SEED_DEV_ON_DEPLOY" = "1" ]; then
+              npm run seed:dev
+            fi
           '
         env:
           OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
           ALLOW_PROTECTED_DB_HOST: ${{ github.ref_name == 'Development' && '1' || '' }}
+          SEED_DEV_ON_DEPLOY: ${{ github.ref_name == 'Development' && '1' || '' }}
 
   deploy:
     needs: migrate-database

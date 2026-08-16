@@ -1,7 +1,19 @@
 name: CI
 
+# 86e2uut65: `push` on Development re-runs every job against the actual merge
+# commit, not just each PR branch in isolation. This is the gate that would
+# have caught PRs #51+#52 shipping a dashboard where every data call 401'd --
+# #51's frontend omitted an auth header, #52's preHandler required it, and
+# each PR's own suite was green because CI never ran them together. The same
+# shape recurred with #61+#62+#63 (all GitHub-reported MERGEABLE in isolation,
+# but conflicting/typecheck-broken once actually combined). No concurrency
+# group added here -- deploy.yml already owns `deploy-${{ github.ref }}` for
+# the deploy pipeline, and this workflow's own runs don't need to serialize
+# against each other or against deploy.yml's.
 on:
   pull_request:
+    branches: [Development]
+  push:
     branches: [Development]
 
 jobs:

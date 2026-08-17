@@ -7,6 +7,7 @@ import { withTenantTx, type TenantContext } from '../db/tenant-context.js';
 import { getPool } from '../db/pool.js';
 import { listFindings } from '../modules/findings/list-findings.js';
 import { getFindingsSummary } from '../modules/findings/findings-summary.js';
+import { updateFindingStatus } from '../modules/findings/update-finding-status.js';
 import { resolveAuthorizedTenantContext } from '../modules/findings/tenant-auth.js';
 
 // 86e2v24ye: mirrors migrations/0002_enums.sql's variance_status enum exactly
@@ -17,6 +18,15 @@ const VARIANCE_STATUS_VALUES = new Set([
   'open', 'in_review', 'accepted', 'waived',
   'queued_for_dispute', 'disputed', 'recovered', 'written_off', 'closed',
 ]);
+
+// 86e2v1xyr: the drawer's write path is scoped to the same 5 values the
+// status FILTER dropdown exposes (FindingsTable.tsx) -- the item's explicit
+// coherence rule: a finding set to a value the filter can't select would
+// become unreachable through the UI. GET /api/findings' own query-param
+// validation intentionally stays on the full 9-value VARIANCE_STATUS_VALUES
+// (a filter param and a write target are different concerns), so this is a
+// separate, narrower set rather than a shared constant.
+const WRITABLE_STATUS_VALUES = new Set(['open', 'in_review', 'queued_for_dispute', 'disputed', 'closed']);
 
 // Explicit numeric-string check rather than Number()/isNaN -- Number('') is
 // 0, Number('0x10') is 16, and Number('Infinity') is finite per isNaN, all of
@@ -140,6 +150,37 @@ export function buildApp(): FastifyInstance {
       const ctx = (request as FastifyRequest & { tenantContext: TenantContext }).tenantContext;
       const summary = await withTenantTx(ctx, (client) => getFindingsSummary(client));
       return summary;
+    });
+
+    // 86e2v1xyr: the first mutating route in the app -- a single-finding
+    // status transition from the detail drawer. Bulk actions stay disabled
+    // (FindingsTable.tsx, per 86e2u7j1y's No-gos); this endpoint is
+    // deliberately narrower than that.
+    findingsRoutes.patch('/api/findings/:id/status', async (request, reply) => {
+      const { id } = request.params as { id: string };
+      const body = request.body as { status?: unknown; note?: unknown };
+
+      if (typeof body.status !== 'string' || !WRITABLE_STATUS_VALUES.has(body.status)) {
+        await reply
+          .code(400)
+          .send({ error: `invalid status: must be one of ${[...WRITABLE_STATUS_VALUES].join(', ')}` });
+        return;
+      }
+      if (body.note !== undefined && typeof body.note !== 'string') {
+        await reply.code(400).send({ error: 'invalid note: must be a string' });
+        return;
+      }
+
+      const ctx = (request as FastifyRequest & { tenantContext: TenantContext }).tenantContext;
+      const result = await withTenantTx(ctx, (client) =>
+        updateFindingStatus(client, id, body.status as string, body.note as string | undefined),
+      );
+
+      if (!result.found) {
+        await reply.code(404).send({ error: 'finding not found' });
+        return;
+      }
+      return { id, status: body.status };
     });
   });
 

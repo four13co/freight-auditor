@@ -1,7 +1,17 @@
-import { useEffect, type ReactNode } from 'react';
-import type { FindingRow } from '../lib/api.js';
+import { useEffect, useState, type ReactNode } from 'react';
+import { updateFindingStatus, type FindingRow } from '../lib/api.js';
 import { formatMoney, formatVariance } from '../lib/format.js';
 import { getStatusDisplay, titleCase } from '../lib/status-display.js';
+
+/**
+ * 86e2v1xyr: the drawer's writable status set -- scoped to exactly the 5
+ * values the status FILTER dropdown exposes (FindingsTable.tsx), so a
+ * finding can never land on a status the filter can't select. Matches
+ * app.ts's WRITABLE_STATUS_VALUES; kept as a separate literal here since
+ * web/ doesn't share a module graph with src/ (same convention as api.ts's
+ * authHeaders() duplication note).
+ */
+const WRITABLE_STATUSES = ['open', 'in_review', 'queued_for_dispute', 'disputed', 'closed'] as const;
 
 /**
  * Human-readable label for FindingRow.direction (86e2uv1tb). The header pill
@@ -25,6 +35,8 @@ function formatDirection(direction: string | null): string {
 interface FindingDetailProps {
   row: FindingRow;
   onClose: () => void;
+  /** Called after a successful status transition so the caller can patch its own row list (86e2v1xyr). */
+  onStatusChange?: (id: string, status: string) => void;
 }
 
 /**
@@ -33,7 +45,11 @@ interface FindingDetailProps {
  * Reuses format.ts/status-display.ts rather than re-deriving money formatting
  * or status labels/colors.
  */
-export function FindingDetail({ row, onClose }: FindingDetailProps) {
+export function FindingDetail({ row, onClose, onStatusChange }: FindingDetailProps) {
+  const [status, setStatus] = useState(row.status);
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState(false);
+
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
       if (e.key === 'Escape') onClose();
@@ -42,7 +58,32 @@ export function FindingDetail({ row, onClose }: FindingDetailProps) {
     return () => document.removeEventListener('keydown', onKeyDown);
   }, [onClose]);
 
-  const display = getStatusDisplay(row);
+  // The drawer is keyed by row.id in the parent (new instance per finding),
+  // but reacting to row.status changing on the SAME instance (e.g. a parent
+  // re-fetch after this component's own transition) keeps the displayed
+  // value in sync rather than frozen at mount time.
+  useEffect(() => {
+    setStatus(row.status);
+  }, [row.status]);
+
+  async function handleStatusSelect(next: string) {
+    if (next === status) return;
+    const previous = status;
+    setStatus(next);
+    setPending(true);
+    setError(false);
+    try {
+      await updateFindingStatus(row.id, next);
+      onStatusChange?.(row.id, next);
+    } catch {
+      setStatus(previous);
+      setError(true);
+    } finally {
+      setPending(false);
+    }
+  }
+
+  const display = getStatusDisplay({ ...row, status });
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end bg-[rgba(32,30,29,0.4)]" onClick={onClose}>
@@ -83,6 +124,39 @@ export function FindingDetail({ row, onClose }: FindingDetailProps) {
             <Field label="Expected">{formatMoney(row.expected)}</Field>
             <Field label="Variance">{formatVariance(row.varianceAmount)}</Field>
             <Field label="Direction">{formatDirection(row.direction)}</Field>
+            <div className="flex flex-col gap-0.5">
+              <label htmlFor="finding-status-select" className="text-[11px] font-extrabold uppercase tracking-[0.08em] text-[rgba(32,30,29,0.55)]">
+                Status
+              </label>
+              <select
+                id="finding-status-select"
+                aria-label="Finding status"
+                value={status}
+                disabled={pending}
+                onChange={(e) => void handleStatusSelect(e.target.value)}
+                className="h-8 border border-[rgba(32,30,29,0.4)] bg-transparent px-2 text-sm font-semibold text-[#201e1d] outline-none disabled:opacity-60"
+              >
+                {/* A finding seeded at one of the 4 non-filterable enum values
+                    (accepted/waived/recovered/written_off -- out of this
+                    item's scope per its rabbit holes) still needs its
+                    CURRENT value representable, or the browser would
+                    silently coerce the select to WRITABLE_STATUSES[0] and a
+                    no-op onChange would misreport that as a chosen
+                    transition. Rendered read-only-in-effect: selecting it
+                    back is a no-op in handleStatusSelect (next === status). */}
+                {!WRITABLE_STATUSES.includes(status as (typeof WRITABLE_STATUSES)[number]) && (
+                  <option value={status}>{titleCase(status)}</option>
+                )}
+                {WRITABLE_STATUSES.map((value) => (
+                  <option key={value} value={value}>
+                    {titleCase(value)}
+                  </option>
+                ))}
+              </select>
+              {error && (
+                <span className="text-xs font-semibold text-[#7c1405]">Couldn&rsquo;t update status. Try again.</span>
+              )}
+            </div>
           </div>
         </div>
       </div>

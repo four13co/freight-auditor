@@ -13,7 +13,7 @@ COPY dist ./dist
 # /app/dist + /app/web/dist layout before landing this path.
 COPY web/dist ./web/dist
 
-# 86e2v0acm: runtime config (DATABASE_URL, SESSION_SECRET, HOST) was never wired
+# 86e2v0acm: runtime config (DATABASE_URL, SESSION_SECRET) was never wired
 # into this container -- CapRover's app-level env config is NOT the source here.
 # deploy.yml resolves .env.template via 1Password and ships the RESOLVED .env in
 # the tarball; own layer so it doesn't bust the dependency-install cache above.

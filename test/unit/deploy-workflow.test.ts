@@ -181,6 +181,22 @@ describe('deploy.yml (unit, job-dependency + guard wiring)', () => {
       const step = getEnvResolveStep();
       expect(step.run).toContain('exit 1');
     });
+
+    // 86e2v1xwh: HOST was resolved from 1Password and shipped into the deployed
+    // container's .env, but nothing in src/ or scripts/ ever read process.env.HOST
+    // -- it pointed at the CapRover admin API host, not the app's own public URL
+    // (APP_URL, resolved separately for post-deploy-healthcheck.mjs, is the real
+    // consumer of that value). Dead config, removed; SESSION_SECRET stays (claimed
+    // by 86e2v1bbr's real-auth work, not yet consumed).
+    it('does not declare HOST -- dead config with no consumer, superseded by APP_URL (86e2v1xwh)', () => {
+      const template = readFileSync(new URL('../../.env.template', import.meta.url), 'utf8');
+      expect(template).not.toMatch(/^HOST=/m);
+    });
+
+    it('still declares SESSION_SECRET -- claimed by 86e2v1bbr, not dead like HOST (86e2v1xwh)', () => {
+      const template = readFileSync(new URL('../../.env.template', import.meta.url), 'utf8');
+      expect(template).toMatch(/^SESSION_SECRET=/m);
+    });
   });
 
   describe('Dockerfile loads the baked-in env file at boot (86e2v0acm)', () => {

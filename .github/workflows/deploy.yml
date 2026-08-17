@@ -125,7 +125,7 @@ jobs:
       - name: Build web
         run: npm --prefix web run build
 
-      # 86e2v0acm: DATABASE_URL (and SESSION_SECRET/HOST) were never wired into the
+      # 86e2v0acm: DATABASE_URL (and SESSION_SECRET) were never wired into the
       # running container -- deploy.yml only ever resolved DATABASE_URL inside the
       # migrate-database job, a CI subprocess that exits, and CapRover's own app
       # config was never the source of runtime env here (confirmed: no envVars/

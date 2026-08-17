@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor, fireEvent, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Dashboard } from '../src/components/Dashboard.js';
+import type { FindingRow } from '../src/lib/api.js';
 import { DASHBOARD_ROWS as ROWS, DASHBOARD_SUMMARY as SUMMARY } from './fixtures.js';
 
 let fetchMock: ReturnType<typeof vi.fn>;

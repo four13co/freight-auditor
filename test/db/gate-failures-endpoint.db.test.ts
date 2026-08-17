@@ -11,15 +11,23 @@ import { MALFORMED_210_NOFOOT, testCategorize } from '../fixtures/edi-golden.js'
 
 /**
  * 86e2v17xn, exercised at the HTTP layer: GET /api/gate-failures.
+ *
+ * 86e2v1bbr gated the dev-header path behind DEV_AUTH_HEADERS (unset = a
+ * verified better-auth session is required instead) -- this suite is about
+ * the gate-failures route's own behavior, not auth, so it sets the flag for
+ * its own process rather than standing up a real session.
  */
 describe('GET /api/gate-failures (DB, e2e)', () => {
   let pool: pg.Pool;
   let app: FastifyInstance;
   let clientId: string;
   let userId: string;
+  let originalFlag: string | undefined;
   const tag = `gfe-${Date.now()}`;
 
   beforeAll(async () => {
+    originalFlag = process.env.DEV_AUTH_HEADERS;
+    process.env.DEV_AUTH_HEADERS = '1';
     pool = getPool();
     const owner = await pool.connect();
     try {
@@ -43,6 +51,8 @@ describe('GET /api/gate-failures (DB, e2e)', () => {
   });
 
   afterAll(async () => {
+    if (originalFlag === undefined) delete process.env.DEV_AUTH_HEADERS;
+    else process.env.DEV_AUTH_HEADERS = originalFlag;
     await app.close();
     const owner = await pool.connect();
     try {

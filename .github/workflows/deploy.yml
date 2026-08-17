@@ -17,8 +17,17 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # 86e2v1qrn: none of this workflow's jobs bounded their runtime, and
+  # cancel-in-progress: false means a hung step blocks every subsequent
+  # deploy indefinitely -- observed live: post-deployment's rollback step ran
+  # 2h12m (run 31973373618) holding the concurrency group the entire time,
+  # extending the 86e2v0acm outage by over two hours before a human cancelled
+  # it manually. Healthy runs on this repo complete each job in ~1-2 minutes
+  # (confirmed against recent successful runs); 15-20m leaves large headroom
+  # without approaching GitHub's unhelpfully-long 6h default.
   migrate-database:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -73,6 +82,7 @@ jobs:
   deploy:
     needs: migrate-database
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -210,6 +220,7 @@ jobs:
   post-deployment:
     needs: deploy
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     permissions:
       contents: write
     steps:
@@ -254,8 +265,15 @@ jobs:
         if: failure() && steps.healthcheck.outcome == 'failure'
         run: npm install -g caprover
 
+      # 86e2v1qrn: this step ran 2h12m unbounded (run 31973373618, cancelled
+      # manually) holding the deploy-${{ github.ref }} concurrency group the
+      # whole time -- PR #73's fix for the live database:unreachable outage
+      # sat queued and couldn't deploy until a human intervened. A dedicated,
+      # tighter step-level bound (rather than relying on the job-level one
+      # above) makes it unambiguous in the logs that THIS step is what hung.
       - name: Roll back to the last known-good revision
         if: failure() && steps.healthcheck.outcome == 'failure'
+        timeout-minutes: 10
         run: op run --env-file=.env.caprover -- node scripts/rollback-deploy.mjs
         env:
           OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}

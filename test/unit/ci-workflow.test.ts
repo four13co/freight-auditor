@@ -5,6 +5,7 @@ import { load } from 'js-yaml';
 interface WorkflowJob {
   services?: Record<string, { env?: Record<string, string> }>;
   env?: Record<string, unknown>;
+  'timeout-minutes'?: number;
   steps: Array<{
     id?: string;
     name?: string;
@@ -69,5 +70,21 @@ describe('ci.yml (unit, merge-commit trigger)', () => {
     const job = getJob(workflow, 'web-fullstack');
     expect(job.env?.DATABASE_URL).toBe('postgresql://ci:ci@localhost:5432/ci');
     expect(job.services?.postgres).toBeDefined();
+  });
+
+  describe('job timeouts (86e2v1qrn)', () => {
+    // This workflow has no concurrency group, so a hang here doesn't block
+    // other runs the way deploy.yml's did -- still bounded rather than
+    // relying on GitHub's 6h default, per the item's own AC to verify
+    // (not assume) whether this workflow needed the same treatment.
+    it.each(['db-tests', 'lint', 'typecheck', 'web', 'web-fullstack'])(
+      'job "%s" declares an explicit timeout-minutes well below GitHub\'s 6h default',
+      (jobName) => {
+        const workflow = loadCiWorkflow();
+        const timeout = getJob(workflow, jobName)['timeout-minutes'];
+        expect(timeout).toBeGreaterThan(0);
+        expect(timeout).toBeLessThan(360);
+      },
+    );
   });
 });

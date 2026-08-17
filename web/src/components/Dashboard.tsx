@@ -3,7 +3,15 @@ import { Sidebar } from './Sidebar.js';
 import { Header } from './Header.js';
 import { KpiRow } from './KpiRow.js';
 import { FindingsTable } from './FindingsTable.js';
-import { fetchFindings, fetchFindingsSummary, type FindingRow, type FindingsSummary } from '../lib/api.js';
+import { GateFailuresPanel } from './GateFailuresPanel.js';
+import {
+  fetchFindings,
+  fetchFindingsSummary,
+  fetchGateFailures,
+  type FindingRow,
+  type FindingsSummary,
+  type GateFailureRow,
+} from '../lib/api.js';
 
 /**
  * A single combined status for both fetches (86e2urn2t) -- the item allows
@@ -24,6 +32,13 @@ export function Dashboard() {
   const [statusFilter, setStatusFilter] = useState('');
   const [minAmountFilter, setMinAmountFilter] = useState('');
   const [status, setStatus] = useState<LoadStatus>('loading');
+  // 86e2v17xn: gate failures are fetched SEPARATELY from the summary/findings
+  // Promise.all below, deliberately -- a gate-failures fetch failure must not
+  // blank the whole dashboard (KPIs + findings table), since it's an
+  // additive panel, not core to the existing page. It degrades alone:
+  // failing silently just means "no rejected-invoices panel this load,"
+  // which is the same visual result as "no rejected invoices exist."
+  const [gateFailures, setGateFailures] = useState<GateFailureRow[]>([]);
 
   const load = useCallback(() => {
     setStatus('loading');
@@ -54,6 +69,10 @@ export function Dashboard() {
     load();
   }, [load]);
 
+  useEffect(() => {
+    fetchGateFailures().then(setGateFailures, () => setGateFailures([]));
+  }, []);
+
   return (
     <div className="flex h-screen w-full bg-[#eae9e9] text-[#201e1d]">
       <Sidebar />
@@ -83,6 +102,7 @@ export function Dashboard() {
           {status === 'ready' && (
             <>
               {summary && <KpiRow summary={summary} />}
+              <GateFailuresPanel rows={gateFailures} />
               <FindingsTable
                 rows={rows}
                 carrierFilter={carrierFilter}

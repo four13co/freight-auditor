@@ -7,11 +7,24 @@ import { DASHBOARD_ROWS as ROWS, DASHBOARD_SUMMARY as SUMMARY } from './fixtures
 
 let fetchMock: ReturnType<typeof vi.fn>;
 
+// 86e2v17xn: explicit branch per endpoint -- a fallback "anything else gets
+// { findings }" branch would silently hand the wrong shape to a future new
+// endpoint (exactly the trap this comment exists to name: /api/gate-failures
+// would have matched the old catch-all and rendered garbage instead of
+// failing a test). GET /api/gate-failures defaults to an empty array so the
+// ~30 existing Dashboard tests, which know nothing about gate failures,
+// don't unexpectedly render the panel.
 function mockFetchOnce(url: string) {
   if (url.includes('/api/findings/summary')) {
     return Promise.resolve(new Response(JSON.stringify(SUMMARY), { status: 200 }));
   }
-  return Promise.resolve(new Response(JSON.stringify({ findings: ROWS }), { status: 200 }));
+  if (url.includes('/api/gate-failures')) {
+    return Promise.resolve(new Response(JSON.stringify({ gateFailures: [] }), { status: 200 }));
+  }
+  if (url.includes('/api/findings')) {
+    return Promise.resolve(new Response(JSON.stringify({ findings: ROWS }), { status: 200 }));
+  }
+  throw new Error(`mockFetchOnce: unexpected URL ${url}`);
 }
 
 beforeEach(() => {
@@ -199,6 +212,9 @@ describe('Dashboard', () => {
   it('86e2uuw7t AC2: renders "No findings match these filters." when a filter is active and zero rows come back', async () => {
     fetchMock.mockImplementation((input: string | URL | Request) => {
       const url = input.toString();
+      if (url.includes('/api/gate-failures')) {
+        return Promise.resolve(new Response(JSON.stringify({ gateFailures: [] }), { status: 200 }));
+      }
       if (url.includes('/api/findings/summary')) {
         return Promise.resolve(new Response(JSON.stringify(SUMMARY), { status: 200 }));
       }
@@ -215,6 +231,9 @@ describe('Dashboard', () => {
   it('86e2uv490: renders "No findings match these filters." when only the min-amount filter is active and zero rows come back', async () => {
     fetchMock.mockImplementation((input: string | URL | Request) => {
       const url = input.toString();
+      if (url.includes('/api/gate-failures')) {
+        return Promise.resolve(new Response(JSON.stringify({ gateFailures: [] }), { status: 200 }));
+      }
       if (url.includes('/api/findings/summary')) {
         return Promise.resolve(new Response(JSON.stringify(SUMMARY), { status: 200 }));
       }
@@ -232,6 +251,9 @@ describe('Dashboard', () => {
   it('86e2uuw7t AC1: renders a distinct "No findings yet." message for a brand-new tenant with zero rows and no filters active', async () => {
     fetchMock.mockImplementation((input: string | URL | Request) => {
       const url = input.toString();
+      if (url.includes('/api/gate-failures')) {
+        return Promise.resolve(new Response(JSON.stringify({ gateFailures: [] }), { status: 200 }));
+      }
       if (url.includes('/api/findings/summary')) {
         return Promise.resolve(new Response(JSON.stringify(SUMMARY), { status: 200 }));
       }
@@ -246,6 +268,9 @@ describe('Dashboard', () => {
     let resolveSummary!: (res: Response) => void;
     fetchMock.mockImplementation((input: string | URL | Request) => {
       const url = input.toString();
+      if (url.includes('/api/gate-failures')) {
+        return Promise.resolve(new Response(JSON.stringify({ gateFailures: [] }), { status: 200 }));
+      }
       if (url.includes('/api/findings/summary')) {
         return new Promise((resolve) => {
           resolveSummary = resolve;
@@ -275,15 +300,22 @@ describe('Dashboard', () => {
   });
 
   it('86e2urn2t: retrying after an error re-fetches, and success clears the error state', async () => {
-    let callCount = 0;
+    // 86e2v17xn: no longer a bare call-count heuristic -- Dashboard now fires
+    // a THIRD fetch on mount (gate-failures, in its own effect, independent
+    // of the retry button's `load()` call). Branching on URL instead of
+    // call-count keeps this test correct regardless of how many fetches
+    // Dashboard issues, and keeps the gate-failures endpoint permanently
+    // healthy (it isn't part of what this test is about) while summary/
+    // findings fail-then-recover as the test intends.
+    let summaryAndFindingsShouldFail = true;
     fetchMock.mockImplementation((input: string | URL | Request) => {
-      callCount += 1;
-      // First render's two calls (summary + findings) both fail; the retry's
-      // two calls both succeed.
-      if (callCount <= 2) {
+      const url = input.toString();
+      if (url.includes('/api/gate-failures')) {
+        return Promise.resolve(new Response(JSON.stringify({ gateFailures: [] }), { status: 200 }));
+      }
+      if (summaryAndFindingsShouldFail) {
         return Promise.resolve(new Response('', { status: 500 }));
       }
-      const url = input.toString();
       if (url.includes('/api/findings/summary')) {
         return Promise.resolve(new Response(JSON.stringify(SUMMARY), { status: 200 }));
       }
@@ -293,6 +325,7 @@ describe('Dashboard', () => {
     render(<Dashboard />);
     await waitFor(() => expect(screen.getByTestId('dashboard-error')).toBeInTheDocument());
 
+    summaryAndFindingsShouldFail = false;
     fireEvent.click(screen.getByText('Retry'));
 
     await waitFor(() => expect(screen.getByTestId('kpi-row')).toBeInTheDocument());
@@ -384,6 +417,9 @@ describe('Dashboard', () => {
     };
     fetchMock.mockImplementation((input: string | URL | Request) => {
       const url = input.toString();
+      if (url.includes('/api/gate-failures')) {
+        return Promise.resolve(new Response(JSON.stringify({ gateFailures: [] }), { status: 200 }));
+      }
       if (url.includes('/api/findings/summary')) {
         return Promise.resolve(new Response(JSON.stringify(SUMMARY), { status: 200 }));
       }
@@ -560,6 +596,73 @@ describe('Dashboard', () => {
       expect(button).not.toBeNull();
       expect(within(button!).getByText('Soon')).toBeInTheDocument();
     }
+  });
+
+  it('86e2v17xn: renders zero rejected-invoices panel when the tenant has no gate failures', async () => {
+    render(<Dashboard />);
+    await waitFor(() => expect(screen.getAllByTestId('finding-row')).toHaveLength(3));
+    expect(screen.queryByTestId('gate-failures-panel')).not.toBeInTheDocument();
+  });
+
+  it('86e2v17xn AC3: renders the rejected-invoices panel alongside the findings table, structurally separate', async () => {
+    fetchMock.mockImplementation((input: string | URL | Request) => {
+      const url = input.toString();
+      if (url.includes('/api/gate-failures')) {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              gateFailures: [
+                {
+                  id: 'gf1',
+                  auditRunId: 'run1',
+                  invoiceNumber: 'INV-REJECTED-1',
+                  carrierName: 'Some Carrier',
+                  defect: 'Declared invoice total foots to the sum of line charges within tolerance.',
+                  citation: null,
+                  recordedAt: '2026-08-14T00:00:00Z',
+                },
+              ],
+            }),
+            { status: 200 },
+          ),
+        );
+      }
+      return mockFetchOnce(url);
+    });
+
+    render(<Dashboard />);
+    await waitFor(() => expect(screen.getAllByTestId('finding-row')).toHaveLength(3));
+    const panel = await waitFor(() => screen.getByTestId('gate-failures-panel'));
+    expect(within(panel).getByText('INV-REJECTED-1')).toBeInTheDocument();
+    // The rejected invoice never appears among the FindingsTable rows --
+    // structural separation, not just visual. getByTestId throws if the
+    // container itself is missing, so this can't pass for the wrong reason.
+    expect(
+      within(screen.getByTestId('findings-rows')).queryByText('INV-REJECTED-1'),
+    ).not.toBeInTheDocument();
+    // AC4: with both a variance finding and a gate-failure kickback rendered
+    // at once, each keeps its own vocabulary -- the panel says "Rejected"
+    // and never borrows the findings table's Overcharge/Undercharge/Queued
+    // tags, while the findings table keeps using its own status vocabulary
+    // (DASHBOARD_ROWS' f1 is status: 'open' -> "Queued" per status-display.ts).
+    expect(within(panel).getByText('Rejected')).toBeInTheDocument();
+    expect(within(panel).queryByText('Overcharge')).not.toBeInTheDocument();
+    expect(within(panel).queryByText('Undercharge')).not.toBeInTheDocument();
+    expect(within(panel).queryByText('Queued')).not.toBeInTheDocument();
+    expect(within(screen.getByTestId('findings-rows')).getAllByText('Queued').length).toBeGreaterThan(0);
+  });
+
+  it('86e2v17xn: a gate-failures fetch failure does not blank the rest of the dashboard (degrades alone)', async () => {
+    fetchMock.mockImplementation((input: string | URL | Request) => {
+      const url = input.toString();
+      if (url.includes('/api/gate-failures')) return Promise.reject(new Error('network error'));
+      return mockFetchOnce(url);
+    });
+
+    render(<Dashboard />);
+    await waitFor(() => expect(screen.getAllByTestId('finding-row')).toHaveLength(3));
+    expect(screen.queryByTestId('dashboard-error')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('gate-failures-panel')).not.toBeInTheDocument();
   });
 
   it('86e2v1xyr: transitioning a finding\'s status in the drawer patches the table row without a full refetch', async () => {

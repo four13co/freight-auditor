@@ -7,6 +7,7 @@ import { withTenantTx, type TenantContext } from '../db/tenant-context.js';
 import { getPool } from '../db/pool.js';
 import { listFindings } from '../modules/findings/list-findings.js';
 import { getFindingsSummary } from '../modules/findings/findings-summary.js';
+import { listGateFailures } from '../modules/findings/list-gate-failures.js';
 import { updateFindingStatus } from '../modules/findings/update-finding-status.js';
 import { resolveAuthorizedTenantContext } from '../modules/findings/tenant-auth.js';
 
@@ -150,6 +151,19 @@ export function buildApp(): FastifyInstance {
       const ctx = (request as FastifyRequest & { tenantContext: TenantContext }).tenantContext;
       const summary = await withTenantTx(ctx, (client) => getFindingsSummary(client));
       return summary;
+    });
+
+    // 86e2v17xn: a rejected invoice's kickback -- structurally distinct from
+    // a variance finding (no billed/expected/variance amounts), so it's a
+    // separate route returning a separate row shape, not a filter/field on
+    // /api/findings.
+    findingsRoutes.get('/api/gate-failures', async (request) => {
+      const query = request.query as { carrier?: string };
+      const ctx = (request as FastifyRequest & { tenantContext: TenantContext }).tenantContext;
+      const gateFailures = await withTenantTx(ctx, (client) =>
+        listGateFailures(client, { carrier: query.carrier }),
+      );
+      return { gateFailures };
     });
 
     // 86e2v1xyr: the first mutating route in the app -- a single-finding

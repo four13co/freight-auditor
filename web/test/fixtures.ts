@@ -1,4 +1,4 @@
-import type { FindingRow, FindingsSummary } from '../src/lib/api.js';
+import type { FindingRow, FindingsSummary, GateFailureRow } from '../src/lib/api.js';
 
 // Shared test fixtures (86e2v251x): previously each of Dashboard.test.tsx,
 // FindingsTable.test.tsx, and e2e/dashboard.spec.ts hand-defined its own
@@ -106,5 +106,38 @@ export const SORTABLE_ROWS: FindingRow[] = [
     status: 'open',
     createdAt: '2026-08-11T00:00:00Z',
     ruleDescription: null,
+  },
+];
+
+// 86e2v17xn: gate-failure (rejected invoice) fixtures -- one row set with two
+// entries for the same invoice (COLLECT_ALL: a rejected invoice can fail
+// multiple gate criteria at once), one for a different invoice.
+export const GATE_FAILURE_ROWS: GateFailureRow[] = [
+  {
+    id: 'gf1',
+    auditRunId: 'run1',
+    invoiceNumber: 'INV-REJECT-1',
+    carrierName: 'Saia LTL',
+    defect: 'Declared invoice total foots to the sum of line charges within tolerance.',
+    citation: 'Invoice total (B3-07) must equal the sum of billed line items (ΣL1-04).',
+    recordedAt: '2026-08-14T00:00:00Z',
+  },
+  {
+    id: 'gf2',
+    auditRunId: 'run1',
+    invoiceNumber: 'INV-REJECT-1',
+    carrierName: 'Saia LTL',
+    defect: 'Every charge has a parseable amount (never guessed).',
+    citation: null,
+    recordedAt: '2026-08-14T00:00:00Z',
+  },
+  {
+    id: 'gf3',
+    auditRunId: 'run2',
+    invoiceNumber: 'INV-REJECT-2',
+    carrierName: null,
+    defect: 'Ocean invoices must state currency per charge.',
+    citation: 'C3/L1-20 must be present.',
+    recordedAt: '2026-08-13T00:00:00Z',
   },
 ];

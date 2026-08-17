@@ -6,12 +6,9 @@ export interface SeedCriteriaOptions {
 
 export declare function seedCriteria(options?: SeedCriteriaOptions): Promise<void>;
 
-export interface ResolvedCriterionIds {
-  criterionId: string;
-  ruleVersionId: string;
-}
-
-export declare function resolveCriterionIds(
-  client: pg.Pool | pg.PoolClient,
-  criterionKey: string,
-): Promise<ResolvedCriterionIds | null>;
+// 86e2v88u2: resolveCriterionIds itself now lives in
+// src/modules/evaluator/resolve-criterion-ids.ts; re-exported here (matching
+// this script's own runtime re-export) so existing .mjs-import callers keep
+// working without a source change.
+export type { ResolvedCriterionIds } from '../src/modules/evaluator/resolve-criterion-ids.js';
+export { resolveCriterionIds } from '../src/modules/evaluator/resolve-criterion-ids.js';

@@ -8,6 +8,7 @@ import { evaluateInvoice } from '../../src/modules/evaluator/evaluate-invoice.js
 import { persistAuditRun } from '../../src/modules/evaluator/persist.js';
 import { CONTRACT_RUBRIC } from '../../src/modules/rubric-resolver/contract-rubric.js';
 import { STANDARD_RUBRIC } from '../../src/modules/rubric-resolver/standard-rubric.js';
+import { seedCriteria } from '../../scripts/seed-criteria.mjs';
 import { GOLDEN_210, MIXED_CURRENCY_LINEHAUL_310, testCategorize } from '../fixtures/edi-golden.js';
 
 /**
@@ -30,6 +31,10 @@ describe('persistAuditRun variance_finding derivation (DB)', () => {
 
   beforeAll(async () => {
     pool = getPool();
+    // 86e2v88u2: resolveCriterionIds resolves against whatever seedCriteria has
+    // written -- idempotent (ON CONFLICT DO NOTHING / NOT EXISTS guards), so
+    // safe to call here regardless of whether another suite already seeded it.
+    await seedCriteria({ client: pool });
     const owner = await pool.connect();
     try {
       const c = await owner.query(`INSERT INTO client (name, slug) VALUES ('VF', $1) RETURNING id`, [tag]);
@@ -209,6 +214,81 @@ describe('persistAuditRun variance_finding derivation (DB)', () => {
     // suppresses the write (No-go), even though STANDARD criteria never
     // produce a dollar variance_amount.
     expect(count).toBe(nonConformed.length);
+  });
+
+  it('populates criterion_id/rule_version_id on charge_finding and variance_finding for a known criterion (86e2v88u2)', async () => {
+    await withTenantTx({ clientIds: [clientId], internal: true }, async (c) => {
+      await c.query(
+        `DELETE FROM contract_rate WHERE contract_version_id = $1 AND category = 'LINEHAUL'`,
+        [contractVersionId],
+      );
+      await c.query(
+        `INSERT INTO contract_rate (client_id, contract_version_id, category, rate, currency) VALUES ($1, $2, 'LINEHAUL', 900.00, 'USD')`,
+        [clientId, contractVersionId],
+      );
+    });
+
+    const inv = parse210(GOLDEN_210, testCategorize);
+    const result = evaluateInvoice(inv, CONTRACT_RUBRIC, { linehaulRate: { amount: '900.0000', currency: 'USD', clauseId: null } });
+    const finding = result.findings.find((f) => f.criterionKey === 'CONTRACT.RATE_VARIANCE');
+    expect(finding?.result).toBe('VARIANCE'); // sanity: exercising a real, resolvable criterion
+
+    const rows = await withTenantTx({ clientIds: [clientId], internal: true }, async (c) => {
+      const p = await persistAuditRun(c, { clientId, invoice: inv, result, rubricSnapshotId: null });
+      const cf = await c.query(
+        `SELECT criterion_id, rule_version_id FROM charge_finding
+         WHERE audit_run_id = $1 AND result = 'VARIANCE'`,
+        [p.auditRunId],
+      );
+      const vf = await c.query(
+        `SELECT criterion_id, rule_version_id FROM variance_finding
+         WHERE audit_run_id = $1 AND direction = 'OVERCHARGE'`,
+        [p.auditRunId],
+      );
+      return { chargeFinding: cf.rows, varianceFinding: vf.rows };
+    });
+
+    expect(rows.chargeFinding).toHaveLength(1);
+    expect(rows.chargeFinding[0].criterion_id).not.toBeNull();
+    expect(rows.chargeFinding[0].rule_version_id).not.toBeNull();
+
+    expect(rows.varianceFinding).toHaveLength(1);
+    expect(rows.varianceFinding[0].criterion_id).not.toBeNull();
+    expect(rows.varianceFinding[0].rule_version_id).not.toBeNull();
+    // both tables must resolve to the SAME criterion/rule_version for the same
+    // criterionKey -- not independently-resolved, possibly-divergent ids.
+    expect(rows.varianceFinding[0].criterion_id).toBe(rows.chargeFinding[0].criterion_id);
+    expect(rows.varianceFinding[0].rule_version_id).toBe(rows.chargeFinding[0].rule_version_id);
+  });
+
+  it('leaves criterion_id/rule_version_id NULL (not a persist failure) for a criterionKey with no seeded row', async () => {
+    // resolveCriterionIds' own contract (scripts/seed-criteria.mjs): returns
+    // null rather than throwing when a criterionKey has no seeded row, since a
+    // caller must be able to write a finding for a criterion that predates the
+    // seed step or was added after the last seed run. Proven here at the
+    // persist.ts call site, not just inside seed-criteria.db.test.ts's own
+    // resolver-only coverage.
+    const inv = parse210(GOLDEN_210, testCategorize);
+    const result = evaluateInvoice(inv, CONTRACT_RUBRIC, { linehaulRate: { amount: '900.0000', currency: 'USD', clauseId: null } });
+    const patched = {
+      ...result,
+      findings: result.findings.map((f) => ({ ...f, criterionKey: 'UNSEEDED.NONEXISTENT_KEY' })),
+    };
+
+    const rows = await withTenantTx({ clientIds: [clientId], internal: true }, async (c) => {
+      const p = await persistAuditRun(c, { clientId, invoice: inv, result: patched, rubricSnapshotId: null });
+      const cf = await c.query(
+        `SELECT criterion_id, rule_version_id FROM charge_finding WHERE audit_run_id = $1`,
+        [p.auditRunId],
+      );
+      return cf.rows;
+    });
+
+    expect(rows.length).toBeGreaterThan(0);
+    for (const row of rows) {
+      expect(row.criterion_id).toBeNull();
+      expect(row.rule_version_id).toBeNull();
+    }
   });
 
   it('the derivation runs inside the same transaction as the rest of persistAuditRun (no partial write on error)', async () => {

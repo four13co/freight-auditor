@@ -11,6 +11,7 @@ describe('rollbackToLastGood (unit)', () => {
       lastGoodTag: 'last-good-dev',
       caproverUrl: 'captain.example.com',
       caproverAppToken: 'test-token',
+      caproverAppName: 'freight-auditor-dev',
       runImpl,
       triggerBuildImpl,
     });
@@ -24,7 +25,7 @@ describe('rollbackToLastGood (unit)', () => {
     expect(runImpl).toHaveBeenNthCalledWith(4, 'npm', ['run', 'build']);
 
     // proves it re-invokes CapRover's trigger-build endpoint with the rebuilt last-good tarball
-    expect(triggerBuildImpl).toHaveBeenCalledWith('captain.example.com', 'test-token');
+    expect(triggerBuildImpl).toHaveBeenCalledWith('captain.example.com', 'test-token', 'freight-auditor-dev');
   });
 
   it('builds the frontend too, not just the backend (86e2v1ccg)', async () => {
@@ -35,6 +36,7 @@ describe('rollbackToLastGood (unit)', () => {
       lastGoodTag: 'last-good-dev',
       caproverUrl: 'captain.example.com',
       caproverAppToken: 'test-token',
+      caproverAppName: 'freight-auditor-dev',
       runImpl,
       triggerBuildImpl,
     });
@@ -52,6 +54,7 @@ describe('rollbackToLastGood (unit)', () => {
       lastGoodTag: 'last-good-dev',
       caproverUrl: 'captain.example.com',
       caproverAppToken: 'test-token',
+      caproverAppName: 'freight-auditor-dev',
       runImpl,
       triggerBuildImpl,
     });
@@ -73,6 +76,7 @@ describe('rollbackToLastGood (unit)', () => {
       lastGoodTag: 'last-good-dev',
       caproverUrl: 'captain.example.com',
       caproverAppToken: 'test-token',
+      caproverAppName: 'freight-auditor-dev',
       runImpl,
       triggerBuildImpl,
     });
@@ -97,6 +101,7 @@ describe('rollbackToLastGood (unit)', () => {
         lastGoodTag: 'last-good-dev',
         caproverUrl: 'captain.example.com',
         caproverAppToken: 'test-token',
+        caproverAppName: 'freight-auditor-dev',
         runImpl,
         triggerBuildImpl,
       }),
@@ -117,6 +122,7 @@ describe('rollbackToLastGood (unit)', () => {
         lastGoodTag: 'last-good-dev',
         caproverUrl: 'captain.example.com',
         caproverAppToken: secretToken,
+        caproverAppName: 'freight-auditor-dev',
         runImpl,
         triggerBuildImpl,
       }),
@@ -127,6 +133,7 @@ describe('rollbackToLastGood (unit)', () => {
         lastGoodTag: 'last-good-dev',
         caproverUrl: 'captain.example.com',
         caproverAppToken: secretToken,
+        caproverAppName: 'freight-auditor-dev',
         runImpl,
         triggerBuildImpl,
       });
@@ -162,6 +169,7 @@ describe('rollbackToLastGood (unit)', () => {
         lastGoodTag: 'last-good-dev',
         caproverUrl: 'captain.example.com',
         caproverAppToken: 'test-token',
+        caproverAppName: 'freight-auditor-dev',
         runImpl,
         triggerBuildImpl,
       });
@@ -177,6 +185,7 @@ describe('rollbackToLastGood (unit)', () => {
         lastGoodTag: 'last-good-dev',
         caproverUrl: 'captain.example.com',
         caproverAppToken: 'test-token',
+        caproverAppName: 'freight-auditor-dev',
         runImpl,
         triggerBuildImpl,
       });
@@ -199,6 +208,7 @@ describe('rollbackToLastGood (unit)', () => {
         lastGoodTag: 'last-good-dev',
         caproverUrl: 'captain.example.com',
         caproverAppToken: 'test-token',
+        caproverAppName: 'freight-auditor-dev',
         runImpl,
         triggerBuildImpl,
       });
@@ -216,11 +226,11 @@ describe('rollbackToLastGood (unit)', () => {
     });
 
     it('invokes the caprover CLI, not the legacy webhook curl call', async () => {
-      const execFile = vi.fn((_cmd, _args, cb) => cb(null, { stdout: '', stderr: '' }));
+      const execFile = vi.fn((_cmd, _args, _opts, cb) => cb(null, { stdout: '', stderr: '' }));
       vi.doMock('node:child_process', () => ({ execFile }));
 
       const { defaultTriggerBuild } = await import('../../scripts/rollback-deploy.mjs');
-      const result = await defaultTriggerBuild('captain.example.com', 'test-token');
+      const result = await defaultTriggerBuild('captain.example.com', 'test-token', 'freight-auditor-dev');
 
       expect(result).toEqual({ status: '100', raw: '' });
       expect(execFile).toHaveBeenCalledTimes(1);
@@ -232,6 +242,8 @@ describe('rollbackToLastGood (unit)', () => {
         'https://captain.example.com',
         '--appToken',
         'test-token',
+        '--appName',
+        'freight-auditor-dev',
         '--tarFile',
         'deploy.tar.gz',
       ]);
@@ -240,16 +252,52 @@ describe('rollbackToLastGood (unit)', () => {
       expect(args.join(' ')).not.toContain('webhooks/triggerbuild');
     });
 
+    // 86e2v1xtf: root cause of run 31973373618's 2h12m hang. The CapRover CLI's
+    // `deploy` command prompts interactively ("select the app name you want to
+    // deploy to") whenever --appName/CAPROVER_APP is absent (confirmed by reading
+    // caprover's own commands/deploy.js — that option has no `when: false` guard).
+    // On a non-TTY CI runner that prompt never resolves: no crash, no error, no
+    // output — just silence until something outside the process kills it. This
+    // regression test proves the fix: the app name deploy.yml's own working step
+    // already supplies is now always present in this call, so the CLI never has a
+    // reason to prompt.
+    it('always passes --appName so the CLI never falls back to its interactive prompt (86e2v1xtf)', async () => {
+      const execFile = vi.fn((_cmd, _args, _opts, cb) => cb(null, { stdout: '', stderr: '' }));
+      vi.doMock('node:child_process', () => ({ execFile }));
+
+      const { defaultTriggerBuild } = await import('../../scripts/rollback-deploy.mjs');
+      await defaultTriggerBuild('captain.example.com', 'test-token', 'freight-auditor-dev');
+
+      const [, args] = execFile.mock.calls[0] as [string, string[], ...unknown[]];
+      const appNameIdx = args.indexOf('--appName');
+      expect(appNameIdx).toBeGreaterThan(-1);
+      expect(args[appNameIdx + 1]).toBe('freight-auditor-dev');
+    });
+
+    // 86e2v1xtf: a bounded command-level timeout means execFile itself kills a
+    // hung child and rejects, rather than relying solely on the workflow step's
+    // own timeout-minutes (86e2v1qrn) to eventually tear down the whole runner.
+    it('bounds the caprover CLI call with an execFile timeout (86e2v1xtf)', async () => {
+      const execFile = vi.fn((_cmd, _args, _opts, cb) => cb(null, { stdout: '', stderr: '' }));
+      vi.doMock('node:child_process', () => ({ execFile }));
+
+      const { defaultTriggerBuild } = await import('../../scripts/rollback-deploy.mjs');
+      await defaultTriggerBuild('captain.example.com', 'test-token', 'freight-auditor-dev');
+
+      const [, , opts] = execFile.mock.calls[0] as [string, string[], { timeout?: number }, unknown];
+      expect(opts.timeout).toBeGreaterThan(0);
+    });
+
     it('surfaces the CLI failure status when the rollback deploy itself is rejected', async () => {
       const cliError = Object.assign(new Error('Command failed'), {
         stdout: '',
         stderr: '{"status":1106,"description":"Auth token corrupted"}',
       });
-      const execFile = vi.fn((_cmd, _args, cb) => cb(cliError, undefined));
+      const execFile = vi.fn((_cmd, _args, _opts, cb) => cb(cliError, undefined));
       vi.doMock('node:child_process', () => ({ execFile }));
 
       const { defaultTriggerBuild } = await import('../../scripts/rollback-deploy.mjs');
-      const result = await defaultTriggerBuild('captain.example.com', 'test-token');
+      const result = await defaultTriggerBuild('captain.example.com', 'test-token', 'freight-auditor-dev');
 
       expect(result.status).toBe('1106');
       expect(result.raw).toContain('Auth token corrupted');
@@ -279,6 +327,7 @@ describe('rollbackToLastGood (unit)', () => {
       LAST_GOOD_TAG: 'last-good-dev',
       SRC_CAPROVER_URL: 'captain.example.com',
       SRC_CAPROVER_APP_TOKEN: 'test-token',
+      SRC_CAPROVER_APP_NAME: 'freight-auditor-dev',
     };
 
     it('exits 1 when required env vars are missing', async () => {
@@ -287,8 +336,26 @@ describe('rollbackToLastGood (unit)', () => {
       await main({ env: {}, exit, logError, logInfo: vi.fn(), rollbackImpl: vi.fn() });
       expect(exit).toHaveBeenCalledWith(1);
       expect(logError).toHaveBeenCalledWith(
-        expect.stringContaining('LAST_GOOD_TAG, SRC_CAPROVER_URL, and SRC_CAPROVER_APP_TOKEN must all be set'),
+        expect.stringContaining(
+          'LAST_GOOD_TAG, SRC_CAPROVER_URL, SRC_CAPROVER_APP_TOKEN, and SRC_CAPROVER_APP_NAME must all be set',
+        ),
       );
+    });
+
+    // 86e2v1xtf: SRC_CAPROVER_APP_NAME is already resolved into this step's env by
+    // deploy.yml's .env.caprover (the working "Deploy to CapRover" step reads the
+    // same var) -- main() just never read it before this fix, which is exactly how
+    // defaultTriggerBuild ended up invoking the CLI with no --appName. Proven as its
+    // own test (not folded into the "all missing" case above) since that's the
+    // specific gap this fix closes.
+    it('exits 1 when only SRC_CAPROVER_APP_NAME is missing', async () => {
+      const exit = vi.fn();
+      const logError = vi.fn();
+      const envWithoutAppName = { ...env };
+      delete (envWithoutAppName as Partial<typeof env>).SRC_CAPROVER_APP_NAME;
+      await main({ env: envWithoutAppName, exit, logError, logInfo: vi.fn(), rollbackImpl: vi.fn() });
+      expect(exit).toHaveBeenCalledWith(1);
+      expect(logError).toHaveBeenCalledWith(expect.stringContaining('SRC_CAPROVER_APP_NAME must all be set'));
     });
 
     it('logs success and does not exit non-zero on a successful rollback', async () => {
@@ -300,6 +367,7 @@ describe('rollbackToLastGood (unit)', () => {
         lastGoodTag: 'last-good-dev',
         caproverUrl: 'captain.example.com',
         caproverAppToken: 'test-token',
+        caproverAppName: 'freight-auditor-dev',
       });
       expect(exit).not.toHaveBeenCalled();
       expect(logInfo).toHaveBeenCalledWith('Rolled back to last-good-dev (sha-last-good)');

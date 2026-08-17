@@ -9,14 +9,16 @@
  * @param {string} opts.lastGoodTag - e.g. "last-good-dev"
  * @param {string} opts.caproverUrl
  * @param {string} opts.caproverAppToken
+ * @param {string} opts.caproverAppName
  * @param {(cmd: string, args: string[]) => Promise<{ stdout: string }>} [opts.runImpl] - injectable for tests
- * @param {(url: string, appToken: string) => Promise<{ status: string; raw: string }>} [opts.triggerBuildImpl] - injectable for tests
+ * @param {(url: string, appToken: string, appName: string) => Promise<{ status: string; raw: string }>} [opts.triggerBuildImpl] - injectable for tests
  * @returns {Promise<{ rolledBack: boolean, lastGoodSha: string | null, reason?: string }>}
  */
 export async function rollbackToLastGood({
   lastGoodTag,
   caproverUrl,
   caproverAppToken,
+  caproverAppName,
   runImpl = defaultRun,
   triggerBuildImpl = defaultTriggerBuild,
 }) {
@@ -68,7 +70,7 @@ export async function rollbackToLastGood({
 
   let result;
   try {
-    result = await triggerBuildImpl(caproverUrl, caproverAppToken);
+    result = await triggerBuildImpl(caproverUrl, caproverAppToken, caproverAppName);
   } catch (err) {
     throw new Error(redactToken(err.message, caproverAppToken));
   }
@@ -79,10 +81,18 @@ export async function rollbackToLastGood({
   return { rolledBack: true, lastGoodSha };
 }
 
+// 86e2v1xtf: a hung subprocess here previously blocked the whole rollback step for
+// 2h12m (run 31973373618) with no error and no output at all -- the step-level
+// timeout deploy.yml now has (86e2v1qrn) bounds the job, but a command-level timeout
+// here means execFile itself kills the child and rejects instead of relying solely on
+// the runner to be torn down from outside. 9 minutes leaves headroom under the
+// workflow step's own 10m timeout-minutes while still being far tighter than "forever".
+const SUBPROCESS_TIMEOUT_MS = 9 * 60 * 1000;
+
 async function defaultRun(cmd, args) {
   const { execFile } = await import('node:child_process');
   const { promisify } = await import('node:util');
-  return promisify(execFile)(cmd, args);
+  return promisify(execFile)(cmd, args, { timeout: SUBPROCESS_TIMEOUT_MS });
 }
 
 // Uses the same `caprover deploy` CLI path PR #27 already moved the main deploy step to
@@ -91,20 +101,35 @@ async function defaultRun(cmd, args) {
 // That webhook is the same endpoint 86e25prau and 86e25uqxa both chased "Auth token
 // corrupted" (status 1106) failures on for the main deploy step — rollback shared the
 // defect only because it never got the CLI fix applied alongside it.
-export async function defaultTriggerBuild(caproverUrl, caproverAppToken) {
+//
+// 86e2v1xtf: root cause of the 2h12m hang in run 31973373618. This call omitted
+// --appName, and the CapRover CLI's `deploy` command treats a missing app name as an
+// interactive prompt ("select the app name you want to deploy to" — confirmed by
+// reading caprover's own commands/deploy.js: the `app` option has no `when: false` and
+// is only skipped when a value is supplied via flag or CAPROVER_APP env). On a non-TTY
+// CI runner that prompt never resolves and the process just sits there producing no
+// output and no error -- exactly what run 31973373618's log showed. deploy.yml's own
+// working "Deploy to CapRover" step already passes --appName; this call never did.
+export async function defaultTriggerBuild(caproverUrl, caproverAppToken, caproverAppName) {
   const { execFile } = await import('node:child_process');
   const { promisify } = await import('node:util');
   const run = promisify(execFile);
   try {
-    const { stdout } = await run('caprover', [
-      'deploy',
-      '--caproverUrl',
-      `https://${caproverUrl}`,
-      '--appToken',
-      caproverAppToken,
-      '--tarFile',
-      'deploy.tar.gz',
-    ]);
+    const { stdout } = await run(
+      'caprover',
+      [
+        'deploy',
+        '--caproverUrl',
+        `https://${caproverUrl}`,
+        '--appToken',
+        caproverAppToken,
+        '--appName',
+        caproverAppName,
+        '--tarFile',
+        'deploy.tar.gz',
+      ],
+      { timeout: SUBPROCESS_TIMEOUT_MS },
+    );
     return { status: '100', raw: stdout };
   } catch (err) {
     // The CLI exits non-zero and reports the failure on stdout/stderr rather than
@@ -141,15 +166,16 @@ export async function main({
   const lastGoodTag = env.LAST_GOOD_TAG;
   const caproverUrl = env.SRC_CAPROVER_URL;
   const caproverAppToken = env.SRC_CAPROVER_APP_TOKEN;
+  const caproverAppName = env.SRC_CAPROVER_APP_NAME;
 
-  if (!lastGoodTag || !caproverUrl || !caproverAppToken) {
-    logError('::error::LAST_GOOD_TAG, SRC_CAPROVER_URL, and SRC_CAPROVER_APP_TOKEN must all be set');
+  if (!lastGoodTag || !caproverUrl || !caproverAppToken || !caproverAppName) {
+    logError('::error::LAST_GOOD_TAG, SRC_CAPROVER_URL, SRC_CAPROVER_APP_TOKEN, and SRC_CAPROVER_APP_NAME must all be set');
     exit(1);
     return;
   }
 
   try {
-    const result = await rollbackImpl({ lastGoodTag, caproverUrl, caproverAppToken });
+    const result = await rollbackImpl({ lastGoodTag, caproverUrl, caproverAppToken, caproverAppName });
     if (!result.rolledBack) {
       logError(`::error::${result.reason} — manual recovery required`);
       exit(1);

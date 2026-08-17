@@ -11,8 +11,9 @@ export interface RollbackToLastGoodOptions {
   lastGoodTag: string;
   caproverUrl: string;
   caproverAppToken: string;
+  caproverAppName: string;
   runImpl?: (cmd: string, args: string[]) => Promise<RunResult>;
-  triggerBuildImpl?: (url: string, appToken: string) => Promise<TriggerBuildResult>;
+  triggerBuildImpl?: (url: string, appToken: string, appName: string) => Promise<TriggerBuildResult>;
 }
 
 export interface RollbackToLastGoodResult {
@@ -30,6 +31,7 @@ export declare function redactToken(message: string, token: string | undefined):
 export declare function defaultTriggerBuild(
   caproverUrl: string,
   caproverAppToken: string,
+  caproverAppName: string,
 ): Promise<TriggerBuildResult>;
 
 export interface RollbackMainOptions {

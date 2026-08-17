@@ -64,12 +64,24 @@ jobs:
       # script itself is ON CONFLICT DO NOTHING on all three inserts, so a
       # second consecutive Development deploy re-running it is a no-op, not a
       # duplicate-row risk.
+      #
+      # 86e2v2dh1: npm run seed:criteria runs unconditionally (unlike seed:dev
+      # above), in both Development and Production -- it's canonical reference
+      # data (criterion/rule/rule_version rows for STANDARD_RUBRIC +
+      # CONTRACT_RUBRIC), not a per-environment fixture, and criterionKey
+      # resolution needs to work everywhere the engine runs. It runs before the
+      # SEED_DEV_ON_DEPLOY block so dev-fixture seeding never masks a failure
+      # here. Production has no DATABASE_URL secret yet (see comment above), so
+      # this step doesn't reach Production today either -- unconditional here is
+      # still correct: it means the seed runs the moment Production gets a
+      # DATABASE_URL, with no second workflow change required.
       - name: Run database migrations and seed dev tenant
         run: |
           op run --env-file=.env.migrate -- bash -c '
             set -euo pipefail
             node scripts/guard-protected-db.mjs
             npm run migrate up
+            npm run seed:criteria
             if [ "$SEED_DEV_ON_DEPLOY" = "1" ]; then
               npm run seed:dev
             fi

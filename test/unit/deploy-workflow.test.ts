@@ -364,6 +364,36 @@ describe('deploy.yml (unit, job-dependency + guard wiring)', () => {
     });
   });
 
+  describe('seed criterion/rule/rule_version reference data (86e2v2dh1)', () => {
+    it('runs npm run seed:criteria in the SAME op run block as the migration, after migrate up', () => {
+      const workflow = loadDeployWorkflow();
+      const migrateStep = getJob(workflow, 'migrate-database').steps.find((step) =>
+        step.run?.includes('npm run migrate'),
+      );
+      const migrateIndex = migrateStep!.run!.indexOf('npm run migrate up');
+      const seedCriteriaIndex = migrateStep!.run!.indexOf('npm run seed:criteria');
+      expect(migrateIndex).toBeGreaterThan(-1);
+      expect(seedCriteriaIndex).toBeGreaterThan(migrateIndex);
+    });
+
+    it('runs unconditionally -- NOT inside the SEED_DEV_ON_DEPLOY conditional block, unlike seed:dev', () => {
+      // criterion/rule/rule_version rows are canonical reference data needed in
+      // every environment (including Production), not a per-environment dev
+      // fixture -- this must never end up gated behind the Development-only
+      // SEED_DEV_ON_DEPLOY branch alongside seed:dev.
+      const workflow = loadDeployWorkflow();
+      const migrateStep = getJob(workflow, 'migrate-database').steps.find((step) =>
+        step.run?.includes('npm run migrate'),
+      );
+      const runBlock = migrateStep!.run!;
+      const conditionalIndex = runBlock.indexOf('if [ "$SEED_DEV_ON_DEPLOY"');
+      const seedCriteriaIndex = runBlock.indexOf('npm run seed:criteria');
+      expect(conditionalIndex).toBeGreaterThan(-1);
+      expect(seedCriteriaIndex).toBeGreaterThan(-1);
+      expect(seedCriteriaIndex).toBeLessThan(conditionalIndex);
+    });
+  });
+
   describe('concurrency control (86e2urk0k)', () => {
     it('serializes runs on the same branch so overlapping deploys queue rather than race', () => {
       const workflow = loadDeployWorkflow();

@@ -72,6 +72,51 @@ function renderTable() {
   );
 }
 
+describe('FindingsTable selection count/total (86e2v250p)', () => {
+  it('AC1: a filter change that drops a selected row from `rows` shrinks both the count and the dollar total to match', () => {
+    const { rerender } = render(
+      <FindingsTable
+        rows={ROWS}
+        carrierFilter=""
+        statusFilter=""
+        onCarrierFilterChange={() => {}}
+        onStatusFilterChange={() => {}}
+        minAmountFilter=""
+        onMinAmountFilterChange={() => {}}
+      />,
+    );
+
+    fireEvent.click(screen.getByLabelText('Select finding INV-A'));
+    fireEvent.click(screen.getByLabelText('Select finding INV-B'));
+    expect(screen.getByText(/2 selected · \$19\.00/)).toBeInTheDocument();
+
+    // Simulate a filter change: the parent re-renders with a narrower `rows`
+    // that no longer includes INV-B (still selected in local state).
+    const narrowedRows = ROWS.filter((r) => r.id !== 'f2');
+    rerender(
+      <FindingsTable
+        rows={narrowedRows}
+        carrierFilter=""
+        statusFilter=""
+        onCarrierFilterChange={() => {}}
+        onStatusFilterChange={() => {}}
+        minAmountFilter=""
+        onMinAmountFilterChange={() => {}}
+      />,
+    );
+
+    expect(screen.getByText(/1 selected · \$10\.00/)).toBeInTheDocument();
+    expect(screen.queryByText(/2 selected/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/\$19\.00/)).not.toBeInTheDocument();
+  });
+
+  it('AC2: existing selection test (single select, no filter change) still passes', () => {
+    renderTable();
+    fireEvent.click(screen.getByLabelText('Select finding INV-A'));
+    expect(screen.getByText(/1 selected · \$10\.00/)).toBeInTheDocument();
+  });
+});
+
 describe('FindingsTable sorting (86e2uuw63)', () => {
   it('AC1: clicking Variance sorts numerically ascending, then descending on a second click', () => {
     renderTable();

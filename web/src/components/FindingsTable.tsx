@@ -135,10 +135,10 @@ export function FindingsTable({
         </div>
       </div>
 
-      {selected.size > 0 && (
+      {selectedRows.length > 0 && (
         <div className="flex items-center gap-3.5 border-b border-[rgba(32,30,29,0.2)] bg-[#ffe0d9] px-5 py-2.5">
           <span className="text-[13px] font-extrabold text-[#7c1405]">
-            {selected.size} selected · {formatMoney(selectedTotal.toFixed(4))}
+            {selectedRows.length} selected · {formatMoney(selectedTotal.toFixed(4))}
           </span>
           <div className="ml-auto flex gap-2">
             {/* Bulk actions have no backing write endpoint yet (86e2u7j1y No-gos) --

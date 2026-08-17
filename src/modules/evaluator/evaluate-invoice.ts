@@ -39,6 +39,17 @@ export interface ChargeFinding {
   criterionKey: string;
   result: 'CONFORMED' | 'VARIANCE' | 'UNASSESSABLE';
   evaluatedExpr: EvalNode;
+  /**
+   * The per-criterion $ delta from moneyVarianceDelta() (billed - expected;
+   * positive = overcharge, negative = undercharge). Populated only for a
+   * VARIANCE finding whose AST bottoms out at a money `compare` node; null
+   * for CONFORMED/UNASSESSABLE and for criteria that aren't money comparisons
+   * (e.g. STD's pass/fail integrity checks). 86e2v17p5: previously computed
+   * here but only accumulated into the scorecard total and discarded
+   * per-finding — now threaded through so a per-finding variance_finding row
+   * can be derived without re-deriving the delta a second time.
+   */
+  varianceAmount: string | null;
 }
 
 export interface Scorecard {
@@ -109,6 +120,7 @@ export function evaluateInvoice(
     const ev = evaluate(c.ast, facts);
     const v = verdict(ev);
     const result = v === 'PASS' ? 'CONFORMED' : v === 'FAIL' ? 'VARIANCE' : 'UNASSESSABLE';
+    let delta: Decimal | null = null;
     if (result === 'CONFORMED') conformed += 1;
     else if (result === 'VARIANCE') {
       variance += 1;
@@ -116,13 +128,18 @@ export function evaluateInvoice(
       // (billed vs. expected/contracted) — extract the delta from the
       // evaluated tree itself (§3.2: the evaluated AST IS the explanation,
       // never a separately-computed side value that could drift from it).
-      const delta = moneyVarianceDelta(ev);
+      delta = moneyVarianceDelta(ev);
       if (delta !== null) {
         if (delta.isPositive()) totalOvercharge = totalOvercharge.plus(delta);
         else totalUndercharge = totalUndercharge.plus(delta.abs());
       }
     } else unassessable += 1;
-    findings.push({ criterionKey: c.criterionKey, result, evaluatedExpr: ev });
+    findings.push({
+      criterionKey: c.criterionKey,
+      result,
+      evaluatedExpr: ev,
+      varianceAmount: delta === null ? null : delta.toFixed(4),
+    });
   }
 
   const scorecard: Scorecard = {

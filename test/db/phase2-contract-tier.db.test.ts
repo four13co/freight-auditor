@@ -55,6 +55,10 @@ describe('Phase 2 CONTRACT-tier (DB)', () => {
   afterAll(async () => {
     const owner = await pool.connect();
     try {
+      // 86e2v17p5: AC1/AC2's overcharge case now also derives a
+      // variance_finding row — delete it before audit_run or the FK blocks
+      // cleanup.
+      await owner.query(`DELETE FROM variance_finding WHERE client_id = $1`, [clientId]);
       await owner.query(`DELETE FROM scorecard WHERE client_id = $1`, [clientId]);
       await owner.query(`DELETE FROM charge_finding WHERE client_id = $1`, [clientId]);
       await owner.query(`DELETE FROM gate_failure WHERE client_id = $1`, [clientId]);

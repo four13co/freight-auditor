@@ -144,4 +144,51 @@ describe('Phase 2 CONTRACT-tier rubric (pure)', () => {
       expect(r.scorecard!.totalUndercharge).toBe('0.0000');
     });
   });
+
+  // 86e2v17p5: per-finding varianceAmount, threaded through so a derivation
+  // step can persist a per-finding variance_finding row without re-deriving
+  // moneyVarianceDelta a second time (previously only accumulated into the
+  // scorecard total and discarded per-finding).
+  describe('86e2v17p5: ChargeFinding.varianceAmount (per-finding $ delta)', () => {
+    it('VARIANCE finding carries its own dollar delta, matching the scorecard rollup', () => {
+      const inv = parse210(GOLDEN_210, testCategorize); // billed LINEHAUL = 1000.00
+      const r = evaluateInvoice(inv, CONTRACT_RUBRIC, {
+        linehaulRate: { amount: '900.0000', currency: 'USD', clauseId: null },
+      });
+      const finding = r.findings.find((f) => f.criterionKey === 'CONTRACT.RATE_VARIANCE');
+      expect(finding?.result).toBe('VARIANCE');
+      expect(finding?.varianceAmount).toBe('100.0000');
+    });
+
+    it('CONFORMED finding has a null varianceAmount', () => {
+      const inv = parse210(GOLDEN_210, testCategorize);
+      const r = evaluateInvoice(inv, CONTRACT_RUBRIC, {
+        linehaulRate: { amount: '1000.0000', currency: 'USD', clauseId: null },
+      });
+      const finding = r.findings.find((f) => f.criterionKey === 'CONTRACT.RATE_VARIANCE');
+      expect(finding?.result).toBe('CONFORMED');
+      expect(finding?.varianceAmount).toBeNull();
+    });
+
+    it('UNASSESSABLE finding (no contract rate) has a null varianceAmount', () => {
+      const inv = parse210(GOLDEN_210, testCategorize);
+      const r = evaluateInvoice(inv, CONTRACT_RUBRIC, { linehaulRate: null });
+      const finding = r.findings.find((f) => f.criterionKey === 'CONTRACT.RATE_VARIANCE');
+      expect(finding?.result).toBe('UNASSESSABLE');
+      expect(finding?.varianceAmount).toBeNull();
+    });
+
+    it('a non-money STANDARD scoring criterion has a null varianceAmount even when VARIANCE', () => {
+      // STD.NO_QUARANTINED_CODES / STD.FUEL_PRESENT are pass/fail integrity
+      // checks, not money comparisons — moneyVarianceDelta returns null for
+      // any AST that doesn't bottom out at a `compare` of two money values.
+      const inv = parse210(GOLDEN_210, testCategorize);
+      const r = evaluateInvoice(inv, STANDARD_RUBRIC);
+      for (const f of r.findings) {
+        if (f.result === 'VARIANCE') {
+          expect(f.varianceAmount).toBeNull();
+        }
+      }
+    });
+  });
 });

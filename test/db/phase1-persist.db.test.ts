@@ -35,6 +35,11 @@ describe('Phase 1 persistence (DB)', () => {
     const owner = await pool.connect();
     try {
       // Children of the runs first, then invoices, then client.
+      // 86e2v17p5: defensive — this suite's fixtures don't currently trigger
+      // the variance_finding derivation (STANDARD_RUBRIC only), but delete it
+      // before audit_run anyway so a future fixture change can't reintroduce
+      // the FK-violation cleanup ordering bug fixed in phase2-contract-tier.
+      await owner.query(`DELETE FROM variance_finding WHERE client_id = $1`, [clientId]);
       await owner.query(`DELETE FROM scorecard WHERE client_id = $1`, [clientId]);
       await owner.query(`DELETE FROM charge_finding WHERE client_id = $1`, [clientId]);
       await owner.query(`DELETE FROM gate_failure WHERE client_id = $1`, [clientId]);

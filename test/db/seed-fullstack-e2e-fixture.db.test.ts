@@ -17,15 +17,25 @@ import { buildApp } from '../../src/server/app.js';
  * FIXTURE_CARRIER_NAME must be preserved exactly -- web/test/e2e-fullstack/
  * dashboard.fullstack.spec.ts asserts on them verbatim and must pass
  * unmodified (this item's own explicit rabbit hole).
+ *
+ * 86e2v1bbr gated the dev-header path behind DEV_AUTH_HEADERS (unset = a
+ * verified better-auth session is required instead) -- this suite is about
+ * the fixture/derivation pipeline, not auth, so it sets the flag for its
+ * own process rather than standing up a real session.
  */
 describe('seedFullstackE2eFixture (DB)', () => {
   const pool = getPool();
+  let originalFlag: string | undefined;
 
   beforeAll(async () => {
+    originalFlag = process.env.DEV_AUTH_HEADERS;
+    process.env.DEV_AUTH_HEADERS = '1';
     await seedDevTenant({ pool });
   });
 
   afterAll(async () => {
+    if (originalFlag === undefined) delete process.env.DEV_AUTH_HEADERS;
+    else process.env.DEV_AUTH_HEADERS = originalFlag;
     await closePool();
   });
 

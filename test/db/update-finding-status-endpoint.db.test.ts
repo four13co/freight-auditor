@@ -8,6 +8,11 @@ import { buildApp } from '../../src/server/app.js';
 /**
  * 86e2v1xyr, exercised at the HTTP layer: PATCH /api/findings/:id/status.
  * The first mutating route in the app.
+ *
+ * 86e2v1bbr gated the dev-header path behind DEV_AUTH_HEADERS (unset = a
+ * verified better-auth session is required instead) -- this suite is about
+ * the status-transition route's own behavior, not auth, so it sets the flag
+ * for its own process rather than standing up a real session per test.
  */
 describe('PATCH /api/findings/:id/status (DB, e2e)', () => {
   let pool: pg.Pool;
@@ -17,9 +22,12 @@ describe('PATCH /api/findings/:id/status (DB, e2e)', () => {
   let userId: string;
   let otherUserId: string;
   let carrierId: string;
+  let originalFlag: string | undefined;
   const tag = `ufse-${Date.now()}`;
 
   beforeAll(async () => {
+    originalFlag = process.env.DEV_AUTH_HEADERS;
+    process.env.DEV_AUTH_HEADERS = '1';
     pool = getPool();
     const owner = await pool.connect();
     try {
@@ -42,6 +50,8 @@ describe('PATCH /api/findings/:id/status (DB, e2e)', () => {
   });
 
   afterAll(async () => {
+    if (originalFlag === undefined) delete process.env.DEV_AUTH_HEADERS;
+    else process.env.DEV_AUTH_HEADERS = originalFlag;
     await app.close();
     const owner = await pool.connect();
     try {

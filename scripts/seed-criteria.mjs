@@ -157,37 +157,13 @@ export async function seedCriteria({ client } = {}) {
   }
 }
 
-/**
- * Resolves a criterionKey to its seeded criterion_id/rule_version_id pair.
- * Returns null (never throws) when the key has no seeded row -- both columns
- * are nullable on charge_finding/variance_finding (migration 0008), and a
- * caller must be able to write a finding for a criterion that predates this
- * seed step or was added to a rubric after the last seed run, without that
- * failing the whole persist.
- *
- * @param {pg.Pool | pg.PoolClient} client
- * @param {string} criterionKey
- * @returns {Promise<{ criterionId: string, ruleVersionId: string } | null>}
- */
-export async function resolveCriterionIds(client, criterionKey) {
-  const critRes = await client.query(`SELECT id FROM criterion WHERE criterion_key = $1`, [criterionKey]);
-  if (critRes.rows.length === 0) return null;
-  const criterionId = critRes.rows[0].id;
-
-  const ruleSlug = criterionKey.toLowerCase().replace(/\./g, '-');
-  const ruleVersionRes = await client.query(
-    `SELECT rule_version.id
-     FROM rule_version
-     JOIN rule ON rule.id = rule_version.rule_id
-     WHERE rule.slug = $1
-     ORDER BY rule_version.recorded_at DESC
-     LIMIT 1`,
-    [ruleSlug],
-  );
-  if (ruleVersionRes.rows.length === 0) return null;
-
-  return { criterionId, ruleVersionId: ruleVersionRes.rows[0].id };
-}
+// 86e2v88u2: resolveCriterionIds moved to src/modules/evaluator/resolve-criterion-ids.ts
+// so persist.ts (compiled, runs under plain `node dist/...` in production) can
+// import it without pulling in this file's STANDARD_RUBRIC/CONTRACT_RUBRIC
+// imports below, which only resolve under tsx (this script's own runtime -- see
+// package.json's "seed:criteria": "tsx scripts/seed-criteria.mjs"), not under
+// compiled JS. Re-exported here so existing callers of this module keep working.
+export { resolveCriterionIds } from '../src/modules/evaluator/resolve-criterion-ids.js';
 
 function requireDatabaseUrl() {
   const url = process.env.DATABASE_URL;

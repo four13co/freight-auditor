@@ -2,6 +2,7 @@ import type pg from 'pg';
 import { Decimal } from 'decimal.js';
 import type { ParsedInvoice } from '../ingestion/charge-fact.js';
 import type { AuditResult } from './evaluate-invoice.js';
+import { resolveCriterionIds } from './resolve-criterion-ids.js';
 
 /**
  * Persist a parsed invoice + its audit result into the canonical schema
@@ -103,12 +104,29 @@ export async function persistAuditRun(
   }
 
   // 4. charge_findings (scoring observations) — append-only. Empty on REJECTED_REWORK.
+  //
+  // 86e2v88u2: resolveCriterionIds (./resolve-criterion-ids.ts) was built and
+  // fully tested but never wired into a persist path — criterion_id/
+  // rule_version_id shipped NULL on every finding despite both columns
+  // existing to record which rule version produced it. Both are nullable
+  // (a criterion added after the last seed run must not fail persistence), so
+  // resolveCriterionIds' own null-on-miss contract composes directly here —
+  // no additional fallback logic needed.
   const chargeFindingIds: string[] = [];
+  // Resolved once per distinct criterionKey and reused below in the
+  // variance_finding loop (4.5) — both loops iterate the same result.findings
+  // and would otherwise issue duplicate resolveCriterionIds queries per key.
+  const resolvedIdsByCriterionKey = new Map<string, Awaited<ReturnType<typeof resolveCriterionIds>>>();
   for (const f of result.findings) {
+    let resolved = resolvedIdsByCriterionKey.get(f.criterionKey);
+    if (resolved === undefined) {
+      resolved = await resolveCriterionIds(client, f.criterionKey);
+      resolvedIdsByCriterionKey.set(f.criterionKey, resolved);
+    }
     const cf = await client.query<{ id: string }>(
-      `INSERT INTO charge_finding (client_id, audit_run_id, result, evaluated_expr)
-       VALUES ($1,$2,$3,$4) RETURNING id`,
-      [clientId, auditRunId, f.result, JSON.stringify(f.evaluatedExpr)],
+      `INSERT INTO charge_finding (client_id, audit_run_id, criterion_id, rule_version_id, result, evaluated_expr)
+       VALUES ($1,$2,$3,$4,$5,$6) RETURNING id`,
+      [clientId, auditRunId, resolved?.criterionId ?? null, resolved?.ruleVersionId ?? null, f.result, JSON.stringify(f.evaluatedExpr)],
     );
     chargeFindingIds.push(cf.rows[0]!.id);
   }
@@ -134,13 +152,19 @@ export async function persistAuditRun(
     const contributingIds = category !== null ? (chargeFactIdsByCategory.get(category) ?? []) : [];
     const chargeFactId = contributingIds.length === 1 ? contributingIds[0]! : null;
     const classification = f.result === 'UNASSESSABLE' ? 'unassessable' : 'variance';
+    // 86e2v88u2: same resolution cache populated in the charge_finding loop
+    // above — every finding here already had resolveCriterionIds called for
+    // its criterionKey once, so this is always a cache hit, never a new query.
+    const resolved = resolvedIdsByCriterionKey.get(f.criterionKey) ?? null;
     await client.query(
       `INSERT INTO variance_finding
-         (client_id, audit_run_id, charge_fact_id, direction, materiality, variance_amount, currency, classification, status)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'open')`,
+         (client_id, audit_run_id, criterion_id, rule_version_id, charge_fact_id, direction, materiality, variance_amount, currency, classification, status)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'open')`,
       [
         clientId,
         auditRunId,
+        resolved?.criterionId ?? null,
+        resolved?.ruleVersionId ?? null,
         chargeFactId,
         f.direction === 'INTEGRITY_ONLY' ? null : f.direction,
         f.varianceAmount === null ? null : new Decimal(f.varianceAmount).abs().toFixed(4),

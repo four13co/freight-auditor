@@ -9,6 +9,20 @@ import { listFindings } from '../modules/findings/list-findings.js';
 import { getFindingsSummary } from '../modules/findings/findings-summary.js';
 import { resolveAuthorizedTenantContext } from '../modules/findings/tenant-auth.js';
 
+// 86e2v24ye: mirrors migrations/0002_enums.sql's variance_status enum exactly
+// -- kept as a literal set here (not imported) since src/ has no existing
+// runtime dependency on the migrations/ directory; FindingsTable.tsx's status
+// dropdown is the other place these same values are duplicated.
+const VARIANCE_STATUS_VALUES = new Set([
+  'open', 'in_review', 'accepted', 'waived',
+  'queued_for_dispute', 'disputed', 'recovered', 'written_off', 'closed',
+]);
+
+// Explicit numeric-string check rather than Number()/isNaN -- Number('') is
+// 0, Number('0x10') is 16, and Number('Infinity') is finite per isNaN, all of
+// which would wrongly pass a naive check and still reach Postgres unvalidated.
+const NUMERIC_STRING = /^-?\d+(\.\d+)?$/;
+
 /**
  * The running revision's build SHA, for a rolling-deploy health check to tell
  * revisions apart. `BUILD_SHA` wins for tests/local dev; otherwise read the
@@ -85,12 +99,32 @@ export function buildApp(): FastifyInstance {
       },
     );
 
-    findingsRoutes.get('/api/findings', async (request) => {
+    findingsRoutes.get('/api/findings', async (request, reply) => {
       // Fastify's querystring parser returns keys literally as sent -- the
       // item's own AC names this param `min-amount` (kebab-case, conventional
       // for query strings), so it must be read that way, not as `minAmount`
       // (86e2u7j0d Review finding: the camelCase read left the filter dead).
       const query = request.query as { carrier?: string; status?: string; 'min-amount'?: string };
+
+      // 86e2v24ye: both params previously reached listFindings' raw SQL
+      // unvalidated -- an invalid status broke the ::variance_status cast and
+      // a non-numeric min-amount broke the numeric comparison, and with no
+      // setErrorHandler registered, Fastify's default handler reflected the
+      // raw Postgres error (query/stack detail) straight into the 500 body.
+      // Validating here, before withTenantTx ever runs, keeps listFindings'
+      // own query-building free of HTTP concerns (already fully covered via
+      // a mocked client in list-findings.test.ts) and matches this repo's
+      // boundary-validation convention -- these values are only ever
+      // untrusted at the moment they cross the wire.
+      if (query.status !== undefined && !VARIANCE_STATUS_VALUES.has(query.status)) {
+        await reply.code(400).send({ error: `invalid status: must be one of ${[...VARIANCE_STATUS_VALUES].join(', ')}` });
+        return;
+      }
+      if (query['min-amount'] !== undefined && !NUMERIC_STRING.test(query['min-amount'])) {
+        await reply.code(400).send({ error: 'invalid min-amount: must be numeric' });
+        return;
+      }
+
       const ctx = (request as FastifyRequest & { tenantContext: TenantContext }).tenantContext;
       const findings = await withTenantTx(ctx, (client) =>
         listFindings(client, {

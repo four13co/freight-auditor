@@ -1,0 +1,68 @@
+name: Rollback rehearsal
+
+# 86e2v2h0e: rollbackToLastGood()'s real subprocess sequence (git checkout --detach,
+# npm ci/build x2, op inject, tar) has never once completed successfully when
+# exercised live in production -- both prior real fires failed (ENOENT on the CLI's
+# missing --appName, then a 2h12m hang), each fixed reactively only after the fact,
+# never caught by a rehearsal. This workflow exercises that same real sequence on
+# demand, with the one call that would actually deploy (`caprover deploy`) stubbed
+# out via scripts/rollback-rehearsal.mjs -- so it proves the sequence still works
+# without ever touching the live app.
+#
+# workflow_dispatch only, never on push -- this is a rehearsal a human runs when
+# they want confidence the rollback path still works, not a step in every deploy.
+on:
+  workflow_dispatch:
+
+jobs:
+  rehearse:
+    runs-on: ubuntu-latest
+    # Healthy runs on this repo complete each job in ~1-2 minutes (see deploy.yml's
+    # own timeout rationale, 86e2v1qrn) -- 15m leaves headroom without approaching
+    # GitHub's 6h default, and still catches a hang the way this item exists to catch.
+    timeout-minutes: 15
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          # rollbackToLastGood() runs `git rev-parse <tag>` and `git checkout --detach
+          # <sha>` for real -- both need full history + tags, exactly like
+          # post-deployment's live rollback step (deploy.yml) already requires.
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      - name: Install 1Password CLI
+        uses: 1password/install-cli-action@v1
+
+      - name: Set vault name
+        run: |
+          PROJECT_NAME="${{ github.event.repository.name }}"
+          ENVIRONMENT="${{ github.ref_name == 'Production' && 'prod' || 'dev' }}"
+          echo "OP_VAULT=${PROJECT_NAME}-${ENVIRONMENT}" >> $GITHUB_ENV
+          echo "LAST_GOOD_TAG=last-good-${ENVIRONMENT}" >> $GITHUB_ENV
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Real op inject and tar run as part of rollbackToLastGood()'s own sequence
+      # (invoked below) -- this step only resolves the CapRover env vars the
+      # rehearsal driver needs to pass through and log, not to actually call.
+      # triggerBuildImpl is stubbed inside rollback-rehearsal.mjs itself, so no
+      # outbound call to the CapRover API happens regardless of what's resolved here.
+      - name: Run rollback rehearsal (real subprocess sequence, CapRover deploy stubbed)
+        timeout-minutes: 10
+        run: op run --env-file=.env.caprover -- node scripts/rollback-rehearsal.mjs
+        env:
+          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+
+      # deploy.tar.gz (produced by rollbackToLastGood()'s real tar step) contains the
+      # resolved .env with real secrets baked in, before the `rm .env` cleanup step
+      # inside rollbackToLastGood() itself deletes the plaintext .env (not the
+      # tarball). Never upload it as a build artifact -- it must not outlive this job.
+      # (No upload-artifact step references deploy.tar.gz anywhere in this workflow;
+      # this comment exists so a future edit doesn't add one.)

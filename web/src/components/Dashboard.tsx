@@ -91,6 +91,15 @@ export function Dashboard() {
                 onCarrierFilterChange={setCarrierFilter}
                 onStatusFilterChange={setStatusFilter}
                 onMinAmountFilterChange={setMinAmountFilter}
+                onRowStatusChange={(id, status) =>
+                  // 86e2v1xyr: patches the table's copy of the transitioned row so
+                  // it doesn't show a stale status until the next filter change
+                  // re-fetches. The KPI row is deliberately NOT recomputed here --
+                  // its aggregates (recoverableOpen etc.) are server-derived
+                  // (findings-summary.ts); re-deriving them client-side would
+                  // duplicate that logic and risk drifting from it silently.
+                  setRows((prev) => prev.map((r) => (r.id === id ? { ...r, status } : r)))
+                }
               />
             </>
           )}

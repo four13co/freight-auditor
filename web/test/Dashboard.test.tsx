@@ -447,7 +447,16 @@ describe('Dashboard', () => {
     }
   });
 
-  it('86e2uv1tb: the redundant raw Status field is gone (the header pill already covers it)', async () => {
+  it('86e2uv1tb: the redundant raw Status readout is gone (the header pill already covers it)', async () => {
+    // 86e2v1xyr added a genuinely different "Status" element -- the editable
+    // status control's <label>. That's new functionality (a control an
+    // analyst acts on), not a reintroduction of the old read-only field this
+    // test was written against (a plain text readout duplicating the header
+    // pill's information with no interaction). Narrowed to what 86e2uv1tb
+    // actually guaranteed: no plain-text Status readout as a Field row,
+    // rather than "no element anywhere contains the word Status" -- the
+    // broader assertion would fail on any legitimate future Status-labeled
+    // control, which is exactly what happened here.
     render(<Dashboard />);
     const foundRows = await waitFor(() => {
       const found = screen.getAllByTestId('finding-row');
@@ -457,7 +466,28 @@ describe('Dashboard', () => {
 
     fireEvent.click(foundRows[0]!);
     const detail = await waitFor(() => screen.getByTestId('finding-detail'));
-    expect(within(detail).queryByText('Status')).not.toBeInTheDocument();
+    // A plain-text Field row (86e2uutk8's <Field label="Status"> style: a
+    // <span> label, not a <label for>) is what would resurrect the
+    // redundant readout; the editable control's <label> is a fundamentally
+    // different, interactive element and is explicitly out of scope for
+    // this guarantee.
+    const statusSpans = within(detail)
+      .queryAllByText('Status')
+      .filter((el) => el.tagName === 'SPAN');
+    expect(statusSpans).toHaveLength(0);
+  });
+
+  it('86e2v1xyr: the editable status control IS present, distinct from the old redundant readout', async () => {
+    render(<Dashboard />);
+    const foundRows = await waitFor(() => {
+      const found = screen.getAllByTestId('finding-row');
+      expect(found).toHaveLength(3);
+      return found;
+    });
+
+    fireEvent.click(foundRows[0]!);
+    await waitFor(() => screen.getByTestId('finding-detail'));
+    expect(screen.getByLabelText('Finding status')).toBeInTheDocument();
   });
 
   it('86e2uutk8: clicking a row\'s checkbox toggles selection without opening the detail view', async () => {
@@ -530,5 +560,43 @@ describe('Dashboard', () => {
       expect(button).not.toBeNull();
       expect(within(button!).getByText('Soon')).toBeInTheDocument();
     }
+  });
+
+  it('86e2v1xyr: transitioning a finding\'s status in the drawer patches the table row without a full refetch', async () => {
+    // The default mockFetchOnce answers every non-summary URL with the same
+    // ROWS payload -- a PATCH to /api/findings/:id/status needs its own 200
+    // response here, and the assertion below (fetchMock call count) is what
+    // proves the table update came from the local patch, not a second
+    // fetchFindings() round-trip.
+    fetchMock.mockImplementation((input: string | URL | Request, init?: RequestInit) => {
+      const url = input.toString();
+      if (init?.method === 'PATCH') {
+        return Promise.resolve(new Response(JSON.stringify({ id: 'f1', status: 'in_review' }), { status: 200 }));
+      }
+      return mockFetchOnce(url);
+    });
+
+    render(<Dashboard />);
+    const foundRows = await waitFor(() => {
+      const found = screen.getAllByTestId('finding-row');
+      expect(found).toHaveLength(3);
+      return found;
+    });
+    expect(within(foundRows[0]!).getByText('Queued')).toBeInTheDocument(); // f1: open -> Queued
+
+    fireEvent.click(foundRows[0]!); // f1
+    await waitFor(() => screen.getByTestId('finding-detail'));
+    const callsBeforePatch = fetchMock.mock.calls.length;
+
+    fireEvent.change(screen.getByLabelText('Finding status'), { target: { value: 'in_review' } });
+    await waitFor(() => expect(screen.getByLabelText('Finding status')).toHaveValue('in_review'));
+
+    // Exactly one new call (the PATCH itself) -- no additional GET
+    // /api/findings or /api/findings/summary fired as a side effect.
+    expect(fetchMock.mock.calls.length).toBe(callsBeforePatch + 1);
+
+    fireEvent.click(screen.getByLabelText('Close finding detail'));
+    const rowsAfter = screen.getAllByTestId('finding-row');
+    expect(within(rowsAfter[0]!).getByText('In review')).toBeInTheDocument();
   });
 });

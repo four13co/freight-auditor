@@ -346,6 +346,90 @@ describe('rollbackToLastGood (unit)', () => {
     });
   });
 
+  describe('secrets cleanup on mid-sequence failure (86e2v882v)', () => {
+    // The inject->tar->cleanup sequence (op inject -> tar -czf ... .env -> rm .env)
+    // previously had no try/finally: if any step in between threw, the plaintext
+    // .env and the secret-laden deploy.tar.gz were left on disk with no cleanup.
+    it('removes .env and deploy.tar.gz even when the tar step throws', async () => {
+      const runImpl = vi.fn(async (cmd: string, args: string[]) => {
+        if (cmd === 'tar') throw new Error('tar: disk quota exceeded');
+        if (cmd === 'git' && args[0] === 'rev-parse') return { stdout: 'sha-last-good\n' };
+        return { stdout: '' };
+      });
+      const triggerBuildImpl = vi.fn();
+
+      await expect(
+        rollbackToLastGood({
+          lastGoodTag: 'last-good-dev',
+          caproverUrl: 'captain.example.com',
+          caproverAppToken: 'test-token',
+          caproverAppName: 'freight-auditor-dev',
+          runImpl,
+          triggerBuildImpl,
+        }),
+      ).rejects.toThrow(/disk quota exceeded/);
+
+      const calls = runImpl.mock.calls;
+      const rmCalls = calls.filter(([cmd]) => cmd === 'rm');
+      const rmArgs = rmCalls.flatMap(([, args]) => args as string[]);
+      expect(rmArgs).toContain('.env');
+      expect(rmArgs).toContain('deploy.tar.gz');
+      expect(triggerBuildImpl).not.toHaveBeenCalled();
+    });
+
+    it('removes .env and deploy.tar.gz even when the op inject step throws', async () => {
+      const runImpl = vi.fn(async (cmd: string, args: string[]) => {
+        if (cmd === 'op') throw new Error('op: vault not found');
+        if (cmd === 'git' && args[0] === 'rev-parse') return { stdout: 'sha-last-good\n' };
+        return { stdout: '' };
+      });
+      const triggerBuildImpl = vi.fn();
+
+      await expect(
+        rollbackToLastGood({
+          lastGoodTag: 'last-good-dev',
+          caproverUrl: 'captain.example.com',
+          caproverAppToken: 'test-token',
+          caproverAppName: 'freight-auditor-dev',
+          runImpl,
+          triggerBuildImpl,
+        }),
+      ).rejects.toThrow(/vault not found/);
+
+      const calls = runImpl.mock.calls;
+      const rmCalls = calls.filter(([cmd]) => cmd === 'rm');
+      const rmArgs = rmCalls.flatMap(([, args]) => args as string[]);
+      // .env.tpl was already resolved to disk by this point (the write happens
+      // before op inject) but .env itself was never created, so only the tarball
+      // and template need cleaning up here -- proving cleanup runs regardless.
+      expect(rmArgs).toContain('deploy.tar.gz');
+      expect(triggerBuildImpl).not.toHaveBeenCalled();
+    });
+
+    it('still succeeds normally when nothing throws (cleanup does not become a double-remove or otherwise break the happy path)', async () => {
+      const runImpl = vi.fn().mockResolvedValue({ stdout: 'sha-last-good\n' });
+      const triggerBuildImpl = vi.fn().mockResolvedValue({ status: '100', raw: '{"status":100}' });
+
+      const result = await rollbackToLastGood({
+        lastGoodTag: 'last-good-dev',
+        caproverUrl: 'captain.example.com',
+        caproverAppToken: 'test-token',
+        caproverAppName: 'freight-auditor-dev',
+        runImpl,
+        triggerBuildImpl,
+      });
+
+      expect(result).toEqual({ rolledBack: true, lastGoodSha: 'sha-last-good' });
+      const calls = runImpl.mock.calls;
+      const rmCalls = calls.filter(([cmd]) => cmd === 'rm');
+      const rmArgs = rmCalls.flatMap(([, args]) => args as string[]);
+      // exactly one rm('.env') and one rm('deploy.tar.gz') -- not doubled by the
+      // new finally block also trying to remove what the happy path already did
+      expect(rmArgs.filter((a) => a === '.env')).toHaveLength(1);
+      expect(rmArgs.filter((a) => a === 'deploy.tar.gz')).toHaveLength(1);
+    });
+  });
+
   describe('redactToken', () => {
     it('replaces every occurrence of the token with a redaction marker', () => {
       expect(redactToken('token=abc123 seen twice: abc123', 'abc123')).toBe(

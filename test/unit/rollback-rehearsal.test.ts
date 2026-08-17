@@ -86,4 +86,23 @@ describe('rollback rehearsal main() (in-process, injected env/exit/log/rollbackI
     expect(exit).toHaveBeenCalledWith(1);
     expect(logError).toHaveBeenCalledWith(expect.stringContaining('git checkout failed'));
   });
+
+  // 86e2v88cc: rollback-deploy.mjs's main() redacts caproverAppToken from a thrown
+  // error before logging (see rollback-deploy.test.ts's "redacts the CapRover app
+  // token" case); this rehearsal driver's own catch block did not, even though
+  // rollbackImpl's internal execFile rejections can embed full argv/stdout
+  // (including the token) for a caller that isn't itself wrapping in a redactor.
+  it('redacts the CapRover app token from a thrown rollbackImpl error before logging it', async () => {
+    const exit = vi.fn();
+    const logError = vi.fn();
+    const rollbackImpl = vi
+      .fn()
+      .mockRejectedValue(new Error(`Command failed: appToken=${env.SRC_CAPROVER_APP_TOKEN} rejected`));
+    await main({ env, exit, logError, logInfo: vi.fn(), rollbackImpl });
+
+    expect(exit).toHaveBeenCalledWith(1);
+    const loggedMessage = (logError.mock.calls[0] as [string])[0];
+    expect(loggedMessage).not.toContain(env.SRC_CAPROVER_APP_TOKEN);
+    expect(loggedMessage).toContain('<redacted>');
+  });
 });

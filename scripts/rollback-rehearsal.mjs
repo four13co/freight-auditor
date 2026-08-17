@@ -15,7 +15,7 @@
 // "successful" short-circuit like a missing last-good tag -- that must FAIL this
 // job, not pass it, since it means the real subprocess sequence was never exercised).
 
-import { rollbackToLastGood } from './rollback-deploy.mjs';
+import { rollbackToLastGood, redactToken } from './rollback-deploy.mjs';
 
 /**
  * @param {object} [opts]
@@ -61,7 +61,11 @@ export async function main({
       triggerBuildImpl: stubTriggerBuild,
     });
   } catch (err) {
-    logError(`::error::rehearsal failed: ${err.message}`);
+    // 86e2v88cc: rollbackImpl's internal execFile rejections can embed full
+    // argv/stdout (including caproverAppToken) for a caller that doesn't itself
+    // wrap in a redacting try/catch -- matching rollback-deploy.mjs's main(),
+    // which already redacts here.
+    logError(`::error::rehearsal failed: ${redactToken(err.message, caproverAppToken)}`);
     exit(1);
     return;
   }

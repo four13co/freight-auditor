@@ -15,9 +15,16 @@ import { seedDevTenant, DEV_CLIENT_ID, DEV_USER_ID } from '../../scripts/seed-de
  * web/'s own unit test (test/api.test.tsx) proves the headers are SENT;
  * this proves the values they're set to are ACCEPTED. Together they cover
  * the full regression this item exists to close.
+ *
+ * 86e2v1bbr gated this path behind DEV_AUTH_HEADERS (unset = a verified
+ * better-auth session is required instead, see tenant-auth-session.db.test.ts)
+ * -- this suite sets the flag for its own lifetime so it keeps proving
+ * exactly what it always proved: the dev-header path, unchanged, when the
+ * flag is explicitly on (the dashboard's real deployed/CI configuration).
  */
 describe('Dashboard auth headers accepted end-to-end (DB)', () => {
   let app: FastifyInstance;
+  let originalFlag: string | undefined;
 
   const DASHBOARD_HEADERS = {
     'x-client-id': DEV_CLIENT_ID,
@@ -25,11 +32,15 @@ describe('Dashboard auth headers accepted end-to-end (DB)', () => {
   };
 
   beforeAll(async () => {
+    originalFlag = process.env.DEV_AUTH_HEADERS;
+    process.env.DEV_AUTH_HEADERS = '1';
     await seedDevTenant({ pool: getPool() });
     app = buildApp();
   });
 
   afterAll(async () => {
+    if (originalFlag === undefined) delete process.env.DEV_AUTH_HEADERS;
+    else process.env.DEV_AUTH_HEADERS = originalFlag;
     await app.close();
     await closePool();
   });

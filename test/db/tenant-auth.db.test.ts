@@ -7,15 +7,24 @@ import { resolveAuthorizedTenantContext } from '../../src/modules/findings/tenan
  * 86e2u7j2y ACs, against real Postgres (membership carries FORCE RLS keyed on
  * client_id -- migration 0009 -- so this can't be proven with a mocked client;
  * see test/unit/tenant-auth.test.ts for the header-gating unit coverage).
+ *
+ * 86e2v1bbr gated the header path behind DEV_AUTH_HEADERS (unset = a
+ * verified better-auth session is required instead -- see
+ * tenant-auth-session.db.test.ts) -- this suite sets the flag for its own
+ * lifetime so it keeps proving exactly what it always proved: the
+ * membership-gated dev-header path, unchanged, when the flag is on.
  */
 describe('resolveAuthorizedTenantContext (DB)', () => {
   let pool: pg.Pool;
   let clientId: string;
   let userIdWithMembership: string;
   let userIdWithoutMembership: string;
+  let originalFlag: string | undefined;
   const tag = `ta-${Date.now()}`;
 
   beforeAll(async () => {
+    originalFlag = process.env.DEV_AUTH_HEADERS;
+    process.env.DEV_AUTH_HEADERS = '1';
     pool = getPool();
     const owner = await pool.connect();
     try {
@@ -37,6 +46,8 @@ describe('resolveAuthorizedTenantContext (DB)', () => {
   });
 
   afterAll(async () => {
+    if (originalFlag === undefined) delete process.env.DEV_AUTH_HEADERS;
+    else process.env.DEV_AUTH_HEADERS = originalFlag;
     const owner = await pool.connect();
     try {
       await owner.query(`DELETE FROM membership WHERE client_id = $1`, [clientId]);

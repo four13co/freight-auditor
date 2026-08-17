@@ -19,15 +19,24 @@ import { GOLDEN_210, testCategorize } from '../fixtures/edi-golden.js';
  * rejected outright rather than silently scoped to nothing. Updated in place
  * per that item landing, not left asserting a contract this endpoint no
  * longer has.
+ *
+ * 86e2v1bbr gated the dev-header path behind DEV_AUTH_HEADERS (unset = a
+ * verified better-auth session is required instead) -- this suite is about
+ * the findings endpoint's own behavior, not auth, so it sets the flag for
+ * its own lifetime to keep using dev headers as its (now explicit) identity
+ * source, unchanged from before.
  */
 describe('GET /api/findings (DB, e2e)', () => {
   let pool: pg.Pool;
   let app: FastifyInstance;
   let clientId: string;
   let userId: string;
+  let originalFlag: string | undefined;
   const tag = `fe-${Date.now()}`;
 
   beforeAll(async () => {
+    originalFlag = process.env.DEV_AUTH_HEADERS;
+    process.env.DEV_AUTH_HEADERS = '1';
     pool = getPool();
     const owner = await pool.connect();
     try {
@@ -67,6 +76,8 @@ describe('GET /api/findings (DB, e2e)', () => {
   });
 
   afterAll(async () => {
+    if (originalFlag === undefined) delete process.env.DEV_AUTH_HEADERS;
+    else process.env.DEV_AUTH_HEADERS = originalFlag;
     await app.close();
     const owner = await pool.connect();
     try {

@@ -25,10 +25,11 @@
     "seed:dev": "node scripts/seed-dev-tenant.mjs",
     "seed:criteria": "tsx scripts/seed-criteria.mjs",
     "seed:e2e-fullstack-fixture": "tsx scripts/seed-fullstack-e2e-fixture.mjs",
-    "dev:fullstack-server": "PORT=4180 tsx src/server/index.ts"
+    "dev:fullstack-server": "PORT=4180 DEV_AUTH_HEADERS=1 tsx src/server/index.ts"
   },
   "dependencies": {
     "@fastify/static": "^10.1.3",
+    "better-auth": "^1.6.29",
     "decimal.js": "^10.4.3",
     "fastify": "^5.1.0",
     "pg": "^8.13.1",

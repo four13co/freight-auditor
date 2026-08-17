@@ -67,13 +67,19 @@ describe('listGateFailures (DB)', () => {
       return listGateFailures(c, { clientIds: [clientAId] });
     });
 
-    expect(rows).toHaveLength(1);
-    expect(rows[0]).toMatchObject({
+    // Scoped to this test's own invoice, not a global count -- internal:
+    // true grants cross-client visibility, so asserting rows.length here
+    // instead would break on any sibling gate_failure data (another test's
+    // leftover run, concurrent test data) that has nothing to do with this
+    // assertion.
+    const ownRows = rows.filter((r) => r.invoiceNumber === 'INV210003');
+    expect(ownRows).toHaveLength(1);
+    expect(ownRows[0]).toMatchObject({
       invoiceNumber: 'INV210003',
       defect: expect.stringContaining('foots'),
       citation: expect.stringContaining('B3-07'),
     });
-    expect(typeof rows[0]?.recordedAt).toBe('object'); // Date, via pg
+    expect(typeof ownRows[0]?.recordedAt).toBe('object'); // Date, via pg
   });
 
   it('AC2: a run failing multiple gate criteria at once surfaces ALL gate_failure rows, not just one (COLLECT_ALL)', async () => {

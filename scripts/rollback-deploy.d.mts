@@ -28,6 +28,12 @@ export declare function rollbackToLastGood(
 
 export declare function redactToken(message: string, token: string | undefined): string;
 
+export declare function defaultRun(
+  cmd: string,
+  args: string[],
+  timeoutMs?: number,
+): Promise<RunResult>;
+
 export declare function defaultTriggerBuild(
   caproverUrl: string,
   caproverAppToken: string,

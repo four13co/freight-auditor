@@ -2,10 +2,11 @@ import type { FastifyRequest } from 'fastify';
 import { withTenantTx, type TenantContext } from '../../db/tenant-context.js';
 
 /**
- * Tightens resolveDevTenantContext's unconditional trust (86e2u7j2y): still
- * dev-mode (no real session/login), but the claimed x-client-id must now be
- * backed by a membership row for a claimed x-user-id, or the caller gets a
- * flat reject rather than a silently-scoped (or silently-empty) response.
+ * Tightens the old dev-tenant-stub's unconditional trust (86e2u7j2y, stub
+ * removed in 86e2v24zj): still dev-mode (no real session/login), but the
+ * claimed x-client-id must now be backed by a membership row for a claimed
+ * x-user-id, or the caller gets a flat reject rather than a silently-scoped
+ * (or silently-empty) response.
  *
  * x-user-id is a new header, not previously part of the contract -- the
  * item's shape names a "resolved dev user" but predates any mechanism for

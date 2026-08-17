@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { rollbackToLastGood, redactToken, main } from '../../scripts/rollback-deploy.mjs';
+import { rollbackToLastGood, redactToken, main, defaultRun } from '../../scripts/rollback-deploy.mjs';
 
 describe('rollbackToLastGood (unit)', () => {
   it('checks out the last-good SHA, rebuilds, and re-triggers CapRover with it (AC2)', async () => {
@@ -301,6 +301,48 @@ describe('rollbackToLastGood (unit)', () => {
 
       expect(result.status).toBe('1106');
       expect(result.raw).toContain('Auth token corrupted');
+    });
+  });
+
+  // 86e2v2445: defaultRun (the function that spawns git/npm/op/tar as REAL
+  // subprocesses in production) appeared only in scripts/ with zero occurrences
+  // under test/ before this -- every existing test injects a runImpl mock, so
+  // this exact function had never been exercised by anything. These tests
+  // deliberately do NOT mock node:child_process (unlike the defaultTriggerBuild
+  // block above) -- vi.resetModules + vi.doUnmock here is defensive, guarding
+  // against a mock leaking in from a prior test in this file rather than
+  // asserting anything meaningful on its own.
+  describe('defaultRun (real subprocess, no mocking) (86e2v2445)', () => {
+    beforeEach(() => {
+      vi.resetModules();
+      vi.doUnmock('node:child_process');
+    });
+
+    it('resolves against a real, harmless command', async () => {
+      const { stdout } = await defaultRun('git', ['--version']);
+      expect(stdout).toMatch(/^git version/);
+    });
+
+    it('rejects when the binary does not exist, rather than hanging (ENOENT)', async () => {
+      await expect(defaultRun('this-binary-does-not-exist-86e2v2445', [])).rejects.toThrow();
+    });
+
+    // This is the test that actually proves the timeout bounds a REAL hang --
+    // an ENOENT above rejects instantly regardless of the timeout value, which
+    // would make a naive "nonexistent binary" test pass identically whether or
+    // not a timeout is wired in at all (the same shape of false-passing test
+    // pg_has_role was for a different guarantee earlier this session). `sleep`
+    // is a real, genuinely-blocking subprocess; passing a short timeoutMs here
+    // (rather than relying on the 9-minute production default) is what makes
+    // this test finish in well under a second instead of actually waiting 9
+    // minutes to prove the same thing.
+    it('rejects a genuinely-hanging real subprocess once its timeout elapses, rather than waiting forever', async () => {
+      const start = Date.now();
+      await expect(defaultRun('sleep', ['5'], 200)).rejects.toMatchObject({ killed: true });
+      const elapsed = Date.now() - start;
+      // Generous upper bound for CI scheduling jitter -- the point is proving
+      // it resolved in ~200ms, not that `sleep 5`'s full 5000ms ever elapsed.
+      expect(elapsed).toBeLessThan(4000);
     });
   });
 

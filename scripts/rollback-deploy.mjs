@@ -89,10 +89,16 @@ export async function rollbackToLastGood({
 // workflow step's own 10m timeout-minutes while still being far tighter than "forever".
 const SUBPROCESS_TIMEOUT_MS = 9 * 60 * 1000;
 
-async function defaultRun(cmd, args) {
+// 86e2v2445: exported (was module-private) and given an optional third
+// `timeoutMs` param so tests can drive the real execFile path directly --
+// with the hardcoded 9-minute default there was no way to prove the timeout
+// actually bounds a hang without a test that ran for 9 real minutes. Internal
+// callers in this file never pass a third argument, so they keep using
+// SUBPROCESS_TIMEOUT_MS exactly as before.
+export async function defaultRun(cmd, args, timeoutMs = SUBPROCESS_TIMEOUT_MS) {
   const { execFile } = await import('node:child_process');
   const { promisify } = await import('node:util');
-  return promisify(execFile)(cmd, args, { timeout: SUBPROCESS_TIMEOUT_MS });
+  return promisify(execFile)(cmd, args, { timeout: timeoutMs });
 }
 
 // Uses the same `caprover deploy` CLI path PR #27 already moved the main deploy step to

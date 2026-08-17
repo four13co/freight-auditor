@@ -2,53 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor, fireEvent, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Dashboard } from '../src/components/Dashboard.js';
-import type { FindingRow, FindingsSummary } from '../src/lib/api.js';
-
-const SUMMARY: FindingsSummary = {
-  recoverableOpen: '148320.0000',
-  flaggedToday: 42,
-  withCarriers: 27,
-  recoveredLast30Days: '96411.0000',
-};
-
-const ROWS: FindingRow[] = [
-  {
-    id: 'f1',
-    invoiceNumber: 'INV-90385',
-    carrierName: 'Saia LTL',
-    billed: '1876.4000',
-    expected: '0.0000',
-    varianceAmount: '1876.4000',
-    direction: 'OVERCHARGE',
-    status: 'open',
-    createdAt: '2026-08-14T00:00:00Z',
-    ruleDescription: 'Duplicate invoice for the same PRO',
-  },
-  {
-    id: 'f2',
-    invoiceNumber: 'INV-90408',
-    carrierName: 'Old Dominion',
-    billed: '5940.2000',
-    expected: '5118.6000',
-    varianceAmount: '821.6000',
-    direction: 'OVERCHARGE',
-    status: 'in_review',
-    createdAt: '2026-08-14T00:00:00Z',
-    ruleDescription: 'Fuel surcharge above the indexed rate',
-  },
-  {
-    id: 'f3',
-    invoiceNumber: 'INV-90331',
-    carrierName: 'XPO Logistics',
-    billed: '2077.3000',
-    expected: null,
-    varianceAmount: null,
-    direction: 'INTEGRITY_ONLY',
-    status: 'open',
-    createdAt: '2026-08-14T00:00:00Z',
-    ruleDescription: null,
-  },
-];
+import { DASHBOARD_ROWS as ROWS, DASHBOARD_SUMMARY as SUMMARY } from './fixtures.js';
 
 let fetchMock: ReturnType<typeof vi.fn>;
 

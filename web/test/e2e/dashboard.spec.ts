@@ -1,50 +1,5 @@
 import { test, expect } from '@playwright/test';
-
-const SUMMARY = {
-  recoverableOpen: '148320.0000',
-  flaggedToday: 42,
-  withCarriers: 27,
-  recoveredLast30Days: '96411.0000',
-};
-
-const ROWS = [
-  {
-    id: 'f1',
-    invoiceNumber: 'INV-90385',
-    carrierName: 'Saia LTL',
-    billed: '1876.4000',
-    expected: '0.0000',
-    varianceAmount: '1876.4000',
-    direction: 'OVERCHARGE',
-    status: 'open',
-    createdAt: new Date().toISOString(),
-    ruleDescription: 'Duplicate invoice for the same PRO',
-  },
-  {
-    id: 'f2',
-    invoiceNumber: 'INV-90408',
-    carrierName: 'Old Dominion',
-    billed: '5940.2000',
-    expected: '5118.6000',
-    varianceAmount: '821.6000',
-    direction: 'OVERCHARGE',
-    status: 'in_review',
-    createdAt: new Date().toISOString(),
-    ruleDescription: 'Fuel surcharge above the indexed rate',
-  },
-  {
-    id: 'f3',
-    invoiceNumber: 'INV-90331',
-    carrierName: 'XPO Logistics',
-    billed: '2077.3000',
-    expected: null,
-    varianceAmount: null,
-    direction: 'INTEGRITY_ONLY',
-    status: 'open',
-    createdAt: new Date().toISOString(),
-    ruleDescription: null,
-  },
-];
+import { DASHBOARD_ROWS as ROWS, DASHBOARD_SUMMARY as SUMMARY } from '../fixtures.js';
 
 /**
  * Renders the real dashboard page (Principle 1/7: a render test is part of

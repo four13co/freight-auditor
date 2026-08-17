@@ -107,4 +107,98 @@ describe('GET /api/findings (unit, mocked withTenantTx + tenant-auth)', () => {
     const res = await app.inject({ method: 'GET', url: '/api/findings' });
     expect(res.statusCode).toBe(401);
   });
+
+  // 86e2v24ye: before this fix, an invalid status broke listFindings' own
+  // ::variance_status cast and reached Postgres unvalidated -- with no
+  // setErrorHandler registered, that surfaced as a 500 reflecting raw
+  // Postgres error detail. These assert the boundary rejects it before
+  // listFindings (and therefore Postgres) is ever reached.
+  describe('query param validation (86e2v24ye)', () => {
+    it('returns 400 for an invalid status, without ever calling listFindings', async () => {
+      mockAuthorized();
+      const listFindings = vi.fn();
+      vi.doMock('../../src/db/tenant-context.js', () => ({
+        withTenantTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
+      }));
+      vi.doMock('../../src/modules/findings/list-findings.js', () => ({ listFindings }));
+      const { buildApp } = await import('../../src/server/app.js');
+      app = buildApp();
+
+      const res = await app.inject({
+        method: 'GET',
+        url: '/api/findings?status=not-a-real-status',
+        headers: { 'x-client-id': 'client-abc', 'x-user-id': 'user-1' },
+      });
+
+      expect(res.statusCode).toBe(400);
+      expect(res.json()).toEqual({ error: expect.stringContaining('invalid status') });
+      expect(listFindings).not.toHaveBeenCalled();
+    });
+
+    it('accepts every real variance_status value', async () => {
+      mockAuthorized();
+      const listFindings = vi.fn().mockResolvedValue([]);
+      vi.doMock('../../src/db/tenant-context.js', () => ({
+        withTenantTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
+      }));
+      vi.doMock('../../src/modules/findings/list-findings.js', () => ({ listFindings }));
+      const { buildApp } = await import('../../src/server/app.js');
+      app = buildApp();
+
+      // Matches migrations/0002_enums.sql's variance_status enum exactly.
+      const realStatuses = [
+        'open', 'in_review', 'accepted', 'waived',
+        'queued_for_dispute', 'disputed', 'recovered', 'written_off', 'closed',
+      ];
+      for (const status of realStatuses) {
+        const res = await app.inject({
+          method: 'GET',
+          url: `/api/findings?status=${status}`,
+          headers: { 'x-client-id': 'client-abc', 'x-user-id': 'user-1' },
+        });
+        expect(res.statusCode).toBe(200);
+      }
+    });
+
+    it('returns 400 for a non-numeric min-amount, without ever calling listFindings (kebab-case query key, matching 86e2u7j0d)', async () => {
+      mockAuthorized();
+      const listFindings = vi.fn();
+      vi.doMock('../../src/db/tenant-context.js', () => ({
+        withTenantTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
+      }));
+      vi.doMock('../../src/modules/findings/list-findings.js', () => ({ listFindings }));
+      const { buildApp } = await import('../../src/server/app.js');
+      app = buildApp();
+
+      const res = await app.inject({
+        method: 'GET',
+        url: '/api/findings?min-amount=not-a-number',
+        headers: { 'x-client-id': 'client-abc', 'x-user-id': 'user-1' },
+      });
+
+      expect(res.statusCode).toBe(400);
+      expect(res.json()).toEqual({ error: expect.stringContaining('invalid min-amount') });
+      expect(listFindings).not.toHaveBeenCalled();
+    });
+
+    it('accepts a valid numeric min-amount, including decimals', async () => {
+      mockAuthorized();
+      const listFindings = vi.fn().mockResolvedValue([]);
+      vi.doMock('../../src/db/tenant-context.js', () => ({
+        withTenantTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
+      }));
+      vi.doMock('../../src/modules/findings/list-findings.js', () => ({ listFindings }));
+      const { buildApp } = await import('../../src/server/app.js');
+      app = buildApp();
+
+      const res = await app.inject({
+        method: 'GET',
+        url: '/api/findings?min-amount=250.50',
+        headers: { 'x-client-id': 'client-abc', 'x-user-id': 'user-1' },
+      });
+
+      expect(res.statusCode).toBe(200);
+      expect(listFindings).toHaveBeenCalledWith({}, expect.objectContaining({ minAmount: '250.50' }));
+    });
+  });
 });

@@ -260,4 +260,155 @@ describe('GET /api/findings (unit, mocked withTenantTx + tenant-auth)', () => {
       expect(listGateFailures).not.toHaveBeenCalled();
     });
   });
+
+  describe('PATCH /api/findings/:id/status (86e2v1xyr)', () => {
+    it('returns 200 and the new status for a valid, writable status transition', async () => {
+      mockAuthorized();
+      const updateFindingStatus = vi.fn().mockResolvedValue({ found: true });
+      vi.doMock('../../src/db/tenant-context.js', () => ({
+        withTenantTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
+      }));
+      vi.doMock('../../src/modules/findings/update-finding-status.js', () => ({ updateFindingStatus }));
+      const { buildApp } = await import('../../src/server/app.js');
+      app = buildApp();
+
+      const res = await app.inject({
+        method: 'PATCH',
+        url: '/api/findings/f1/status',
+        headers: { 'x-client-id': 'client-abc', 'x-user-id': 'user-1', 'content-type': 'application/json' },
+        payload: { status: 'in_review' },
+      });
+
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toEqual({ id: 'f1', status: 'in_review' });
+      expect(updateFindingStatus).toHaveBeenCalledWith({}, 'f1', 'in_review', undefined);
+    });
+
+    it('returns 404 without calling reply with a 200 when the finding is not found for this tenant', async () => {
+      mockAuthorized();
+      const updateFindingStatus = vi.fn().mockResolvedValue({ found: false });
+      vi.doMock('../../src/db/tenant-context.js', () => ({
+        withTenantTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
+      }));
+      vi.doMock('../../src/modules/findings/update-finding-status.js', () => ({ updateFindingStatus }));
+      const { buildApp } = await import('../../src/server/app.js');
+      app = buildApp();
+
+      const res = await app.inject({
+        method: 'PATCH',
+        url: '/api/findings/missing/status',
+        headers: { 'x-client-id': 'client-abc', 'x-user-id': 'user-1', 'content-type': 'application/json' },
+        payload: { status: 'in_review' },
+      });
+      expect(res.statusCode).toBe(404);
+    });
+
+    it('returns 401 when unauthorized, without ever calling updateFindingStatus', async () => {
+      vi.doMock('../../src/modules/findings/tenant-auth.js', () => ({
+        resolveAuthorizedTenantContext: vi.fn().mockResolvedValue(null),
+      }));
+      const updateFindingStatus = vi.fn();
+      vi.doMock('../../src/db/tenant-context.js', () => ({
+        withTenantTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
+      }));
+      vi.doMock('../../src/modules/findings/update-finding-status.js', () => ({ updateFindingStatus }));
+      const { buildApp } = await import('../../src/server/app.js');
+      app = buildApp();
+
+      const res = await app.inject({
+        method: 'PATCH',
+        url: '/api/findings/f1/status',
+        payload: { status: 'in_review' },
+      });
+      expect(res.statusCode).toBe(401);
+      expect(updateFindingStatus).not.toHaveBeenCalled();
+    });
+
+    // 86e2v1xyr's explicit scope rule: the drawer (and this route) only
+    // accept the 5 values the status FILTER dropdown also exposes -- a
+    // finding set to one of the other 4 enum values would become
+    // unreachable through the UI. Distinct, narrower set than GET
+    // /api/findings' own VARIANCE_STATUS_VALUES query-param validation.
+    it.each(['accepted', 'waived', 'recovered', 'written_off'])(
+      'returns 400 for the non-writable status %s, without calling updateFindingStatus',
+      async (status) => {
+        mockAuthorized();
+        const updateFindingStatus = vi.fn();
+        vi.doMock('../../src/db/tenant-context.js', () => ({
+          withTenantTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
+        }));
+        vi.doMock('../../src/modules/findings/update-finding-status.js', () => ({ updateFindingStatus }));
+        const { buildApp } = await import('../../src/server/app.js');
+        app = buildApp();
+
+        const res = await app.inject({
+          method: 'PATCH',
+          url: '/api/findings/f1/status',
+          headers: { 'x-client-id': 'client-abc', 'x-user-id': 'user-1', 'content-type': 'application/json' },
+          payload: { status },
+        });
+        expect(res.statusCode).toBe(400);
+        expect(updateFindingStatus).not.toHaveBeenCalled();
+      },
+    );
+
+    it('returns 400 for a garbage (non-enum, non-string) status value', async () => {
+      mockAuthorized();
+      const updateFindingStatus = vi.fn();
+      vi.doMock('../../src/db/tenant-context.js', () => ({
+        withTenantTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
+      }));
+      vi.doMock('../../src/modules/findings/update-finding-status.js', () => ({ updateFindingStatus }));
+      const { buildApp } = await import('../../src/server/app.js');
+      app = buildApp();
+
+      const res = await app.inject({
+        method: 'PATCH',
+        url: '/api/findings/f1/status',
+        headers: { 'x-client-id': 'client-abc', 'x-user-id': 'user-1', 'content-type': 'application/json' },
+        payload: { status: 12345 },
+      });
+      expect(res.statusCode).toBe(400);
+      expect(updateFindingStatus).not.toHaveBeenCalled();
+    });
+
+    it('returns 400 when note is present but not a string', async () => {
+      mockAuthorized();
+      const updateFindingStatus = vi.fn();
+      vi.doMock('../../src/db/tenant-context.js', () => ({
+        withTenantTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
+      }));
+      vi.doMock('../../src/modules/findings/update-finding-status.js', () => ({ updateFindingStatus }));
+      const { buildApp } = await import('../../src/server/app.js');
+      app = buildApp();
+
+      const res = await app.inject({
+        method: 'PATCH',
+        url: '/api/findings/f1/status',
+        headers: { 'x-client-id': 'client-abc', 'x-user-id': 'user-1', 'content-type': 'application/json' },
+        payload: { status: 'in_review', note: 42 },
+      });
+      expect(res.statusCode).toBe(400);
+      expect(updateFindingStatus).not.toHaveBeenCalled();
+    });
+
+    it('passes note through to updateFindingStatus when provided', async () => {
+      mockAuthorized();
+      const updateFindingStatus = vi.fn().mockResolvedValue({ found: true });
+      vi.doMock('../../src/db/tenant-context.js', () => ({
+        withTenantTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
+      }));
+      vi.doMock('../../src/modules/findings/update-finding-status.js', () => ({ updateFindingStatus }));
+      const { buildApp } = await import('../../src/server/app.js');
+      app = buildApp();
+
+      await app.inject({
+        method: 'PATCH',
+        url: '/api/findings/f1/status',
+        headers: { 'x-client-id': 'client-abc', 'x-user-id': 'user-1', 'content-type': 'application/json' },
+        payload: { status: 'closed', note: 'analyst note' },
+      });
+      expect(updateFindingStatus).toHaveBeenCalledWith({}, 'f1', 'closed', 'analyst note');
+    });
+  });
 });

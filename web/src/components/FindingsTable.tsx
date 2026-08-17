@@ -12,6 +12,8 @@ interface FindingsTableProps {
   onCarrierFilterChange: (value: string) => void;
   onStatusFilterChange: (value: string) => void;
   onMinAmountFilterChange: (value: string) => void;
+  /** 86e2v1xyr: bubbled up from the drawer after a successful status PATCH, so the caller (Dashboard) can patch its own row list without a full refetch. */
+  onRowStatusChange?: (id: string, status: string) => void;
 }
 
 // The mockup's table has 9 columns including "Finding" (a rule description,
@@ -35,6 +37,7 @@ export function FindingsTable({
   onCarrierFilterChange,
   onStatusFilterChange,
   onMinAmountFilterChange,
+  onRowStatusChange,
 }: FindingsTableProps) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [detailRow, setDetailRow] = useState<FindingRow | null>(null);
@@ -259,7 +262,16 @@ export function FindingsTable({
           })
         )}
       </div>
-      {detailRow && <FindingDetail row={detailRow} onClose={() => setDetailRow(null)} />}
+      {detailRow && (
+        <FindingDetail
+          row={detailRow}
+          onClose={() => setDetailRow(null)}
+          onStatusChange={(id, status) => {
+            setDetailRow((prev) => (prev && prev.id === id ? { ...prev, status } : prev));
+            onRowStatusChange?.(id, status);
+          }}
+        />
+      )}
     </div>
   );
 }

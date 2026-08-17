@@ -100,3 +100,17 @@ export async function fetchGateFailures(): Promise<GateFailureRow[]> {
   // this covers the other half so setGateFailures never receives undefined.
   return body.gateFailures ?? [];
 }
+
+/**
+ * 86e2v1xyr: the drawer's status control. Scoped server-side to the same 5
+ * values the status filter dropdown exposes (open/in_review/
+ * queued_for_dispute/disputed/closed) -- see app.ts's WRITABLE_STATUS_VALUES.
+ */
+export async function updateFindingStatus(id: string, status: string): Promise<void> {
+  const res = await fetch(`/api/findings/${id}/status`, {
+    method: 'PATCH',
+    headers: { ...authHeaders(), 'content-type': 'application/json' },
+    body: JSON.stringify({ status }),
+  });
+  if (!res.ok) throw new Error(`PATCH /api/findings/${id}/status failed: ${res.status}`);
+}

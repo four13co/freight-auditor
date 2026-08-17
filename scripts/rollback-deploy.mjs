@@ -43,30 +43,41 @@ export async function rollbackToLastGood({
   // 86e2v1ccg: must also resolve the runtime .env, matching deploy.yml's "Resolve
   // runtime .env from 1Password" step (86e2v0acm) — checked out from the last-good
   // revision itself (not HEAD), same as everything else this rebuild uses.
+  //
+  // 86e2v882v: inject -> tar -> cleanup has no room for a throw to skip cleanup --
+  // op inject and tar both write secret-bearing files (.env, then deploy.tar.gz)
+  // to disk, so a throw anywhere in this sequence (including the timeout added
+  // above firing mid-tar) must still remove whatever was written so far before
+  // propagating. The finally block removes both unconditionally; a file that was
+  // never created (e.g. inject itself threw, so .env doesn't exist) is a no-op rm.
   await runImpl('node', [
     '-e',
     `require('fs').writeFileSync('.env.tpl', require('fs').readFileSync('.env.template', 'utf8').split('\${OP_VAULT}').join(process.env.OP_VAULT))`,
   ]);
-  await runImpl('op', ['inject', '-i', '.env.tpl', '-o', '.env']);
-  await runImpl('rm', ['.env.tpl']);
-  // Must match .github/workflows/deploy.yml's "Create deployment tarball" file list —
-  // the tarball IS the entire Docker build context CapRover sees, and captain-definition
-  // points at "./Dockerfile", so omitting anything here fails the rollback's server-side
-  // build while `caprover deploy` still exits 0 (it confirms the upload, not the build) —
-  // exactly like PR #33 fixed for the main deploy step (86e2tn08g), and the same class of
-  // gap as 86e2v07n3/PR #70's web/dist omission.
-  await runImpl('tar', [
-    '-czf',
-    'deploy.tar.gz',
-    'Dockerfile',
-    'captain-definition',
-    'package.json',
-    'package-lock.json',
-    'dist/',
-    'web/dist/',
-    '.env',
-  ]);
-  await runImpl('rm', ['.env']);
+  try {
+    await runImpl('op', ['inject', '-i', '.env.tpl', '-o', '.env']);
+    await runImpl('rm', ['.env.tpl']);
+    // Must match .github/workflows/deploy.yml's "Create deployment tarball" file list —
+    // the tarball IS the entire Docker build context CapRover sees, and captain-definition
+    // points at "./Dockerfile", so omitting anything here fails the rollback's server-side
+    // build while `caprover deploy` still exits 0 (it confirms the upload, not the build) —
+    // exactly like PR #33 fixed for the main deploy step (86e2tn08g), and the same class of
+    // gap as 86e2v07n3/PR #70's web/dist omission.
+    await runImpl('tar', [
+      '-czf',
+      'deploy.tar.gz',
+      'Dockerfile',
+      'captain-definition',
+      'package.json',
+      'package-lock.json',
+      'dist/',
+      'web/dist/',
+      '.env',
+    ]);
+  } finally {
+    await runImpl('rm', ['-f', '.env']);
+    await runImpl('rm', ['-f', 'deploy.tar.gz']);
+  }
 
   let result;
   try {

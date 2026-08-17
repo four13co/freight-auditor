@@ -4,6 +4,11 @@ import type { FastifyInstance } from 'fastify';
 import { getPool, closePool } from '../../src/db/pool.js';
 import { withTenantTx } from '../../src/db/tenant-context.js';
 import { buildApp } from '../../src/server/app.js';
+import { parse210 } from '../../src/modules/ingestion/parse-210.js';
+import { evaluateInvoice } from '../../src/modules/evaluator/evaluate-invoice.js';
+import { persistAuditRun } from '../../src/modules/evaluator/persist.js';
+import { CONTRACT_RUBRIC } from '../../src/modules/rubric-resolver/contract-rubric.js';
+import { GOLDEN_210, testCategorize } from '../fixtures/edi-golden.js';
 
 /**
  * 86e2u7j0d AC1-3, exercised at the HTTP layer (GET /api/findings).
@@ -65,7 +70,13 @@ describe('GET /api/findings (DB, e2e)', () => {
     await app.close();
     const owner = await pool.connect();
     try {
+      // variance_finding + charge_finding + scorecard before audit_run
+      // (86e2v17p5's real-pipeline test below calls the full persistAuditRun,
+      // which writes all three -- this file's cleanup previously only ever
+      // hand-seeded variance_finding/charge_fact directly).
       await owner.query(`DELETE FROM variance_finding WHERE client_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM scorecard WHERE client_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM charge_finding WHERE client_id = $1`, [clientId]);
       await owner.query(`DELETE FROM charge_fact WHERE client_id = $1`, [clientId]);
       await owner.query(`DELETE FROM audit_run WHERE client_id = $1`, [clientId]);
       await owner.query(`DELETE FROM invoice WHERE client_id = $1`, [clientId]);
@@ -131,5 +142,31 @@ describe('GET /api/findings (DB, e2e)', () => {
     });
     expect(res.statusCode).toBe(200);
     expect(res.json().findings).toHaveLength(1);
+  });
+
+  /**
+   * 86e2v17p5 AC2: a real parse210 -> evaluateInvoice -> persistAuditRun run
+   * (not a hand-seeded row) produces a variance_finding that GET
+   * /api/findings actually returns, with the correct direction/amount --
+   * proving the full real-EDI-to-dashboard path, not just that a row exists.
+   */
+  it('86e2v17p5: a real pipeline-derived VARIANCE finding is visible via GET /api/findings with matching direction/amount', async () => {
+    const inv = parse210(GOLDEN_210, testCategorize); // billed LINEHAUL = 1000.00
+    const result = evaluateInvoice(inv, CONTRACT_RUBRIC, {
+      linehaulRate: { amount: '900.0000', currency: 'USD', clauseId: null },
+    });
+    await withTenantTx({ clientIds: [clientId], internal: true }, (c) =>
+      persistAuditRun(c, { clientId, invoice: inv, result, rubricSnapshotId: null }),
+    );
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/findings',
+      headers: { 'x-client-id': clientId, 'x-user-id': userId },
+    });
+    expect(res.statusCode).toBe(200);
+    const findings = res.json().findings as Array<{ invoiceNumber: string; direction: string; varianceAmount: string }>;
+    const derived = findings.find((f) => f.invoiceNumber === inv.invoiceNumber);
+    expect(derived).toMatchObject({ direction: 'OVERCHARGE', varianceAmount: '100.0000' });
   });
 });

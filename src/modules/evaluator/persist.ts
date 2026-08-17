@@ -1,4 +1,5 @@
 import type pg from 'pg';
+import { Decimal } from 'decimal.js';
 import type { ParsedInvoice } from '../ingestion/charge-fact.js';
 import type { AuditResult } from './evaluate-invoice.js';
 
@@ -51,6 +52,11 @@ export async function persistAuditRun(
   // fabricate billed-side data for an invoice the gate explicitly rejected;
   // the gate_failure kickback (step 3) is the canonical record of why. Only
   // persist charge_fact once the invoice is SCORED, i.e. currency is stated.
+  //
+  // Track ids by category (86e2v17p5) -- the variance_finding derivation
+  // (step 5) needs to know which charge_fact row(s) fed CONTRACT.RATE_VARIANCE
+  // (the LINEHAUL sum in fact-bundle.ts) to decide charge_fact_id attribution.
+  const chargeFactIdsByCategory = new Map<string, string[]>();
   if (result.outcome === 'SCORED') {
     for (const c of invoice.charges) {
       // STD.AMOUNT_STATED gates SCORED, so every charge here must have a
@@ -60,15 +66,20 @@ export async function persistAuditRun(
       if (c.amount === undefined) {
         throw new Error(`invariant violated: charge ${c.code ?? '(no code)'} has no amount on a SCORED invoice`);
       }
-      await client.query(
+      const cf = await client.query<{ id: string }>(
         `INSERT INTO charge_fact
            (client_id, invoice_id, code, x12_element, category, amount, currency, basis, rate, raw_description, source_loop)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING id`,
         [
           clientId, invoiceId, c.code ?? null, c.x12Element ?? null, c.category ?? null,
           c.amount, c.currency, c.basis ?? null, c.rate ?? null, c.rawDescription ?? null, c.sourceLoop ?? null,
         ],
       );
+      if (c.category !== undefined && !c.quarantined) {
+        const ids = chargeFactIdsByCategory.get(c.category) ?? [];
+        ids.push(cf.rows[0]!.id);
+        chargeFactIdsByCategory.set(c.category, ids);
+      }
     }
   }
 
@@ -100,6 +111,44 @@ export async function persistAuditRun(
       [clientId, auditRunId, f.result, JSON.stringify(f.evaluatedExpr)],
     );
     chargeFindingIds.push(cf.rows[0]!.id);
+  }
+
+  // 4.5. variance_finding derivation (86e2v17p5) — bridges charge_finding
+  // (internal scoring record) to variance_finding (what GET /api/findings
+  // reads). Built against Greg's DECISION comment on the task, 2026-08-16:
+  // attribute the finding to the INVOICE, not a single charge. Every
+  // VARIANCE/UNASSESSABLE finding gets a row (No-go: no materiality floor
+  // suppresses the write); CONFORMED gets none. charge_fact_id is populated
+  // only when exactly one charge in the criterion's category contributed
+  // (the attribution is unambiguous there); NULL when zero or more than one
+  // did -- ambiguous attribution, not a guess. Runs in the same transaction
+  // as the rest of this function (no second transaction/post-commit step).
+  for (const f of result.findings) {
+    if (f.result === 'CONFORMED') continue;
+    // CONTRACT.RATE_VARIANCE is the only criterion today whose category maps
+    // onto a specific charge_fact set (LINEHAUL, per fact-bundle.ts's sum);
+    // STANDARD.* criteria are invoice-level predicates with no single-category
+    // source, so they correctly get charge_fact_id: NULL (ambiguous by
+    // construction, not a special case to detect here).
+    const category = f.criterionKey === 'CONTRACT.RATE_VARIANCE' ? 'LINEHAUL' : null;
+    const contributingIds = category !== null ? (chargeFactIdsByCategory.get(category) ?? []) : [];
+    const chargeFactId = contributingIds.length === 1 ? contributingIds[0]! : null;
+    const classification = f.result === 'UNASSESSABLE' ? 'unassessable' : 'variance';
+    await client.query(
+      `INSERT INTO variance_finding
+         (client_id, audit_run_id, charge_fact_id, direction, materiality, variance_amount, currency, classification, status)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'open')`,
+      [
+        clientId,
+        auditRunId,
+        chargeFactId,
+        f.direction === 'INTEGRITY_ONLY' ? null : f.direction,
+        f.varianceAmount === null ? null : new Decimal(f.varianceAmount).abs().toFixed(4),
+        f.varianceAmount,
+        f.currency,
+        classification,
+      ],
+    );
   }
 
   // 5. scorecard rollup (mutable summary) — only on SCORED.

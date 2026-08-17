@@ -337,4 +337,66 @@ describe('listFindings (DB)', () => {
     expect(matching).toHaveLength(1);
     expect(matching[0]?.ruleDescription).toBe('New wording');
   });
+
+  /**
+   * 86e2v17p5 DECISION: charge_fact_id is nullable on variance_finding
+   * (ambiguous multi-charge attribution or an invoice-level STANDARD
+   * finding) -- the query must surface these rows (LEFT JOIN, not INNER),
+   * and invoice/carrier must still resolve via audit_run.invoice_id since
+   * the charge_fact path is unavailable when charge_fact_id is NULL.
+   */
+  describe('86e2v17p5: NULL charge_fact_id (invoice-level attribution) surfaces via audit_run', () => {
+    it('a variance_finding row with charge_fact_id NULL still appears, with invoice/carrier resolved via audit_run', async () => {
+      const rows = await withTenantTx({ clientIds: [clientAId], internal: true }, async (c) => {
+        const inv = await c.query(
+          `INSERT INTO invoice (client_id, carrier_id, transaction_set, invoice_number, currency, parser_version)
+           VALUES ($1, $2, '210', $3, 'USD', 'test') RETURNING id`,
+          [clientAId, carrierId, `INV-${tag}-null-charge`],
+        );
+        const run = await c.query(
+          `INSERT INTO audit_run (client_id, invoice_id, engine_spec_version, outcome) VALUES ($1, $2, 'test', 'SCORED') RETURNING id`,
+          [clientAId, inv.rows[0].id],
+        );
+        await c.query(
+          `INSERT INTO variance_finding (client_id, audit_run_id, charge_fact_id, direction, variance_amount, currency, status)
+           VALUES ($1, $2, NULL, 'OVERCHARGE', '250.0000', 'USD', 'open')`,
+          [clientAId, run.rows[0].id],
+        );
+        return listFindings(c, { clientIds: [clientAId], carrier: `Carrier-${tag}` });
+      });
+      const matching = rows.filter((r) => r.invoiceNumber === `INV-${tag}-null-charge`);
+      expect(matching).toHaveLength(1);
+      expect(matching[0]?.carrierName).toBe(`Carrier-${tag}`);
+      expect(matching[0]?.varianceAmount).toBe('250.0000');
+      // billed comes from charge_fact.amount, which has no row to join to --
+      // the defined "missing charge reference" treatment (null, not a query
+      // error or a fabricated 0), per the standard 86e2uutk8 set for
+      // FindingDetail's nullable fields. The frontend's formatMoney(null)
+      // already renders this as "—".
+      expect(matching[0]?.billed).toBeNull();
+    });
+
+    it('client B never sees client A a NULL-charge_fact_id row (RLS isolation still holds under the relaxed JOIN)', async () => {
+      await withTenantTx({ clientIds: [clientAId], internal: true }, async (c) => {
+        const inv = await c.query(
+          `INSERT INTO invoice (client_id, carrier_id, transaction_set, invoice_number, currency, parser_version)
+           VALUES ($1, $2, '210', $3, 'USD', 'test') RETURNING id`,
+          [clientAId, carrierId, `INV-${tag}-null-charge-rls`],
+        );
+        const run = await c.query(
+          `INSERT INTO audit_run (client_id, invoice_id, engine_spec_version, outcome) VALUES ($1, $2, 'test', 'SCORED') RETURNING id`,
+          [clientAId, inv.rows[0].id],
+        );
+        await c.query(
+          `INSERT INTO variance_finding (client_id, audit_run_id, charge_fact_id, direction, variance_amount, currency, status)
+           VALUES ($1, $2, NULL, 'OVERCHARGE', '250.0000', 'USD', 'open')`,
+          [clientAId, run.rows[0].id],
+        );
+      });
+      const bRows = await withTenantTx({ clientIds: [clientBId], internal: false }, async (c) => {
+        return listFindings(c, { clientIds: [clientBId] });
+      });
+      expect(bRows.find((r) => r.invoiceNumber === `INV-${tag}-null-charge-rls`)).toBeUndefined();
+    });
+  });
 });

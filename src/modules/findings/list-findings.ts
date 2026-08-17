@@ -12,7 +12,8 @@ export interface FindingRow {
   id: string;
   invoiceNumber: string | null;
   carrierName: string | null;
-  billed: string;
+  /** null when charge_fact_id is null (86e2v17p5: ambiguous/invoice-level attribution, no single charge to source the billed amount from). */
+  billed: string | null;
   expected: string | null;
   varianceAmount: string | null;
   direction: string | null;
@@ -72,7 +73,7 @@ export async function listFindings(
     id: string;
     invoice_number: string | null;
     carrier_name: string | null;
-    billed: string;
+    billed: string | null;
     expected: string | null;
     variance_amount: string | null;
     direction: string | null;
@@ -92,8 +93,23 @@ export async function listFindings(
        variance_finding.created_at,
        criterion_version.description AS rule_description
      FROM variance_finding
-     JOIN charge_fact ON charge_fact.id = variance_finding.charge_fact_id
-     JOIN invoice ON invoice.id = charge_fact.invoice_id
+     -- 86e2v17p5 DECISION: charge_fact_id is nullable (an invoice-level
+     -- finding attributed to no single charge, e.g. more than one LINEHAUL
+     -- charge contributed, or a STANDARD-tier integrity finding with no
+     -- charge-level source at all) -- relaxed from INNER so these rows still
+     -- surface, not silently vanish. billed (charge_fact.amount) is NULL for
+     -- them; the frontend's formatMoney(null) already renders "—" per the
+     -- 86e2uutk8 standard for missing-value treatment.
+     LEFT JOIN charge_fact ON charge_fact.id = variance_finding.charge_fact_id
+     -- invoice/carrier were reached exclusively through charge_fact.invoice_id
+     -- before this change -- with charge_fact_id NULL that path yields
+     -- nothing, so fall back to audit_run.invoice_id (NOT NULL, verified
+     -- against migrations/0007 per the DECISION's explicit instruction not to
+     -- assume). COALESCE picks whichever path resolved; both point at the
+     -- same invoice when charge_fact_id is populated, so this is a pure
+     -- widening, never a behavior change for the existing (non-null) case.
+     JOIN audit_run ON audit_run.id = variance_finding.audit_run_id
+     JOIN invoice ON invoice.id = COALESCE(charge_fact.invoice_id, audit_run.invoice_id)
      LEFT JOIN carrier ON carrier.id = invoice.carrier_id
      -- expected_charge.charge_fact_id has no uniqueness constraint (migration
      -- 0007), so a plain JOIN can row-multiply a finding if more than one

@@ -399,4 +399,137 @@ describe('listFindings (DB)', () => {
       expect(bRows.find((r) => r.invoiceNumber === `INV-${tag}-null-charge-rls`)).toBeUndefined();
     });
   });
+
+  // 86e2v251e: sort must be correct against the FULL filtered result set,
+  // not just the default 50-row page -- these seed 51+ rows to prove it.
+  describe('sort (86e2v251e)', () => {
+    const sortTag = `lf-sort-${Date.now()}`;
+    let sortClientId: string;
+    let sortCarrierId: string;
+
+    beforeAll(async () => {
+      const owner = await pool.connect();
+      try {
+        const c = await owner.query(`INSERT INTO client (name, slug) VALUES ('LF-Sort', $1) RETURNING id`, [sortTag]);
+        sortClientId = c.rows[0].id;
+        const carrier = await owner.query(`INSERT INTO carrier (name) VALUES ($1) RETURNING id`, [`Carrier-${sortTag}`]);
+        sortCarrierId = carrier.rows[0].id;
+      } finally {
+        owner.release();
+      }
+    });
+
+    afterAll(async () => {
+      const owner = await pool.connect();
+      try {
+        await owner.query(`DELETE FROM variance_finding WHERE client_id = $1`, [sortClientId]);
+        await owner.query(`DELETE FROM charge_fact WHERE client_id = $1`, [sortClientId]);
+        await owner.query(`DELETE FROM audit_run WHERE client_id = $1`, [sortClientId]);
+        await owner.query(`DELETE FROM invoice WHERE client_id = $1`, [sortClientId]);
+        await owner.query(`DELETE FROM carrier WHERE id = $1`, [sortCarrierId]);
+        await owner.query(`DELETE FROM client WHERE id = $1`, [sortClientId]);
+      } finally {
+        owner.release();
+      }
+    });
+
+    /**
+     * Bulk-seeds `count` filler variance_finding rows with small, distinct
+     * variance amounts (1.00, 2.00, ... count.00) via one multi-row INSERT
+     * per table -- a per-row seedFinding() chain (5 sequential round-trips
+     * each) would be needlessly slow at 50+ rows. Returns nothing; callers
+     * seed their own "interesting" row(s) separately via seedFinding-style
+     * inserts so their invoice_number is identifiable in assertions.
+     */
+    async function seedFillerRows(client: pg.PoolClient, count: number): Promise<void> {
+      // Each row needs its own invoice_number, so it gets its own two params
+      // ($1/$2 = shared client_id/carrier_id would only work for a single
+      // row) -- $3, $5, $7... are the per-row invoice_number placeholders.
+      const invoiceValues = Array.from(
+        { length: count },
+        (_, i) => `($1, $2, '210', $${i + 3}, 'USD', 'test')`,
+      ).join(', ');
+      const invoiceNumbers = Array.from({ length: count }, (_, i) => `INV-${sortTag}-filler-${i}`);
+      const invoices = await client.query<{ id: string }>(
+        `INSERT INTO invoice (client_id, carrier_id, transaction_set, invoice_number, currency, parser_version)
+         VALUES ${invoiceValues}
+         RETURNING id`,
+        [sortClientId, sortCarrierId, ...invoiceNumbers],
+      );
+      const invoiceIds = invoices.rows.map((r) => r.id);
+
+      const runValues = invoiceIds.map((_, i) => `($1, $${i + 2}, 'test', 'SCORED')`).join(', ');
+      const runs = await client.query<{ id: string }>(
+        `INSERT INTO audit_run (client_id, invoice_id, engine_spec_version, outcome)
+         VALUES ${runValues}
+         RETURNING id`,
+        [sortClientId, ...invoiceIds],
+      );
+      const runIds = runs.rows.map((r) => r.id);
+
+      // Small, distinct variance amounts (1.00 .. count.00) -- all comfortably
+      // below the "interesting" large-variance row seeded per-test, so sort
+      // correctness is unambiguous regardless of direction.
+      const vfValues = runIds.map((_, i) => `($1, $${i + 2}, 'OVERCHARGE', ${(i + 1).toFixed(2)}, 'USD', 'open')`).join(', ');
+      await client.query(
+        `INSERT INTO variance_finding (client_id, audit_run_id, direction, variance_amount, currency, status)
+         VALUES ${vfValues}`,
+        [sortClientId, ...runIds],
+      );
+    }
+
+    it('AC1: sorting by variance surfaces the true largest-variance finding even when 50+ other findings exist', async () => {
+      const rows = await withTenantTx({ clientIds: [sortClientId], internal: true }, async (c) => {
+        // 55 filler rows with variance 1.00..55.00 -- all rank below the
+        // default LIMIT 50 page boundary by created_at (insertion order), so
+        // a query that sorted only the first page would never see the
+        // interesting row seeded below.
+        await seedFillerRows(c, 55);
+
+        // The interesting row: backdated created_at (a day in the past) so
+        // it sorts OUTSIDE the default LIMIT 50 page under the old
+        // created_at-DESC-then-slice behavior (the 55 filler rows, all
+        // created just now, would fill that page first). Its variance
+        // (99999.00) is far above every filler row (1.00-55.00), so ORDER BY
+        // variance_amount DESC must surface it first regardless of when it
+        // was created -- proving sort now operates on the full result set,
+        // not just whatever the default page happened to contain.
+        const inv = await c.query(
+          `INSERT INTO invoice (client_id, carrier_id, transaction_set, invoice_number, currency, parser_version)
+           VALUES ($1, $2, '210', $3, 'USD', 'test') RETURNING id`,
+          [sortClientId, sortCarrierId, `INV-${sortTag}-BIGGEST`],
+        );
+        const run = await c.query(
+          `INSERT INTO audit_run (client_id, invoice_id, engine_spec_version, outcome, created_at)
+           VALUES ($1, $2, 'test', 'SCORED', NOW() - INTERVAL '1 day') RETURNING id`,
+          [sortClientId, inv.rows[0].id],
+        );
+        await c.query(
+          `INSERT INTO variance_finding (client_id, audit_run_id, direction, variance_amount, currency, status, created_at)
+           VALUES ($1, $2, 'OVERCHARGE', '99999.0000', 'USD', 'open', NOW() - INTERVAL '1 day')`,
+          [sortClientId, run.rows[0].id],
+        );
+
+        return listFindings(c, { clientIds: [sortClientId], sort: 'variance', sortDir: 'desc' });
+      });
+
+      // Backdating created_at puts BIGGEST outside the default page when
+      // sorted by created_at DESC (the old, wrong behavior) -- but ORDER BY
+      // variance_amount DESC must still surface it first regardless.
+      expect(rows[0]?.invoiceNumber).toBe(`INV-${sortTag}-BIGGEST`);
+      expect(rows[0]?.varianceAmount).toBe('99999.0000');
+    });
+
+    it('AC1: sorting by variance ASC surfaces the smallest, even past the default LIMIT 50 window', async () => {
+      const rows = await withTenantTx({ clientIds: [sortClientId], internal: true }, async (c) => {
+        return listFindings(c, { clientIds: [sortClientId], sort: 'variance', sortDir: 'asc', limit: 5 });
+      });
+      // Filler rows (1.00..55.00) plus BIGGEST (99999.00) from the previous
+      // test -- ascending, the 5 smallest are 1.00..5.00, none of which are
+      // BIGGEST or anywhere near the top of a created_at-DESC page.
+      // numeric(18,4) round-trips as a 4-decimal string via pg, same as
+      // every other variance_amount assertion in this file.
+      expect(rows.map((r) => r.varianceAmount)).toEqual(['1.0000', '2.0000', '3.0000', '4.0000', '5.0000']);
+    });
+  });
 });

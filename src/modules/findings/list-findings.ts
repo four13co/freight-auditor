@@ -22,6 +22,9 @@ export interface FindingRow {
   ruleDescription: string | null;
 }
 
+export type FindingsSortKey = 'variance' | 'age';
+export type FindingsSortDir = 'asc' | 'desc';
+
 export interface ListFindingsOptions {
   /** Present so a caller can pass its TenantContext straight through if useful; not used to filter — RLS already scopes rows. */
   clientIds?: string[];
@@ -30,9 +33,22 @@ export interface ListFindingsOptions {
   minAmount?: string;
   limit?: number;
   offset?: number;
+  sort?: FindingsSortKey;
+  sortDir?: FindingsSortDir;
 }
 
 const DEFAULT_LIMIT = 50;
+
+// 86e2v251e: sort must be applied server-side, before LIMIT, so it's correct
+// against the full filtered result set rather than just the current page --
+// the whole point of this item. `sort`/`sortDir` are never interpolated
+// directly (an ORDER BY column/direction can't be parameter-bound, so this
+// allowlist is the injection boundary); ORDER_COLUMNS' values are the only
+// SQL fragments that can reach the query string.
+const ORDER_COLUMNS: Record<FindingsSortKey, string> = {
+  variance: 'variance_finding.variance_amount',
+  age: 'variance_finding.created_at',
+};
 
 /**
  * List variance_finding rows joined to their billed/expected amounts and
@@ -67,6 +83,19 @@ export async function listFindings(
   const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
   const limit = options.limit ?? DEFAULT_LIMIT;
   const offset = options.offset ?? 0;
+
+  // Default stays created_at DESC (unchanged behavior when no sort is
+  // requested). variance_amount is nullable (86e2v17p5), so an explicit
+  // NULLS LAST keeps null-variance rows sorting last regardless of
+  // direction, matching FindingsTable's prior client-side null handling
+  // (86e2uuw63 AC3) instead of Postgres's default (NULLS LAST on ASC,
+  // NULLS FIRST on DESC), which would flip their position on toggle.
+  const sortColumn = options.sort ? ORDER_COLUMNS[options.sort] : 'variance_finding.created_at';
+  const sortDir = options.sortDir === 'asc' ? 'ASC' : 'DESC';
+  const orderBy = options.sort === 'variance'
+    ? `ORDER BY ${sortColumn} ${sortDir} NULLS LAST`
+    : `ORDER BY ${sortColumn} ${sortDir}`;
+
   params.push(limit, offset);
 
   const result = await client.query<{
@@ -139,7 +168,7 @@ export async function listFindings(
        LIMIT 1
      ) criterion_version ON true
      ${where}
-     ORDER BY variance_finding.created_at DESC
+     ${orderBy}
      LIMIT $${params.length - 1} OFFSET $${params.length}`,
     params,
   );

@@ -1,3 +1,4 @@
+import type React from 'react';
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, within, fireEvent } from '@testing-library/react';
 import { FindingsTable } from '../src/components/FindingsTable.js';
@@ -7,7 +8,7 @@ function invoiceOrder() {
   return screen.getAllByTestId('finding-row').map((row) => within(row).getByText(/^INV-/).textContent);
 }
 
-function renderTable() {
+function renderTable(props: Partial<React.ComponentProps<typeof FindingsTable>> = {}) {
   render(
     <FindingsTable
       rows={ROWS}
@@ -17,38 +18,77 @@ function renderTable() {
       onStatusFilterChange={() => {}}
       minAmountFilter=""
       onMinAmountFilterChange={() => {}}
+      sort={null}
+      onSortChange={() => {}}
+      {...props}
     />,
   );
 }
 
-describe('FindingsTable sorting (86e2uuw63)', () => {
-  it('AC1: clicking Variance sorts numerically ascending, then descending on a second click', () => {
-    renderTable();
-    // -5.00 (f3) < 9.00 (f2) < 10.00 (f1) numerically -- a lexicographic sort
-    // would put "10.00" before "9.00".
+// 86e2v251e: sort moved server-side (Dashboard.tsx now owns the sort state
+// and re-fetches from the backend) -- FindingsTable is no longer the thing
+// that orders `rows`, so it can no longer be the thing proving numeric vs.
+// lexicographic ordering or null-last placement. Those guarantees now live
+// where the actual ordering happens: list-findings.db.test.ts (real ORDER BY
+// against real data) and list-findings.test.ts (the NULLS LAST SQL clause).
+// What THIS component still owns and must keep proving: clicking a sort
+// header reports the click upward (the callback contract), the arrow
+// reflects whatever sort state it's given, and neither is entangled with
+// filters/selection.
+describe('FindingsTable sorting (86e2uuw63, updated for 86e2v251e)', () => {
+  it('clicking Variance calls onSortChange with "variance"', () => {
+    const onSortChange = vi.fn();
+    renderTable({ onSortChange });
     fireEvent.click(screen.getByText('Variance'));
-    expect(invoiceOrder()).toEqual(['INV-C', 'INV-B', 'INV-A', 'INV-D']);
-
-    fireEvent.click(screen.getByText(/Variance/));
-    expect(invoiceOrder()).toEqual(['INV-A', 'INV-B', 'INV-C', 'INV-D']);
+    expect(onSortChange).toHaveBeenCalledWith('variance');
   });
 
-  it('AC2: clicking Age sorts chronologically, toggling direction on repeat clicks', () => {
-    renderTable();
+  it('clicking Age calls onSortChange with "age"', () => {
+    const onSortChange = vi.fn();
+    renderTable({ onSortChange });
     fireEvent.click(screen.getByText('Age'));
-    expect(invoiceOrder()).toEqual(['INV-C', 'INV-A', 'INV-D', 'INV-B']);
-
-    fireEvent.click(screen.getByText(/Age/));
-    expect(invoiceOrder()).toEqual(['INV-B', 'INV-D', 'INV-A', 'INV-C']);
+    expect(onSortChange).toHaveBeenCalledWith('age');
   });
 
-  it('AC3: a row with varianceAmount: null renders last regardless of sort direction', () => {
-    renderTable();
-    fireEvent.click(screen.getByText('Variance'));
-    expect(invoiceOrder().at(-1)).toBe('INV-D');
+  it('renders the ↑ arrow for an ascending sort and ↓ for descending, on the active column only', () => {
+    const { rerender } = render(
+      <FindingsTable
+        rows={ROWS}
+        carrierFilter=""
+        statusFilter=""
+        onCarrierFilterChange={() => {}}
+        onStatusFilterChange={() => {}}
+        minAmountFilter=""
+        onMinAmountFilterChange={() => {}}
+        sort={{ key: 'variance', dir: 'asc' }}
+        onSortChange={() => {}}
+      />,
+    );
+    expect(screen.getByText('Variance ↑')).toBeInTheDocument();
+    expect(screen.getByText('Age')).toBeInTheDocument(); // no arrow -- not the active column
 
-    fireEvent.click(screen.getByText(/Variance/));
-    expect(invoiceOrder().at(-1)).toBe('INV-D');
+    rerender(
+      <FindingsTable
+        rows={ROWS}
+        carrierFilter=""
+        statusFilter=""
+        onCarrierFilterChange={() => {}}
+        onStatusFilterChange={() => {}}
+        minAmountFilter=""
+        onMinAmountFilterChange={() => {}}
+        sort={{ key: 'variance', dir: 'desc' }}
+        onSortChange={() => {}}
+      />,
+    );
+    expect(screen.getByText('Variance ↓')).toBeInTheDocument();
+  });
+
+  it('renders rows in whatever order the `rows` prop arrives in (no local re-sorting)', () => {
+    // ROWS' natural fixture order is f1, f2, f3, f4 (INV-A, INV-B, INV-C,
+    // INV-D) -- proving the component doesn't quietly re-sort them itself
+    // regardless of the `sort` prop's value.
+    renderTable({ sort: { key: 'variance', dir: 'desc' } });
+    expect(invoiceOrder()).toEqual(['INV-A', 'INV-B', 'INV-C', 'INV-D']);
   });
 
   it('AC4: carrier/status filters and selection behavior are unaffected by sorting', () => {
@@ -60,8 +100,10 @@ describe('FindingsTable sorting (86e2uuw63)', () => {
         statusFilter=""
         onCarrierFilterChange={onCarrierFilterChange}
         onStatusFilterChange={() => {}}
-      minAmountFilter=""
-      onMinAmountFilterChange={() => {}}
+        minAmountFilter=""
+        onMinAmountFilterChange={() => {}}
+        sort={null}
+        onSortChange={() => {}}
       />,
     );
 
@@ -85,6 +127,8 @@ describe('FindingsTable selection count/total sync on rows change (86e2v250p)', 
         onStatusFilterChange={() => {}}
         minAmountFilter=""
         onMinAmountFilterChange={() => {}}
+        sort={null}
+        onSortChange={() => {}}
       />,
     );
 
@@ -107,6 +151,8 @@ describe('FindingsTable selection count/total sync on rows change (86e2v250p)', 
         onStatusFilterChange={() => {}}
         minAmountFilter=""
         onMinAmountFilterChange={() => {}}
+        sort={null}
+        onSortChange={() => {}}
       />,
     );
 
@@ -126,6 +172,8 @@ describe('FindingsTable selection count/total sync on rows change (86e2v250p)', 
         onStatusFilterChange={() => {}}
         minAmountFilter=""
         onMinAmountFilterChange={() => {}}
+        sort={null}
+        onSortChange={() => {}}
       />,
     );
 
@@ -142,6 +190,8 @@ describe('FindingsTable selection count/total sync on rows change (86e2v250p)', 
         onStatusFilterChange={() => {}}
         minAmountFilter=""
         onMinAmountFilterChange={() => {}}
+        sort={null}
+        onSortChange={() => {}}
       />,
     );
 
@@ -158,6 +208,8 @@ describe('FindingsTable selection count/total sync on rows change (86e2v250p)', 
         onStatusFilterChange={() => {}}
         minAmountFilter=""
         onMinAmountFilterChange={() => {}}
+        sort={null}
+        onSortChange={() => {}}
       />,
     );
     fireEvent.click(screen.getByLabelText('Select finding INV-A'));

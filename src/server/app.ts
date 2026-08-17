@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { join, dirname } from 'node:path';
 import { withTenantTx, type TenantContext } from '../db/tenant-context.js';
 import { getPool } from '../db/pool.js';
-import { listFindings } from '../modules/findings/list-findings.js';
+import { listFindings, type FindingsSortKey } from '../modules/findings/list-findings.js';
 import { getFindingsSummary } from '../modules/findings/findings-summary.js';
 import { listGateFailures } from '../modules/findings/list-gate-failures.js';
 import { updateFindingStatus } from '../modules/findings/update-finding-status.js';
@@ -33,6 +33,11 @@ const WRITABLE_STATUS_VALUES = new Set(['open', 'in_review', 'queued_for_dispute
 // 0, Number('0x10') is 16, and Number('Infinity') is finite per isNaN, all of
 // which would wrongly pass a naive check and still reach Postgres unvalidated.
 const NUMERIC_STRING = /^-?\d+(\.\d+)?$/;
+
+// 86e2v251e: must match list-findings.ts's ORDER_COLUMNS keys exactly --
+// this is the query-param-facing half of the same allowlist boundary.
+const SORT_KEYS = new Set<FindingsSortKey>(['variance', 'age']);
+const SORT_DIRS = new Set(['asc', 'desc']);
 
 /**
  * The running revision's build SHA, for a rolling-deploy health check to tell
@@ -115,7 +120,13 @@ export function buildApp(): FastifyInstance {
       // item's own AC names this param `min-amount` (kebab-case, conventional
       // for query strings), so it must be read that way, not as `minAmount`
       // (86e2u7j0d Review finding: the camelCase read left the filter dead).
-      const query = request.query as { carrier?: string; status?: string; 'min-amount'?: string };
+      const query = request.query as {
+        carrier?: string;
+        status?: string;
+        'min-amount'?: string;
+        sort?: string;
+        sortDir?: string;
+      };
 
       // 86e2v24ye: both params previously reached listFindings' raw SQL
       // unvalidated -- an invalid status broke the ::variance_status cast and
@@ -135,6 +146,17 @@ export function buildApp(): FastifyInstance {
         await reply.code(400).send({ error: 'invalid min-amount: must be numeric' });
         return;
       }
+      // sort/sortDir feed an ORDER BY, which can't be parameter-bound like a
+      // WHERE value -- this allowlist check IS the injection boundary (see
+      // list-findings.ts's ORDER_COLUMNS comment), not just input hygiene.
+      if (query.sort !== undefined && !SORT_KEYS.has(query.sort as FindingsSortKey)) {
+        await reply.code(400).send({ error: `invalid sort: must be one of ${[...SORT_KEYS].join(', ')}` });
+        return;
+      }
+      if (query.sortDir !== undefined && !SORT_DIRS.has(query.sortDir)) {
+        await reply.code(400).send({ error: `invalid sortDir: must be one of ${[...SORT_DIRS].join(', ')}` });
+        return;
+      }
 
       const ctx = (request as FastifyRequest & { tenantContext: TenantContext }).tenantContext;
       const findings = await withTenantTx(ctx, (client) =>
@@ -142,6 +164,8 @@ export function buildApp(): FastifyInstance {
           carrier: query.carrier,
           status: query.status,
           minAmount: query['min-amount'],
+          sort: query.sort as FindingsSortKey | undefined,
+          sortDir: query.sortDir as 'asc' | 'desc' | undefined,
         }),
       );
       return { findings };

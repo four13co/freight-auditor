@@ -40,10 +40,15 @@ export interface GateFailureRow {
   recordedAt: string;
 }
 
+export type FindingsSortKey = 'variance' | 'age';
+export type FindingsSortDir = 'asc' | 'desc';
+
 export interface FindingsListParams {
   carrier?: string;
   status?: string;
   minAmount?: string;
+  sort?: FindingsSortKey;
+  sortDir?: FindingsSortDir;
 }
 
 function buildQuery(params: FindingsListParams): string {
@@ -52,6 +57,12 @@ function buildQuery(params: FindingsListParams): string {
   if (params.status) qs.set('status', params.status);
   // Backend reads this literally as 'min-amount' (kebab-case), not minAmount.
   if (params.minAmount) qs.set('min-amount', params.minAmount);
+  // 86e2v251e: sort is applied server-side (against the full filtered result
+  // set, before LIMIT) -- see list-findings.ts's ORDER_COLUMNS. sortDir is
+  // only meaningful alongside sort, but sending it standalone is harmless
+  // (the backend's default sort column just gets a direction).
+  if (params.sort) qs.set('sort', params.sort);
+  if (params.sortDir) qs.set('sortDir', params.sortDir);
   const s = qs.toString();
   return s ? `?${s}` : '';
 }

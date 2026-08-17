@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor, fireEvent, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Dashboard } from '../src/components/Dashboard.js';
+import type { FindingRow } from '../src/lib/api.js';
 import { DASHBOARD_ROWS as ROWS, DASHBOARD_SUMMARY as SUMMARY } from './fixtures.js';
 
 let fetchMock: ReturnType<typeof vi.fn>;
@@ -366,6 +367,48 @@ describe('Dashboard', () => {
     expect(within(detail).getByText('n/a')).toBeInTheDocument(); // varianceAmount
     // Expected and Finding are both null-driven em-dashes here.
     expect(within(detail).getAllByText('—').length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('86e2v17p5: a finding with billed: null (ambiguous charge attribution) renders "—", not "null"/"undefined"/blank', async () => {
+    const rowWithNullBilled: FindingRow = {
+      id: 'f-null-billed',
+      invoiceNumber: 'INV-NULLBILLED',
+      carrierName: 'Saia LTL',
+      billed: null,
+      expected: null,
+      varianceAmount: '500.0000',
+      direction: 'OVERCHARGE',
+      status: 'open',
+      createdAt: '2026-08-14T00:00:00Z',
+      ruleDescription: null,
+    };
+    fetchMock.mockImplementation((input: string | URL | Request) => {
+      const url = input.toString();
+      if (url.includes('/api/findings/summary')) {
+        return Promise.resolve(new Response(JSON.stringify(SUMMARY), { status: 200 }));
+      }
+      return Promise.resolve(new Response(JSON.stringify({ findings: [rowWithNullBilled] }), { status: 200 }));
+    });
+
+    render(<Dashboard />);
+    const foundRows = await waitFor(() => {
+      const found = screen.getAllByTestId('finding-row');
+      expect(found).toHaveLength(1);
+      return found;
+    });
+
+    expect(within(foundRows[0]!).queryByText('null')).not.toBeInTheDocument();
+    expect(within(foundRows[0]!).queryByText('undefined')).not.toBeInTheDocument();
+    // Billed is the row's 5th direct child (checkbox, Invoice, Finding,
+    // Carrier, Billed, ...) -- check it directly, matching this file's
+    // existing pattern for scoping to one specific column.
+    expect(foundRows[0]!.children[4]).toHaveTextContent('—');
+
+    fireEvent.click(foundRows[0]!);
+    const detail = await waitFor(() => screen.getByTestId('finding-detail'));
+    expect(within(detail).queryByText('null')).not.toBeInTheDocument();
+    const billedLabel = within(detail).getByText('Billed');
+    expect(billedLabel.nextElementSibling).toHaveTextContent('—');
   });
 
   it('86e2uv1tb AC1: the Direction field shows a human-readable label, never the raw enum string', async () => {

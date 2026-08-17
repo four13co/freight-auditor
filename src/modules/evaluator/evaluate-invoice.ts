@@ -39,6 +39,12 @@ export interface ChargeFinding {
   criterionKey: string;
   result: 'CONFORMED' | 'VARIANCE' | 'UNASSESSABLE';
   evaluatedExpr: EvalNode;
+  /** billed - expected for a VARIANCE finding; null otherwise (86e2v17p5 -- persistAuditRun reads this directly rather than re-deriving it). */
+  varianceAmount: string | null;
+  /** The money comparison's currency for a VARIANCE finding; null otherwise. */
+  currency: string | null;
+  /** OVERCHARGE/UNDERCHARGE for a VARIANCE finding; INTEGRITY_ONLY for CONFORMED/UNASSESSABLE or any criterion with no money comparison. */
+  direction: 'OVERCHARGE' | 'UNDERCHARGE' | 'INTEGRITY_ONLY';
 }
 
 export interface Scorecard {
@@ -109,20 +115,31 @@ export function evaluateInvoice(
     const ev = evaluate(c.ast, facts);
     const v = verdict(ev);
     const result = v === 'PASS' ? 'CONFORMED' : v === 'FAIL' ? 'VARIANCE' : 'UNASSESSABLE';
+    // A dollar-variance criterion's AST bottoms out at a money `compare`
+    // (billed vs. expected/contracted) — extract the delta from the
+    // evaluated tree itself (§3.2: the evaluated AST IS the explanation,
+    // never a separately-computed side value that could drift from it).
+    // Computed regardless of result so a CONFORMED/UNASSESSABLE finding on a
+    // money-comparison criterion still reports null (not just skipped),
+    // distinct from a non-money criterion which is also null but for a
+    // different reason (moneyVarianceDelta returns null either way).
+    const moneyDelta = moneyVarianceDelta(ev);
+    let varianceAmount: string | null = null;
+    let currency: string | null = null;
+    let direction: ChargeFinding['direction'] = 'INTEGRITY_ONLY';
     if (result === 'CONFORMED') conformed += 1;
     else if (result === 'VARIANCE') {
       variance += 1;
-      // A dollar-variance criterion's AST bottoms out at a money `compare`
-      // (billed vs. expected/contracted) — extract the delta from the
-      // evaluated tree itself (§3.2: the evaluated AST IS the explanation,
-      // never a separately-computed side value that could drift from it).
-      const delta = moneyVarianceDelta(ev);
-      if (delta !== null) {
+      if (moneyDelta !== null) {
+        const { delta, currency: deltaCurrency } = moneyDelta;
         if (delta.isPositive()) totalOvercharge = totalOvercharge.plus(delta);
         else totalUndercharge = totalUndercharge.plus(delta.abs());
+        varianceAmount = delta.toFixed(4);
+        currency = deltaCurrency;
+        direction = delta.isNegative() ? 'UNDERCHARGE' : 'OVERCHARGE';
       }
     } else unassessable += 1;
-    findings.push({ criterionKey: c.criterionKey, result, evaluatedExpr: ev });
+    findings.push({ criterionKey: c.criterionKey, result, evaluatedExpr: ev, varianceAmount, currency, direction });
   }
 
   const scorecard: Scorecard = {
@@ -149,11 +166,16 @@ function orderedCriteria(rubric: ComposedRubric, kind: StandardCriterion['kind']
 /**
  * Unwrap `require` wrappers to find the bottom `compare` node (billed vs.
  * expected) and, if both operands evaluated to money, return billed - expected
- * (positive = overcharge, negative = undercharge). Returns null for a
- * criterion that isn't shaped as a money comparison (e.g. STANDARD's
- * pass/fail integrity checks) — those correctly contribute $0 to the rollup.
+ * (positive = overcharge, negative = undercharge) plus the shared currency.
+ * Returns null for a criterion that isn't shaped as a money comparison (e.g.
+ * STANDARD's pass/fail integrity checks) — those correctly contribute $0 to
+ * the rollup. The two operands' currencies are assumed equal here: a
+ * criterion reaches `compare` only after its `require` gate on a
+ * currencies-match fact already passed (e.g. `linehaul_currencies_match`) --
+ * a mismatch resolves the whole criterion UNASSESSABLE before `compare` ever
+ * evaluates, per fact-bundle.ts's 86e25ug1p handling.
  */
-function moneyVarianceDelta(ev: EvalNode): Decimal | null {
+function moneyVarianceDelta(ev: EvalNode): { delta: Decimal; currency: string } | null {
   let node = ev;
   while (node.node.type === 'require' && node.children?.[0]) {
     node = node.children[0];
@@ -161,5 +183,6 @@ function moneyVarianceDelta(ev: EvalNode): Decimal | null {
   if (node.node.type !== 'compare') return null;
   const [left, right] = node.children ?? [];
   if (!left || !right || left.value.kind !== 'money' || right.value.kind !== 'money') return null;
-  return new Decimal(left.value.amount).minus(new Decimal(right.value.amount));
+  const delta = new Decimal(left.value.amount).minus(new Decimal(right.value.amount));
+  return { delta, currency: left.value.currency };
 }

@@ -47,6 +47,65 @@ describe('Phase 2 CONTRACT-tier rubric (pure)', () => {
     expect(r.scorecard!.totalUndercharge).toBe('0.0000');
   });
 
+  // 86e2v17p5: each VARIANCE ChargeFinding must carry its own delta/currency/
+  // direction (previously only accumulated into the scorecard total, never
+  // exposed per-finding) -- persistAuditRun's variance_finding derivation
+  // reads these directly rather than re-deriving them.
+  describe('86e2v17p5: per-finding variance_amount/currency/direction threaded through', () => {
+    it('a VARIANCE finding carries its own variance_amount, currency, and OVERCHARGE direction', () => {
+      const inv = parse210(GOLDEN_210, testCategorize); // billed LINEHAUL = 1000.00 USD
+      const r = evaluateInvoice(inv, CONTRACT_RUBRIC, {
+        linehaulRate: { amount: '900.0000', currency: 'USD', clauseId: null },
+      });
+      const finding = r.findings.find((f) => f.criterionKey === 'CONTRACT.RATE_VARIANCE');
+      expect(finding?.varianceAmount).toBe('100.0000');
+      expect(finding?.currency).toBe('USD');
+      expect(finding?.direction).toBe('OVERCHARGE');
+    });
+
+    it('an undercharge (billed below contracted rate) carries a negative-signed amount and UNDERCHARGE direction', () => {
+      const inv = parse210(GOLDEN_210, testCategorize); // billed LINEHAUL = 1000.00 USD
+      const r = evaluateInvoice(inv, CONTRACT_RUBRIC, {
+        linehaulRate: { amount: '1100.0000', currency: 'USD', clauseId: null },
+      });
+      const finding = r.findings.find((f) => f.criterionKey === 'CONTRACT.RATE_VARIANCE');
+      expect(finding?.result).toBe('VARIANCE');
+      expect(finding?.varianceAmount).toBe('-100.0000');
+      expect(finding?.direction).toBe('UNDERCHARGE');
+    });
+
+    it('a CONFORMED finding carries no variance_amount/currency/direction', () => {
+      const inv = parse210(GOLDEN_210, testCategorize);
+      const r = evaluateInvoice(inv, CONTRACT_RUBRIC, {
+        linehaulRate: { amount: '1000.0000', currency: 'USD', clauseId: null },
+      });
+      const finding = r.findings.find((f) => f.criterionKey === 'CONTRACT.RATE_VARIANCE');
+      expect(finding?.result).toBe('CONFORMED');
+      expect(finding?.varianceAmount).toBeNull();
+      expect(finding?.currency).toBeNull();
+      expect(finding?.direction).toBe('INTEGRITY_ONLY');
+    });
+
+    it('an UNASSESSABLE finding carries no variance_amount/currency and INTEGRITY_ONLY direction', () => {
+      const inv = parse210(GOLDEN_210, testCategorize);
+      const r = evaluateInvoice(inv, CONTRACT_RUBRIC, { linehaulRate: null });
+      const finding = r.findings.find((f) => f.criterionKey === 'CONTRACT.RATE_VARIANCE');
+      expect(finding?.result).toBe('UNASSESSABLE');
+      expect(finding?.varianceAmount).toBeNull();
+      expect(finding?.currency).toBeNull();
+      expect(finding?.direction).toBe('INTEGRITY_ONLY');
+    });
+
+    it('a STANDARD pass/fail integrity criterion (no money comparison) carries no variance_amount/currency and INTEGRITY_ONLY direction', () => {
+      const inv = parse210(GOLDEN_210, testCategorize);
+      const r = evaluateInvoice(inv, STANDARD_RUBRIC);
+      const finding = r.findings.find((f) => f.criterionKey === 'STD.NO_QUARANTINED_CODES');
+      expect(finding?.varianceAmount).toBeNull();
+      expect(finding?.currency).toBeNull();
+      expect(finding?.direction).toBe('INTEGRITY_ONLY');
+    });
+  });
+
   // AC3 — no contract rate for the invoice's charge category → UNASSESSABLE, never guessed.
   it('AC3: no contract rate found → CONTRACT.RATE_VARIANCE is UNASSESSABLE (never defaulted)', () => {
     const inv = parse210(GOLDEN_210, testCategorize);

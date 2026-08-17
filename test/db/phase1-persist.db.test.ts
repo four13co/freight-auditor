@@ -35,6 +35,9 @@ describe('Phase 1 persistence (DB)', () => {
     const owner = await pool.connect();
     try {
       // Children of the runs first, then invoices, then client.
+      // variance_finding before audit_run (86e2v17p5's derivation now writes
+      // here too).
+      await owner.query(`DELETE FROM variance_finding WHERE client_id = $1`, [clientId]);
       await owner.query(`DELETE FROM scorecard WHERE client_id = $1`, [clientId]);
       await owner.query(`DELETE FROM charge_finding WHERE client_id = $1`, [clientId]);
       await owner.query(`DELETE FROM gate_failure WHERE client_id = $1`, [clientId]);

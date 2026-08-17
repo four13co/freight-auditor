@@ -8,7 +8,8 @@ export interface FindingRow {
   id: string;
   invoiceNumber: string | null;
   carrierName: string | null;
-  billed: string;
+  /** null when the backing variance_finding has no single charge to attribute the billed amount to (86e2v17p5). */
+  billed: string | null;
   expected: string | null;
   varianceAmount: string | null;
   direction: string | null;

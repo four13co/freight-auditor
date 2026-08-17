@@ -5,6 +5,7 @@ import { load } from 'js-yaml';
 interface WorkflowJob {
   needs?: string | string[];
   permissions?: Record<string, string>;
+  'timeout-minutes'?: number;
   steps: Array<{
     id?: string;
     name?: string;
@@ -12,6 +13,7 @@ interface WorkflowJob {
     uses?: string;
     if?: string;
     env?: Record<string, unknown>;
+    'timeout-minutes'?: number;
   }>;
 }
 
@@ -371,6 +373,30 @@ describe('deploy.yml (unit, job-dependency + guard wiring)', () => {
     it('does NOT cancel an in-progress run -- a deploy that already migrated/deployed must finish, not be killed mid-way', () => {
       const workflow = loadDeployWorkflow();
       expect(workflow.concurrency?.['cancel-in-progress']).toBe(false);
+    });
+  });
+
+  describe('job timeouts (86e2v1qrn -- an unbounded hang blocks every subsequent deploy)', () => {
+    // cancel-in-progress: false (86e2urk0k) means a hung step holds the
+    // concurrency group indefinitely with no automatic recovery -- observed
+    // live: the rollback step ran 2h12m (run 31973373618) before a human
+    // cancelled it, extending the 86e2v0acm outage by over two hours.
+    it.each(['migrate-database', 'deploy', 'post-deployment'])(
+      'job "%s" declares an explicit timeout-minutes well below GitHub\'s 6h default',
+      (jobName) => {
+        const workflow = loadDeployWorkflow();
+        const timeout = getJob(workflow, jobName)['timeout-minutes'];
+        expect(timeout).toBeGreaterThan(0);
+        expect(timeout).toBeLessThan(360);
+      },
+    );
+
+    it('bounds the rollback step specifically, not just the job as a whole', () => {
+      const workflow = loadDeployWorkflow();
+      const rollbackStep = getJob(workflow, 'post-deployment').steps.find((s) =>
+        s.name?.toLowerCase().includes('roll back'),
+      );
+      expect(rollbackStep!['timeout-minutes']).toBeGreaterThan(0);
     });
   });
 });

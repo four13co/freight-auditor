@@ -17,8 +17,16 @@ on:
     branches: [Development]
 
 jobs:
+  # 86e2v1qrn: deploy.yml's unbounded rollback step hung 2h12m and blocked
+  # every subsequent deploy via its concurrency group. This workflow has no
+  # concurrency group, so a hang here doesn't block other CI runs the same
+  # way, but an unbounded job is still worth bounding rather than relying on
+  # GitHub's 6h default. Sized against observed healthy runtimes with large
+  # headroom -- lint/typecheck run in well under a minute; db-tests and the
+  # web/web-fullstack Playwright jobs (browser install + e2e) run longer.
   db-tests:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     services:
       postgres:
         image: postgres:17-alpine
@@ -58,6 +66,7 @@ jobs:
 
   lint:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -76,6 +85,7 @@ jobs:
 
   typecheck:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -100,6 +110,7 @@ jobs:
   # hole), and web/src/** would otherwise show up there at low coverage.
   web:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -157,6 +168,7 @@ jobs:
   # no reason to carry.
   web-fullstack:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     services:
       postgres:
         image: postgres:17-alpine

@@ -25,6 +25,21 @@ export interface FindingsSummary {
   recoveredLast30Days: string;
 }
 
+/**
+ * 86e2v17xn: a rejected invoice's kickback. Structurally distinct from
+ * FindingRow -- no billed/expected/varianceAmount/direction/status fields,
+ * since the invoice was rejected before the SCORE phase ever ran.
+ */
+export interface GateFailureRow {
+  id: string;
+  auditRunId: string;
+  invoiceNumber: string | null;
+  carrierName: string | null;
+  defect: string;
+  citation: string | null;
+  recordedAt: string;
+}
+
 export interface FindingsListParams {
   carrier?: string;
   status?: string;
@@ -74,4 +89,14 @@ export async function fetchFindingsSummary(): Promise<FindingsSummary> {
   const res = await fetch('/api/findings/summary', { headers: authHeaders() });
   if (!res.ok) throw new Error(`GET /api/findings/summary failed: ${res.status}`);
   return (await res.json()) as FindingsSummary;
+}
+
+export async function fetchGateFailures(): Promise<GateFailureRow[]> {
+  const res = await fetch('/api/gate-failures', { headers: authHeaders() });
+  if (!res.ok) throw new Error(`GET /api/gate-failures failed: ${res.status}`);
+  const body = (await res.json()) as { gateFailures?: GateFailureRow[] };
+  // Defensive against a 200 response missing the key (not just a rejected
+  // fetch) -- Dashboard's degrade-alone .catch only covers the reject case;
+  // this covers the other half so setGateFailures never receives undefined.
+  return body.gateFailures ?? [];
 }

@@ -201,4 +201,63 @@ describe('GET /api/findings (unit, mocked withTenantTx + tenant-auth)', () => {
       expect(listFindings).toHaveBeenCalledWith({}, expect.objectContaining({ minAmount: '250.50' }));
     });
   });
+
+  describe('GET /api/gate-failures (86e2v17xn)', () => {
+    it('returns { gateFailures } for an authorized request', async () => {
+      mockAuthorized();
+      vi.doMock('../../src/db/tenant-context.js', () => ({
+        withTenantTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
+      }));
+      vi.doMock('../../src/modules/findings/list-gate-failures.js', () => ({
+        listGateFailures: vi.fn().mockResolvedValue([{ id: 'gf1', defect: 'x' }]),
+      }));
+      const { buildApp } = await import('../../src/server/app.js');
+      app = buildApp();
+
+      const res = await app.inject({
+        method: 'GET',
+        url: '/api/gate-failures',
+        headers: { 'x-client-id': 'client-abc', 'x-user-id': 'user-1' },
+      });
+
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toEqual({ gateFailures: [{ id: 'gf1', defect: 'x' }] });
+    });
+
+    it('passes the carrier query param through to listGateFailures', async () => {
+      mockAuthorized();
+      const listGateFailures = vi.fn().mockResolvedValue([]);
+      vi.doMock('../../src/db/tenant-context.js', () => ({
+        withTenantTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
+      }));
+      vi.doMock('../../src/modules/findings/list-gate-failures.js', () => ({ listGateFailures }));
+      const { buildApp } = await import('../../src/server/app.js');
+      app = buildApp();
+
+      await app.inject({
+        method: 'GET',
+        url: '/api/gate-failures?carrier=ACME',
+        headers: { 'x-client-id': 'client-abc', 'x-user-id': 'user-1' },
+      });
+
+      expect(listGateFailures).toHaveBeenCalledWith({}, { carrier: 'ACME' });
+    });
+
+    it('returns 401 when the request is not authorized', async () => {
+      vi.doMock('../../src/modules/findings/tenant-auth.js', () => ({
+        resolveAuthorizedTenantContext: vi.fn().mockResolvedValue(null),
+      }));
+      const listGateFailures = vi.fn();
+      vi.doMock('../../src/db/tenant-context.js', () => ({
+        withTenantTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
+      }));
+      vi.doMock('../../src/modules/findings/list-gate-failures.js', () => ({ listGateFailures }));
+      const { buildApp } = await import('../../src/server/app.js');
+      app = buildApp();
+
+      const res = await app.inject({ method: 'GET', url: '/api/gate-failures' });
+      expect(res.statusCode).toBe(401);
+      expect(listGateFailures).not.toHaveBeenCalled();
+    });
+  });
 });

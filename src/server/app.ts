@@ -10,6 +10,20 @@ import { getFindingsSummary } from '../modules/findings/findings-summary.js';
 import { resolveAuthorizedTenantContext } from '../modules/findings/tenant-auth.js';
 
 /**
+ * Mirrors the variance_status enum (migrations/0002_enums.sql). An incoming
+ * `status` query param is validated against this list before it ever reaches
+ * a query -- an unvalidated value cast to ::variance_status threw a raw
+ * Postgres error otherwise, reflected into the response by Fastify's default
+ * error handler (86e2v24ye). Kept local to app.ts (not re-exported from
+ * list-findings.ts) so route-level validation isn't coupled to a module test
+ * doubles mock out.
+ */
+const VARIANCE_STATUS_VALUES = [
+  'open', 'in_review', 'accepted', 'waived',
+  'queued_for_dispute', 'disputed', 'recovered', 'written_off', 'closed',
+] as const;
+
+/**
  * The running revision's build SHA, for a rolling-deploy health check to tell
  * revisions apart. `BUILD_SHA` wins for tests/local dev; otherwise read the
  * file the CI build step writes into the image (see .github/workflows/deploy.yml).
@@ -85,12 +99,27 @@ export function buildApp(): FastifyInstance {
       },
     );
 
-    findingsRoutes.get('/api/findings', async (request) => {
+    findingsRoutes.get('/api/findings', async (request, reply) => {
       // Fastify's querystring parser returns keys literally as sent -- the
       // item's own AC names this param `min-amount` (kebab-case, conventional
       // for query strings), so it must be read that way, not as `minAmount`
       // (86e2u7j0d Review finding: the camelCase read left the filter dead).
       const query = request.query as { carrier?: string; status?: string; 'min-amount'?: string };
+
+      // 86e2v24ye: status/min-amount are interpolated straight into the query
+      // (::variance_status cast / numeric comparison) with no validation --
+      // a malformed value threw a raw Postgres error, reflected into the
+      // response body by Fastify's default handler (no setErrorHandler is
+      // registered). Reject before the query ever runs.
+      if (query.status !== undefined && !VARIANCE_STATUS_VALUES.includes(query.status as (typeof VARIANCE_STATUS_VALUES)[number])) {
+        await reply.code(400).send({ error: `invalid status: must be one of ${VARIANCE_STATUS_VALUES.join(', ')}` });
+        return;
+      }
+      if (query['min-amount'] !== undefined && !Number.isFinite(Number(query['min-amount']))) {
+        await reply.code(400).send({ error: 'invalid min-amount: must be numeric' });
+        return;
+      }
+
       const ctx = (request as FastifyRequest & { tenantContext: TenantContext }).tenantContext;
       const findings = await withTenantTx(ctx, (client) =>
         listFindings(client, {

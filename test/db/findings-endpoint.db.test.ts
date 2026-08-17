@@ -132,4 +132,34 @@ describe('GET /api/findings (DB, e2e)', () => {
     expect(res.statusCode).toBe(200);
     expect(res.json().findings).toHaveLength(1);
   });
+
+  /**
+   * 86e2v24ye: status/min-amount were interpolated into the query with no
+   * validation -- a malformed value threw a raw Postgres error, reflected
+   * into the response by Fastify's default handler. e2e against the real
+   * route + real DB, proving the bad value never reaches Postgres at all.
+   */
+  it('86e2v24ye: an invalid status query param returns 400 with a clean message, not a raw Postgres error', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/findings?status=not-a-real-status',
+      headers: { 'x-client-id': clientId, 'x-user-id': userId },
+    });
+    expect(res.statusCode).toBe(400);
+    const body = res.json();
+    expect(body).toHaveProperty('error');
+    expect(JSON.stringify(body)).not.toMatch(/invalid input value for enum|variance_status/i);
+  });
+
+  it('86e2v24ye: a non-numeric min-amount query param returns 400, not a 500 with PG error detail', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/findings?min-amount=not-a-number',
+      headers: { 'x-client-id': clientId, 'x-user-id': userId },
+    });
+    expect(res.statusCode).toBe(400);
+    const body = res.json();
+    expect(body).toHaveProperty('error');
+    expect(JSON.stringify(body)).not.toMatch(/invalid input syntax for type numeric/i);
+  });
 });

@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import type { FindingRow } from '../lib/api.js';
+import type { FindingRow, FindingsSortDir, FindingsSortKey } from '../lib/api.js';
 import { formatMoney, formatVariance, formatAge } from '../lib/format.js';
 import { getStatusDisplay } from '../lib/status-display.js';
 import { FindingDetail } from './FindingDetail.js';
@@ -14,6 +14,12 @@ interface FindingsTableProps {
   onMinAmountFilterChange: (value: string) => void;
   /** 86e2v1xyr: bubbled up from the drawer after a successful status PATCH, so the caller (Dashboard) can patch its own row list without a full refetch. */
   onRowStatusChange?: (id: string, status: string) => void;
+  // 86e2v251e: sort is now server-driven (Dashboard.tsx owns the state and
+  // re-fetches) -- `rows` arrives pre-sorted, so this component only needs
+  // the current sort (to render the ↑/↓ arrow) and a callback for clicks,
+  // not the sort logic itself.
+  sort: { key: FindingsSortKey; dir: FindingsSortDir } | null;
+  onSortChange: (key: FindingsSortKey) => void;
 }
 
 // The mockup's table has 9 columns including "Finding" (a rule description,
@@ -38,6 +44,8 @@ export function FindingsTable({
   onStatusFilterChange,
   onMinAmountFilterChange,
   onRowStatusChange,
+  sort,
+  onSortChange,
 }: FindingsTableProps) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [detailRow, setDetailRow] = useState<FindingRow | null>(null);
@@ -48,40 +56,12 @@ export function FindingsTable({
   // zero matching rows saw "No findings yet." instead of the filtered
   // message -- the same bug this boolean exists to prevent, one dimension over.
   const hasActiveFilter = carrierFilter !== '' || statusFilter !== '' || minAmountFilter !== '';
-  const [sort, setSort] = useState<{ key: 'variance' | 'age'; dir: 'asc' | 'desc' } | null>(null);
 
   const selectedRows = useMemo(() => rows.filter((r) => selected.has(r.id)), [rows, selected]);
   const selectedTotal = useMemo(
     () => selectedRows.reduce((sum, r) => sum + (r.varianceAmount ? Number(r.varianceAmount) : 0), 0),
     [selectedRows],
   );
-
-  // 86e2uuw63: money fields are decimal-precision strings -- Number(...) for
-  // numeric comparison, never the default lexicographic Array.sort (same
-  // defect class PR #43 flagged for a different field). createdAt is
-  // ISO-8601 so a plain string compare is already chronological. Nulls
-  // (varianceAmount is nullable on FindingRow) always sort last, in either
-  // direction, so their position doesn't flip when the arrow is clicked.
-  const sortedRows = useMemo(() => {
-    if (!sort) return rows;
-    const dirMult = sort.dir === 'asc' ? 1 : -1;
-    return [...rows].sort((a, b) => {
-      if (sort.key === 'variance') {
-        if (a.varianceAmount === null && b.varianceAmount === null) return 0;
-        if (a.varianceAmount === null) return 1;
-        if (b.varianceAmount === null) return -1;
-        return (Number(a.varianceAmount) - Number(b.varianceAmount)) * dirMult;
-      }
-      return a.createdAt < b.createdAt ? -1 * dirMult : a.createdAt > b.createdAt ? 1 * dirMult : 0;
-    });
-  }, [rows, sort]);
-
-  function toggleSort(key: 'variance' | 'age') {
-    setSort((prev) => {
-      if (prev?.key === key) return { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' };
-      return { key, dir: 'asc' };
-    });
-  }
 
   function toggle(id: string) {
     setSelected((prev) => {
@@ -191,14 +171,14 @@ export function FindingsTable({
         <div className="text-right">Expected</div>
         <button
           type="button"
-          onClick={() => toggleSort('variance')}
+          onClick={() => onSortChange('variance')}
           className="text-right font-extrabold uppercase tracking-[0.08em] text-[rgba(32,30,29,0.55)]"
         >
           Variance{sort?.key === 'variance' ? (sort.dir === 'asc' ? ' ↑' : ' ↓') : ''}
         </button>
         <button
           type="button"
-          onClick={() => toggleSort('age')}
+          onClick={() => onSortChange('age')}
           className="text-right font-extrabold uppercase tracking-[0.08em] text-[rgba(32,30,29,0.55)]"
         >
           Age{sort?.key === 'age' ? (sort.dir === 'asc' ? ' ↑' : ' ↓') : ''}
@@ -216,7 +196,7 @@ export function FindingsTable({
             </div>
           )
         ) : (
-          sortedRows.map((row) => {
+          rows.map((row) => {
             const display = getStatusDisplay(row);
             return (
               <div

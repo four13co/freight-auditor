@@ -107,4 +107,50 @@ describe('listFindings (unit, mocked client)', () => {
     const rows = await listFindings(client, {});
     expect(rows).toEqual([]);
   });
+
+  // 86e2v251e: sort/sortDir feed an ORDER BY, which can't be parameter-bound
+  // like a WHERE value -- these assertions are checking the allowlist
+  // boundary itself, not just query shape.
+  describe('sort (86e2v251e)', () => {
+    it('defaults to ORDER BY created_at DESC when no sort is requested (unchanged behavior)', async () => {
+      const { client, query } = mockClient([]);
+      await listFindings(client, {});
+      const [sql] = query.mock.calls[0] as [string, unknown[]];
+      expect(sql).toMatch(/ORDER BY variance_finding\.created_at DESC/);
+    });
+
+    it('sorts by variance_amount, ASC, with NULLS LAST', async () => {
+      const { client, query } = mockClient([]);
+      await listFindings(client, { sort: 'variance', sortDir: 'asc' });
+      const [sql] = query.mock.calls[0] as [string, unknown[]];
+      expect(sql).toMatch(/ORDER BY variance_finding\.variance_amount ASC NULLS LAST/);
+    });
+
+    it('sorts by variance_amount, DESC (default direction), with NULLS LAST', async () => {
+      const { client, query } = mockClient([]);
+      await listFindings(client, { sort: 'variance' });
+      const [sql] = query.mock.calls[0] as [string, unknown[]];
+      expect(sql).toMatch(/ORDER BY variance_finding\.variance_amount DESC NULLS LAST/);
+    });
+
+    it('sorts by created_at when sort: "age" is requested, with no NULLS LAST (created_at is never null)', async () => {
+      const { client, query } = mockClient([]);
+      await listFindings(client, { sort: 'age', sortDir: 'asc' });
+      const [sql] = query.mock.calls[0] as [string, unknown[]];
+      expect(sql).toMatch(/ORDER BY variance_finding\.created_at ASC(?! NULLS LAST)/);
+    });
+
+    it('ORDER BY always comes before the outer LIMIT/OFFSET, regardless of sort', async () => {
+      // Two LATERAL subqueries each have their own inner "LIMIT 1" -- match
+      // the outer clause specifically (LIMIT followed by a $-param) rather
+      // than the first "LIMIT" substring, which would find one of those.
+      const { client, query } = mockClient([]);
+      await listFindings(client, { sort: 'variance', sortDir: 'asc', limit: 10, offset: 5 });
+      const [sql] = query.mock.calls[0] as [string, unknown[]];
+      const orderIdx = sql.indexOf('ORDER BY');
+      const outerLimitIdx = sql.search(/LIMIT \$\d+ OFFSET \$\d+/);
+      expect(orderIdx).toBeGreaterThan(-1);
+      expect(outerLimitIdx).toBeGreaterThan(orderIdx);
+    });
+  });
 });

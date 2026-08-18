@@ -411,4 +411,91 @@ describe('GET /api/findings (unit, mocked withTenantTx + tenant-auth)', () => {
       expect(updateFindingStatus).toHaveBeenCalledWith({}, 'f1', 'closed', 'analyst note');
     });
   });
+
+  // 86e2v251e: sort/sortDir feed an ORDER BY server-side -- same boundary
+  // validation pattern as status/min-amount above (86e2v24ye): reject before
+  // withTenantTx/listFindings ever runs, since these can't be parameter-bound.
+  describe('sort/sortDir query param validation (86e2v251e)', () => {
+    it('returns 400 for an invalid sort key, without ever calling listFindings', async () => {
+      mockAuthorized();
+      const listFindings = vi.fn();
+      vi.doMock('../../src/db/tenant-context.js', () => ({
+        withTenantTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
+      }));
+      vi.doMock('../../src/modules/findings/list-findings.js', () => ({ listFindings }));
+      const { buildApp } = await import('../../src/server/app.js');
+      app = buildApp();
+
+      const res = await app.inject({
+        method: 'GET',
+        url: '/api/findings?sort=invoiceNumber',
+        headers: { 'x-client-id': 'client-abc', 'x-user-id': 'user-1' },
+      });
+
+      expect(res.statusCode).toBe(400);
+      expect(res.json()).toEqual({ error: expect.stringContaining('invalid sort') });
+      expect(listFindings).not.toHaveBeenCalled();
+    });
+
+    it('returns 400 for an invalid sortDir, without ever calling listFindings', async () => {
+      mockAuthorized();
+      const listFindings = vi.fn();
+      vi.doMock('../../src/db/tenant-context.js', () => ({
+        withTenantTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
+      }));
+      vi.doMock('../../src/modules/findings/list-findings.js', () => ({ listFindings }));
+      const { buildApp } = await import('../../src/server/app.js');
+      app = buildApp();
+
+      const res = await app.inject({
+        method: 'GET',
+        url: '/api/findings?sort=variance&sortDir=up',
+        headers: { 'x-client-id': 'client-abc', 'x-user-id': 'user-1' },
+      });
+
+      expect(res.statusCode).toBe(400);
+      expect(res.json()).toEqual({ error: expect.stringContaining('invalid sortDir') });
+      expect(listFindings).not.toHaveBeenCalled();
+    });
+
+    it('accepts sort=variance&sortDir=asc and passes both through to listFindings', async () => {
+      mockAuthorized();
+      const listFindings = vi.fn().mockResolvedValue([]);
+      vi.doMock('../../src/db/tenant-context.js', () => ({
+        withTenantTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
+      }));
+      vi.doMock('../../src/modules/findings/list-findings.js', () => ({ listFindings }));
+      const { buildApp } = await import('../../src/server/app.js');
+      app = buildApp();
+
+      const res = await app.inject({
+        method: 'GET',
+        url: '/api/findings?sort=variance&sortDir=asc',
+        headers: { 'x-client-id': 'client-abc', 'x-user-id': 'user-1' },
+      });
+
+      expect(res.statusCode).toBe(200);
+      expect(listFindings).toHaveBeenCalledWith({}, expect.objectContaining({ sort: 'variance', sortDir: 'asc' }));
+    });
+
+    it('accepts sort=age with no sortDir', async () => {
+      mockAuthorized();
+      const listFindings = vi.fn().mockResolvedValue([]);
+      vi.doMock('../../src/db/tenant-context.js', () => ({
+        withTenantTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
+      }));
+      vi.doMock('../../src/modules/findings/list-findings.js', () => ({ listFindings }));
+      const { buildApp } = await import('../../src/server/app.js');
+      app = buildApp();
+
+      const res = await app.inject({
+        method: 'GET',
+        url: '/api/findings?sort=age',
+        headers: { 'x-client-id': 'client-abc', 'x-user-id': 'user-1' },
+      });
+
+      expect(res.statusCode).toBe(200);
+      expect(listFindings).toHaveBeenCalledWith({}, expect.objectContaining({ sort: 'age', sortDir: undefined }));
+    });
+  });
 });

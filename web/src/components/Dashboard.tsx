@@ -9,6 +9,8 @@ import {
   fetchFindingsSummary,
   fetchGateFailures,
   type FindingRow,
+  type FindingsSortDir,
+  type FindingsSortKey,
   type FindingsSummary,
   type GateFailureRow,
 } from '../lib/api.js';
@@ -31,6 +33,12 @@ export function Dashboard() {
   const [carrierFilter, setCarrierFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [minAmountFilter, setMinAmountFilter] = useState('');
+  // 86e2v251e: sort now lives here, not inside FindingsTable -- it drives a
+  // server round-trip (the whole point: sort must be correct against the
+  // full filtered result set, not just the current 50-row page), so
+  // FindingsTable becomes a controlled sort UI that reports clicks upward
+  // rather than re-sorting `rows` locally.
+  const [sort, setSort] = useState<{ key: FindingsSortKey; dir: FindingsSortDir } | null>(null);
   const [status, setStatus] = useState<LoadStatus>('loading');
   // 86e2v17xn: gate failures are fetched SEPARATELY from the summary/findings
   // Promise.all below, deliberately -- a gate-failures fetch failure must not
@@ -48,6 +56,8 @@ export function Dashboard() {
         carrier: carrierFilter || undefined,
         status: statusFilter || undefined,
         minAmount: minAmountFilter || undefined,
+        sort: sort?.key,
+        sortDir: sort?.dir,
       }),
     ]).then(
       ([summaryResult, rowsResult]) => {
@@ -62,8 +72,16 @@ export function Dashboard() {
     // 86e2uuw7k: minAmountFilter MUST be in this dependency array -- the same
     // defect class as PR #43's silently-broken filter, where a value used
     // inside the callback but omitted from its deps meant the callback never
-    // re-created and the fetch never re-ran with the new value.
-  }, [carrierFilter, statusFilter, minAmountFilter]);
+    // re-created and the fetch never re-ran with the new value. sort is the
+    // same defect class one dimension over.
+  }, [carrierFilter, statusFilter, minAmountFilter, sort]);
+
+  function toggleSort(key: FindingsSortKey) {
+    setSort((prev) => {
+      if (prev?.key === key) return { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' };
+      return { key, dir: 'asc' };
+    });
+  }
 
   useEffect(() => {
     load();
@@ -120,6 +138,8 @@ export function Dashboard() {
                   // duplicate that logic and risk drifting from it silently.
                   setRows((prev) => prev.map((r) => (r.id === id ? { ...r, status } : r)))
                 }
+                sort={sort}
+                onSortChange={toggleSort}
               />
             </>
           )}

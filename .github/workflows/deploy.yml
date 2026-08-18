@@ -89,7 +89,13 @@ jobs:
         env:
           OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
           ALLOW_PROTECTED_DB_HOST: ${{ github.ref_name == 'Development' && '1' || '' }}
-          SEED_DEV_ON_DEPLOY: ${{ github.ref_name == 'Development' && '1' || '' }}
+          # 86e2v24uf: branch name alone used to gate this -- every Development
+          # deploy auto-seeded a dev-tenant membership row matching the hardcoded
+          # UUID pair the frontend bundle shipped (see api.ts's authHeaders()),
+          # a live backdoor credential on every deploy. Now requires an explicit
+          # repo variable opt-in (SEED_DEV_TENANT=1) in addition to the branch
+          # check -- Production stays excluded either way.
+          SEED_DEV_ON_DEPLOY: ${{ github.ref_name == 'Development' && vars.SEED_DEV_TENANT == '1' && '1' || '' }}
 
   deploy:
     needs: migrate-database

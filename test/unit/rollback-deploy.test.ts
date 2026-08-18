@@ -428,6 +428,66 @@ describe('rollbackToLastGood (unit)', () => {
       expect(rmArgs.filter((a) => a === '.env')).toHaveLength(1);
       expect(rmArgs.filter((a) => a === 'deploy.tar.gz')).toHaveLength(1);
     });
+
+    // 86e2vpmcn: the finally block above proves cleanup happens exactly once,
+    // but never proved WHEN relative to triggerBuildImpl -- and on the happy
+    // path, the finally (wrapping only inject->tar) fired before line 84's
+    // triggerBuildImpl call, deleting deploy.tar.gz before CapRover's CLI ever
+    // reads it via --tarFile. This asserts the actual read-order guarantee: the
+    // rm('deploy.tar.gz') call must come after triggerBuildImpl is invoked, not
+    // before -- proven via a single shared call-order log spanning both mocks
+    // (runImpl's rm calls and the separate triggerBuildImpl mock), since the two
+    // are independent functions with no shared call list of their own.
+    it('does not delete deploy.tar.gz until after triggerBuildImpl has read it (86e2vpmcn)', async () => {
+      const order: string[] = [];
+      const runImpl = vi.fn(async (cmd: string, args: string[]) => {
+        if (cmd === 'rm' && args.includes('deploy.tar.gz')) order.push('rm:deploy.tar.gz');
+        if (cmd === 'git' && args[0] === 'rev-parse') return { stdout: 'sha-last-good\n' };
+        return { stdout: '' };
+      });
+      const triggerBuildImpl = vi.fn(async () => {
+        order.push('triggerBuildImpl');
+        return { status: '100', raw: '{"status":100}' };
+      });
+
+      const result = await rollbackToLastGood({
+        lastGoodTag: 'last-good-dev',
+        caproverUrl: 'captain.example.com',
+        caproverAppToken: 'test-token',
+        caproverAppName: 'freight-auditor-dev',
+        runImpl,
+        triggerBuildImpl,
+      });
+
+      expect(result).toEqual({ rolledBack: true, lastGoodSha: 'sha-last-good' });
+      const triggerIdx = order.indexOf('triggerBuildImpl');
+      const rmIdx = order.indexOf('rm:deploy.tar.gz');
+      expect(triggerIdx).toBeGreaterThan(-1);
+      expect(rmIdx).toBeGreaterThan(-1);
+      expect(rmIdx).toBeGreaterThan(triggerIdx);
+    });
+
+    it('still cleans up deploy.tar.gz and .env when triggerBuildImpl itself throws, so a rejected rollback deploy does not leave secrets on disk either (86e2vpmcn AC2)', async () => {
+      const runImpl = vi.fn().mockResolvedValue({ stdout: 'sha-last-good\n' });
+      const triggerBuildImpl = vi.fn().mockRejectedValue(new Error('rollback deploy also failed'));
+
+      await expect(
+        rollbackToLastGood({
+          lastGoodTag: 'last-good-dev',
+          caproverUrl: 'captain.example.com',
+          caproverAppToken: 'test-token',
+          caproverAppName: 'freight-auditor-dev',
+          runImpl,
+          triggerBuildImpl,
+        }),
+      ).rejects.toThrow(/rollback deploy also failed/);
+
+      const calls = runImpl.mock.calls;
+      const rmCalls = calls.filter(([cmd]) => cmd === 'rm');
+      const rmArgs = rmCalls.flatMap(([, args]) => args as string[]);
+      expect(rmArgs.filter((a) => a === '.env')).toHaveLength(1);
+      expect(rmArgs.filter((a) => a === 'deploy.tar.gz')).toHaveLength(1);
+    });
   });
 
   describe('redactToken', () => {

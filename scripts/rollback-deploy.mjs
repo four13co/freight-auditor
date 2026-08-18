@@ -44,16 +44,23 @@ export async function rollbackToLastGood({
   // runtime .env from 1Password" step (86e2v0acm) — checked out from the last-good
   // revision itself (not HEAD), same as everything else this rebuild uses.
   //
-  // 86e2v882v: inject -> tar -> cleanup has no room for a throw to skip cleanup --
-  // op inject and tar both write secret-bearing files (.env, then deploy.tar.gz)
-  // to disk, so a throw anywhere in this sequence (including the timeout added
-  // above firing mid-tar) must still remove whatever was written so far before
-  // propagating. The finally block removes both unconditionally; a file that was
-  // never created (e.g. inject itself threw, so .env doesn't exist) is a no-op rm.
+  // 86e2v882v: inject -> tar -> triggerBuild -> cleanup has no room for a throw
+  // to skip cleanup -- op inject and tar both write secret-bearing files (.env,
+  // then deploy.tar.gz) to disk, so a throw anywhere in this sequence (including
+  // the timeout firing mid-tar, or triggerBuildImpl itself rejecting) must still
+  // remove whatever was written so far before propagating.
+  //
+  // 86e2vpmcn: the finally block MUST wrap triggerBuildImpl too, not just
+  // inject->tar -- deploy.tar.gz is CapRover's entire build context, read via
+  // --tarFile inside triggerBuildImpl (line further down). A finally scoped to
+  // only inject->tar deletes the tarball before that read ever happens on the
+  // happy path, breaking every rollback. The file that was never created (e.g.
+  // inject itself threw, so .env doesn't exist) is still a no-op rm.
   await runImpl('node', [
     '-e',
     `require('fs').writeFileSync('.env.tpl', require('fs').readFileSync('.env.template', 'utf8').split('\${OP_VAULT}').join(process.env.OP_VAULT))`,
   ]);
+  let result;
   try {
     await runImpl('op', ['inject', '-i', '.env.tpl', '-o', '.env']);
     await runImpl('rm', ['.env.tpl']);
@@ -74,16 +81,14 @@ export async function rollbackToLastGood({
       'web/dist/',
       '.env',
     ]);
+    try {
+      result = await triggerBuildImpl(caproverUrl, caproverAppToken, caproverAppName);
+    } catch (err) {
+      throw new Error(redactToken(err.message, caproverAppToken));
+    }
   } finally {
     await runImpl('rm', ['-f', '.env']);
     await runImpl('rm', ['-f', 'deploy.tar.gz']);
-  }
-
-  let result;
-  try {
-    result = await triggerBuildImpl(caproverUrl, caproverAppToken, caproverAppName);
-  } catch (err) {
-    throw new Error(redactToken(err.message, caproverAppToken));
   }
   if (result.status !== '100') {
     throw new Error(redactToken(`rollback deploy also failed (status=${result.status}): ${result.raw}`, caproverAppToken));

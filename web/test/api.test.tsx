@@ -67,3 +67,34 @@ describe('api.ts auth headers', () => {
     expect(findingsHeaders['x-user-id']).toBe(summaryHeaders['x-user-id']);
   });
 });
+
+/**
+ * 86e2v24uf: authHeaders() shipped the hardcoded dev UUID pair into the
+ * production bundle unconditionally -- anyone reading the public JS got a
+ * live credential pair against the deployed dev environment. Gated behind
+ * import.meta.env.DEV so a production build never sends it. The suite above
+ * proves the dev-mode behavior is unchanged (vitest's import.meta.env.DEV is
+ * true by default); this suite proves the prod-mode gate actually closes.
+ */
+describe('api.ts auth headers (production build)', () => {
+  let fetchMock: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    vi.stubEnv('DEV', false);
+    fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ findings: [] }), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
+  });
+
+  it('does not send x-client-id or x-user-id when import.meta.env.DEV is false', async () => {
+    await fetchFindings();
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const headers = headersFromInit(init);
+    expect(headers['x-client-id']).toBeUndefined();
+    expect(headers['x-user-id']).toBeUndefined();
+  });
+});

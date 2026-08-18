@@ -81,8 +81,15 @@ function buildQuery(params: FindingsListParams): string {
  * doesn't share a module graph with the root scripts/ package, so the
  * values are duplicated here rather than imported -- if you change one,
  * change both.
+ *
+ * 86e2v24uf: this pair shipped unconditionally into the production bundle --
+ * anyone reading the public JS got a live credential pair against the
+ * deployed dev environment. Gated behind import.meta.env.DEV (a Vite
+ * build-time constant, false in a production build) so it never ships
+ * outside a dev/test build.
  */
 function authHeaders(): HeadersInit {
+  if (!import.meta.env.DEV) return {};
   return {
     'x-client-id': '11111111-1111-1111-1111-111111111111',
     'x-user-id': '22222222-2222-2222-2222-222222222222',

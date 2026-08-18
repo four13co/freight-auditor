@@ -10,24 +10,22 @@ import { getFindingsSummary } from '../modules/findings/findings-summary.js';
 import { listGateFailures } from '../modules/findings/list-gate-failures.js';
 import { updateFindingStatus } from '../modules/findings/update-finding-status.js';
 import { resolveAuthorizedTenantContext } from '../modules/findings/tenant-auth.js';
+import { ALL_VARIANCE_STATUSES, WRITABLE_VARIANCE_STATUSES } from '../shared/variance-status.js';
 
-// 86e2v24ye: mirrors migrations/0002_enums.sql's variance_status enum exactly
-// -- kept as a literal set here (not imported) since src/ has no existing
-// runtime dependency on the migrations/ directory; FindingsTable.tsx's status
-// dropdown is the other place these same values are duplicated.
-const VARIANCE_STATUS_VALUES = new Set([
-  'open', 'in_review', 'accepted', 'waived',
-  'queued_for_dispute', 'disputed', 'recovered', 'written_off', 'closed',
-]);
+// 86e2v892h: derived from the shared source (mirrors migrations/0002_enums.sql's
+// variance_status enum exactly) rather than a separate hand-maintained literal.
+const VARIANCE_STATUS_VALUES = new Set<string>(ALL_VARIANCE_STATUSES);
 
 // 86e2v1xyr: the drawer's write path is scoped to the same 5 values the
 // status FILTER dropdown exposes (FindingsTable.tsx) -- the item's explicit
 // coherence rule: a finding set to a value the filter can't select would
 // become unreachable through the UI. GET /api/findings' own query-param
 // validation intentionally stays on the full 9-value VARIANCE_STATUS_VALUES
-// (a filter param and a write target are different concerns), so this is a
-// separate, narrower set rather than a shared constant.
-const WRITABLE_STATUS_VALUES = new Set(['open', 'in_review', 'queued_for_dispute', 'disputed', 'closed']);
+// (a filter param and a write target are different concerns), so this stays
+// a separate, narrower set rather than sharing VARIANCE_STATUS_VALUES --
+// but both sides of the writable set (this, and FindingDetail.tsx's) now
+// derive from the one shared WRITABLE_VARIANCE_STATUSES (86e2v892h).
+const WRITABLE_STATUS_VALUES = new Set<string>(WRITABLE_VARIANCE_STATUSES);
 
 // Explicit numeric-string check rather than Number()/isNaN -- Number('') is
 // 0, Number('0x10') is 16, and Number('Infinity') is finite per isNaN, all of

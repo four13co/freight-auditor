@@ -3,6 +3,20 @@ import type { FindingRow, FindingsSortDir, FindingsSortKey } from '../lib/api.js
 import { formatMoney, formatVariance, formatAge } from '../lib/format.js';
 import { getStatusDisplay } from '../lib/status-display.js';
 import { FindingDetail } from './FindingDetail.js';
+import { WRITABLE_VARIANCE_STATUSES } from '../../../src/shared/variance-status.js';
+
+// 86e2v892h: values derive from the shared source (matches app.ts's
+// WRITABLE_STATUS_VALUES and FindingDetail.tsx's WRITABLE_STATUSES) so the
+// three can't silently drift apart. Labels stay hand-written here -- they
+// don't match a mechanical title-case of the raw value (e.g. "In review",
+// not "In Review"), so deriving them would change visible UI text.
+const STATUS_FILTER_LABELS: Record<(typeof WRITABLE_VARIANCE_STATUSES)[number], string> = {
+  open: 'Open',
+  in_review: 'In review',
+  queued_for_dispute: 'Queued for dispute',
+  disputed: 'Disputed',
+  closed: 'Closed',
+};
 
 interface FindingsTableProps {
   rows: FindingRow[];
@@ -96,11 +110,11 @@ export function FindingsTable({
               className="bg-transparent outline-none"
             >
               <option value="">All</option>
-              <option value="open">Open</option>
-              <option value="in_review">In review</option>
-              <option value="queued_for_dispute">Queued for dispute</option>
-              <option value="disputed">Disputed</option>
-              <option value="closed">Closed</option>
+              {WRITABLE_VARIANCE_STATUSES.map((value) => (
+                <option key={value} value={value}>
+                  {STATUS_FILTER_LABELS[value]}
+                </option>
+              ))}
             </select>
           </label>
           <label className="flex h-[30px] items-center gap-1.5 border border-[rgba(32,30,29,0.4)] px-2.5 text-xs text-[#201e1d]">

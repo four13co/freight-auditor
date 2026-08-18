@@ -72,6 +72,14 @@ describe('ci.yml (unit, merge-commit trigger)', () => {
     expect(job.services?.postgres).toBeDefined();
   });
 
+  it("web-fullstack's Build web step sets VITE_DEV_AUTH_HEADERS=1 (86e2v1bdj) -- vite build bakes import.meta.env.DEV to false, so without this the built bundle sends no auth headers and every page-driven /api/* call 401s against this job's DEV_AUTH_HEADERS=1 server", () => {
+    const workflow = loadCiWorkflow();
+    const job = getJob(workflow, 'web-fullstack');
+    const buildStep = job.steps.find((s) => s.run?.includes('npm --prefix web run build'));
+    expect(buildStep).toBeDefined();
+    expect(buildStep!.env?.VITE_DEV_AUTH_HEADERS).toBe('1');
+  });
+
   describe('job timeouts (86e2v1qrn)', () => {
     // This workflow has no concurrency group, so a hang here doesn't block
     // other runs the way deploy.yml's did -- still bounded rather than

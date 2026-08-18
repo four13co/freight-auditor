@@ -362,12 +362,27 @@ describe('deploy.yml (unit, job-dependency + guard wiring)', () => {
       expect(guardIndex).toBeLessThan(migrateIndex);
     });
 
-    it('gates the seed step on Development exactly like ALLOW_PROTECTED_DB_HOST (no seeding on Production)', () => {
+    it('never seeds on a non-Development branch, regardless of any opt-in flag (no seeding on Production)', () => {
+      // The ORIGINAL guarantee this item's predecessor (86e2uut65) proved: a
+      // branch check alone gated seeding. 86e2v24uf tightens this to ALSO
+      // require an explicit opt-in flag (see the test below), but must not
+      // loosen the branch gate in doing so -- Production must stay excluded
+      // no matter how the opt-in var is set.
       const workflow = loadDeployWorkflow();
       const migrateStep = getJob(workflow, 'migrate-database').steps.find((step) =>
         step.run?.includes('npm run migrate'),
       );
-      expect(migrateStep!.env?.SEED_DEV_ON_DEPLOY).toBe("${{ github.ref_name == 'Development' && '1' || '' }}");
+      expect(migrateStep!.env?.SEED_DEV_ON_DEPLOY).toContain("github.ref_name == 'Development'");
+    });
+
+    it("86e2v24uf: also requires an explicit opt-in var (vars.SEED_DEV_TENANT), not branch name alone -- auto-seeding a live credential pair on every Development deploy was the live-exposure gap this item closes", () => {
+      const workflow = loadDeployWorkflow();
+      const migrateStep = getJob(workflow, 'migrate-database').steps.find((step) =>
+        step.run?.includes('npm run migrate'),
+      );
+      expect(migrateStep!.env?.SEED_DEV_ON_DEPLOY).toBe(
+        "${{ github.ref_name == 'Development' && vars.SEED_DEV_TENANT == '1' && '1' || '' }}",
+      );
     });
 
     it('does not add a DATABASE_URL secret or otherwise change how DATABASE_URL is sourced', () => {

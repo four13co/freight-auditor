@@ -217,8 +217,17 @@ jobs:
       # absent -- a running server with no UI, not a loud error). Must build
       # BEFORE Playwright starts; the webServer.command itself runs under a
       # startup timeout, so build prep does not belong there.
+      #
+      # 86e2v1bdj: vite build bakes import.meta.env.DEV to false
+      # unconditionally, so without this explicit opt-in the built bundle
+      # sends no auth headers at all -- every page-driven /api/* call would
+      # 401 against this job's DEV_AUTH_HEADERS=1 server (a real deploy build
+      # never sets this var, so this does not reopen 86e2v24uf's
+      # production-exposure fix).
       - name: Build web
         run: npm --prefix web run build
+        env:
+          VITE_DEV_AUTH_HEADERS: '1'
 
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium

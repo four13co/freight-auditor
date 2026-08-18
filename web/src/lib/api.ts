@@ -87,9 +87,17 @@ function buildQuery(params: FindingsListParams): string {
  * deployed dev environment. Gated behind import.meta.env.DEV (a Vite
  * build-time constant, false in a production build) so it never ships
  * outside a dev/test build.
+ *
+ * 86e2v1bdj: `vite build` bakes DEV to false unconditionally, so CI's
+ * web-fullstack job -- which builds a real production bundle and serves it
+ * against a server running with DEV_AUTH_HEADERS=1 -- got a bundle sending no
+ * headers, breaking that suite. VITE_DEV_AUTH_HEADERS is a SEPARATE explicit
+ * build-time opt-in (only VITE_-prefixed vars reach client code) set ONLY in
+ * that CI build step -- a real deploy build never sets it, so this does not
+ * reopen the exposure the DEV gate above closes.
  */
 function authHeaders(): HeadersInit {
-  if (!import.meta.env.DEV) return {};
+  if (!import.meta.env.DEV && import.meta.env.VITE_DEV_AUTH_HEADERS !== '1') return {};
   return {
     'x-client-id': '11111111-1111-1111-1111-111111111111',
     'x-user-id': '22222222-2222-2222-2222-222222222222',

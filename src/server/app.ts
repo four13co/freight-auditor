@@ -10,6 +10,7 @@ import { getFindingsSummary } from '../modules/findings/findings-summary.js';
 import { listGateFailures } from '../modules/findings/list-gate-failures.js';
 import { updateFindingStatus } from '../modules/findings/update-finding-status.js';
 import { resolveAuthorizedTenantContext } from '../modules/findings/tenant-auth.js';
+import { getAuth } from '../auth/better-auth.js';
 import { ALL_VARIANCE_STATUSES, WRITABLE_VARIANCE_STATUSES } from '../shared/variance-status.js';
 
 // 86e2v892h: derived from the shared source (mirrors migrations/0002_enums.sql's
@@ -94,6 +95,41 @@ export function buildApp(): FastifyInstance {
       database = 'unreachable';
     }
     return { status: 'ok', build: buildSha, database };
+  });
+
+  // 86e2v1bdj: 86e2v1bbr wired getAuth().api.getSession() into tenant-auth.ts
+  // for session VERIFICATION only -- nothing mounted better-auth's own
+  // handler as an actual HTTP route, so there was no endpoint a login form
+  // could POST credentials to (sign-up/sign-in/get-session/sign-out, all of
+  // better-auth's built-in routes). Registered at top level, NOT inside the
+  // findingsRoutes encapsulation below -- it must NOT be gated behind
+  // tenant-auth's preHandler, which would be circular (you need to hit this
+  // route successfully to obtain the session tenant-auth then verifies).
+  // better-auth's handler takes/returns the standard Fetch API Request/
+  // Response; Fastify's raw req/res need adapting each way.
+  app.all('/api/auth/*', async (request: FastifyRequest, reply: FastifyReply) => {
+    const url = `${request.protocol}://${request.hostname}${request.url}`;
+    const headers = new Headers();
+    for (const [key, value] of Object.entries(request.headers)) {
+      if (value === undefined) continue;
+      headers.set(key, Array.isArray(value) ? value.join(', ') : value);
+    }
+    const fetchRequest = new Request(url, {
+      method: request.method,
+      headers,
+      body: ['GET', 'HEAD'].includes(request.method) ? undefined : JSON.stringify(request.body ?? {}),
+    });
+
+    const response = await getAuth().handler(fetchRequest);
+    reply.status(response.status);
+    response.headers.forEach((value, key) => {
+      // set-cookie is the one header Fastify's reply.header() can't append
+      // multiple values for via a single call the way Headers.forEach
+      // iterates them (better-auth may set more than one cookie) -- raw.
+      reply.raw.setHeader(key, key.toLowerCase() === 'set-cookie' ? response.headers.getSetCookie() : value);
+    });
+    const body = await response.text();
+    return reply.send(body || null);
   });
 
   // Encapsulated so the tenant-auth preHandler binds ONLY to these two

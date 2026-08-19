@@ -50,7 +50,13 @@ describe('listFindings (DB)', () => {
     await closePool();
   });
 
-  /** Seeds one full variance_finding row (through charge_fact/invoice/audit_run) for a client. */
+  /**
+   * Seeds one full variance_finding row (through charge_fact/invoice/audit_run)
+   * for a client. `invoiceNumber`/`carrierId`/`criterionId` are exposed as
+   * options (86e2v24zz) so tests that need to assert on a specific invoice
+   * number, seed under a non-default carrier, or attach a criterion can still
+   * use this single insert chain instead of hand-rolling their own.
+   */
   async function seedFinding(
     client: pg.PoolClient,
     opts: {
@@ -60,12 +66,19 @@ describe('listFindings (DB)', () => {
       billed?: string;
       expected?: string;
       variance?: string;
+      invoiceNumber?: string;
+      carrierId?: string;
+      criterionId?: string;
     },
-  ): Promise<string> {
+  ): Promise<{ id: string; chargeFactId: string; auditRunId: string }> {
     const inv = await client.query(
       `INSERT INTO invoice (client_id, carrier_id, transaction_set, invoice_number, currency, parser_version)
        VALUES ($1, $2, '210', $3, 'USD', 'test') RETURNING id`,
-      [opts.clientId, carrierId, `INV-${tag}-${Math.random().toString(36).slice(2)}`],
+      [
+        opts.clientId,
+        opts.carrierId ?? carrierId,
+        opts.invoiceNumber ?? `INV-${tag}-${Math.random().toString(36).slice(2)}`,
+      ],
     );
     const invoiceId = inv.rows[0].id;
 
@@ -91,18 +104,19 @@ describe('listFindings (DB)', () => {
 
     const vf = await client.query(
       `INSERT INTO variance_finding
-         (client_id, audit_run_id, charge_fact_id, direction, variance_amount, currency, status)
-       VALUES ($1, $2, $3, $4, $5, 'USD', $6) RETURNING id`,
+         (client_id, audit_run_id, charge_fact_id, criterion_id, direction, variance_amount, currency, status)
+       VALUES ($1, $2, $3, $4, $5, $6, 'USD', $7) RETURNING id`,
       [
         opts.clientId,
         auditRunId,
         chargeFactId,
+        opts.criterionId ?? null,
         opts.direction ?? 'OVERCHARGE',
         opts.variance ?? '100.0000',
         opts.status ?? 'open',
       ],
     );
-    return vf.rows[0].id;
+    return { id: vf.rows[0].id, chargeFactId, auditRunId };
   }
 
   it('AC1: returns seeded rows with invoice/carrier/billed/expected/variance/status', async () => {
@@ -157,25 +171,14 @@ describe('listFindings (DB)', () => {
 
     const rows = await withTenantTx({ clientIds: [clientAId], internal: true }, async (c) => {
       await seedFinding(c, { clientId: clientAId });
-      // seed a second finding under the other carrier by inserting invoice directly
-      const inv = await c.query(
-        `INSERT INTO invoice (client_id, carrier_id, transaction_set, invoice_number, currency, parser_version)
-         VALUES ($1, $2, '210', $3, 'USD', 'test') RETURNING id`,
-        [clientAId, otherCarrier, `INV-${tag}-other`],
-      );
-      const run = await c.query(
-        `INSERT INTO audit_run (client_id, invoice_id, engine_spec_version, outcome) VALUES ($1, $2, 'test', 'SCORED') RETURNING id`,
-        [clientAId, inv.rows[0].id],
-      );
-      const cf = await c.query(
-        `INSERT INTO charge_fact (client_id, invoice_id, code, category, amount, currency) VALUES ($1, $2, '400', 'LINEHAUL', '500.0000', 'USD') RETURNING id`,
-        [clientAId, inv.rows[0].id],
-      );
-      await c.query(
-        `INSERT INTO variance_finding (client_id, audit_run_id, charge_fact_id, direction, variance_amount, currency, status)
-         VALUES ($1, $2, $3, 'OVERCHARGE', '50.0000', 'USD', 'open')`,
-        [clientAId, run.rows[0].id, cf.rows[0].id],
-      );
+      // seed a second finding under the other carrier
+      await seedFinding(c, {
+        clientId: clientAId,
+        carrierId: otherCarrier,
+        invoiceNumber: `INV-${tag}-other`,
+        billed: '500.0000',
+        variance: '50.0000',
+      });
       return listFindings(c, { clientIds: [clientAId], carrier: `Other-${tag}` });
     });
     expect(rows).toHaveLength(1);
@@ -188,36 +191,29 @@ describe('listFindings (DB)', () => {
     // -- a plain JOIN would row-multiply the finding. This seeds exactly that
     // (two expected_charge rows, one charge_fact) and asserts a single row.
     const rows = await withTenantTx({ clientIds: [clientAId], internal: true }, async (c) => {
-      const inv = await c.query(
-        `INSERT INTO invoice (client_id, carrier_id, transaction_set, invoice_number, currency, parser_version)
-         VALUES ($1, $2, '210', $3, 'USD', 'test') RETURNING id`,
-        [clientAId, carrierId, `INV-${tag}-dup-expected`],
-      );
-      const run = await c.query(
-        `INSERT INTO audit_run (client_id, invoice_id, engine_spec_version, outcome) VALUES ($1, $2, 'test', 'SCORED') RETURNING id`,
-        [clientAId, inv.rows[0].id],
-      );
-      const cf = await c.query(
-        `INSERT INTO charge_fact (client_id, invoice_id, code, category, amount, currency) VALUES ($1, $2, '400', 'LINEHAUL', '1000.0000', 'USD') RETURNING id`,
-        [clientAId, inv.rows[0].id],
-      );
-      // Two expected_charge rows for the same charge_fact -- e.g. a
-      // recompute superseding an earlier estimate. created_at ordering
-      // decides which one the LATERAL join picks (the later one, '850').
+      // seedFinding's own expected_charge insert ('900.0000') becomes the
+      // FIRST (earlier) of the two rows via an explicit backdated created_at
+      // -- now() alone doesn't reliably order two inserts in the same
+      // transaction (it reflects transaction start time, not statement
+      // time). This second, explicit insert stays inline (not absorbed into
+      // seedFinding) since it's a one-off variation only this test needs.
+      // created_at ordering decides which one the LATERAL join picks (the
+      // later one, '850').
+      const { chargeFactId, auditRunId } = await seedFinding(c, {
+        clientId: clientAId,
+        invoiceNumber: `INV-${tag}-dup-expected`,
+        expected: '900.0000',
+        variance: '150.0000',
+      });
       await c.query(
-        `INSERT INTO expected_charge (client_id, audit_run_id, charge_fact_id, category, expected_amount, currency, created_at)
-         VALUES ($1, $2, $3, 'LINEHAUL', '900.0000', 'USD', now() - interval '1 minute')`,
-        [clientAId, run.rows[0].id, cf.rows[0].id],
+        `UPDATE expected_charge SET created_at = now() - interval '1 minute'
+         WHERE charge_fact_id = $1 AND expected_amount = '900.0000'`,
+        [chargeFactId],
       );
       await c.query(
         `INSERT INTO expected_charge (client_id, audit_run_id, charge_fact_id, category, expected_amount, currency, created_at)
          VALUES ($1, $2, $3, 'LINEHAUL', '850.0000', 'USD', now())`,
-        [clientAId, run.rows[0].id, cf.rows[0].id],
-      );
-      await c.query(
-        `INSERT INTO variance_finding (client_id, audit_run_id, charge_fact_id, direction, variance_amount, currency, status)
-         VALUES ($1, $2, $3, 'OVERCHARGE', '150.0000', 'USD', 'open')`,
-        [clientAId, run.rows[0].id, cf.rows[0].id],
+        [clientAId, auditRunId, chargeFactId],
       );
       return listFindings(c, { clientIds: [clientAId], carrier: `Carrier-${tag}` });
     });
@@ -243,24 +239,11 @@ describe('listFindings (DB)', () => {
         [criterionId, 'Duplicate invoice for the same PRO'],
       );
 
-      const inv = await c.query(
-        `INSERT INTO invoice (client_id, carrier_id, transaction_set, invoice_number, currency, parser_version)
-         VALUES ($1, $2, '210', $3, 'USD', 'test') RETURNING id`,
-        [clientAId, carrierId, `INV-${tag}-with-criterion`],
-      );
-      const run = await c.query(
-        `INSERT INTO audit_run (client_id, invoice_id, engine_spec_version, outcome) VALUES ($1, $2, 'test', 'SCORED') RETURNING id`,
-        [clientAId, inv.rows[0].id],
-      );
-      const cf = await c.query(
-        `INSERT INTO charge_fact (client_id, invoice_id, code, category, amount, currency) VALUES ($1, $2, '400', 'LINEHAUL', '1000.0000', 'USD') RETURNING id`,
-        [clientAId, inv.rows[0].id],
-      );
-      await c.query(
-        `INSERT INTO variance_finding (client_id, audit_run_id, charge_fact_id, criterion_id, direction, variance_amount, currency, status)
-         VALUES ($1, $2, $3, $4, 'OVERCHARGE', '100.0000', 'USD', 'open')`,
-        [clientAId, run.rows[0].id, cf.rows[0].id, criterionId],
-      );
+      await seedFinding(c, {
+        clientId: clientAId,
+        invoiceNumber: `INV-${tag}-with-criterion`,
+        criterionId,
+      });
       return listFindings(c, { clientIds: [clientAId], carrier: `Carrier-${tag}` });
     });
     const matching = rows.filter((r) => r.invoiceNumber === `INV-${tag}-with-criterion`);
@@ -271,25 +254,8 @@ describe('listFindings (DB)', () => {
   it('86e2up8c8: ruleDescription is null when the finding has no criterion attached (existing rows, no regression)', async () => {
     const noCriterionInvoiceNumber = `INV-${tag}-no-criterion`;
     const rows = await withTenantTx({ clientIds: [clientAId], internal: true }, async (c) => {
-      const inv = await c.query(
-        `INSERT INTO invoice (client_id, carrier_id, transaction_set, invoice_number, currency, parser_version)
-         VALUES ($1, $2, '210', $3, 'USD', 'test') RETURNING id`,
-        [clientAId, carrierId, noCriterionInvoiceNumber],
-      );
-      const run = await c.query(
-        `INSERT INTO audit_run (client_id, invoice_id, engine_spec_version, outcome) VALUES ($1, $2, 'test', 'SCORED') RETURNING id`,
-        [clientAId, inv.rows[0].id],
-      );
-      const cf = await c.query(
-        `INSERT INTO charge_fact (client_id, invoice_id, code, category, amount, currency) VALUES ($1, $2, '400', 'LINEHAUL', '1000.0000', 'USD') RETURNING id`,
-        [clientAId, inv.rows[0].id],
-      );
-      // No criterion_id passed -- variance_finding.criterion_id defaults NULL.
-      await c.query(
-        `INSERT INTO variance_finding (client_id, audit_run_id, charge_fact_id, direction, variance_amount, currency, status)
-         VALUES ($1, $2, $3, 'OVERCHARGE', '100.0000', 'USD', 'open')`,
-        [clientAId, run.rows[0].id, cf.rows[0].id],
-      );
+      // No criterionId passed -- variance_finding.criterion_id defaults NULL.
+      await seedFinding(c, { clientId: clientAId, invoiceNumber: noCriterionInvoiceNumber });
       return listFindings(c, { clientIds: [clientAId], carrier: `Carrier-${tag}` });
     });
     const matching = rows.filter((r) => r.invoiceNumber === noCriterionInvoiceNumber);
@@ -313,24 +279,11 @@ describe('listFindings (DB)', () => {
         [criterionId, 'New wording'],
       );
 
-      const inv = await c.query(
-        `INSERT INTO invoice (client_id, carrier_id, transaction_set, invoice_number, currency, parser_version)
-         VALUES ($1, $2, '210', $3, 'USD', 'test') RETURNING id`,
-        [clientAId, carrierId, `INV-${tag}-versioned`],
-      );
-      const run = await c.query(
-        `INSERT INTO audit_run (client_id, invoice_id, engine_spec_version, outcome) VALUES ($1, $2, 'test', 'SCORED') RETURNING id`,
-        [clientAId, inv.rows[0].id],
-      );
-      const cf = await c.query(
-        `INSERT INTO charge_fact (client_id, invoice_id, code, category, amount, currency) VALUES ($1, $2, '400', 'LINEHAUL', '1000.0000', 'USD') RETURNING id`,
-        [clientAId, inv.rows[0].id],
-      );
-      await c.query(
-        `INSERT INTO variance_finding (client_id, audit_run_id, charge_fact_id, criterion_id, direction, variance_amount, currency, status)
-         VALUES ($1, $2, $3, $4, 'OVERCHARGE', '100.0000', 'USD', 'open')`,
-        [clientAId, run.rows[0].id, cf.rows[0].id, criterionId],
-      );
+      await seedFinding(c, {
+        clientId: clientAId,
+        invoiceNumber: `INV-${tag}-versioned`,
+        criterionId,
+      });
       return listFindings(c, { clientIds: [clientAId], carrier: `Carrier-${tag}` });
     });
     const matching = rows.filter((r) => r.invoiceNumber === `INV-${tag}-versioned`);

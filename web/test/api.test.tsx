@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { fetchFindings, fetchFindingsSummary } from '../src/lib/api.js';
+import { fetchFindings, fetchFindingsSummary, fetchAndStoreClientId } from '../src/lib/api.js';
 
 /**
  * 86e2urebj: the dashboard broke on Development because fetchFindings/
@@ -83,18 +83,54 @@ describe('api.ts auth headers (production build)', () => {
     vi.stubEnv('DEV', false);
     fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ findings: [] }), { status: 200 }));
     vi.stubGlobal('fetch', fetchMock);
+    sessionStorage.clear();
   });
 
   afterEach(() => {
     vi.unstubAllGlobals();
     vi.unstubAllEnvs();
+    sessionStorage.clear();
   });
 
-  it('does not send x-client-id or x-user-id when import.meta.env.DEV is false', async () => {
+  it('does not send x-client-id or x-user-id when import.meta.env.DEV is false and no client_id is stored', async () => {
     await fetchFindings();
     const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     const headers = headersFromInit(init);
     expect(headers['x-client-id']).toBeUndefined();
+    expect(headers['x-user-id']).toBeUndefined();
+  });
+});
+
+/**
+ * 86e2wb92b: the real-session path -- a production build with a client_id
+ * already stored (by App.tsx, after a successful /api/auth/memberships
+ * lookup) sends it as x-client-id. Never x-user-id: resolveViaSession
+ * (tenant-auth.ts) derives the user from the session cookie itself, not a
+ * header, so sending one here would be a client-controlled value the
+ * backend never reads -- easily mistaken for an identity-spoofing vector.
+ */
+describe('api.ts auth headers (real session, stored client_id)', () => {
+  const STORAGE_KEY = 'freight-auditor:client-id';
+  let fetchMock: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    vi.stubEnv('DEV', false);
+    fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ findings: [] }), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+    sessionStorage.setItem(STORAGE_KEY, 'stored-client-id');
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
+    sessionStorage.clear();
+  });
+
+  it('sends the stored client_id as x-client-id, and never sends x-user-id', async () => {
+    await fetchFindings();
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const headers = headersFromInit(init);
+    expect(headers['x-client-id']).toBe('stored-client-id');
     expect(headers['x-user-id']).toBeUndefined();
   });
 });
@@ -134,5 +170,51 @@ describe('api.ts auth headers (VITE_DEV_AUTH_HEADERS opt-in for a non-dev build)
     const headers = headersFromInit(init);
     expect(headers['x-client-id']).toBeTruthy();
     expect(headers['x-user-id']).toBeTruthy();
+  });
+});
+
+/**
+ * 86e2wb92b: fetchAndStoreClientId() is App.tsx's post-login lookup --
+ * called once a real session exists, before authHeaders() has anything to
+ * send on the real-session path.
+ */
+describe('fetchAndStoreClientId', () => {
+  const STORAGE_KEY = 'freight-auditor:client-id';
+  let fetchMock: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    sessionStorage.clear();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    sessionStorage.clear();
+  });
+
+  it('AC1: stores the first client_id returned by GET /api/auth/memberships', async () => {
+    fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ clientIds: ['c1', 'c2'] }), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await fetchAndStoreClientId();
+
+    expect(fetchMock).toHaveBeenCalledWith('/api/auth/memberships');
+    expect(sessionStorage.getItem(STORAGE_KEY)).toBe('c1');
+  });
+
+  it('AC3: stores nothing when the user has zero memberships (empty clientIds)', async () => {
+    fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ clientIds: [] }), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await fetchAndStoreClientId();
+
+    expect(sessionStorage.getItem(STORAGE_KEY)).toBeNull();
+  });
+
+  it('AC3: stores nothing and does not throw when the lookup itself fails (e.g. 401, no session)', async () => {
+    fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 401 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(fetchAndStoreClientId()).resolves.toBeUndefined();
+    expect(sessionStorage.getItem(STORAGE_KEY)).toBeNull();
   });
 });

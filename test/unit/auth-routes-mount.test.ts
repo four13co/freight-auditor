@@ -83,3 +83,59 @@ describe('/api/auth/* mount (unit, mocked getAuth)', () => {
     expect(handler).toHaveBeenCalledTimes(1);
   });
 });
+
+/**
+ * 86e2wb92b: unit coverage of GET /api/auth/memberships, with getAuth() and
+ * listMembershipClientIds mocked so this runs with no live Postgres.
+ * Complements test/db/auth-memberships.db.test.ts, which covers the real
+ * membership-lookup query against real Postgres and stays the source of
+ * truth there -- this file only exercises the route's own session-check +
+ * response-shape logic.
+ */
+describe('GET /api/auth/memberships (unit, mocked getAuth + listMembershipClientIds)', () => {
+  let app: FastifyInstance | undefined;
+
+  afterEach(async () => {
+    if (app) await app.close();
+    app = undefined;
+    vi.resetModules();
+    vi.doUnmock('../../src/auth/better-auth.js');
+    vi.doUnmock('../../src/modules/findings/tenant-auth.js');
+  });
+
+  it('AC1: returns { clientIds } for a valid session', async () => {
+    const getSession = vi.fn().mockResolvedValue({ user: { id: 'user-1' } });
+    vi.doMock('../../src/auth/better-auth.js', () => ({ getAuth: () => ({ api: { getSession } }) }));
+    const listMembershipClientIds = vi.fn().mockResolvedValue(['client-1']);
+    vi.doMock('../../src/modules/findings/tenant-auth.js', async (importOriginal) => ({
+      ...(await importOriginal<object>()),
+      listMembershipClientIds,
+    }));
+    const { buildApp } = await import('../../src/server/app.js');
+    app = buildApp();
+
+    const res = await app.inject({ method: 'GET', url: '/api/auth/memberships', headers: { cookie: 'session=x' } });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ clientIds: ['client-1'] });
+    expect(getSession).toHaveBeenCalledTimes(1);
+    expect(listMembershipClientIds).toHaveBeenCalledWith('user-1');
+  });
+
+  it('AC3: returns 401 without calling listMembershipClientIds when there is no valid session', async () => {
+    const getSession = vi.fn().mockResolvedValue(null);
+    vi.doMock('../../src/auth/better-auth.js', () => ({ getAuth: () => ({ api: { getSession } }) }));
+    const listMembershipClientIds = vi.fn();
+    vi.doMock('../../src/modules/findings/tenant-auth.js', async (importOriginal) => ({
+      ...(await importOriginal<object>()),
+      listMembershipClientIds,
+    }));
+    const { buildApp } = await import('../../src/server/app.js');
+    app = buildApp();
+
+    const res = await app.inject({ method: 'GET', url: '/api/auth/memberships' });
+
+    expect(res.statusCode).toBe(401);
+    expect(listMembershipClientIds).not.toHaveBeenCalled();
+  });
+});

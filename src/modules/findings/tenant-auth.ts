@@ -38,6 +38,24 @@ async function lookupMembership(userId: string, clientId: string): Promise<boole
   });
 }
 
+/**
+ * 86e2wb92b: a real (non-dev-header) session proves WHO the user is, but not
+ * WHICH client they're scoped to -- resolveViaSession still requires an
+ * explicit x-client-id, and nothing told the frontend what value to send.
+ * This is the lookup the new GET /api/auth/memberships route (app.ts) uses
+ * to answer that, so login can store a client_id and start sending it.
+ * Same internal-scoped-transaction shape as lookupMembership -- membership
+ * carries FORCE RLS keyed on client_id, so listing a user's own rows across
+ * clients also needs the internal scope, not a tenant scope that doesn't
+ * exist yet.
+ */
+export async function listMembershipClientIds(userId: string): Promise<string[]> {
+  return withTenantTx({ internal: true }, async (client) => {
+    const result = await client.query(`SELECT client_id FROM membership WHERE user_id = $1`, [userId]);
+    return result.rows.map((row: { client_id: string }) => row.client_id);
+  });
+}
+
 /** DEV_AUTH_HEADERS path: x-client-id/x-user-id headers, membership-checked. Unchanged behavior. */
 async function resolveViaDevHeaders(request: FastifyRequest): Promise<TenantContext | null> {
   const clientId = readHeader(request.headers['x-client-id']);

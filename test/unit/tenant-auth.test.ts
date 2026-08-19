@@ -215,3 +215,42 @@ describe('resolveAuthorizedTenantContext (DEV_AUTH_HEADERS unset -- the prod def
     ).rejects.toThrow('DATABASE_URL is not set');
   });
 });
+
+/**
+ * 86e2wb92b: unit coverage of listMembershipClientIds itself, with
+ * withTenantTx mocked -- no live DB. The real query against real membership
+ * rows (including >1 row for a user) is covered by
+ * test/db/auth-memberships.db.test.ts.
+ */
+describe('listMembershipClientIds', () => {
+  afterEach(() => {
+    vi.doUnmock('../../src/db/tenant-context.js');
+    vi.resetModules();
+  });
+
+  it('runs the query in an internal-scoped transaction and maps rows to client_id strings', async () => {
+    const query = vi.fn().mockResolvedValue({ rows: [{ client_id: 'c1' }, { client_id: 'c2' }] });
+    const withTenantTx = vi.fn(async (ctx: unknown, fn: (client: { query: typeof query }) => unknown) => {
+      expect(ctx).toEqual({ internal: true });
+      return fn({ query });
+    });
+    vi.doMock('../../src/db/tenant-context.js', () => ({ withTenantTx }));
+    const { listMembershipClientIds } = await import('../../src/modules/findings/tenant-auth.js');
+
+    const result = await listMembershipClientIds('user-1');
+
+    expect(result).toEqual(['c1', 'c2']);
+    expect(query).toHaveBeenCalledWith(expect.stringContaining('membership'), ['user-1']);
+  });
+
+  it('returns an empty array for a user with no membership rows', async () => {
+    const query = vi.fn().mockResolvedValue({ rows: [] });
+    const withTenantTx = vi.fn(async (_ctx: unknown, fn: (client: { query: typeof query }) => unknown) => fn({ query }));
+    vi.doMock('../../src/db/tenant-context.js', () => ({ withTenantTx }));
+    const { listMembershipClientIds } = await import('../../src/modules/findings/tenant-auth.js');
+
+    const result = await listMembershipClientIds('user-1');
+
+    expect(result).toEqual([]);
+  });
+});

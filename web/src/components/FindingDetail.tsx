@@ -2,16 +2,16 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { updateFindingStatus, type FindingRow } from '../lib/api.js';
 import { formatMoney, formatVariance } from '../lib/format.js';
 import { getStatusDisplay, titleCase } from '../lib/status-display.js';
+import { WRITABLE_VARIANCE_STATUSES } from '../../../src/shared/variance-status.js';
 
 /**
  * 86e2v1xyr: the drawer's writable status set -- scoped to exactly the 5
  * values the status FILTER dropdown exposes (FindingsTable.tsx), so a
  * finding can never land on a status the filter can't select. Matches
- * app.ts's WRITABLE_STATUS_VALUES; kept as a separate literal here since
- * web/ doesn't share a module graph with src/ (same convention as api.ts's
- * authHeaders() duplication note).
+ * app.ts's WRITABLE_STATUS_VALUES -- both now derive from the one shared
+ * source (86e2v892h) rather than hand-maintaining separate literals.
  */
-const WRITABLE_STATUSES = ['open', 'in_review', 'queued_for_dispute', 'disputed', 'closed'] as const;
+const WRITABLE_STATUSES = WRITABLE_VARIANCE_STATUSES;
 
 /**
  * Human-readable label for FindingRow.direction (86e2uv1tb). The header pill

@@ -271,3 +271,101 @@ jobs:
           name: dashboard-fullstack-e2e
           path: web/test-results/
           retention-days: 14
+
+  # 86e2vqggf: proves the REAL better-auth session round trip (login form ->
+  # dashboard, session persists across refresh) -- the path web-fullstack
+  # above deliberately never exercises (that job builds with
+  # VITE_DEV_AUTH_HEADERS=1, which is exactly the flag that skips the login
+  # form per App.tsx's devHeaderPathActive()). Cannot be folded into
+  # web-fullstack: web/dist is one build artifact and VITE_DEV_AUTH_HEADERS is
+  # baked in at build time, so the dev-header path and the real-session path
+  # need two separate builds -- hence a separate job with its own checkout,
+  # its own build step (no VITE_DEV_AUTH_HEADERS), and its own server target
+  # (dev:fullstack-auth-server, port 4181, no DEV_AUTH_HEADERS) rather than an
+  # extension of the existing job.
+  web-fullstack-auth:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: ci
+          POSTGRES_PASSWORD: ci
+          POSTGRES_DB: ci
+        options: >-
+          --health-cmd pg_isready --health-interval 5s
+          --health-timeout 5s --health-retries 10
+        ports:
+          - 5432:5432
+    env:
+      DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
+      # better-auth requires both non-blank. APP_URL must match the origin
+      # Playwright's baseURL hits exactly (scheme+host+port) -- better-auth
+      # gates cookie issuance/origin checks on it, so a mismatch here fails
+      # sign-in with an opaque error rather than a clear one. SESSION_SECRET
+      # only needs to be non-blank and stable within a run; not a real
+      # secret, this job runs against an ephemeral CI-only Postgres.
+      APP_URL: http://localhost:4181
+      SESSION_SECRET: ci-only-e2e-real-session-secret-86e2vqggf
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+          cache-dependency-path: |
+            package-lock.json
+            web/package-lock.json
+
+      - name: Install root dependencies
+        run: npm ci
+
+      - name: Install web dependencies
+        run: npm ci
+        working-directory: web
+
+      - name: Apply migrations
+        run: npm run migrate -- up
+
+      - name: Seed dev tenant
+        run: npm run seed:dev
+
+      - name: Seed full-stack e2e fixture
+        run: npm run seed:e2e-fullstack-fixture
+
+      - name: Seed e2e real-session auth user
+        run: npm run seed:e2e-auth-user
+
+      # No VITE_DEV_AUTH_HEADERS here (unlike web-fullstack's identical step)
+      # -- this is the entire point of this job: App.tsx's
+      # devHeaderPathActive() must be false so the real login form renders
+      # instead of skipping straight to the dashboard.
+      - name: Build web
+        run: npm --prefix web run build
+
+      # 86e2wb87v: see the `web` job's identical cache step for the full
+      # rationale (same flaky install step, same fix).
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('web/package-lock.json') }}
+
+      - name: Install Playwright browsers
+        run: npx playwright install-deps chromium && npx playwright install chromium
+        working-directory: web
+
+      - name: Run web real-session full-stack e2e (Playwright, real login, no DEV_AUTH_HEADERS)
+        run: npm run web:e2e:fullstack-auth
+
+      - name: Upload real-session full-stack e2e artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dashboard-fullstack-auth-e2e
+          path: web/test-results/
+          retention-days: 14

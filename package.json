@@ -19,13 +19,16 @@
     "web:typecheck": "npm --prefix web run typecheck",
     "web:e2e": "npm --prefix web run test:e2e",
     "web:e2e:fullstack": "npm --prefix web run test:e2e:fullstack",
+    "web:e2e:fullstack-auth": "npm --prefix web run test:e2e:fullstack-auth",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "migrate": "node scripts/migrate-with-retry.mjs",
     "seed:dev": "node scripts/seed-dev-tenant.mjs",
     "seed:criteria": "tsx scripts/seed-criteria.mjs",
     "seed:e2e-fullstack-fixture": "tsx scripts/seed-fullstack-e2e-fixture.mjs",
-    "dev:fullstack-server": "PORT=4180 DEV_AUTH_HEADERS=1 tsx src/server/index.ts"
+    "seed:e2e-auth-user": "tsx scripts/seed-e2e-auth-user.mjs",
+    "dev:fullstack-server": "PORT=4180 DEV_AUTH_HEADERS=1 tsx src/server/index.ts",
+    "dev:fullstack-auth-server": "PORT=4181 tsx src/server/index.ts"
   },
   "dependencies": {
     "@fastify/static": "^10.1.3",

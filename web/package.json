@@ -10,7 +10,8 @@
     "typecheck": "tsc -b --noEmit",
     "test": "vitest run",
     "test:e2e": "playwright test",
-    "test:e2e:fullstack": "playwright test --config=playwright.fullstack.config.ts"
+    "test:e2e:fullstack": "playwright test --config=playwright.fullstack.config.ts",
+    "test:e2e:fullstack-auth": "playwright test --config=playwright.fullstack-auth.config.ts"
   },
   "dependencies": {
     "better-auth": "^1.7.0",

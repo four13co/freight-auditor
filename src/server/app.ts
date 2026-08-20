@@ -3,6 +3,7 @@ import { registerFindingsRoutes } from './findings-routes.js';
 import { registerAuthRoutes } from './auth-routes.js';
 import { registerStaticRoutes } from './static-routes.js';
 import { registerAuditRunsRoutes } from './audit-runs-routes.js';
+import { registerInvoiceDraftsRoutes } from './invoice-drafts-routes.js';
 
 /**
  * Build the Fastify application instance.
@@ -43,6 +44,12 @@ export function buildApp(): FastifyInstance {
   // resource with its own raw-body content-type parser scoped to this
   // plugin only.
   void app.register(registerAuditRunsRoutes);
+
+  // Invoice-drafts routes (86e2xb911): the PDF-upload draft/confirm flow,
+  // additive alongside audit-runs-routes.ts's raw-EDI path -- same
+  // tenant-auth preHandler pattern, its own raw-body (application/pdf)
+  // content-type parser scoped to this plugin only.
+  void app.register(registerInvoiceDraftsRoutes);
 
   return app;
 }

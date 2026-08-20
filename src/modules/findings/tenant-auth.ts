@@ -1,6 +1,19 @@
-import type { FastifyRequest } from 'fastify';
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { withTenantTx, type TenantContext } from '../../db/tenant-context.js';
 import { getAuth } from '../../auth/better-auth.js';
+
+// 86e2xcna3: augments Fastify's own request type with tenantContext, rather
+// than each route file re-declaring `(request as FastifyRequest & {
+// tenantContext: TenantContext })` at every read site (findings-routes.ts
+// had 5 copies, audit-runs-routes.ts had 2). This is the "one place" the
+// item's AC3 asks for -- the unsafe cast now lives only inside
+// registerTenantAuthPreHandler below; every other call site reads
+// request.tenantContext directly, fully typed.
+declare module 'fastify' {
+  interface FastifyRequest {
+    tenantContext?: TenantContext;
+  }
+}
 
 /**
  * Real session verification (86e2v1bbr) replaces the old dev-tenant-stub's
@@ -130,4 +143,28 @@ export async function resolveAuthorizedTenantContext(
 ): Promise<TenantContext | null> {
   if (process.env.DEV_AUTH_HEADERS) return resolveViaDevHeaders(request);
   return resolveViaSession(request);
+}
+
+/**
+ * 86e2xcna3: the shared tenant-auth preHandler, extracted out of
+ * findings-routes.ts and audit-runs-routes.ts (both had their own byte-for-
+ * byte identical copy -- audit-runs-routes.ts's own header comment already
+ * acknowledged this without unifying it). Register on any route instance
+ * that needs tenant scoping; behavior is unchanged (401 on no valid
+ * context, request.tenantContext set on success).
+ *
+ * NOT registered at the top level in app.ts -- /health and /api/auth/* must
+ * stay reachable with no tenant scope at all (see each call site's own
+ * header comment for why), so this is opt-in per route-file plugin, exactly
+ * as it was before this extraction.
+ */
+export async function registerTenantAuthPreHandler(routes: FastifyInstance): Promise<void> {
+  routes.addHook('preHandler', async (request: FastifyRequest, reply: FastifyReply) => {
+    const ctx = await resolveAuthorizedTenantContext(request);
+    if (!ctx) {
+      await reply.code(401).send({ error: 'unauthorized' });
+      return;
+    }
+    request.tenantContext = ctx;
+  });
 }

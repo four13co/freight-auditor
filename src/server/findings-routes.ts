@@ -1,10 +1,10 @@
-import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
-import { withTenantTx, type TenantContext } from '../db/tenant-context.js';
+import type { FastifyInstance } from 'fastify';
+import { withTenantTx } from '../db/tenant-context.js';
 import { listFindings, type FindingsSortKey } from '../modules/findings/list-findings.js';
 import { getFindingsSummary } from '../modules/findings/findings-summary.js';
 import { listGateFailures } from '../modules/findings/list-gate-failures.js';
 import { updateFindingStatus } from '../modules/findings/update-finding-status.js';
-import { resolveAuthorizedTenantContext } from '../modules/findings/tenant-auth.js';
+import { registerTenantAuthPreHandler } from '../modules/findings/tenant-auth.js';
 import { ALL_VARIANCE_STATUSES, WRITABLE_VARIANCE_STATUSES } from '../shared/variance-status.js';
 
 // 86e2v892h: derived from the shared source (mirrors migrations/0002_enums.sql's
@@ -45,14 +45,7 @@ const SORT_DIRS = new Set(['asc', 'desc']);
  * later) with a 401 it was never meant to see.
  */
 export async function registerFindingsRoutes(findingsRoutes: FastifyInstance): Promise<void> {
-  findingsRoutes.addHook('preHandler', async (request: FastifyRequest, reply: FastifyReply) => {
-    const ctx = await resolveAuthorizedTenantContext(request);
-    if (!ctx) {
-      await reply.code(401).send({ error: 'unauthorized' });
-      return;
-    }
-    (request as FastifyRequest & { tenantContext: TenantContext }).tenantContext = ctx;
-  });
+  await registerTenantAuthPreHandler(findingsRoutes);
 
   findingsRoutes.get('/api/findings', async (request, reply) => {
     // Fastify's querystring parser returns keys literally as sent -- the
@@ -97,7 +90,7 @@ export async function registerFindingsRoutes(findingsRoutes: FastifyInstance): P
       return;
     }
 
-    const ctx = (request as FastifyRequest & { tenantContext: TenantContext }).tenantContext;
+    const ctx = request.tenantContext!;
     const findings = await withTenantTx(ctx, (client) =>
       listFindings(client, {
         carrier: query.carrier,
@@ -111,7 +104,7 @@ export async function registerFindingsRoutes(findingsRoutes: FastifyInstance): P
   });
 
   findingsRoutes.get('/api/findings/summary', async (request) => {
-    const ctx = (request as FastifyRequest & { tenantContext: TenantContext }).tenantContext;
+    const ctx = request.tenantContext!;
     const summary = await withTenantTx(ctx, (client) => getFindingsSummary(client));
     return summary;
   });
@@ -122,7 +115,7 @@ export async function registerFindingsRoutes(findingsRoutes: FastifyInstance): P
   // /api/findings.
   findingsRoutes.get('/api/gate-failures', async (request) => {
     const query = request.query as { carrier?: string };
-    const ctx = (request as FastifyRequest & { tenantContext: TenantContext }).tenantContext;
+    const ctx = request.tenantContext!;
     const gateFailures = await withTenantTx(ctx, (client) =>
       listGateFailures(client, { carrier: query.carrier }),
     );
@@ -148,7 +141,7 @@ export async function registerFindingsRoutes(findingsRoutes: FastifyInstance): P
       return;
     }
 
-    const ctx = (request as FastifyRequest & { tenantContext: TenantContext }).tenantContext;
+    const ctx = request.tenantContext!;
     const result = await withTenantTx(ctx, (client) =>
       updateFindingStatus(client, id, body.status as string, body.note as string | undefined),
     );

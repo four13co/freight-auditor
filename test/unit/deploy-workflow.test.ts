@@ -416,22 +416,20 @@ describe('deploy.yml (unit, job-dependency + guard wiring)', () => {
       expect(seedAdminIndex).toBeGreaterThan(migrateIndex);
     });
 
-    it('never seeds on a non-Development branch, regardless of any opt-in flag (no admin seeding on Production)', () => {
+    it('never seeds on a non-Development branch, regardless of the 1Password opt-in value -- the branch exclusion is a hard github.ref_name check in the YAML, not overridable by the vault', () => {
       const workflow = loadDeployWorkflow();
       const migrateStep = getJob(workflow, 'migrate-database').steps.find((step) =>
         step.run?.includes('npm run migrate'),
       );
-      expect(migrateStep!.env?.SEED_ADMIN_ON_DEPLOY).toContain("github.ref_name == 'Development'");
+      expect(migrateStep!.env?.IS_DEVELOPMENT_BRANCH).toBe("${{ github.ref_name == 'Development' && '1' || '' }}");
     });
 
-    it('requires an explicit opt-in var (vars.SEED_ADMIN), not branch name alone -- same gating shape as SEED_DEV_ON_DEPLOY (86e2v24uf), so this never silently starts seeding a real login on a deploy', () => {
+    it("gates on IS_DEVELOPMENT_BRANCH AND SEED_ADMIN_ENABLED (1Password value, resolved in .env.migrate) -- Greg's call to keep this feature's on/off switch in the vault rather than a `gh variable`, unlike SEED_DEV_ON_DEPLOY's repo-variable gate", () => {
       const workflow = loadDeployWorkflow();
       const migrateStep = getJob(workflow, 'migrate-database').steps.find((step) =>
         step.run?.includes('npm run migrate'),
       );
-      expect(migrateStep!.env?.SEED_ADMIN_ON_DEPLOY).toBe(
-        "${{ github.ref_name == 'Development' && vars.SEED_ADMIN == '1' && '1' || '' }}",
-      );
+      expect(migrateStep!.run).toContain('if [ "$IS_DEVELOPMENT_BRANCH" = "1" ] && [ "$SEED_ADMIN_ENABLED" = "1" ]');
     });
 
     it('is gated independently from SEED_DEV_ON_DEPLOY -- each has its own if-block, one is not nested inside the other', () => {
@@ -441,7 +439,7 @@ describe('deploy.yml (unit, job-dependency + guard wiring)', () => {
       );
       const runBlock = migrateStep!.run!;
       const devConditionalIndex = runBlock.indexOf('if [ "$SEED_DEV_ON_DEPLOY"');
-      const adminConditionalIndex = runBlock.indexOf('if [ "$SEED_ADMIN_ON_DEPLOY"');
+      const adminConditionalIndex = runBlock.indexOf('if [ "$IS_DEVELOPMENT_BRANCH"');
       expect(devConditionalIndex).toBeGreaterThan(-1);
       expect(adminConditionalIndex).toBeGreaterThan(-1);
       expect(adminConditionalIndex).toBeGreaterThan(devConditionalIndex);

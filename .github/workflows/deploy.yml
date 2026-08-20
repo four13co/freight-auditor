@@ -85,7 +85,7 @@ jobs:
             if [ "$SEED_DEV_ON_DEPLOY" = "1" ]; then
               npm run seed:dev
             fi
-            if [ "$SEED_ADMIN_ON_DEPLOY" = "1" ]; then
+            if [ "$IS_DEVELOPMENT_BRANCH" = "1" ] && [ "$SEED_ADMIN_ENABLED" = "1" ]; then
               npm run seed:admin
             fi
           '
@@ -99,12 +99,16 @@ jobs:
           # repo variable opt-in (SEED_DEV_TENANT=1) in addition to the branch
           # check -- Production stays excluded either way.
           SEED_DEV_ON_DEPLOY: ${{ github.ref_name == 'Development' && vars.SEED_DEV_TENANT == '1' && '1' || '' }}
-          # Same gating shape as SEED_DEV_ON_DEPLOY above -- explicit repo variable
-          # opt-in (SEED_ADMIN=1) required in addition to the branch check, so this
-          # never silently starts seeding a real login on a deploy. Real credential
-          # (ADMIN_PASSWORD, resolved above from 1Password), not a hardcoded pair --
-          # unlike seed:dev's fixture UUIDs, this is Greg's own account.
-          SEED_ADMIN_ON_DEPLOY: ${{ github.ref_name == 'Development' && vars.SEED_ADMIN == '1' && '1' || '' }}
+          # Greg's call: this feature's on/off switch lives in 1Password
+          # (SEED_ADMIN_ENABLED, resolved in .env.migrate), not a `gh variable`
+          # -- keeps every deploy-time toggle for this feature in one place.
+          # The Development-vs-Production exclusion stays a hard github.ref_name
+          # check HERE, in the workflow YAML -- not something the 1Password
+          # value can override, same guarantee 86e2v24uf established for
+          # SEED_DEV_ON_DEPLOY above. SEED_ADMIN_ENABLED itself is resolved
+          # inside the op run block (see .env.migrate), so the bash conditional
+          # checks both this branch flag AND that resolved value.
+          IS_DEVELOPMENT_BRANCH: ${{ github.ref_name == 'Development' && '1' || '' }}
 
   deploy:
     needs: migrate-database

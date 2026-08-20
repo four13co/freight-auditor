@@ -173,6 +173,40 @@ describe('POST /api/audit-runs (DB, e2e)', () => {
     expect(Number(overcharge!.varianceAmount)).toBeCloseTo(100.0, 4);
   });
 
+  it('86e2xcn18 AC1: a malformed contract_version_id returns 400 with a generic message, never a raw Postgres error', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/audit-runs?contract_version_id=not-a-uuid',
+      headers: { 'x-client-id': clientId, 'x-user-id': userId, 'content-type': 'application/edi-x12' },
+      payload: GOLDEN_210,
+    });
+    expect(res.statusCode).toBe(400);
+    const body = res.json();
+    expect(body.error).toBe('invalid contract_version_id: must be a well-formed UUID');
+    // The whole point of the fix: no raw Postgres error detail (error code,
+    // "invalid input syntax", SQL fragments/column names) anywhere in the
+    // response -- the clear message above legitimately contains the word
+    // "UUID" itself, so this checks for the LEAK signatures specifically,
+    // not that word.
+    expect(JSON.stringify(body)).not.toMatch(/22P02|invalid input syntax|column|lookupContractRate|SELECT|WHERE/i);
+  });
+
+  it('86e2xcn18 AC2: a well-formed but non-existent contract_version_id still reaches lookupContractRate (rate miss -> UNASSESSABLE, not an error)', async () => {
+    const nonExistentUuid = '00000000-0000-0000-0000-000000000000';
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/audit-runs?contract_version_id=${nonExistentUuid}`,
+      headers: { 'x-client-id': clientId, 'x-user-id': userId, 'content-type': 'application/edi-x12' },
+      payload: GOLDEN_210,
+    });
+    // A rate-lookup miss is an honest UNASSESSABLE verdict on the affected
+    // criterion (rate-lookup.ts's own contract), not a rejected request --
+    // the route still returns 201, proving the validated UUID reached the
+    // real query rather than being rejected for a different reason.
+    expect(res.statusCode).toBe(201);
+    expect(res.json().outcome).toBe('SCORED');
+  });
+
   it('AC3: no tenant-auth headers -> 401', async () => {
     const res = await app.inject({
       method: 'POST',

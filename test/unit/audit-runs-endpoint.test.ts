@@ -44,9 +44,10 @@ describe('POST /api/audit-runs (unit, mocked withTenantTx + tenant-auth + ingest
     const { buildApp } = await import('../../src/server/app.js');
     app = buildApp();
 
+    const wellFormedUuid = '11111111-2222-3333-4444-555555555555';
     const res = await app.inject({
       method: 'POST',
-      url: '/api/audit-runs?contract_version_id=cv-123',
+      url: `/api/audit-runs?contract_version_id=${wellFormedUuid}`,
       headers: { 'x-client-id': 'client-abc', 'x-user-id': 'user-1', 'content-type': 'application/edi-x12' },
       payload: 'ISA*raw-edi-bytes~',
     });
@@ -56,8 +57,33 @@ describe('POST /api/audit-runs (unit, mocked withTenantTx + tenant-auth + ingest
     expect(ingestInvoice).toHaveBeenCalledWith(
       {},
       expect.anything(),
-      expect.objectContaining({ clientId: 'client-abc', contractVersionId: 'cv-123' }),
+      expect.objectContaining({ clientId: 'client-abc', contractVersionId: wellFormedUuid }),
     );
+  });
+
+  it('AC1/86e2xcn18: rejects a malformed contract_version_id with 400, never calling ingestInvoice', async () => {
+    mockAuthorized();
+    vi.doMock('../../src/db/tenant-context.js', () => ({
+      withTenantTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
+    }));
+    const ingestInvoice = vi.fn();
+    vi.doMock('../../src/modules/ingestion/ingest-invoice.js', () => ({
+      ingestInvoice,
+      UnparseableEdiError: class UnparseableEdiError extends Error {},
+    }));
+    const { buildApp } = await import('../../src/server/app.js');
+    app = buildApp();
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/audit-runs?contract_version_id=not-a-uuid',
+      headers: { 'x-client-id': 'client-abc', 'x-user-id': 'user-1', 'content-type': 'application/edi-x12' },
+      payload: 'ISA*raw-edi-bytes~',
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(res.json()).toEqual({ error: 'invalid contract_version_id: must be a well-formed UUID' });
+    expect(ingestInvoice).not.toHaveBeenCalled();
   });
 
   it('omits contractVersionId from the ingest call when the query param is absent', async () => {

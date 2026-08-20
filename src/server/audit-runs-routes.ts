@@ -10,6 +10,18 @@ import { ingestInvoice, UnparseableEdiError } from '../modules/ingestion/ingest-
 // ObjectStore behind the same interface (object-store.ts's own doc comment).
 const OBJECT_STORE_ROOT = process.env.OBJECT_STORE_ROOT ?? './.data/object-store';
 
+// 86e2xcn18: contract_version_id binds against a uuid column
+// (lookupContractRate's SQL, migration 0011) -- a non-UUID value throws
+// Postgres error 22P02, which isn't UnparseableEdiError, so it fell through
+// to Fastify's default handler and reflected raw Postgres error detail into
+// the 500 body. Same boundary-validation convention as findings-routes.ts's
+// NUMERIC_STRING check: validate before the value ever reaches a query.
+// Standard UUID shape (any RFC 4122 version, including the plain hex the
+// gen_random_uuid()-generated ids in this repo already have) -- not
+// version-restrictive, since nothing here needs to assert a specific UUID
+// version.
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 /**
  * 86e2v17u9: the first real EDI ingestion entry point -- POST /api/audit-runs
  * takes a raw X12 210/310 body and runs the full parse -> evaluate -> persist
@@ -65,6 +77,11 @@ export async function registerAuditRunsRoutes(auditRunsRoutes: FastifyInstance):
     // already fully occupied by the raw payload.
     const query = request.query as Record<string, string | undefined>;
     const contractVersionId = query.contract_version_id;
+
+    if (contractVersionId !== undefined && !UUID_PATTERN.test(contractVersionId)) {
+      await reply.code(400).send({ error: 'invalid contract_version_id: must be a well-formed UUID' });
+      return;
+    }
 
     try {
       const outcome = await withTenantTx(ctx, async (client) => {

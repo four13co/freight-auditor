@@ -14,7 +14,8 @@
     "test:e2e:fullstack-auth": "playwright test --config=playwright.fullstack-auth.config.ts"
   },
   "dependencies": {
-    "better-auth": "^1.7.0",
+    "@better-auth/passkey": "^1.7.1",
+    "better-auth": "^1.7.1",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },

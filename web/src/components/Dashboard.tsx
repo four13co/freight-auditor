@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Sidebar } from './Sidebar.js';
 import { Header } from './Header.js';
+import { PasskeyRegistration } from './PasskeyRegistration.js';
 import { KpiRow } from './KpiRow.js';
 import { FindingsTable } from './FindingsTable.js';
 import { GateFailuresPanel } from './GateFailuresPanel.js';
@@ -96,6 +97,7 @@ export function Dashboard() {
       <Sidebar />
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
         <Header />
+        <PasskeyRegistration />
         <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-hidden p-6">
           {status === 'loading' && (
             <div data-testid="dashboard-loading" className="flex flex-1 items-center justify-center text-sm text-[rgba(32,30,29,0.6)]">

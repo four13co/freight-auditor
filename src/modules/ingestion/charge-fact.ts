@@ -29,7 +29,8 @@ export interface NormalizedCharge {
 
 /** Header-level facts a parsed invoice carries besides its charges. */
 export interface ParsedInvoice {
-  transactionSet: '210' | '310';
+  /** 'PDF' (86e2xb911): an LLM-extracted invoice, confirmed from an invoice_draft -- never guessed as '210'/'310' just to fit the EDI-only type this used to be. */
+  transactionSet: '210' | '310' | 'PDF';
   parserVersion: string;
   invoiceNumber?: string;
   /** Header currency where the set declares one (210 often does; 310 is per-charge). */

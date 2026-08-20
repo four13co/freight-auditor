@@ -85,6 +85,116 @@ describe('/api/auth/* mount (unit, mocked getAuth)', () => {
 });
 
 /**
+ * 86e2xcmpg: unit coverage of the public-signup gate, with getAuth() mocked
+ * so this runs with no live Postgres/better-auth instance. Complements
+ * test/db/auth-routes.db.test.ts's real sign-up round trip, which now
+ * exercises both the blocked-by-default and PUBLIC_SIGNUP_ENABLED=1 paths
+ * against a real DB.
+ */
+describe('POST /api/auth/sign-up/email public-signup gate (unit, mocked getAuth)', () => {
+  let app: FastifyInstance | undefined;
+  let originalFlag: string | undefined;
+
+  afterEach(async () => {
+    if (app) await app.close();
+    app = undefined;
+    if (originalFlag === undefined) delete process.env.PUBLIC_SIGNUP_ENABLED;
+    else process.env.PUBLIC_SIGNUP_ENABLED = originalFlag;
+    vi.resetModules();
+    vi.doUnmock('../../src/auth/better-auth.js');
+  });
+
+  it('AC1: blocks sign-up/email with 403 by default (PUBLIC_SIGNUP_ENABLED unset), never reaching the better-auth handler', async () => {
+    originalFlag = process.env.PUBLIC_SIGNUP_ENABLED;
+    delete process.env.PUBLIC_SIGNUP_ENABLED;
+    const handler = vi.fn();
+    vi.doMock('../../src/auth/better-auth.js', () => ({ getAuth: () => ({ handler }) }));
+    const { buildApp } = await import('../../src/server/app.js');
+    app = buildApp();
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/auth/sign-up/email',
+      headers: { 'content-type': 'application/json' },
+      payload: { email: 'x@example.com', password: 'hunter2' },
+    });
+
+    expect(res.statusCode).toBe(403);
+    expect(handler).not.toHaveBeenCalled();
+  });
+
+  it('blocks sign-up/email with 403 when PUBLIC_SIGNUP_ENABLED is set to anything other than "1"', async () => {
+    originalFlag = process.env.PUBLIC_SIGNUP_ENABLED;
+    process.env.PUBLIC_SIGNUP_ENABLED = 'true';
+    const handler = vi.fn();
+    vi.doMock('../../src/auth/better-auth.js', () => ({ getAuth: () => ({ handler }) }));
+    const { buildApp } = await import('../../src/server/app.js');
+    app = buildApp();
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/auth/sign-up/email',
+      payload: { email: 'x@example.com', password: 'hunter2' },
+    });
+
+    expect(res.statusCode).toBe(403);
+    expect(handler).not.toHaveBeenCalled();
+  });
+
+  it('AC2: reaches the real handler when PUBLIC_SIGNUP_ENABLED=1', async () => {
+    originalFlag = process.env.PUBLIC_SIGNUP_ENABLED;
+    process.env.PUBLIC_SIGNUP_ENABLED = '1';
+    const handler = vi.fn().mockResolvedValue(new Response(JSON.stringify({ ok: true }), { status: 200 }));
+    vi.doMock('../../src/auth/better-auth.js', () => ({ getAuth: () => ({ handler }) }));
+    const { buildApp } = await import('../../src/server/app.js');
+    app = buildApp();
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/auth/sign-up/email',
+      headers: { 'content-type': 'application/json' },
+      payload: { email: 'x@example.com', password: 'hunter2' },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(handler).toHaveBeenCalledTimes(1);
+  });
+
+  it('AC3: does not gate sign-in/email -- unaffected regardless of the flag', async () => {
+    originalFlag = process.env.PUBLIC_SIGNUP_ENABLED;
+    delete process.env.PUBLIC_SIGNUP_ENABLED;
+    const handler = vi.fn().mockResolvedValue(new Response(JSON.stringify({ ok: true }), { status: 200 }));
+    vi.doMock('../../src/auth/better-auth.js', () => ({ getAuth: () => ({ handler }) }));
+    const { buildApp } = await import('../../src/server/app.js');
+    app = buildApp();
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/auth/sign-in/email',
+      headers: { 'content-type': 'application/json' },
+      payload: { email: 'x@example.com', password: 'hunter2' },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(handler).toHaveBeenCalledTimes(1);
+  });
+
+  it('AC3: does not gate GET requests to sign-up/email (better-auth only exposes it as POST, but the gate itself is method-scoped)', async () => {
+    originalFlag = process.env.PUBLIC_SIGNUP_ENABLED;
+    delete process.env.PUBLIC_SIGNUP_ENABLED;
+    const handler = vi.fn().mockResolvedValue(new Response(JSON.stringify({ ok: true }), { status: 200 }));
+    vi.doMock('../../src/auth/better-auth.js', () => ({ getAuth: () => ({ handler }) }));
+    const { buildApp } = await import('../../src/server/app.js');
+    app = buildApp();
+
+    const res = await app.inject({ method: 'GET', url: '/api/auth/sign-up/email' });
+
+    expect(res.statusCode).toBe(200);
+    expect(handler).toHaveBeenCalledTimes(1);
+  });
+});
+
+/**
  * 86e2wb92b: unit coverage of GET /api/auth/memberships, with getAuth() and
  * listMembershipClientIds mocked so this runs with no live Postgres.
  * Complements test/db/auth-memberships.db.test.ts, which covers the real

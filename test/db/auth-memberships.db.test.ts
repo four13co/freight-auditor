@@ -24,12 +24,17 @@ describe('GET /api/auth/memberships (DB, e2e)', () => {
   const tag = `authmem-${Date.now()}`;
   let originalSecret: string | undefined;
   let originalAppUrl: string | undefined;
+  let originalSignupFlag: string | undefined;
 
   beforeAll(async () => {
     originalSecret = process.env.SESSION_SECRET;
     process.env.SESSION_SECRET = 'test-only-session-secret-32-chars-min';
     originalAppUrl = process.env.APP_URL;
     process.env.APP_URL = 'http://localhost:4180';
+    // 86e2xcmpg: this suite signs up real users via the real HTTP route to
+    // set up its fixtures -- needs the public-signup gate open.
+    originalSignupFlag = process.env.PUBLIC_SIGNUP_ENABLED;
+    process.env.PUBLIC_SIGNUP_ENABLED = '1';
 
     const { buildApp } = await import('../../src/server/app.js');
     app = buildApp();
@@ -51,6 +56,8 @@ describe('GET /api/auth/memberships (DB, e2e)', () => {
     else process.env.SESSION_SECRET = originalSecret;
     if (originalAppUrl === undefined) delete process.env.APP_URL;
     else process.env.APP_URL = originalAppUrl;
+    if (originalSignupFlag === undefined) delete process.env.PUBLIC_SIGNUP_ENABLED;
+    else process.env.PUBLIC_SIGNUP_ENABLED = originalSignupFlag;
 
     await app.close();
     const owner = await pool.connect();

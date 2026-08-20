@@ -1,6 +1,8 @@
+import { useEffect, useState } from 'react';
 import { Dashboard } from './components/Dashboard.js';
 import { LoginForm } from './components/LoginForm.js';
 import { useSession } from './lib/auth-client.js';
+import { fetchAndStoreClientId } from './lib/api.js';
 
 /**
  * 86e2v1bdj: gates the dashboard behind a real session in a production
@@ -24,9 +26,23 @@ function devHeaderPathActive(): boolean {
 
 export default function App() {
   const { data: session, isPending } = useSession();
+  // 86e2wb92b: on the real-session path, api.ts's authHeaders() needs a
+  // stored client_id before any /api/findings* call can succeed -- fetched
+  // once per session via /api/auth/memberships. Starts true so Dashboard
+  // never renders (and never fires its own fetches) before that lookup
+  // settles; the dev-header path skips this entirely (devHeaderPathActive()
+  // short-circuits below), so it never waits on a lookup it doesn't need.
+  const [clientIdReady, setClientIdReady] = useState(false);
+
+  useEffect(() => {
+    if (devHeaderPathActive() || !session) return;
+    setClientIdReady(false);
+    fetchAndStoreClientId().finally(() => setClientIdReady(true));
+  }, [session]);
 
   if (devHeaderPathActive()) return <Dashboard />;
   if (isPending) return null;
   if (!session) return <LoginForm />;
+  if (!clientIdReady) return null;
   return <Dashboard />;
 }

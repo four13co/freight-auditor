@@ -9,7 +9,7 @@ import { listFindings, type FindingsSortKey } from '../modules/findings/list-fin
 import { getFindingsSummary } from '../modules/findings/findings-summary.js';
 import { listGateFailures } from '../modules/findings/list-gate-failures.js';
 import { updateFindingStatus } from '../modules/findings/update-finding-status.js';
-import { resolveAuthorizedTenantContext } from '../modules/findings/tenant-auth.js';
+import { resolveAuthorizedTenantContext, listMembershipClientIds } from '../modules/findings/tenant-auth.js';
 import { getAuth } from '../auth/better-auth.js';
 import { ALL_VARIANCE_STATUSES, WRITABLE_VARIANCE_STATUSES } from '../shared/variance-status.js';
 
@@ -130,6 +130,30 @@ export function buildApp(): FastifyInstance {
     });
     const body = await response.text();
     return reply.send(body || null);
+  });
+
+  // 86e2wb92b: a real (non-dev-header) session proves WHO the user is, but
+  // resolveViaSession (tenant-auth.ts) still requires an explicit
+  // x-client-id header -- nothing previously told the frontend WHICH
+  // client_id to send. This is that lookup: verify the session, then return
+  // the client_id(s) the user has a membership row for, so login can store
+  // one and start sending it as x-client-id on subsequent requests (option
+  // (b), decided on the ClickUp task). Registered at top level like
+  // /api/auth/* above, for the same reason -- it must be reachable with only
+  // a session cookie, before any tenant scope exists.
+  app.get('/api/auth/memberships', async (request: FastifyRequest, reply: FastifyReply) => {
+    const headers = new Headers();
+    for (const [key, value] of Object.entries(request.headers)) {
+      if (value === undefined) continue;
+      headers.set(key, Array.isArray(value) ? value.join(', ') : value);
+    }
+    const session = await getAuth().api.getSession({ headers });
+    if (!session) {
+      await reply.code(401).send({ error: 'unauthorized' });
+      return;
+    }
+    const clientIds = await listMembershipClientIds(session.user.id);
+    return { clientIds };
   });
 
   // Encapsulated so the tenant-auth preHandler binds ONLY to these two

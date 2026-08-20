@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 
 /**
  * 86e2v1bdj AC1/AC5: an unauthenticated user must see a login form, not the
@@ -11,6 +11,11 @@ import { render, screen } from '@testing-library/react';
  * LoginForm. useSession is mocked here (a component test, not an e2e) --
  * the real round-trip against a real session is proven in
  * web/test/e2e-fullstack/dashboard.fullstack.spec.ts's new login spec.
+ *
+ * 86e2wb92b: fetch is mocked globally for this suite -- the real-session
+ * path now fires fetchAndStoreClientId() (GET /api/auth/memberships) before
+ * rendering Dashboard, so any test exercising that path needs a resolvable
+ * fetch or the effect's promise never settles.
  */
 const useSessionMock = vi.fn();
 vi.mock('../src/lib/auth-client.js', () => ({
@@ -23,14 +28,21 @@ vi.mock('../src/components/Dashboard.js', () => ({
 
 describe('App (session gate)', () => {
   const originalDev = import.meta.env.DEV;
+  const originalFetch = global.fetch;
 
   beforeEach(() => {
     useSessionMock.mockReset();
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ clientIds: ['c1'] }),
+    }) as unknown as typeof fetch;
   });
 
   afterEach(() => {
     vi.stubEnv('DEV', originalDev);
     vi.unstubAllEnvs();
+    global.fetch = originalFetch;
+    sessionStorage.clear();
   });
 
   it('AC1: shows the login form, not the dashboard, when there is no session and not in dev mode', async () => {
@@ -42,7 +54,7 @@ describe('App (session gate)', () => {
     expect(screen.queryByTestId('dashboard-stub')).not.toBeInTheDocument();
   });
 
-  it('AC4: shows the dashboard when a real session exists (no dev mode required)', async () => {
+  it('AC4: shows the dashboard when a real session exists, once the client_id lookup resolves', async () => {
     vi.stubEnv('DEV', false);
     useSessionMock.mockReturnValue({
       data: { user: { id: 'u1', email: 'a@example.com' } },
@@ -50,8 +62,27 @@ describe('App (session gate)', () => {
     });
     const { default: App } = await import('../src/App.js');
     render(<App />);
-    expect(screen.getByTestId('dashboard-stub')).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByTestId('dashboard-stub')).toBeInTheDocument());
     expect(screen.queryByRole('heading', { name: /sign in/i })).not.toBeInTheDocument();
+    expect(global.fetch).toHaveBeenCalledWith('/api/auth/memberships');
+  });
+
+  it('86e2wb92b: shows neither the login form nor the dashboard while the client_id lookup is still in flight', async () => {
+    vi.stubEnv('DEV', false);
+    useSessionMock.mockReturnValue({
+      data: { user: { id: 'u1', email: 'a@example.com' } },
+      isPending: false,
+    });
+    let resolveFetch: (value: unknown) => void = () => {};
+    global.fetch = vi.fn().mockReturnValue(new Promise((resolve) => { resolveFetch = resolve; })) as unknown as typeof fetch;
+    const { default: App } = await import('../src/App.js');
+    render(<App />);
+
+    expect(screen.queryByTestId('dashboard-stub')).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: /sign in/i })).not.toBeInTheDocument();
+
+    resolveFetch({ ok: true, json: async () => ({ clientIds: ['c1'] }) });
+    await waitFor(() => expect(screen.getByTestId('dashboard-stub')).toBeInTheDocument());
   });
 
   it('does not gate the dashboard behind a session in dev mode (DEV_AUTH_HEADERS e2e path, 86e2uv4p0 must keep passing)', async () => {

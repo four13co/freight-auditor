@@ -96,12 +96,45 @@ function buildQuery(params: FindingsListParams): string {
  * that CI build step -- a real deploy build never sets it, so this does not
  * reopen the exposure the DEV gate above closes.
  */
+/**
+ * 86e2wb92b: the storage key App.tsx writes to after fetching
+ * /api/auth/memberships post-login, and authHeaders() below reads from on
+ * every subsequent request. sessionStorage (not localStorage) so a stale
+ * client_id from a previous, now-signed-out session in the same tab never
+ * outlives that session -- a fresh sign-in re-fetches and re-stores it.
+ */
+export const CLIENT_ID_STORAGE_KEY = 'freight-auditor:client-id';
+
 function authHeaders(): HeadersInit {
-  if (!import.meta.env.DEV && import.meta.env.VITE_DEV_AUTH_HEADERS !== '1') return {};
+  if (!import.meta.env.DEV && import.meta.env.VITE_DEV_AUTH_HEADERS !== '1') {
+    // 86e2wb92b: the real-session path. resolveViaSession (tenant-auth.ts)
+    // derives the user from the session cookie itself, not from a header --
+    // sending x-user-id here would be a client-controlled value the backend
+    // never reads, easily mistaken for an identity-spoofing vector. Only
+    // x-client-id is sent, and only once App.tsx has fetched and stored it;
+    // absent that, no header is sent and the backend fails closed (401).
+    const clientId = sessionStorage.getItem(CLIENT_ID_STORAGE_KEY);
+    return clientId ? { 'x-client-id': clientId } : {};
+  }
   return {
     'x-client-id': '11111111-1111-1111-1111-111111111111',
     'x-user-id': '22222222-2222-2222-2222-222222222222',
   };
+}
+
+/**
+ * 86e2wb92b: called once by App.tsx after a real (non-dev-header) session is
+ * established, so subsequent requests' authHeaders() has a client_id to
+ * send. Single-membership-per-user only (see the item's No-gos) -- the
+ * first client_id returned wins; a user with zero memberships stores
+ * nothing, so authHeaders() sends no x-client-id and the backend fails
+ * closed (AC3), rather than this throwing and blocking the dashboard render.
+ */
+export async function fetchAndStoreClientId(): Promise<void> {
+  const res = await fetch('/api/auth/memberships');
+  if (!res.ok) return;
+  const body = (await res.json()) as { clientIds: string[] };
+  if (body.clientIds[0]) sessionStorage.setItem(CLIENT_ID_STORAGE_KEY, body.clientIds[0]);
 }
 
 export async function fetchFindings(params: FindingsListParams = {}): Promise<FindingRow[]> {

@@ -119,12 +119,52 @@ describe('ci.yml (unit, merge-commit trigger)', () => {
     );
   });
 
+  describe('web-fullstack-auth job (86e2vqggf)', () => {
+    // This job exists specifically to exercise the path web-fullstack does
+    // NOT (a real better-auth session, no DEV_AUTH_HEADERS) -- its defining
+    // property is that its Build web step must NOT set
+    // VITE_DEV_AUTH_HEADERS, unlike web-fullstack's identical-looking step.
+    // A future edit accidentally copying that env block over would silently
+    // turn this job back into a second copy of web-fullstack, so assert the
+    // absence directly rather than only asserting the job exists.
+    it('exists, with its own Postgres service and DATABASE_URL (same shape as web-fullstack)', () => {
+      const workflow = loadCiWorkflow();
+      const job = getJob(workflow, 'web-fullstack-auth');
+      expect(job.services?.postgres).toBeDefined();
+      expect(job.env?.DATABASE_URL).toBe('postgresql://ci:ci@localhost:5432/ci');
+    });
+
+    it('sets APP_URL and SESSION_SECRET at the job level so the seed step and the Playwright webServer agree', () => {
+      const workflow = loadCiWorkflow();
+      const job = getJob(workflow, 'web-fullstack-auth');
+      expect(job.env?.APP_URL).toBeTruthy();
+      expect(job.env?.SESSION_SECRET).toBeTruthy();
+    });
+
+    it("its Build web step does NOT set VITE_DEV_AUTH_HEADERS -- the whole point is the real login form renders instead of App.tsx's devHeaderPathActive() skipping it", () => {
+      const workflow = loadCiWorkflow();
+      const job = getJob(workflow, 'web-fullstack-auth');
+      const buildStep = job.steps.find((s) => s.run?.includes('npm --prefix web run build'));
+      expect(buildStep).toBeDefined();
+      expect(buildStep!.env?.VITE_DEV_AUTH_HEADERS).toBeUndefined();
+    });
+
+    it('seeds the real-session auth user before the e2e run step (the seed must exist before Playwright starts signing in)', () => {
+      const workflow = loadCiWorkflow();
+      const job = getJob(workflow, 'web-fullstack-auth');
+      const seedIndex = job.steps.findIndex((s) => s.run?.includes('npm run seed:e2e-auth-user'));
+      const e2eIndex = job.steps.findIndex((s) => s.run?.includes('npm run web:e2e:fullstack-auth'));
+      expect(seedIndex).toBeGreaterThanOrEqual(0);
+      expect(e2eIndex).toBeGreaterThan(seedIndex);
+    });
+  });
+
   describe('job timeouts (86e2v1qrn)', () => {
     // This workflow has no concurrency group, so a hang here doesn't block
     // other runs the way deploy.yml's did -- still bounded rather than
     // relying on GitHub's 6h default, per the item's own AC to verify
     // (not assume) whether this workflow needed the same treatment.
-    it.each(['db-tests', 'lint', 'typecheck', 'web', 'web-fullstack'])(
+    it.each(['db-tests', 'lint', 'typecheck', 'web', 'web-fullstack', 'web-fullstack-auth'])(
       'job "%s" declares an explicit timeout-minutes well below GitHub\'s 6h default',
       (jobName) => {
         const workflow = loadCiWorkflow();

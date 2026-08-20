@@ -158,7 +158,6 @@ jobs:
       # wrong-version browsers and fail confusingly at test time instead of
       # cache time.
       - name: Cache Playwright browsers
-        id: playwright-cache
         uses: actions/cache@v4
         with:
           path: ~/.cache/ms-playwright
@@ -253,7 +252,6 @@ jobs:
       # 86e2wb87v: see the `web` job's identical cache step above for the full
       # rationale (same flaky install step, same fix).
       - name: Cache Playwright browsers
-        id: playwright-cache
         uses: actions/cache@v4
         with:
           path: ~/.cache/ms-playwright

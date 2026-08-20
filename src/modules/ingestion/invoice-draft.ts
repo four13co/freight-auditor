@@ -182,15 +182,27 @@ export async function confirmInvoiceDraft(
   return persisted;
 }
 
+// ParsedInvoice keys diffed as whole-value header fields (i.e. NOT the
+// per-index charges handling below). Deliberately excludes transactionSet/
+// parserVersion/quarantinedCodes -- these are structural/pipeline metadata
+// the analyst never corrects, not extracted invoice content; diffing them
+// would record noise, not a real correction.
+const HEADER_FIELD_PATHS = ['invoiceNumber', 'headerCurrency', 'footing'] as const;
+
 /**
- * Diff original vs. corrected charges field-by-field and write one
+ * Diff original vs. corrected invoice field-by-field and write one
  * extraction_field row per changed field -- durable capture (both the AI
- * value and the human correction), per the item's Solution. Header-level
- * fields (carrierName resolution, invoiceNumber) are out of scope here: this
- * diffs the charges array, which is where amount/category corrections
- * actually happen; a header-field correction pathway is a natural extension
- * once the draft-review UI grows beyond the minimal e2e-proving surface this
- * item's No-gos call for.
+ * value and the human correction), per the item's Solution (point 6: "Both
+ * the raw LLM extraction AND the analyst's correction... are durably
+ * stored"), which is stated generally, not scoped to charges only.
+ *
+ * Caught in review (PR #112): the original implementation only diffed
+ * `charges`, so a correction that touched a header field (e.g. footing,
+ * corrected alongside an amount so STD.FOOTING's approx-compare gate still
+ * passes -- exactly what invoice-drafts-endpoint.db.test.ts's AC3 does) was
+ * silently applied to the persisted audit run but never captured here. Now
+ * diffs both the charges array (per-index) AND every field in
+ * HEADER_FIELD_PATHS (whole-value).
  */
 async function recordCorrectionDiff(
   client: pg.PoolClient,
@@ -201,23 +213,29 @@ async function recordCorrectionDiff(
     corrected: ParsedInvoice;
   },
 ): Promise<void> {
-  const maxLen = Math.max(args.original.charges.length, args.corrected.charges.length);
-  for (let i = 0; i < maxLen; i++) {
-    const before = args.original.charges[i];
-    const after = args.corrected.charges[i];
-    if (JSON.stringify(before) === JSON.stringify(after)) continue;
+  async function writeDiff(fieldPath: string, before: unknown, after: unknown): Promise<void> {
+    if (JSON.stringify(before) === JSON.stringify(after)) return;
     await client.query(
       `INSERT INTO extraction_field (client_id, source_document_id, field_path, ai_value, human_value, model_version)
        VALUES ($1, $2, $3, $4, $5, $6)`,
       [
         args.clientId,
         args.sourceDocumentId,
-        `charges[${i}]`,
+        fieldPath,
         before === undefined ? null : JSON.stringify(before),
         after === undefined ? null : JSON.stringify(after),
         EXTRACTION_MODEL,
       ],
     );
+  }
+
+  const maxLen = Math.max(args.original.charges.length, args.corrected.charges.length);
+  for (let i = 0; i < maxLen; i++) {
+    await writeDiff(`charges[${i}]`, args.original.charges[i], args.corrected.charges[i]);
+  }
+
+  for (const path of HEADER_FIELD_PATHS) {
+    await writeDiff(path, args.original[path], args.corrected[path]);
   }
 }
 

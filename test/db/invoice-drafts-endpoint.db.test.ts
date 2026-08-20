@@ -235,6 +235,22 @@ describe('POST /api/invoice-drafts + confirm (DB, e2e)', () => {
     const row = diff.rows[diff.rows.length - 1];
     expect(row.ai_value.amount).toBe('500.0000');
     expect(row.human_value.amount).toBe('650.0000');
+
+    // PR #112 review finding: this correctedPayload ALSO changes footing
+    // (declaredTotal/lineSum 500 -> 650, required for STD.FOOTING's
+    // approx-compare gate to still pass post-correction) -- that correction
+    // must be durably captured too, not just charges[0]. Proves the fix:
+    // recordCorrectionDiff now diffs header-level fields as well.
+    const footingDiff = await withTenantTx({ clientIds: [clientId], internal: true }, (c) =>
+      c.query(
+        `SELECT ai_value, human_value FROM extraction_field WHERE client_id = $1 AND field_path = 'footing'`,
+        [clientId],
+      ),
+    );
+    expect(footingDiff.rows.length).toBeGreaterThanOrEqual(1);
+    const footingRow = footingDiff.rows[footingDiff.rows.length - 1];
+    expect(footingRow.ai_value).toEqual({ declaredTotal: '500.0000', lineSum: '500.0000' });
+    expect(footingRow.human_value).toEqual({ declaredTotal: '650.0000', lineSum: '650.0000' });
   });
 
   it('AC4: a PDF the LLM cannot extract usefully from returns a 4xx, never a 500 and never a draft', async () => {

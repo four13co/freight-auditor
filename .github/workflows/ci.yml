@@ -143,8 +143,28 @@ jobs:
       - name: Build web
         run: npm --prefix web run build
 
+      # 86e2wb87v: "Install Playwright browsers" (the full --with-deps download)
+      # hung/timed out 3x across PR #99/#102/#103's CI runs, all self-resolved
+      # on plain rerun -- consistent with a slow/rate-limited binary download,
+      # not a real failure. Caching ~/.cache/ms-playwright means a cache hit
+      # skips the slow browser download entirely; `playwright install` (no
+      # --with-deps) is a near-instant no-op once binaries are present, so the
+      # gated install below still runs the OS-deps half of --with-deps on every
+      # run (fast, never flaky) while only re-downloading browsers on a miss.
+      # Key includes the Playwright version (via package-lock.json, since
+      # package.json pins a caret range, not the resolved version) and runner
+      # OS/arch so a version bump or OS change can't restore mismatched
+      # binaries. No restore-keys: a stale prefix match would silently install
+      # wrong-version browsers and fail confusingly at test time instead of
+      # cache time.
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('web/package-lock.json') }}
+
       - name: Install Playwright browsers
-        run: npx playwright install --with-deps chromium
+        run: npx playwright install-deps chromium && npx playwright install chromium
         working-directory: web
 
       - name: Run web e2e (Playwright)
@@ -229,8 +249,16 @@ jobs:
         env:
           VITE_DEV_AUTH_HEADERS: '1'
 
+      # 86e2wb87v: see the `web` job's identical cache step above for the full
+      # rationale (same flaky install step, same fix).
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('web/package-lock.json') }}
+
       - name: Install Playwright browsers
-        run: npx playwright install --with-deps chromium
+        run: npx playwright install-deps chromium && npx playwright install chromium
         working-directory: web
 
       - name: Run web full-stack e2e (Playwright, real server + real Postgres)

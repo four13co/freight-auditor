@@ -13,6 +13,7 @@ interface WorkflowJob {
     uses?: string;
     if?: string;
     env?: Record<string, unknown>;
+    with?: Record<string, unknown>;
   }>;
 }
 
@@ -78,6 +79,44 @@ describe('ci.yml (unit, merge-commit trigger)', () => {
     const buildStep = job.steps.find((s) => s.run?.includes('npm --prefix web run build'));
     expect(buildStep).toBeDefined();
     expect(buildStep!.env?.VITE_DEV_AUTH_HEADERS).toBe('1');
+  });
+
+  describe('Playwright browser cache (86e2wb87v)', () => {
+    // "Install Playwright browsers" hung/timed out 3x across PR
+    // #99/#102/#103's CI runs, all self-resolved on plain rerun -- consistent
+    // with a slow/rate-limited binary download. Caching the browser binary
+    // dir means a cache hit skips that download; the install step must
+    // still sit immediately after the cache step (not reordered away) and
+    // the cache key must vary with the resolved Playwright version so a
+    // version bump can't restore mismatched binaries.
+    it.each(['web', 'web-fullstack'])(
+      'job "%s" has a cache step for ~/.cache/ms-playwright immediately before "Install Playwright browsers"',
+      (jobName) => {
+        const workflow = loadCiWorkflow();
+        const job = getJob(workflow, jobName);
+        const installIndex = job.steps.findIndex((s) => s.name === 'Install Playwright browsers');
+        expect(installIndex, `expected "${jobName}" to have an "Install Playwright browsers" step`).toBeGreaterThanOrEqual(0);
+
+        const cacheStep = job.steps[installIndex - 1];
+        expect(cacheStep, `expected a step immediately before "Install Playwright browsers" in "${jobName}"`).toBeDefined();
+        expect(cacheStep!.uses).toMatch(/^actions\/cache@/);
+      },
+    );
+
+    it.each(['web', 'web-fullstack'])(
+      'job "%s" cache key includes the Playwright version (via package-lock.json) and runner OS/arch',
+      (jobName) => {
+        const workflow = loadCiWorkflow();
+        const job = getJob(workflow, jobName);
+        const installIndex = job.steps.findIndex((s) => s.name === 'Install Playwright browsers');
+        const cacheStep = job.steps[installIndex - 1];
+        expect(cacheStep, `expected a step immediately before "Install Playwright browsers" in "${jobName}"`).toBeDefined();
+        expect(cacheStep!.with?.path).toBe('~/.cache/ms-playwright');
+        expect(cacheStep!.with?.key).toContain("hashFiles('web/package-lock.json')");
+        expect(cacheStep!.with?.key).toContain('runner.os');
+        expect(cacheStep!.with?.key).toContain('runner.arch');
+      },
+    );
   });
 
   describe('job timeouts (86e2v1qrn)', () => {

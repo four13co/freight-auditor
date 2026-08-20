@@ -20,7 +20,25 @@ export default defineConfig({
       // those in as 0%-covered and crater the percentage against files this gate can't
       // deterministically exercise. Settle scope here; change it only alongside a
       // re-measured threshold (86e2u72u2 rabbit hole).
-      exclude: ['**/node_modules/**', '**/dist/**', 'test/**', '**/*.d.ts', '**/*.config.ts'],
+      exclude: [
+        '**/node_modules/**', '**/dist/**', 'test/**', '**/*.d.ts', '**/*.config.ts',
+        // 86e2v17u9: app.ts now transitively imports the real ingest chain
+        // (audit-runs-routes.ts -> ingest-invoice.ts -> persist.ts,
+        // object-store.ts, source-document.ts, rate-lookup.ts,
+        // resolve-criterion-ids.ts) so these modules entered the unit
+        // suite's import graph and started counting as 0%-covered here --
+        // an accident of the import graph, not a policy change. None of
+        // these are unit-testable without a live Postgres; they're fully
+        // covered by test:db (127 tests, including this item's own 8 ACs
+        // against the real route). Excluding them restates the config's own
+        // stated intent above (DB-only modules don't crater this gate) for
+        // modules that only became reachable through this item's new route.
+        'src/modules/evaluator/persist.ts',
+        'src/modules/evaluator/resolve-criterion-ids.ts',
+        'src/modules/reference-data/object-store.ts',
+        'src/modules/reference-data/source-document.ts',
+        'src/modules/rate-engine/rate-lookup.ts',
+      ],
       reporter: ['text', 'json-summary'],
       // Floor ratcheted up in this same PR (86e2u72u2) to match the coverage this
       // change adds: interpreter.ts logic/verdict/approx paths, and the

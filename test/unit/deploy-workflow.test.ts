@@ -395,6 +395,59 @@ describe('deploy.yml (unit, job-dependency + guard wiring)', () => {
     });
   });
 
+  describe('auto-seed admin user after migrations', () => {
+    it('runs npm run seed:admin in the SAME op run block as the migration, not a separate step', () => {
+      const workflow = loadDeployWorkflow();
+      const migrateStep = getJob(workflow, 'migrate-database').steps.find((step) =>
+        step.run?.includes('npm run migrate'),
+      );
+      expect(migrateStep!.run).toContain('npm run seed:admin');
+      expect(migrateStep!.run).toContain('op run --env-file=.env.migrate');
+    });
+
+    it('runs the migration before the admin seed step', () => {
+      const workflow = loadDeployWorkflow();
+      const migrateStep = getJob(workflow, 'migrate-database').steps.find((step) =>
+        step.run?.includes('npm run migrate'),
+      );
+      const migrateIndex = migrateStep!.run!.indexOf('npm run migrate');
+      const seedAdminIndex = migrateStep!.run!.indexOf('npm run seed:admin');
+      expect(migrateIndex).toBeGreaterThan(-1);
+      expect(seedAdminIndex).toBeGreaterThan(migrateIndex);
+    });
+
+    it('never seeds on a non-Development branch, regardless of any opt-in flag (no admin seeding on Production)', () => {
+      const workflow = loadDeployWorkflow();
+      const migrateStep = getJob(workflow, 'migrate-database').steps.find((step) =>
+        step.run?.includes('npm run migrate'),
+      );
+      expect(migrateStep!.env?.SEED_ADMIN_ON_DEPLOY).toContain("github.ref_name == 'Development'");
+    });
+
+    it('requires an explicit opt-in var (vars.SEED_ADMIN), not branch name alone -- same gating shape as SEED_DEV_ON_DEPLOY (86e2v24uf), so this never silently starts seeding a real login on a deploy', () => {
+      const workflow = loadDeployWorkflow();
+      const migrateStep = getJob(workflow, 'migrate-database').steps.find((step) =>
+        step.run?.includes('npm run migrate'),
+      );
+      expect(migrateStep!.env?.SEED_ADMIN_ON_DEPLOY).toBe(
+        "${{ github.ref_name == 'Development' && vars.SEED_ADMIN == '1' && '1' || '' }}",
+      );
+    });
+
+    it('is gated independently from SEED_DEV_ON_DEPLOY -- each has its own if-block, one is not nested inside the other', () => {
+      const workflow = loadDeployWorkflow();
+      const migrateStep = getJob(workflow, 'migrate-database').steps.find((step) =>
+        step.run?.includes('npm run migrate'),
+      );
+      const runBlock = migrateStep!.run!;
+      const devConditionalIndex = runBlock.indexOf('if [ "$SEED_DEV_ON_DEPLOY"');
+      const adminConditionalIndex = runBlock.indexOf('if [ "$SEED_ADMIN_ON_DEPLOY"');
+      expect(devConditionalIndex).toBeGreaterThan(-1);
+      expect(adminConditionalIndex).toBeGreaterThan(-1);
+      expect(adminConditionalIndex).toBeGreaterThan(devConditionalIndex);
+    });
+  });
+
   describe('seed criterion/rule/rule_version reference data (86e2v2dh1)', () => {
     it('runs npm run seed:criteria in the SAME op run block as the migration, after migrate up', () => {
       const workflow = loadDeployWorkflow();

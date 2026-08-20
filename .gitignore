@@ -19,3 +19,4 @@ playwright/.cache/
 .claude/loop-state/
 .claude/review-findings.jsonl
 .claude/scheduled_tasks.lock
+.claude-auth

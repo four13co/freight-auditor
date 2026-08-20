@@ -20,7 +20,7 @@ import { fetchAndStoreClientId } from './lib/api.js';
  * avoid a login-form flash for an already-logged-in user reloading the page
  * (AC4: "session persists... without requiring re-login").
  */
-function devHeaderPathActive(): boolean {
+export function devHeaderPathActive(): boolean {
   return import.meta.env.DEV || import.meta.env.VITE_DEV_AUTH_HEADERS === '1';
 }
 

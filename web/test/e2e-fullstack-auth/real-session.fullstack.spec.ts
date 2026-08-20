@@ -48,7 +48,7 @@ test('AC1: full login -> dashboard round trip against the real-session (no DEV_A
 
   await page.getByLabel('Email').fill(E2E_AUTH_EMAIL);
   await page.getByLabel('Password').fill(E2E_AUTH_PASSWORD);
-  await page.getByRole('button', { name: 'Sign in' }).click();
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
 
   const row = page.getByTestId('finding-row').filter({ hasText: FIXTURE_INVOICE_NUMBER });
   await expect(row).toBeVisible();
@@ -60,7 +60,7 @@ test('AC2: session persists across a refresh, no re-login required', async ({ pa
 
   await page.getByLabel('Email').fill(E2E_AUTH_EMAIL);
   await page.getByLabel('Password').fill(E2E_AUTH_PASSWORD);
-  await page.getByRole('button', { name: 'Sign in' }).click();
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
 
   const row = page.getByTestId('finding-row').filter({ hasText: FIXTURE_INVOICE_NUMBER });
   await expect(row).toBeVisible();
@@ -69,6 +69,6 @@ test('AC2: session persists across a refresh, no re-login required', async ({ pa
 
   // No re-login: the login form must not reappear, and the dashboard must
   // still render the same tenant data as before the refresh.
-  await expect(page.getByRole('button', { name: 'Sign in' })).not.toBeVisible();
+  await expect(page.getByRole('button', { name: 'Sign in', exact: true })).not.toBeVisible();
   await expect(row).toBeVisible();
 });

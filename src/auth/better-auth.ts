@@ -1,4 +1,5 @@
 import { betterAuth } from 'better-auth';
+import { passkey } from '@better-auth/passkey';
 import { randomUUID } from 'node:crypto';
 import { getPool } from '../db/pool.js';
 
@@ -79,6 +80,30 @@ function createAuth() {
     emailAndPassword: {
       enabled: true,
     },
+    // 86e2v1bf1: better-auth's plugin schemas use camelCase field names with
+    // no auto-conversion to this repo's snake_case columns -- every other
+    // model above gets an explicit `fields` remap for the same reason. The
+    // passkey plugin's own schema merge point is `schema` inside its own
+    // options object (mergeSchema(schema, options?.schema) in the plugin's
+    // source), NOT a top-level `passkey:` block on betterAuth({...}) the way
+    // user/session/account/verification are configured -- confirmed by
+    // reading the plugin's own merge call before writing this.
+    plugins: [
+      passkey({
+        schema: {
+          passkey: {
+            fields: {
+              publicKey: 'public_key',
+              userId: 'user_id',
+              credentialID: 'credential_id',
+              deviceType: 'device_type',
+              backedUp: 'backed_up',
+              createdAt: 'created_at',
+            },
+          },
+        },
+      }),
+    ],
   });
 }
 

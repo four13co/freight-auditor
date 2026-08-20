@@ -12,6 +12,9 @@ test-results/
 playwright-report/
 blob-report/
 playwright/.cache/
+# Local-disk ObjectStore default root (86e2v17u9) -- dev-only ingested
+# document bytes, never committed.
+.data/
 # Machine-local loop run state. The loops' shared config
 # (.claude/clickup-build.config.json) IS tracked — only per-machine
 # run state is ignored, so a fresh clone gets the config but not

@@ -2,6 +2,7 @@ import Fastify, { type FastifyInstance } from 'fastify';
 import { registerFindingsRoutes } from './findings-routes.js';
 import { registerAuthRoutes } from './auth-routes.js';
 import { registerStaticRoutes } from './static-routes.js';
+import { registerAuditRunsRoutes } from './audit-runs-routes.js';
 
 /**
  * Build the Fastify application instance.
@@ -36,6 +37,12 @@ export function buildApp(): FastifyInstance {
   // tenant-auth preHandler binds ONLY to these routes (see
   // findings-routes.ts's header comment).
   void app.register(registerFindingsRoutes);
+
+  // Audit-runs routes registered via their own encapsulation (86e2v17u9),
+  // same tenant-auth preHandler pattern as findings-routes.ts but a distinct
+  // resource with its own raw-body content-type parser scoped to this
+  // plugin only.
+  void app.register(registerAuditRunsRoutes);
 
   return app;
 }

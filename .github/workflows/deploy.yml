@@ -85,6 +85,9 @@ jobs:
             if [ "$SEED_DEV_ON_DEPLOY" = "1" ]; then
               npm run seed:dev
             fi
+            if [ "$SEED_ADMIN_ON_DEPLOY" = "1" ]; then
+              npm run seed:admin
+            fi
           '
         env:
           OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
@@ -96,6 +99,12 @@ jobs:
           # repo variable opt-in (SEED_DEV_TENANT=1) in addition to the branch
           # check -- Production stays excluded either way.
           SEED_DEV_ON_DEPLOY: ${{ github.ref_name == 'Development' && vars.SEED_DEV_TENANT == '1' && '1' || '' }}
+          # Same gating shape as SEED_DEV_ON_DEPLOY above -- explicit repo variable
+          # opt-in (SEED_ADMIN=1) required in addition to the branch check, so this
+          # never silently starts seeding a real login on a deploy. Real credential
+          # (ADMIN_PASSWORD, resolved above from 1Password), not a hardcoded pair --
+          # unlike seed:dev's fixture UUIDs, this is Greg's own account.
+          SEED_ADMIN_ON_DEPLOY: ${{ github.ref_name == 'Development' && vars.SEED_ADMIN == '1' && '1' || '' }}
 
   deploy:
     needs: migrate-database

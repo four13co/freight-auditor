@@ -177,19 +177,12 @@ export const MIXED_CURRENCY_LINEHAUL_310 =
   'L1*2***1000.00****400****Linehaul Leg 2********EUR~' +
   'SE*6*0008~';
 
-/**
- * A minimal crosswalk categorizer for tests — mirrors the DB crosswalk boundary
- * (§13): audit logic reads canonical categories, never raw codes. Unknown codes
- * return undefined → the parser quarantines them.
- */
-const CROSSWALK: Record<string, string> = {
-  '400': 'LINEHAUL',
-  '405': 'FUEL',
-  '500': 'OCEAN_FREIGHT',
-  '510': 'DOC_FEE',
-};
-
-export function testCategorize(code: string | undefined): string | undefined {
-  if (code === undefined) return undefined;
-  return CROSSWALK[code];
-}
+// 86e2xcnja: the stub crosswalk this test categorizer used to redefine
+// locally now has one shared definition (stub-crosswalk.ts) -- imported
+// here rather than triplicated across this file, ingest-invoice.ts, and
+// seed-fullstack-e2e-fixture.mjs. testCategorize is kept as its own
+// exported name/signature (many test files already import it) — mirrors
+// the DB crosswalk boundary (§13): audit logic reads canonical categories,
+// never raw codes. Unknown codes return undefined → the parser quarantines
+// them.
+export { stubCategorize as testCategorize } from '../../src/modules/ingestion/stub-crosswalk.js';

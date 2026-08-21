@@ -4,7 +4,7 @@ import { storeSourceDocument } from '../reference-data/source-document.js';
 import { parseX12, firstSegment, el, X12ParseError } from './x12.js';
 import { parse210 } from './parse-210.js';
 import { parse310 } from './parse-310.js';
-import type { Categorize } from './charge-fact.js';
+import { stubCategorize } from './stub-crosswalk.js';
 import { evaluateInvoice, type AuditResult } from '../evaluator/evaluate-invoice.js';
 import { CONTRACT_RUBRIC } from '../rubric-resolver/contract-rubric.js';
 import { STANDARD_RUBRIC } from '../rubric-resolver/standard-rubric.js';
@@ -41,20 +41,15 @@ export interface IngestInvoiceResult {
 
 export class UnparseableEdiError extends Error {}
 
-// Minimal local categorize map (mirrors test/fixtures/edi-golden.ts's
+// 86e2xcnja: the stub categorize map (mirrors test/fixtures/edi-golden.ts's
 // testCategorize and scripts/seed-fullstack-e2e-fixture.mjs's own
 // documented tradeoff on this exact question -- resolveChargeCode's
 // DB-backed crosswalk has never been wired to any parser call anywhere in
 // this codebase; building that bridge for the first time is separate,
-// unscoped work this item's No-gos don't ask for). LINEHAUL is the only
-// category CONTRACT.RATE_VARIANCE reads (fact-bundle.ts).
-const CROSSWALK: Record<string, string> = {
-  '400': 'LINEHAUL',
-  '405': 'FUEL',
-  '500': 'OCEAN_FREIGHT',
-  '510': 'DOC_FEE',
-};
-const categorize: Categorize = (code) => (code === undefined ? undefined : CROSSWALK[code]);
+// unscoped work this item's No-gos don't ask for) is now the ONE shared
+// definition (stub-crosswalk.ts), imported here rather than redefined a
+// third time.
+const categorize = stubCategorize;
 
 /**
  * ST01-based transaction-set detection (the item's own rabbit-hole guard:

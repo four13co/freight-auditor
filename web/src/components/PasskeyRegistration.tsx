@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { authClient } from '../lib/auth-client.js';
-import { devHeaderPathActive } from '../App.js';
+import { devHeaderPathActive } from '../lib/dev-auth.js';
 
 /**
  * 86e2v1bf1: "register a passkey" affordance for an already-logged-in user
@@ -9,13 +9,14 @@ import { devHeaderPathActive } from '../App.js';
  * no passkey list/management UI beyond what better-auth's client provides
  * out of the box (No-gos also rules out cross-device sync UI).
  *
- * Renders nothing on the dev-header path (App.tsx's devHeaderPathActive()):
- * that path never authenticates a real better-auth session (Dashboard
- * renders unconditionally there), so there's no real session for a passkey
- * to attach to -- the button would just error on click. Reuses App.tsx's
- * own gate rather than a second copy, per that file's own "these gates must
- * stay coherent" note; Header.tsx already sets this repo's precedent for
- * why a non-functional control must not render as if it works.
+ * Renders nothing on the dev-header path (lib/dev-auth.ts's
+ * devHeaderPathActive(), 86e2xcnw5): that path never authenticates a real
+ * better-auth session (Dashboard renders unconditionally there), so there's
+ * no real session for a passkey to attach to -- the button would just
+ * error on click. Reuses the shared gate rather than a second copy, per
+ * this repo's "these gates must stay coherent" rule; Header.tsx already
+ * sets this repo's precedent for why a non-functional control must not
+ * render as if it works.
  */
 export function PasskeyRegistration() {
   const [status, setStatus] = useState<'idle' | 'pending' | 'done' | 'error'>('idle');

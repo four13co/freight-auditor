@@ -1,3 +1,5 @@
+import { devHeaderPathActive } from './dev-auth.js';
+
 /**
  * Types mirror the backend's actual response shapes exactly (src/modules/findings/*.ts):
  * - list-findings.ts's FindingRow: camelCase keys, money fields are strings (pg numeric).
@@ -95,6 +97,11 @@ function buildQuery(params: FindingsListParams): string {
  * build-time opt-in (only VITE_-prefixed vars reach client code) set ONLY in
  * that CI build step -- a real deploy build never sets it, so this does not
  * reopen the exposure the DEV gate above closes.
+ *
+ * 86e2xcnw5: the DEV/VITE_DEV_AUTH_HEADERS check itself is now the one
+ * shared devHeaderPathActive() predicate (lib/dev-auth.ts) -- this file and
+ * App.tsx used to each encode it as a separate expression (this file's own
+ * negated form).
  */
 /**
  * 86e2wb92b: the storage key App.tsx writes to after fetching
@@ -106,7 +113,7 @@ function buildQuery(params: FindingsListParams): string {
 export const CLIENT_ID_STORAGE_KEY = 'freight-auditor:client-id';
 
 function authHeaders(): HeadersInit {
-  if (!import.meta.env.DEV && import.meta.env.VITE_DEV_AUTH_HEADERS !== '1') {
+  if (!devHeaderPathActive()) {
     // 86e2wb92b: the real-session path. resolveViaSession (tenant-auth.ts)
     // derives the user from the session cookie itself, not from a header --
     // sending x-user-id here would be a client-controlled value the backend

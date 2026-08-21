@@ -38,6 +38,23 @@ export default defineConfig({
         'src/modules/reference-data/object-store.ts',
         'src/modules/reference-data/source-document.ts',
         'src/modules/rate-engine/rate-lookup.ts',
+        // 86e2xb911: same accident-of-import-graph story as 86e2v17u9 above --
+        // app.ts now also registers invoice-drafts-routes.ts, which transitively
+        // imports invoice-draft.ts and carrier-match.ts (both need a live
+        // Postgres; fully covered by test:db, not unit-testable here).
+        'src/modules/ingestion/invoice-draft.ts',
+        'src/modules/ingestion/carrier-match.ts',
+        'src/server/invoice-drafts-routes.ts',
+        // pdf-extract.ts's PDF-text-extraction step (extractInvoiceFromPdf) IS
+        // unit-tested for real against real generated PDF bytes with an
+        // injected LLM impl (test/unit/pdf-extract.test.ts, 6 tests) -- only
+        // defaultExtractInvoiceFromText (the real Anthropic call) is excluded
+        // in spirit here; there's no real key to call it with in this suite,
+        // same category as rollback-deploy.mjs's real-CapRover-call bodies
+        // above. File-level exclude (this repo's only available granularity
+        // for that, matching the existing entries in this list) rather than
+        // an inline ignore comment, which has no precedent in this codebase.
+        'src/modules/ingestion/pdf-extract.ts',
       ],
       reporter: ['text', 'json-summary'],
       // Floor ratcheted up in this same PR (86e2u72u2) to match the coverage this

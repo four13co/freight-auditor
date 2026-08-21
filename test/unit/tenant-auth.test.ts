@@ -254,3 +254,78 @@ describe('listMembershipClientIds', () => {
     expect(result).toEqual([]);
   });
 });
+
+/**
+ * 86e2xcna3: registerTenantAuthPreHandler is a genuinely new export -- every
+ * other unit test file that touches it (findings-endpoint.test.ts,
+ * audit-runs-endpoint.test.ts) mocks it wholesale for their own route-level
+ * tests, so none of them exercise its REAL body (the CI Coverage Gate
+ * caught this: functions coverage fell below the 90% threshold with lines
+ * 163-168 -- this function's entire body -- uncovered).
+ *
+ * Mocking resolveAuthorizedTenantContext from outside does NOT work here --
+ * verified empirically (the first attempt at this test always saw 401
+ * regardless of the mock): registerTenantAuthPreHandler calls
+ * resolveAuthorizedTenantContext as a same-module function call, which
+ * resolves to tenant-auth.ts's own internal scope binding, not the
+ * externally-mocked export (the identical ESM self-reference pitfall
+ * documented on pdf-extract.ts's defaultExtractInvoiceFromText). Instead,
+ * mock withTenantTx (what resolveAuthorizedTenantContext itself calls, via
+ * DEV_AUTH_HEADERS -- the same real dependency-injection seam every other
+ * describe block in this file already uses) and drive the outcome through
+ * a real Fastify instance + real headers.
+ */
+describe('registerTenantAuthPreHandler', () => {
+  let originalFlag: string | undefined;
+
+  beforeEach(() => {
+    originalFlag = process.env.DEV_AUTH_HEADERS;
+    process.env.DEV_AUTH_HEADERS = '1';
+  });
+
+  afterEach(() => {
+    if (originalFlag === undefined) delete process.env.DEV_AUTH_HEADERS;
+    else process.env.DEV_AUTH_HEADERS = originalFlag;
+    vi.doUnmock('../../src/db/tenant-context.js');
+    vi.resetModules();
+  });
+
+  it('sets request.tenantContext and lets the request through on a valid membership', async () => {
+    const query = vi.fn().mockResolvedValue({ rowCount: 1 });
+    const withTenantTx = vi.fn(async (_ctx: unknown, fn: (client: { query: typeof query }) => unknown) => fn({ query }));
+    vi.doMock('../../src/db/tenant-context.js', () => ({ withTenantTx }));
+    const { registerTenantAuthPreHandler } = await import('../../src/modules/findings/tenant-auth.js');
+    const Fastify = (await import('fastify')).default;
+    const app = Fastify();
+    await registerTenantAuthPreHandler(app);
+    app.get('/probe', async (request) => ({ tenantContext: request.tenantContext }));
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/probe',
+      headers: { 'x-client-id': 'client-1', 'x-user-id': 'user-1' },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ tenantContext: { clientIds: ['client-1'], internal: false } });
+    await app.close();
+  });
+
+  it('replies 401 and never reaches the route handler when no valid tenant context resolves', async () => {
+    const withTenantTx = vi.fn();
+    vi.doMock('../../src/db/tenant-context.js', () => ({ withTenantTx }));
+    const { registerTenantAuthPreHandler } = await import('../../src/modules/findings/tenant-auth.js');
+    const Fastify = (await import('fastify')).default;
+    const app = Fastify();
+    const handler = vi.fn().mockResolvedValue({ ok: true });
+    await registerTenantAuthPreHandler(app);
+    app.get('/probe', handler);
+
+    const res = await app.inject({ method: 'GET', url: '/probe' });
+
+    expect(res.statusCode).toBe(401);
+    expect(res.json()).toEqual({ error: 'unauthorized' });
+    expect(handler).not.toHaveBeenCalled();
+    await app.close();
+  });
+});

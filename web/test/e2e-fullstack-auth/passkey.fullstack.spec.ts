@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import type { CDPSession, BrowserContext, Page } from '@playwright/test';
+import { loginViaForm } from './login-form.js';
 
 // 86e2v1bf1: proves the real passkey register -> sign-in round trip end to
 // end, reusing the real-session (no DEV_AUTH_HEADERS) harness from 86e2vqggf
@@ -85,9 +86,7 @@ test('AC1/AC2: register a passkey while logged in, then sign in using ONLY the p
   // email/password first, matching the shape's "register a passkey option
   // once logged in" solution).
   await page.goto('/');
-  await page.getByLabel('Email').fill(PASSKEY_TEST_EMAIL);
-  await page.getByLabel('Password').fill(PASSKEY_TEST_PASSWORD);
-  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+  await loginViaForm(page, PASSKEY_TEST_EMAIL, PASSKEY_TEST_PASSWORD);
   await expect(page.getByTestId('kpi-row')).toBeVisible();
 
   await page.getByRole('button', { name: 'Register a passkey' }).click();
@@ -112,9 +111,7 @@ test('AC3: email/password sign-in remains fully functional (no regression from a
   page,
 }) => {
   await page.goto('/');
-  await page.getByLabel('Email').fill(PASSKEY_TEST_EMAIL);
-  await page.getByLabel('Password').fill(PASSKEY_TEST_PASSWORD);
-  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+  await loginViaForm(page, PASSKEY_TEST_EMAIL, PASSKEY_TEST_PASSWORD);
 
   await expect(page.getByTestId('kpi-row')).toBeVisible();
 });

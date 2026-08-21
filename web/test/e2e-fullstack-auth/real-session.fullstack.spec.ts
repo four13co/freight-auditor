@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { loginViaForm } from './login-form.js';
 
 // 86e2vqggf: proves the REAL better-auth session round trip end to end --
 // browser -> real login form -> real Fastify server -> real Postgres, no
@@ -46,9 +47,7 @@ test('AC1: full login -> dashboard round trip against the real-session (no DEV_A
 }) => {
   await page.goto('/');
 
-  await page.getByLabel('Email').fill(E2E_AUTH_EMAIL);
-  await page.getByLabel('Password').fill(E2E_AUTH_PASSWORD);
-  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+  await loginViaForm(page, E2E_AUTH_EMAIL, E2E_AUTH_PASSWORD);
 
   const row = page.getByTestId('finding-row').filter({ hasText: FIXTURE_INVOICE_NUMBER });
   await expect(row).toBeVisible();
@@ -58,9 +57,7 @@ test('AC1: full login -> dashboard round trip against the real-session (no DEV_A
 test('AC2: session persists across a refresh, no re-login required', async ({ page }) => {
   await page.goto('/');
 
-  await page.getByLabel('Email').fill(E2E_AUTH_EMAIL);
-  await page.getByLabel('Password').fill(E2E_AUTH_PASSWORD);
-  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+  await loginViaForm(page, E2E_AUTH_EMAIL, E2E_AUTH_PASSWORD);
 
   const row = page.getByTestId('finding-row').filter({ hasText: FIXTURE_INVOICE_NUMBER });
   await expect(row).toBeVisible();

@@ -1,6 +1,6 @@
-import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
-import { withTenantTx, type TenantContext } from '../db/tenant-context.js';
-import { resolveAuthorizedTenantContext } from '../modules/findings/tenant-auth.js';
+import type { FastifyInstance } from 'fastify';
+import { withTenantTx } from '../db/tenant-context.js';
+import { registerTenantAuthPreHandler } from '../modules/findings/tenant-auth.js';
 import { LocalDiskObjectStore } from '../modules/reference-data/object-store.js';
 import { ingestInvoice, UnparseableEdiError } from '../modules/ingestion/ingest-invoice.js';
 
@@ -45,17 +45,10 @@ export async function registerAuditRunsRoutes(auditRunsRoutes: FastifyInstance):
     (_request, body, done) => done(null, body),
   );
 
-  auditRunsRoutes.addHook('preHandler', async (request: FastifyRequest, reply: FastifyReply) => {
-    const ctx = await resolveAuthorizedTenantContext(request);
-    if (!ctx) {
-      await reply.code(401).send({ error: 'unauthorized' });
-      return;
-    }
-    (request as FastifyRequest & { tenantContext: TenantContext }).tenantContext = ctx;
-  });
+  await registerTenantAuthPreHandler(auditRunsRoutes);
 
   auditRunsRoutes.post('/api/audit-runs', async (request, reply) => {
-    const ctx = (request as FastifyRequest & { tenantContext: TenantContext }).tenantContext;
+    const ctx = request.tenantContext!;
     const clientId = ctx.clientIds?.[0];
     if (!clientId) {
       await reply.code(401).send({ error: 'unauthorized' });

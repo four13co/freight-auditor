@@ -1,5 +1,25 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
+
+// 86e2xcna3: registerAuditRunsRoutes now calls the shared
+// registerTenantAuthPreHandler (tenant-auth.ts) -- same reasoning as
+// findings-endpoint.test.ts's identical helper: mocking the whole module
+// (as both call sites below already did) would otherwise wipe out that
+// export too.
+function mockTenantAuth(resolvedContext: unknown) {
+  vi.doMock('../../src/modules/findings/tenant-auth.js', () => ({
+    resolveAuthorizedTenantContext: vi.fn().mockResolvedValue(resolvedContext),
+    registerTenantAuthPreHandler: async (routes: FastifyInstance) => {
+      routes.addHook('preHandler', async (request: FastifyRequest, reply: FastifyReply) => {
+        if (!resolvedContext) {
+          await reply.code(401).send({ error: 'unauthorized' });
+          return;
+        }
+        request.tenantContext = resolvedContext as FastifyRequest['tenantContext'];
+      });
+    },
+  }));
+}
 
 /**
  * Request-level unit coverage of POST /api/audit-runs via Fastify's
@@ -26,9 +46,7 @@ describe('POST /api/audit-runs (unit, mocked withTenantTx + tenant-auth + ingest
   });
 
   function mockAuthorized() {
-    vi.doMock('../../src/modules/findings/tenant-auth.js', () => ({
-      resolveAuthorizedTenantContext: vi.fn().mockResolvedValue({ clientIds: ['client-abc'], internal: false }),
-    }));
+    mockTenantAuth({ clientIds: ['client-abc'], internal: false });
   }
 
   it('returns 201 with { id, outcome } for a successful ingest, and threads the contract_version_id query param through', async () => {
@@ -184,9 +202,7 @@ describe('POST /api/audit-runs (unit, mocked withTenantTx + tenant-auth + ingest
   });
 
   it('returns 401 when tenant-auth resolves no context (missing headers)', async () => {
-    vi.doMock('../../src/modules/findings/tenant-auth.js', () => ({
-      resolveAuthorizedTenantContext: vi.fn().mockResolvedValue(null),
-    }));
+    mockTenantAuth(null);
     const { buildApp } = await import('../../src/server/app.js');
     app = buildApp();
 

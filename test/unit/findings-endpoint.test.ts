@@ -1,5 +1,27 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
+
+// 86e2xcna3: registerFindingsRoutes now calls the shared
+// registerTenantAuthPreHandler (tenant-auth.ts) instead of registering its
+// own inline preHandler -- mocking this module wholesale (as every test
+// below already did, without importOriginal) would otherwise wipe out that
+// export too. This factory keeps the same "mock resolveAuthorizedTenantContext,
+// let the real preHandler wiring run" shape every call site wants, without
+// reimplementing the 401/tenantContext-set logic 4 times.
+function mockTenantAuth(resolvedContext: unknown) {
+  vi.doMock('../../src/modules/findings/tenant-auth.js', () => ({
+    resolveAuthorizedTenantContext: vi.fn().mockResolvedValue(resolvedContext),
+    registerTenantAuthPreHandler: async (routes: FastifyInstance) => {
+      routes.addHook('preHandler', async (request: FastifyRequest, reply: FastifyReply) => {
+        if (!resolvedContext) {
+          await reply.code(401).send({ error: 'unauthorized' });
+          return;
+        }
+        request.tenantContext = resolvedContext as FastifyRequest['tenantContext'];
+      });
+    },
+  }));
+}
 
 /**
  * Request-level unit coverage of GET /api/findings via Fastify's .inject(),
@@ -26,9 +48,7 @@ describe('GET /api/findings (unit, mocked withTenantTx + tenant-auth)', () => {
   });
 
   function mockAuthorized() {
-    vi.doMock('../../src/modules/findings/tenant-auth.js', () => ({
-      resolveAuthorizedTenantContext: vi.fn().mockResolvedValue({ clientIds: ['client-abc'], internal: false }),
-    }));
+    mockTenantAuth({ clientIds: ['client-abc'], internal: false });
   }
 
   it('returns { findings } for an authorized request', async () => {
@@ -95,9 +115,7 @@ describe('GET /api/findings (unit, mocked withTenantTx + tenant-auth)', () => {
   });
 
   it('returns 401 when the request is not authorized', async () => {
-    vi.doMock('../../src/modules/findings/tenant-auth.js', () => ({
-      resolveAuthorizedTenantContext: vi.fn().mockResolvedValue(null),
-    }));
+    mockTenantAuth(null);
     vi.doMock('../../src/db/tenant-context.js', () => ({
       withTenantTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
     }));
@@ -244,9 +262,7 @@ describe('GET /api/findings (unit, mocked withTenantTx + tenant-auth)', () => {
     });
 
     it('returns 401 when the request is not authorized', async () => {
-      vi.doMock('../../src/modules/findings/tenant-auth.js', () => ({
-        resolveAuthorizedTenantContext: vi.fn().mockResolvedValue(null),
-      }));
+      mockTenantAuth(null);
       const listGateFailures = vi.fn();
       vi.doMock('../../src/db/tenant-context.js', () => ({
         withTenantTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
@@ -304,9 +320,7 @@ describe('GET /api/findings (unit, mocked withTenantTx + tenant-auth)', () => {
     });
 
     it('returns 401 when unauthorized, without ever calling updateFindingStatus', async () => {
-      vi.doMock('../../src/modules/findings/tenant-auth.js', () => ({
-        resolveAuthorizedTenantContext: vi.fn().mockResolvedValue(null),
-      }));
+      mockTenantAuth(null);
       const updateFindingStatus = vi.fn();
       vi.doMock('../../src/db/tenant-context.js', () => ({
         withTenantTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),

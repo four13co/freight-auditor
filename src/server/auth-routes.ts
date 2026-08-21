@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { getAuth } from '../auth/better-auth.js';
-import { listMembershipClientIds } from '../modules/findings/tenant-auth.js';
+import { listMembershipClientIds, toFetchHeaders } from '../modules/findings/tenant-auth.js';
 
 /**
  * 86e2wb4zg: the better-auth mount + membership lookup, split out of app.ts's
@@ -54,14 +54,9 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
     }
 
     const url = `${request.protocol}://${request.hostname}${request.url}`;
-    const headers = new Headers();
-    for (const [key, value] of Object.entries(request.headers)) {
-      if (value === undefined) continue;
-      headers.set(key, Array.isArray(value) ? value.join(', ') : value);
-    }
     const fetchRequest = new Request(url, {
       method: request.method,
-      headers,
+      headers: toFetchHeaders(request),
       body: ['GET', 'HEAD'].includes(request.method) ? undefined : JSON.stringify(request.body ?? {}),
     });
 
@@ -84,12 +79,7 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
   // the client_id(s) the user has a membership row for, so login can store
   // one and start sending it as x-client-id on subsequent requests.
   app.get('/api/auth/memberships', async (request: FastifyRequest, reply: FastifyReply) => {
-    const headers = new Headers();
-    for (const [key, value] of Object.entries(request.headers)) {
-      if (value === undefined) continue;
-      headers.set(key, Array.isArray(value) ? value.join(', ') : value);
-    }
-    const session = await getAuth().api.getSession({ headers });
+    const session = await getAuth().api.getSession({ headers: toFetchHeaders(request) });
     if (!session) {
       await reply.code(401).send({ error: 'unauthorized' });
       return;

@@ -88,7 +88,7 @@ async function resolveViaDevHeaders(request: FastifyRequest): Promise<TenantCont
  * apply to a header better-auth doesn't read from this path, so it's not
  * exercised by any test; documented rather than silently assumed correct.
  */
-function toFetchHeaders(request: FastifyRequest): Headers {
+export function toFetchHeaders(request: FastifyRequest): Headers {
   const headers = new Headers();
   for (const [key, value] of Object.entries(request.headers)) {
     if (value === undefined) continue;

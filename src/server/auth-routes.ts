@@ -15,6 +15,30 @@ import { listMembershipClientIds } from '../modules/findings/tenant-auth.js';
  * you'd need a verified tenant context to reach the routes that establish
  * one.
  */
+// 86e2xcmpg: POST /api/auth/sign-up/email was reachable by anyone with no
+// invite/allowlist gate -- enabling account/DB spam via unverified public
+// self-registration (bound: no membership row is created, so tenant-scoped
+// routes still 401 an unaffiliated self-signup; this is a spam/resource
+// concern, not a tenant-isolation break). Per the item's own "team's call"
+// framing between an invite-token flow and a feature flag, this picks the
+// flag: introducing a real invite-token issuance/verification mechanism is
+// disproportionate to this item's S appetite, and a flag is the minimal
+// change that closes the gap today without precluding a real invite flow
+// later. Defaults to blocked (undefined/anything other than '1' blocks);
+// an operator (or a test/seed harness that needs a real signup) opts in
+// explicitly -- same convention as DEV_AUTH_HEADERS.
+//
+// Gates ONLY sign-up/email specifically (path + method), not the whole
+// /api/auth/* mount -- sign-in/get-session/sign-out/passkey routes for
+// already-provisioned users must keep working unaffected (AC3).
+function isBlockedPublicSignup(request: FastifyRequest): boolean {
+  return (
+    request.method === 'POST' &&
+    request.url.split('?')[0] === '/api/auth/sign-up/email' &&
+    process.env.PUBLIC_SIGNUP_ENABLED !== '1'
+  );
+}
+
 export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
   // 86e2v1bdj: 86e2v1bbr wired getAuth().api.getSession() into tenant-auth.ts
   // for session VERIFICATION only -- nothing mounted better-auth's own
@@ -24,6 +48,11 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
   // standard Fetch API Request/Response; Fastify's raw req/res need adapting
   // each way.
   app.all('/api/auth/*', async (request: FastifyRequest, reply: FastifyReply) => {
+    if (isBlockedPublicSignup(request)) {
+      await reply.code(403).send({ error: 'public self-signup is disabled' });
+      return;
+    }
+
     const url = `${request.protocol}://${request.hostname}${request.url}`;
     const headers = new Headers();
     for (const [key, value] of Object.entries(request.headers)) {

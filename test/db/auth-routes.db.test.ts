@@ -18,12 +18,19 @@ describe('POST /api/auth/* (DB, e2e) -- better-auth handler mounted', () => {
   const tag = `authroute-${Date.now()}`;
   let originalSecret: string | undefined;
   let originalAppUrl: string | undefined;
+  let originalSignupFlag: string | undefined;
 
   beforeAll(async () => {
     originalSecret = process.env.SESSION_SECRET;
     process.env.SESSION_SECRET = 'test-only-session-secret-32-chars-min';
     originalAppUrl = process.env.APP_URL;
     process.env.APP_URL = 'http://localhost:4180';
+    // 86e2xcmpg: this file's whole point is proving the real sign-up/sign-in
+    // round trip over HTTP, so it needs the gate open -- same convention as
+    // DEV_AUTH_HEADERS. The gate's default-blocked behavior gets its own
+    // dedicated test below, which explicitly unsets this for that one case.
+    originalSignupFlag = process.env.PUBLIC_SIGNUP_ENABLED;
+    process.env.PUBLIC_SIGNUP_ENABLED = '1';
 
     const { buildApp } = await import('../../src/server/app.js');
     app = buildApp();
@@ -34,6 +41,8 @@ describe('POST /api/auth/* (DB, e2e) -- better-auth handler mounted', () => {
     else process.env.SESSION_SECRET = originalSecret;
     if (originalAppUrl === undefined) delete process.env.APP_URL;
     else process.env.APP_URL = originalAppUrl;
+    if (originalSignupFlag === undefined) delete process.env.PUBLIC_SIGNUP_ENABLED;
+    else process.env.PUBLIC_SIGNUP_ENABLED = originalSignupFlag;
 
     await app.close();
     const pool = getPool();
@@ -123,5 +132,31 @@ describe('POST /api/auth/* (DB, e2e) -- better-auth handler mounted', () => {
     // by the findings preHandler.
     expect(res.statusCode).toBe(200);
     expect(res.json()).toBeNull();
+  });
+
+  it('AC1: POST /api/auth/sign-up/email returns 403 and creates no app_user row when PUBLIC_SIGNUP_ENABLED is unset (real route, real DB)', async () => {
+    const localFlag = process.env.PUBLIC_SIGNUP_ENABLED;
+    delete process.env.PUBLIC_SIGNUP_ENABLED;
+    try {
+      const email = `${tag}-blocked@example.com`;
+      const res = await app.inject({
+        method: 'POST',
+        url: '/api/auth/sign-up/email',
+        payload: { email, password: 'password123456', name: 'Blocked Signup' },
+      });
+      expect(res.statusCode).toBe(403);
+
+      const pool = getPool();
+      const owner = await pool.connect();
+      try {
+        const rows = await owner.query(`SELECT 1 FROM app_user WHERE email = $1`, [email]);
+        expect(rows.rowCount).toBe(0);
+      } finally {
+        owner.release();
+      }
+    } finally {
+      if (localFlag === undefined) delete process.env.PUBLIC_SIGNUP_ENABLED;
+      else process.env.PUBLIC_SIGNUP_ENABLED = localFlag;
+    }
   });
 });

@@ -141,6 +141,18 @@ describe('ci.yml (unit, merge-commit trigger)', () => {
       expect(job.env?.SESSION_SECRET).toBeTruthy();
     });
 
+    // 86e2xcmpg: auth-routes.ts now blocks POST /api/auth/sign-up/email by
+    // default -- this job's webServer runs as a separate subprocess, so
+    // (unlike test/db/*.db.test.ts, which sets process.env in-process) the
+    // gate must be opened at the job env level or both real-session specs'
+    // beforeAll sign-up calls would start failing with 403, not a clear
+    // signal pointing at this env block.
+    it('sets PUBLIC_SIGNUP_ENABLED=1 at the job level so the real-session/passkey specs can sign up test accounts', () => {
+      const workflow = loadCiWorkflow();
+      const job = getJob(workflow, 'web-fullstack-auth');
+      expect(job.env?.PUBLIC_SIGNUP_ENABLED).toBe('1');
+    });
+
     it("its Build web step does NOT set VITE_DEV_AUTH_HEADERS -- the whole point is the real login form renders instead of App.tsx's devHeaderPathActive() skipping it", () => {
       const workflow = loadCiWorkflow();
       const job = getJob(workflow, 'web-fullstack-auth');

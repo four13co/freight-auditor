@@ -308,6 +308,17 @@ jobs:
       # secret, this job runs against an ephemeral CI-only Postgres.
       APP_URL: http://localhost:4181
       SESSION_SECRET: ci-only-e2e-real-session-secret-86e2vqggf
+      # 86e2xcmpg: this job's real-session server spawns as a subprocess
+      # (webServer.command in playwright.fullstack-auth.config.ts), so the
+      # public-signup gate (auth-routes.ts, defaults to blocked) needs
+      # opening at the job env level -- a test-file-local process.env set
+      # (the pattern used in test/db/*.db.test.ts) can't reach a separate
+      # process. This job's own signup calls (both specs, real accounts
+      # created for the real login/passkey ceremony) ARE the "authorized"
+      # path here -- there's no invite flow yet, and this is exactly the
+      # ephemeral CI-only Postgres carve-out the job's other env vars above
+      # already describe.
+      PUBLIC_SIGNUP_ENABLED: '1'
     steps:
       - name: Checkout code
         uses: actions/checkout@v4

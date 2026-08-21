@@ -19,13 +19,11 @@
 // two other criteria both come back CONFORMED for this fixture, so this
 // seeds exactly one variance_finding row, not more).
 //
-// Charge-code crosswalk: carries a local minimal categorize map (mirroring
-// test/fixtures/edi-golden.ts's testCategorize) rather than seeding the real
-// charge_code_crosswalk table. Tradeoff noted per the item's own ask: seeding
-// the real table would be more realistic but couples this script to that
-// table's shape for no benefit this fixture needs; a local map duplicates a
-// small mapping a third place but keeps this script's only dependency on
-// src/ (no new dependency on a DB table's contents at seed time).
+// Charge-code crosswalk: imports the shared stub categorize map
+// (src/modules/ingestion/stub-crosswalk.ts, 86e2xcnja) rather than seeding
+// the real charge_code_crosswalk table. Tradeoff noted per the item's own
+// ask: seeding the real table would be more realistic but couples this
+// script to that table's shape for no benefit this fixture needs.
 //
 // FIXTURE_INVOICE_NUMBER and FIXTURE_CARRIER_NAME are unchanged from before
 // this rewrite -- web/test/e2e-fullstack/dashboard.fullstack.spec.ts asserts
@@ -42,6 +40,7 @@ import { evaluateInvoice } from '../src/modules/evaluator/evaluate-invoice.js';
 import { persistAuditRun } from '../src/modules/evaluator/persist.js';
 import { CONTRACT_RUBRIC } from '../src/modules/rubric-resolver/contract-rubric.js';
 import { lookupContractRate } from '../src/modules/rate-engine/rate-lookup.js';
+import { stubCategorize } from '../src/modules/ingestion/stub-crosswalk.js';
 import { DEV_CLIENT_ID } from './seed-dev-tenant.mjs';
 
 export const FIXTURE_INVOICE_NUMBER = 'E2E-FULLSTACK-001';
@@ -67,11 +66,10 @@ const FIXTURE_EDI_210 =
   'L1*2***250.00****405****Fuel Surcharge~' +
   'SE*5*0009~';
 
-const CROSSWALK = { '400': 'LINEHAUL', '405': 'FUEL' };
-function categorize(code) {
-  if (code === undefined) return undefined;
-  return CROSSWALK[code];
-}
+// 86e2xcnja: this fixture's L1 codes (400/405) are a subset of the one
+// shared stub crosswalk (stub-crosswalk.ts) -- imported rather than
+// redefined a third time.
+const categorize = stubCategorize;
 
 /**
  * Throws loudly if `persistAuditRun` wrote no variance_finding row for the

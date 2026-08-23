@@ -197,6 +197,22 @@ describe('deploy.yml (unit, job-dependency + guard wiring)', () => {
       const template = readFileSync(new URL('../../.env.template', import.meta.url), 'utf8');
       expect(template).toMatch(/^SESSION_SECRET=/m);
     });
+
+    // 86e2xj48h: PR #114 (86e2xcmpg) gated public signup behind PUBLIC_SIGNUP_ENABLED,
+    // but the flag was only ever set in ci.yml -- absent from .env.template, so every
+    // deployed env (where .env is generated from .env.template via op inject, never
+    // from a CapRover dashboard var) shipped it unset and signup silently disabled.
+    it('declares PUBLIC_SIGNUP_ENABLED with an explicit fails-closed default, so it resolves into the deployed .env without a CapRover dashboard var', () => {
+      const template = readFileSync(new URL('../../.env.template', import.meta.url), 'utf8');
+      expect(template).toMatch(/^PUBLIC_SIGNUP_ENABLED="0"$/m);
+    });
+
+    it('does not resolve PUBLIC_SIGNUP_ENABLED via a 1Password reference -- it is a plain flag, not a secret', () => {
+      const template = readFileSync(new URL('../../.env.template', import.meta.url), 'utf8');
+      const line = template.match(/^PUBLIC_SIGNUP_ENABLED=.*$/m)?.[0];
+      expect(line).toBeDefined();
+      expect(line).not.toContain('op://');
+    });
   });
 
   describe('Dockerfile loads the baked-in env file at boot (86e2v0acm)', () => {

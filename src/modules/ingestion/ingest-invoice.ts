@@ -10,6 +10,7 @@ import { CONTRACT_RUBRIC } from '../rubric-resolver/contract-rubric.js';
 import { STANDARD_RUBRIC } from '../rubric-resolver/standard-rubric.js';
 import { persistAuditRun, type PersistedRun } from '../evaluator/persist.js';
 import { lookupContractRate } from '../rate-engine/rate-lookup.js';
+import { deterministicAuditEventId, writeAuditEvent } from '../audit-ledger/write-audit-event.js';
 
 /**
  * 86e2v17u9: the raw-EDI-to-audit-run orchestration the item's Solution
@@ -77,10 +78,19 @@ export async function ingestInvoice(
   const raw = input.rawBytes.toString('utf8');
 
   // 1. Immutable raw-bytes storage (reused as-is, per the item's Solution).
-  await storeSourceDocument(client, store, {
+  const sourceDocument = await storeSourceDocument(client, store, {
     clientId: input.clientId,
     bytes: input.rawBytes,
     contentType: input.contentType,
+  });
+  await writeAuditEvent(client, {
+    id: deterministicAuditEventId(input.clientId, sourceDocument.id, 'ingestion.source_stored'),
+    clientId: input.clientId,
+    entity: 'source_document',
+    entityId: sourceDocument.id,
+    event: 'ingestion.source_stored',
+    actorKind: 'system',
+    detail: { contentType: input.contentType ?? null, sha256: sourceDocument.sha256 },
   });
 
   // 2. Transaction-set detection + matching parser. A parse failure (garbage
@@ -136,6 +146,15 @@ export async function ingestInvoice(
     invoice,
     result,
     rubricSnapshotId: null,
+  });
+  await writeAuditEvent(client, {
+    id: deterministicAuditEventId(input.clientId, persisted.auditRunId, 'ingestion.audit_created'),
+    clientId: input.clientId,
+    entity: 'audit_run',
+    entityId: persisted.auditRunId,
+    event: 'ingestion.audit_created',
+    actorKind: 'system',
+    detail: { invoiceId: persisted.invoiceId, outcome: result.outcome, transactionSet },
   });
 
   return { auditRunId: persisted.auditRunId, invoiceId: persisted.invoiceId, outcome: result.outcome };

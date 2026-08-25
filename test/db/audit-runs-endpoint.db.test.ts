@@ -73,6 +73,7 @@ describe('POST /api/audit-runs (DB, e2e)', () => {
     await app.close();
     const owner = await pool.connect();
     try {
+      await owner.query(`DELETE FROM audit_event WHERE client_id = $1`, [clientId]);
       await owner.query(`DELETE FROM variance_finding WHERE client_id = $1`, [clientId]);
       await owner.query(`DELETE FROM scorecard WHERE client_id = $1`, [clientId]);
       await owner.query(`DELETE FROM charge_finding WHERE client_id = $1`, [clientId]);
@@ -126,6 +127,14 @@ describe('POST /api/audit-runs (DB, e2e)', () => {
     expect(persisted).toBeDefined();
     expect(persisted!.outcome).toBe('SCORED');
     expect(persisted!.invoice_id).toEqual(expect.any(String));
+
+    const ledger = await withTenantTx({ clientIds: [clientId], internal: false }, (c) =>
+      c.query(`SELECT event, entity_id FROM audit_event WHERE client_id = $1 ORDER BY recorded_at`, [clientId]),
+    );
+    expect(ledger.rows).toEqual(expect.arrayContaining([
+      expect.objectContaining({ event: 'ingestion.source_stored' }),
+      expect.objectContaining({ event: 'ingestion.audit_created', entity_id: body.id }),
+    ]));
 
     // GOLDEN_210 under STANDARD_RUBRIC: every charge is CONFORMED against
     // the standard criteria (well-formed, foots, currency stated) -- zero

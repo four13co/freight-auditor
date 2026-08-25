@@ -1,9 +1,9 @@
 import type { FastifyInstance } from 'fastify';
 import { withTenantTx } from '../db/tenant-context.js';
 import { registerTenantAuthPreHandler } from '../modules/findings/tenant-auth.js';
-import { LocalDiskObjectStore } from '../modules/reference-data/object-store.js';
+import { runtimeObjectStore } from '../modules/reference-data/object-store-config.js';
 import { ingestInvoice, UnparseableEdiError } from '../modules/ingestion/ingest-invoice.js';
-import { objectStoreRoot, registerBufferContentTypeParser, requireNonEmptyBuffer, requireSingleClientId } from '../modules/ingestion/raw-upload-route.js';
+import { registerBufferContentTypeParser, requireNonEmptyBuffer, requireSingleClientId } from '../modules/ingestion/raw-upload-route.js';
 import { isUuid } from '../shared/request-validation.js';
 import {
   replayAuditRun,
@@ -75,7 +75,7 @@ export async function registerAuditRunsRoutes(auditRunsRoutes: FastifyInstance):
 
     try {
       const outcome = await withTenantTx(ctx, async (client) => {
-        const store = new LocalDiskObjectStore(objectStoreRoot());
+        const store = runtimeObjectStore();
         return ingestInvoice(client, store, {
           clientId,
           rawBytes,

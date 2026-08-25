@@ -1,4 +1,5 @@
 import PgBoss from 'pg-boss';
+import { registerJobQueues } from './policies.js';
 
 type Environment = Record<string, string | undefined>;
 
@@ -10,6 +11,7 @@ export interface WorkerLogger {
 export interface BossLifecycle {
   on(event: 'error', handler: (error: Error) => void): unknown;
   start(): Promise<unknown>;
+  createQueue(name: string, options?: PgBoss.Queue): Promise<void>;
 }
 
 export interface StartWorkerOptions {
@@ -33,9 +35,7 @@ export function createJobBoss(databaseUrl: string): PgBoss {
 }
 
 /**
- * Start the dedicated queue process. Queue creation and worker registration
- * deliberately belong to P0/1.B.2; this bootstrap proves the process and
- * database lifecycle before business payloads exist.
+ * Start the dedicated queue process and register its durable queue policies.
  */
 export async function startJobWorker(options: StartWorkerOptions = {}): Promise<BossLifecycle> {
   const logger = options.logger ?? console;
@@ -47,6 +47,7 @@ export async function startJobWorker(options: StartWorkerOptions = {}): Promise<
     logger.error('job worker runtime error', { errorName: error.name });
   });
   await boss.start();
+  await registerJobQueues(boss);
   logger.info('job worker started');
   return boss;
 }

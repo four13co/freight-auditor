@@ -13,6 +13,13 @@ export const JOB_NAMES = {
 
 export type JobName = (typeof JOB_NAMES)[keyof typeof JOB_NAMES];
 
+export const JOB_DEAD_LETTER_NAMES: Record<JobName, string> = {
+  [JOB_NAMES.PROCESS_INGESTION_V1]: 'freight.ingestion.process.dead-letter.v1',
+  [JOB_NAMES.EVALUATE_AUDIT_V1]: 'freight.audit.evaluate.dead-letter.v1',
+  [JOB_NAMES.REPLAY_AUDIT_V1]: 'freight.audit.replay.dead-letter.v1',
+  [JOB_NAMES.SYNC_REFERENCE_DATA_V1]: 'freight.reference-data.sync.dead-letter.v1',
+};
+
 const id = z.string().uuid();
 const idempotencyKey = z.string().trim().min(1).max(255);
 
@@ -77,4 +84,3 @@ export function parseJobPayload<Name extends JobName>(
   }
   return result.data as JobPayloads[Name];
 }
-

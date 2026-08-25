@@ -25,6 +25,7 @@ describe('pg-boss worker bootstrap', () => {
         runtimeErrorHandler = handler;
       }),
       start: vi.fn().mockResolvedValue(undefined),
+      createQueue: vi.fn().mockResolvedValue(undefined),
     };
     const logger: WorkerLogger = { info: vi.fn(), error: vi.fn() };
     const createBoss = vi.fn().mockReturnValue(boss);
@@ -46,7 +47,11 @@ describe('pg-boss worker bootstrap', () => {
 
   it('propagates startup failures without logging credentials', async () => {
     const failure = new Error('connection refused for postgresql://worker:secret@db.test/freight');
-    const boss: BossLifecycle = { on: vi.fn(), start: vi.fn().mockRejectedValue(failure) };
+    const boss: BossLifecycle = {
+      on: vi.fn(),
+      start: vi.fn().mockRejectedValue(failure),
+      createQueue: vi.fn(),
+    };
     const logger: WorkerLogger = { info: vi.fn(), error: vi.fn() };
 
     await expect(startJobWorker({

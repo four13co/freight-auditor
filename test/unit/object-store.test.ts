@@ -48,6 +48,30 @@ describe('S3ObjectStore (Cloudflare R2-compatible)', () => {
     await expect(store.put(Buffer.from('same bytes'))).resolves.toMatchObject({ byteSize: 10 });
   });
 
+  it('converges concurrent writers on one immutable key and one stable result', async () => {
+    let created = false;
+    const send = vi.fn().mockImplementation(async (command: unknown) => {
+      expect(command).toBeInstanceOf(PutObjectCommand);
+      if (!created) {
+        created = true;
+        return {};
+      }
+      throw Object.assign(new Error('conditional write lost the race'), {
+        name: 'PreconditionFailed',
+        $metadata: { httpStatusCode: 412 },
+      });
+    });
+    const store = new S3ObjectStore({ client: clientWithSend(send), bucket: 'freight-evidence' });
+    const bytes = Buffer.from('one immutable payload');
+
+    const results = await Promise.all(Array.from({ length: 8 }, () => store.put(bytes)));
+
+    expect(new Set(results.map((result) => result.sha256)).size).toBe(1);
+    expect(new Set(results.map((result) => result.uri)).size).toBe(1);
+    expect(send).toHaveBeenCalledTimes(8);
+    expect(new Set(send.mock.calls.map(([command]) => command.input.Key)).size).toBe(1);
+  });
+
   it('propagates provider failures other than conditional-write conflicts', async () => {
     const store = new S3ObjectStore({
       client: clientWithSend(vi.fn().mockRejectedValue(new Error('R2 unavailable'))),

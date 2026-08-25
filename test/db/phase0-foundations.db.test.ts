@@ -215,6 +215,33 @@ describe('Phase 0 foundations (runtime)', () => {
     expect(second.ownedByCaller).toBe(true);
   });
 
+  it('AC4d: a cross-tenant hash collision creates one row without granting row visibility', async () => {
+    const store = new LocalDiskObjectStore(storeRoot);
+    const bytes = Buffer.from('ISA*00*...single-row-cross-tenant-proof...~');
+    const sha256 = sha256Hex(bytes);
+
+    const first = await withTenantTx({ clientIds: [clientA], internal: false }, async (c) =>
+      storeSourceDocument(c, store, { clientId: clientA, bytes }),
+    );
+    const second = await withTenantTx({ clientIds: [clientB], internal: false }, async (c) =>
+      storeSourceDocument(c, store, { clientId: clientB, bytes }),
+    );
+
+    const visibleToB = await withTenantTx({ clientIds: [clientB], internal: false }, async (c) => {
+      const result = await c.query<{ id: string }>(`SELECT id FROM source_document WHERE id = $1`, [first.id]);
+      return result.rows;
+    });
+    const owner = await pool.query<{ count: number }>(
+      `SELECT count(*)::int AS count FROM source_document WHERE sha256 = $1`,
+      [sha256],
+    );
+
+    expect(second.id).toBe(first.id);
+    expect(second.ownedByCaller).toBe(false);
+    expect(visibleToB).toEqual([]);
+    expect(owner.rows[0]!.count).toBe(1);
+  });
+
   it('AC5: crosswalk resolves the most-specific rule per precedence', async () => {
     // Client A has a client+carrier+code override (rank 4) → wins.
     const forA = await withTenantTx({ clientIds: [clientA], internal: false }, async (c) =>

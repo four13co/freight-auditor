@@ -1,5 +1,8 @@
 import { test, expect } from '@playwright/test';
 import { loginViaForm } from './login-form.js';
+import { assertSeeded } from './assert-seeded.js';
+import { E2E_AUTH_EMAIL, E2E_AUTH_PASSWORD } from '../../../scripts/seed-e2e-auth-user.mjs';
+import { FIXTURE_INVOICE_NUMBER } from '../../../scripts/seed-fullstack-e2e-fixture.mjs';
 
 // 86e2vqggf: proves the REAL better-auth session round trip end to end --
 // browser -> real login form -> real Fastify server -> real Postgres, no
@@ -23,23 +26,16 @@ import { loginViaForm } from './login-form.js';
 // getAuth().api.signUpEmail(...), membership-scoped to the same DEV_CLIENT_ID
 // seed-dev-tenant.mjs/seed-e2e-fullstack-fixture.mjs already seed, so no new
 // client or finding fixture is needed here.
-const E2E_AUTH_EMAIL = 'e2e-real-session@example.com';
-const E2E_AUTH_PASSWORD = 'e2e-real-session-password-86e2vqggf';
-const FIXTURE_INVOICE_NUMBER = 'E2E-FULLSTACK-001';
-
 test.beforeAll(async ({ request }) => {
   // Same "empty-table trap" guard as dashboard.fullstack.spec.ts: fail loudly
   // here if the seed prerequisites are missing, rather than let a later
   // assertion read as a UI bug.
-  const res = await request.post('/api/auth/sign-in/email', {
-    data: { email: E2E_AUTH_EMAIL, password: E2E_AUTH_PASSWORD },
+  await assertSeeded(request, {
+    check: () => request.post('/api/auth/sign-in/email', {
+      data: { email: E2E_AUTH_EMAIL, password: E2E_AUTH_PASSWORD },
+    }),
+    errorHint: "Has 'npm run seed:e2e-auth-user' been run against this database?",
   });
-  if (!res.ok()) {
-    throw new Error(
-      `Real-session e2e setup check failed: POST /api/auth/sign-in/email returned ${res.status()}. ` +
-        `Has 'npm run seed:e2e-auth-user' been run against this database?`,
-    );
-  }
 });
 
 test('AC1: full login -> dashboard round trip against the real-session (no DEV_AUTH_HEADERS) harness', async ({

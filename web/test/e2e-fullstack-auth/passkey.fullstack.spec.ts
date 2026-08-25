@@ -1,6 +1,8 @@
 import { test, expect } from '@playwright/test';
 import type { CDPSession, BrowserContext, Page } from '@playwright/test';
 import { loginViaForm } from './login-form.js';
+import { assertSeeded } from './assert-seeded.js';
+import { DEV_CLIENT_ID } from '../../../scripts/seed-dev-tenant.mjs';
 
 // 86e2v1bf1: proves the real passkey register -> sign-in round trip end to
 // end, reusing the real-session (no DEV_AUTH_HEADERS) harness from 86e2vqggf
@@ -40,12 +42,12 @@ test.beforeAll(async ({ request }) => {
   // user -- fail loudly if sign-up itself is broken, before any WebAuthn
   // ceremony is attempted (a failure there would otherwise look identical
   // to a virtual-authenticator problem).
-  const res = await request.post('/api/auth/sign-up/email', {
-    data: { email: PASSKEY_TEST_EMAIL, password: PASSKEY_TEST_PASSWORD, name: 'Passkey E2E Test' },
+  await assertSeeded(request, {
+    check: () => request.post('/api/auth/sign-up/email', {
+      data: { email: PASSKEY_TEST_EMAIL, password: PASSKEY_TEST_PASSWORD, name: 'Passkey E2E Test' },
+    }),
+    errorHint: 'Passkey test account sign-up failed before the WebAuthn ceremony.',
   });
-  if (!res.ok()) {
-    throw new Error(`Passkey e2e setup check failed: POST /api/auth/sign-up/email returned ${res.status()}.`);
-  }
 
   // 86e2wb92b: a real session alone proves WHO, not WHICH client -- App.tsx
   // waits on GET /api/auth/memberships resolving a client_id before ever
@@ -55,7 +57,6 @@ test.beforeAll(async ({ request }) => {
   // DEV_CLIENT_ID; this fresh sign-up needs the same, done directly against
   // the DB here since there's no HTTP endpoint that grants membership.
   const { withTenantTx } = await import('../../../src/db/tenant-context.js');
-  const { DEV_CLIENT_ID } = await import('../../../scripts/seed-dev-tenant.mjs');
   await withTenantTx({ internal: true }, async (client) => {
     await client.query(
       `INSERT INTO membership (user_id, client_id, role)

@@ -6,6 +6,7 @@ import { listGateFailures } from '../modules/findings/list-gate-failures.js';
 import { updateFindingStatus } from '../modules/findings/update-finding-status.js';
 import { registerTenantAuthPreHandler } from '../modules/findings/tenant-auth.js';
 import { ALL_VARIANCE_STATUSES, WRITABLE_VARIANCE_STATUSES } from '../shared/variance-status.js';
+import { isUuid } from '../shared/request-validation.js';
 
 // 86e2v892h: derived from the shared source (mirrors migrations/0002_enums.sql's
 // variance_status enum exactly) rather than a separate hand-maintained literal.
@@ -129,6 +130,11 @@ export async function registerFindingsRoutes(findingsRoutes: FastifyInstance): P
   findingsRoutes.patch('/api/findings/:id/status', async (request, reply) => {
     const { id } = request.params as { id: string };
     const body = request.body as { status?: unknown; note?: unknown };
+
+    if (!isUuid(id)) {
+      await reply.code(400).send({ error: 'invalid finding id: must be a well-formed UUID' });
+      return;
+    }
 
     if (typeof body.status !== 'string' || !WRITABLE_STATUS_VALUES.has(body.status)) {
       await reply

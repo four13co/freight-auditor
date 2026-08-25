@@ -7,7 +7,7 @@ import type { FastifyInstance } from 'fastify';
  * Postgres/better-auth instance. Complements test/db/auth-routes.db.test.ts,
  * which covers the real better-auth round-trip (sign-up/sign-in/session)
  * against a real DB and stays the source of truth there -- this file only
- * exercises app.ts's own req/res adaptation logic (method, headers, body,
+ * exercises auth-routes.ts's req/res adaptation logic (method, headers, body,
  * multi-value set-cookie, empty body).
  */
 describe('/api/auth/* mount (unit, mocked getAuth)', () => {

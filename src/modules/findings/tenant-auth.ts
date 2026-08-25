@@ -22,7 +22,7 @@ declare module 'fastify' {
  * unverified -- any caller could claim any UUID via a header).
  *
  * DEV_AUTH_HEADERS gates which identity source is trusted:
- *   - set: the x-client-id/x-user-id header pair (today's dev/CI/e2e
+ *   - exactly "1": the x-client-id/x-user-id header pair (today's dev/CI/e2e
  *     behavior, unchanged) -- Greg's explicit hard constraint is that this
  *     path must keep working exactly as before when the flag is set (the
  *     full-stack e2e suite and seeded fixture both depend on it).
@@ -107,7 +107,7 @@ export function toFetchHeaders(request: FastifyRequest): Headers {
  * no session-carrying header at all never needs a live DB connection to be
  * correctly rejected). A request that DOES present a cookie but hits a real
  * DB/session error surfaces as whatever error propagates -- the caller
- * (app.ts's preHandler) does not currently catch that, so it would 500,
+ * (the registered tenant-auth preHandler) does not catch that, so it would 500,
  * which is correct: that's a genuine backend fault, not "this caller is
  * unauthorized," and collapsing the two into the same 401 would hide a
  * production DB outage as silent mass-unauthorization.
@@ -130,7 +130,7 @@ async function resolveViaSession(request: FastifyRequest): Promise<TenantContext
  * Resolve and validate the request's tenant scope. Returns `null` when the
  * request should be rejected (no valid identity, missing/unmatched
  * x-client-id, or no membership row for the resolved user+client pair) --
- * the caller (app.ts's preHandler) turns that into a 401. A request that
+ * registerTenantAuthPreHandler turns that into a 401. A request that
  * presents no identity at all (no dev headers, no session cookie) is
  * rejected without touching the DB. A request that presents SOME identity
  * but hits a genuine backend fault while resolving it (DB unreachable,
@@ -141,7 +141,7 @@ async function resolveViaSession(request: FastifyRequest): Promise<TenantContext
 export async function resolveAuthorizedTenantContext(
   request: FastifyRequest,
 ): Promise<TenantContext | null> {
-  if (process.env.DEV_AUTH_HEADERS) return resolveViaDevHeaders(request);
+  if (process.env.DEV_AUTH_HEADERS === '1') return resolveViaDevHeaders(request);
   return resolveViaSession(request);
 }
 

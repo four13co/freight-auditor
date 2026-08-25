@@ -3,12 +3,8 @@ import { withTenantTx } from '../db/tenant-context.js';
 import { registerTenantAuthPreHandler } from '../modules/findings/tenant-auth.js';
 import { LocalDiskObjectStore } from '../modules/reference-data/object-store.js';
 import { ingestInvoice, UnparseableEdiError } from '../modules/ingestion/ingest-invoice.js';
-
-// Same object-store root convention as onboarding.ts's dev usage -- a fixed,
-// configurable local-disk root, defaulting to a repo-relative path so a
-// fresh checkout works without extra setup. Prod swaps this for an S3-backed
-// ObjectStore behind the same interface (object-store.ts's own doc comment).
-const OBJECT_STORE_ROOT = process.env.OBJECT_STORE_ROOT ?? './.data/object-store';
+import { objectStoreRoot, registerBufferContentTypeParser, requireNonEmptyBuffer, requireSingleClientId } from '../modules/ingestion/raw-upload-route.js';
+import { isUuid } from '../shared/request-validation.js';
 
 // 86e2xcn18: contract_version_id binds against a uuid column
 // (lookupContractRate's SQL, migration 0011) -- a non-UUID value throws
@@ -20,7 +16,6 @@ const OBJECT_STORE_ROOT = process.env.OBJECT_STORE_ROOT ?? './.data/object-store
 // gen_random_uuid()-generated ids in this repo already have) -- not
 // version-restrictive, since nothing here needs to assert a specific UUID
 // version.
-const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
  * 86e2v17u9: the first real EDI ingestion entry point -- POST /api/audit-runs
@@ -31,7 +26,7 @@ const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{
  * Encapsulated in its own domain module (86e2wb4zg's pattern) rather than
  * folded into findings-routes.ts -- a distinct resource (audit runs, not
  * findings) with its own preHandler instance, even though both instances
- * share the identical resolveAuthorizedTenantContext logic.
+ * opt into the shared registerTenantAuthPreHandler logic.
  *
  * Raw-body route: no @fastify/multipart (not installed, and unneeded -- EDI
  * is plain text per the item's own Solution). Registered with
@@ -39,24 +34,20 @@ const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{
  * /api/findings* keep Fastify's default JSON/form parsing untouched.
  */
 export async function registerAuditRunsRoutes(auditRunsRoutes: FastifyInstance): Promise<void> {
-  auditRunsRoutes.addContentTypeParser(
-    ['application/edi-x12', 'text/plain'],
-    { parseAs: 'buffer' },
-    (_request, body, done) => done(null, body),
-  );
+  registerBufferContentTypeParser(auditRunsRoutes, ['application/edi-x12', 'text/plain']);
 
   await registerTenantAuthPreHandler(auditRunsRoutes);
 
   auditRunsRoutes.post('/api/audit-runs', async (request, reply) => {
     const ctx = request.tenantContext!;
-    const clientId = ctx.clientIds?.[0];
+    const clientId = requireSingleClientId(ctx);
     if (!clientId) {
       await reply.code(401).send({ error: 'unauthorized' });
       return;
     }
 
-    const rawBytes = request.body;
-    if (!Buffer.isBuffer(rawBytes) || rawBytes.byteLength === 0) {
+    const rawBytes = requireNonEmptyBuffer(request.body);
+    if (!rawBytes) {
       await reply.code(400).send({ error: 'request body must be a non-empty raw EDI payload' });
       return;
     }
@@ -71,14 +62,14 @@ export async function registerAuditRunsRoutes(auditRunsRoutes: FastifyInstance):
     const query = request.query as Record<string, string | undefined>;
     const contractVersionId = query.contract_version_id;
 
-    if (contractVersionId !== undefined && !UUID_PATTERN.test(contractVersionId)) {
+    if (contractVersionId !== undefined && !isUuid(contractVersionId)) {
       await reply.code(400).send({ error: 'invalid contract_version_id: must be a well-formed UUID' });
       return;
     }
 
     try {
       const outcome = await withTenantTx(ctx, async (client) => {
-        const store = new LocalDiskObjectStore(OBJECT_STORE_ROOT);
+        const store = new LocalDiskObjectStore(objectStoreRoot());
         return ingestInvoice(client, store, {
           clientId,
           rawBytes,

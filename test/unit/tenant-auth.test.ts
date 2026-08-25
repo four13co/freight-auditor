@@ -216,6 +216,33 @@ describe('resolveAuthorizedTenantContext (DEV_AUTH_HEADERS unset -- the prod def
   });
 });
 
+describe.each(['0', 'false'])('resolveAuthorizedTenantContext (DEV_AUTH_HEADERS=%s)', (flag) => {
+  const originalFlag = process.env.DEV_AUTH_HEADERS;
+
+  afterEach(() => {
+    if (originalFlag === undefined) delete process.env.DEV_AUTH_HEADERS;
+    else process.env.DEV_AUTH_HEADERS = originalFlag;
+    vi.doUnmock('../../src/auth/better-auth.js');
+    vi.doUnmock('../../src/db/tenant-context.js');
+    vi.resetModules();
+  });
+
+  it('uses the real-session path instead of trusting dev headers', async () => {
+    process.env.DEV_AUTH_HEADERS = flag;
+    const getSession = vi.fn();
+    const withTenantTx = vi.fn();
+    vi.doMock('../../src/auth/better-auth.js', () => ({ getAuth: () => ({ api: { getSession } }) }));
+    vi.doMock('../../src/db/tenant-context.js', () => ({ withTenantTx }));
+    const { resolveAuthorizedTenantContext } = await import('../../src/modules/findings/tenant-auth.js');
+
+    const ctx = await resolveAuthorizedTenantContext(
+      mockRequest({ 'x-client-id': 'client-1', 'x-user-id': 'user-1' }),
+    );
+    expect(ctx).toBeNull();
+    expect(withTenantTx).not.toHaveBeenCalled();
+  });
+});
+
 /**
  * 86e2wb92b: unit coverage of listMembershipClientIds itself, with
  * withTenantTx mocked -- no live DB. The real query against real membership

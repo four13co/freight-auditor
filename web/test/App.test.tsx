@@ -10,7 +10,7 @@ import { render, screen, waitFor } from '@testing-library/react';
  * real better-auth session via useSession() shows the Dashboard; otherwise
  * LoginForm. useSession is mocked here (a component test, not an e2e) --
  * the real round-trip against a real session is proven in
- * web/test/e2e-fullstack/dashboard.fullstack.spec.ts's new login spec.
+ * web/test/e2e-fullstack-auth/real-session.fullstack.spec.ts.
  *
  * 86e2wb92b: fetch is mocked globally for this suite -- the real-session
  * path now fires fetchAndStoreClientId() (GET /api/auth/memberships) before

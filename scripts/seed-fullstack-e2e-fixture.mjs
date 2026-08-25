@@ -147,6 +147,7 @@ export async function seedFullstackE2eFixture({ pool } = {}) {
       const result = evaluateInvoice(invoice, CONTRACT_RUBRIC, { linehaulRate: rate });
       const persisted = await persistAuditRun(client, {
         clientId: DEV_CLIENT_ID,
+        carrierId,
         invoice,
         result,
         rubricSnapshotId: null,
@@ -154,13 +155,6 @@ export async function seedFullstackE2eFixture({ pool } = {}) {
 
       await assertVarianceFindingDerived(client, persisted.auditRunId);
 
-      // The pipeline (persistAuditRun) never writes invoice.carrier_id --
-      // that's a separate, still-open gap (see 86e2v17u9's bounce) this item
-      // doesn't need to solve generally. This seed script created the
-      // carrier itself and holds its id, so a direct, scoped UPDATE here
-      // (invoice is NOT append-only -- migration 0010) is sufficient to make
-      // this one demo invoice show a carrier name on the dashboard.
-      await client.query(`UPDATE invoice SET carrier_id = $1 WHERE id = $2`, [carrierId, persisted.invoiceId]);
     });
   } finally {
     if (ownedPool) await ownerPool.end();

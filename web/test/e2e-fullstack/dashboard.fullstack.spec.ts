@@ -1,4 +1,7 @@
 import { test, expect } from '@playwright/test';
+import { DEV_CLIENT_ID, DEV_USER_ID } from '../../../scripts/seed-dev-tenant.mjs';
+import { FIXTURE_CARRIER_NAME, FIXTURE_INVOICE_NUMBER } from '../../../scripts/seed-fullstack-e2e-fixture.mjs';
+import { assertSeeded } from '../e2e-fullstack-auth/assert-seeded.js';
 
 // 86e2uv4p0: full-stack e2e -- browser -> real Fastify server -> real
 // Postgres. This file has no route interception or fulfilled/faked responses
@@ -9,16 +12,9 @@ import { test, expect } from '@playwright/test';
 // starts -- see web/package.json's test:e2e:fullstack and the CI job in
 // .github/workflows/ci.yml.
 //
-// This proves the app works with the DEV AUTH STUB (the fixed x-client-id/
-// x-user-id headers web/src/lib/api.ts sends). It does NOT prove
-// authentication works -- there isn't any real auth yet (86e2urn3e is the
-// still-open decision on that). A green run here means "the dev stub's
-// contract holds end-to-end," nothing more.
-
-const DEV_CLIENT_ID = '11111111-1111-1111-1111-111111111111';
-const DEV_USER_ID = '22222222-2222-2222-2222-222222222222';
-const FIXTURE_INVOICE_NUMBER = 'E2E-FULLSTACK-001';
-const FIXTURE_CARRIER_NAME = 'E2E Fullstack Carrier';
+// This suite specifically proves the explicitly enabled dev-header identity
+// path. Real better-auth login/session behavior is covered separately by
+// e2e-fullstack-auth/real-session.fullstack.spec.ts.
 
 test.beforeAll(async ({ request }) => {
   // The empty-table trap (item's own rabbit hole): a dashboard with zero rows
@@ -26,24 +22,13 @@ test.beforeAll(async ({ request }) => {
   // pass on an unseeded DB while proving nothing. Fail loudly and specifically
   // here, before any test tries to find the fixture in the DOM and produces a
   // generic locator-timeout that reads like a UI bug instead of a missing seed.
-  const res = await request.get('/api/findings', {
-    headers: { 'x-client-id': DEV_CLIENT_ID, 'x-user-id': DEV_USER_ID },
+  await assertSeeded(request, {
+    check: () => request.get('/api/findings', { headers: { 'x-client-id': DEV_CLIENT_ID, 'x-user-id': DEV_USER_ID } }),
+    errorHint: "Has 'npm run seed:dev' and 'npm run seed:e2e-fullstack-fixture' been run against this database?",
+    validate: async (res) => ((await res.json()) as { findings: Array<{ invoiceNumber: string | null }> }).findings.some(
+      (finding) => finding.invoiceNumber === FIXTURE_INVOICE_NUMBER,
+    ),
   });
-  if (!res.ok()) {
-    throw new Error(
-      `Full-stack e2e setup check failed: GET /api/findings returned ${res.status()}. ` +
-        `Has 'npm run seed:dev' been run against this database?`,
-    );
-  }
-  const body = (await res.json()) as { findings: Array<{ invoiceNumber: string | null }> };
-  const hasFixture = body.findings.some((f) => f.invoiceNumber === FIXTURE_INVOICE_NUMBER);
-  if (!hasFixture) {
-    throw new Error(
-      `Full-stack e2e setup check failed: no finding with invoiceNumber="${FIXTURE_INVOICE_NUMBER}" found. ` +
-        `Has 'npm run seed:e2e-fullstack-fixture' been run against this database? ` +
-        `(Found ${body.findings.length} finding(s) total.)`,
-    );
-  }
 });
 
 test('AC1/AC2: dashboard loads findings and KPI values from the real API, no mocking', async ({ page }) => {

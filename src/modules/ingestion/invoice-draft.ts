@@ -15,6 +15,7 @@ import { STANDARD_RUBRIC } from '../rubric-resolver/standard-rubric.js';
 import { CONTRACT_RUBRIC } from '../rubric-resolver/contract-rubric.js';
 import { persistAuditRun, type PersistedRun } from '../evaluator/persist.js';
 import { lookupContractRate } from '../rate-engine/rate-lookup.js';
+import { z } from 'zod';
 
 /**
  * 86e2xb911: the PDF invoice draft/confirm flow. A new, separate path from
@@ -25,6 +26,34 @@ import { lookupContractRate } from '../rate-engine/rate-lookup.js';
 
 export class DraftNotFoundError extends Error {}
 export class DraftAlreadyConfirmedError extends Error {}
+export class DraftAlreadyFinalizedError extends Error {}
+export class CarrierRequiredError extends Error {}
+
+const CorrectedChargeSchema = z.object({
+  code: z.string().optional(),
+  x12Element: z.string().optional(),
+  category: z.string().optional(),
+  quarantined: z.boolean(),
+  amount: z.string().regex(/^-?\d+(\.\d+)?$/).optional(),
+  currency: z.string().min(1),
+  basis: z.string().optional(),
+  rate: z.string().optional(),
+  rawDescription: z.string().optional(),
+  sourceLoop: z.string().optional(),
+}).strict();
+
+export const CorrectedInvoiceSchema = z.object({
+  transactionSet: z.literal('PDF'),
+  parserVersion: z.literal('pdf-llm-v1'),
+  invoiceNumber: z.string().optional(),
+  headerCurrency: z.string().optional(),
+  charges: z.array(CorrectedChargeSchema).min(1),
+  footing: z.object({
+    declaredTotal: z.string().regex(/^-?\d+(\.\d+)?$/).optional(),
+    lineSum: z.string().regex(/^-?\d+(\.\d+)?$/),
+  }).strict().optional(),
+  quarantinedCodes: z.array(z.string()),
+}).strict();
 
 export interface CreateDraftInput {
   clientId: string;
@@ -77,14 +106,15 @@ export async function createInvoiceDraft(
     : 'extracted';
 
   const inserted = await client.query<{ id: string }>(
-    `INSERT INTO invoice_draft (client_id, source_document_id, status, extracted_payload, carrier_candidates, extraction_model)
-     VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+    `INSERT INTO invoice_draft (client_id, source_document_id, status, extracted_payload, carrier_candidates, resolved_carrier_id, extraction_model)
+     VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
     [
       input.clientId,
       doc.id,
       status,
       JSON.stringify(invoice),
       JSON.stringify(carrierMatch.candidates),
+      carrierMatch.carrierId,
       EXTRACTION_MODEL,
     ],
   );
@@ -117,11 +147,12 @@ interface DraftRow {
   source_document_id: string;
   extracted_payload: ParsedInvoice;
   corrected_payload: ParsedInvoice | null;
+  resolved_carrier_id: string | null;
 }
 
 async function loadDraft(client: pg.PoolClient, draftId: string): Promise<DraftRow> {
   const res = await client.query<DraftRow>(
-    `SELECT id, status, source_document_id, extracted_payload, corrected_payload FROM invoice_draft WHERE id = $1`,
+    `SELECT id, status, source_document_id, extracted_payload, corrected_payload, resolved_carrier_id FROM invoice_draft WHERE id = $1`,
     [draftId],
   );
   const row = res.rows[0];
@@ -145,8 +176,20 @@ export async function confirmInvoiceDraft(
   if (draft.status === 'confirmed') {
     throw new DraftAlreadyConfirmedError(`draft ${input.draftId} was already confirmed`);
   }
+  if (draft.status === 'rejected') {
+    throw new DraftAlreadyFinalizedError(`draft ${input.draftId} was already rejected`);
+  }
+  if (draft.status === 'needs_carrier_review' && !input.carrierId) {
+    throw new CarrierRequiredError(`draft ${input.draftId} requires a carrierId before confirmation`);
+  }
 
-  const finalInvoice = input.correctedPayload ?? draft.extracted_payload;
+  const finalInvoice = input.correctedPayload
+    ? {
+        ...input.correctedPayload,
+        transactionSet: draft.extracted_payload.transactionSet,
+        parserVersion: draft.extracted_payload.parserVersion,
+      }
+    : draft.extracted_payload;
 
   if (input.correctedPayload) {
     await recordCorrectionDiff(client, {
@@ -170,6 +213,7 @@ export async function confirmInvoiceDraft(
     invoice: finalInvoice,
     result,
     rubricSnapshotId: null,
+    carrierId: input.carrierId ?? draft.resolved_carrier_id ?? undefined,
   });
 
   await client.query(
@@ -180,6 +224,20 @@ export async function confirmInvoiceDraft(
   );
 
   return persisted;
+}
+
+export async function rejectInvoiceDraft(
+  client: pg.PoolClient,
+  draftId: string,
+): Promise<void> {
+  const draft = await loadDraft(client, draftId);
+  if (draft.status === 'confirmed' || draft.status === 'rejected') {
+    throw new DraftAlreadyFinalizedError(`draft ${draftId} was already ${draft.status}`);
+  }
+  await client.query(
+    `UPDATE invoice_draft SET status = 'rejected', updated_at = now() WHERE id = $1`,
+    [draftId],
+  );
 }
 
 // ParsedInvoice keys diffed as whole-value header fields (i.e. NOT the

@@ -24,9 +24,8 @@ export function buildApp(): FastifyInstance {
     logger: process.env.NODE_ENV !== 'test',
   });
 
-  // Static/health routes registered at top level -- must NOT be gated behind
-  // findings-routes.ts's tenant-auth preHandler (see that module's header
-  // comment for why).
+  // Static/health routes registered at top level -- must NOT opt into the
+  // shared registerTenantAuthPreHandler used by tenant-scoped route modules.
   void app.register(registerStaticRoutes);
 
   // Auth routes registered at top level -- must be reachable with only a

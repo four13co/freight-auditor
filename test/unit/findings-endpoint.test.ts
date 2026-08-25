@@ -290,14 +290,14 @@ describe('GET /api/findings (unit, mocked withTenantTx + tenant-auth)', () => {
 
       const res = await app.inject({
         method: 'PATCH',
-        url: '/api/findings/f1/status',
+        url: '/api/findings/11111111-1111-1111-1111-111111111111/status',
         headers: { 'x-client-id': 'client-abc', 'x-user-id': 'user-1', 'content-type': 'application/json' },
         payload: { status: 'in_review' },
       });
 
       expect(res.statusCode).toBe(200);
-      expect(res.json()).toEqual({ id: 'f1', status: 'in_review' });
-      expect(updateFindingStatus).toHaveBeenCalledWith({}, 'f1', 'in_review', undefined);
+      expect(res.json()).toEqual({ id: '11111111-1111-1111-1111-111111111111', status: 'in_review' });
+      expect(updateFindingStatus).toHaveBeenCalledWith({}, '11111111-1111-1111-1111-111111111111', 'in_review', undefined);
     });
 
     it('returns 404 without calling reply with a 200 when the finding is not found for this tenant', async () => {
@@ -312,7 +312,7 @@ describe('GET /api/findings (unit, mocked withTenantTx + tenant-auth)', () => {
 
       const res = await app.inject({
         method: 'PATCH',
-        url: '/api/findings/missing/status',
+        url: '/api/findings/22222222-2222-2222-2222-222222222222/status',
         headers: { 'x-client-id': 'client-abc', 'x-user-id': 'user-1', 'content-type': 'application/json' },
         payload: { status: 'in_review' },
       });
@@ -331,7 +331,7 @@ describe('GET /api/findings (unit, mocked withTenantTx + tenant-auth)', () => {
 
       const res = await app.inject({
         method: 'PATCH',
-        url: '/api/findings/f1/status',
+        url: '/api/findings/11111111-1111-1111-1111-111111111111/status',
         payload: { status: 'in_review' },
       });
       expect(res.statusCode).toBe(401);
@@ -378,7 +378,7 @@ describe('GET /api/findings (unit, mocked withTenantTx + tenant-auth)', () => {
 
       const res = await app.inject({
         method: 'PATCH',
-        url: '/api/findings/f1/status',
+        url: '/api/findings/11111111-1111-1111-1111-111111111111/status',
         headers: { 'x-client-id': 'client-abc', 'x-user-id': 'user-1', 'content-type': 'application/json' },
         payload: { status: 12345 },
       });
@@ -418,11 +418,11 @@ describe('GET /api/findings (unit, mocked withTenantTx + tenant-auth)', () => {
 
       await app.inject({
         method: 'PATCH',
-        url: '/api/findings/f1/status',
+        url: '/api/findings/11111111-1111-1111-1111-111111111111/status',
         headers: { 'x-client-id': 'client-abc', 'x-user-id': 'user-1', 'content-type': 'application/json' },
         payload: { status: 'closed', note: 'analyst note' },
       });
-      expect(updateFindingStatus).toHaveBeenCalledWith({}, 'f1', 'closed', 'analyst note');
+      expect(updateFindingStatus).toHaveBeenCalledWith({}, '11111111-1111-1111-1111-111111111111', 'closed', 'analyst note');
     });
   });
 

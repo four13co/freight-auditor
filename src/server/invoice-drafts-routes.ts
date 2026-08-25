@@ -1,17 +1,21 @@
-import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
-import { withTenantTx, type TenantContext } from '../db/tenant-context.js';
-import { resolveAuthorizedTenantContext } from '../modules/findings/tenant-auth.js';
+import type { FastifyInstance } from 'fastify';
+import { withTenantTx } from '../db/tenant-context.js';
+import { registerTenantAuthPreHandler } from '../modules/findings/tenant-auth.js';
 import { LocalDiskObjectStore } from '../modules/reference-data/object-store.js';
 import {
   createInvoiceDraft,
   confirmInvoiceDraft,
   DraftNotFoundError,
   DraftAlreadyConfirmedError,
+  DraftAlreadyFinalizedError,
+  CarrierRequiredError,
+  CorrectedInvoiceSchema,
+  rejectInvoiceDraft,
   UnextractablePdfError,
 } from '../modules/ingestion/invoice-draft.js';
+import { objectStoreRoot, registerBufferContentTypeParser, requireNonEmptyBuffer, requireSingleClientId } from '../modules/ingestion/raw-upload-route.js';
+import { isUuid } from '../shared/request-validation.js';
 import type { ParsedInvoice } from '../modules/ingestion/charge-fact.js';
-
-const OBJECT_STORE_ROOT = process.env.OBJECT_STORE_ROOT ?? './.data/object-store';
 
 /**
  * 86e2xb911: PDF invoice upload -> LLM-extracted draft -> human review/
@@ -23,38 +27,26 @@ const OBJECT_STORE_ROOT = process.env.OBJECT_STORE_ROOT ?? './.data/object-store
  * audit-runs-routes.ts, scoped to this plugin instance only.
  */
 export async function registerInvoiceDraftsRoutes(routes: FastifyInstance): Promise<void> {
-  routes.addContentTypeParser(
-    ['application/pdf'],
-    { parseAs: 'buffer' },
-    (_request, body, done) => done(null, body),
-  );
-
-  routes.addHook('preHandler', async (request: FastifyRequest, reply: FastifyReply) => {
-    const ctx = await resolveAuthorizedTenantContext(request);
-    if (!ctx) {
-      await reply.code(401).send({ error: 'unauthorized' });
-      return;
-    }
-    (request as FastifyRequest & { tenantContext: TenantContext }).tenantContext = ctx;
-  });
+  registerBufferContentTypeParser(routes, ['application/pdf']);
+  await registerTenantAuthPreHandler(routes);
 
   routes.post('/api/invoice-drafts', async (request, reply) => {
-    const ctx = (request as FastifyRequest & { tenantContext: TenantContext }).tenantContext;
-    const clientId = ctx.clientIds?.[0];
+    const ctx = request.tenantContext!;
+    const clientId = requireSingleClientId(ctx);
     if (!clientId) {
       await reply.code(401).send({ error: 'unauthorized' });
       return;
     }
 
-    const pdfBytes = request.body;
-    if (!Buffer.isBuffer(pdfBytes) || pdfBytes.byteLength === 0) {
+    const pdfBytes = requireNonEmptyBuffer(request.body);
+    if (!pdfBytes) {
       await reply.code(400).send({ error: 'request body must be a non-empty PDF payload' });
       return;
     }
 
     try {
       const draft = await withTenantTx(ctx, async (client) => {
-        const store = new LocalDiskObjectStore(OBJECT_STORE_ROOT);
+        const store = new LocalDiskObjectStore(objectStoreRoot());
         return createInvoiceDraft(client, store, {
           clientId,
           pdfBytes,
@@ -77,28 +69,48 @@ export async function registerInvoiceDraftsRoutes(routes: FastifyInstance): Prom
   });
 
   routes.post('/api/invoice-drafts/:id/confirm', async (request, reply) => {
-    const ctx = (request as FastifyRequest & { tenantContext: TenantContext }).tenantContext;
-    const clientId = ctx.clientIds?.[0];
+    const ctx = request.tenantContext!;
+    const clientId = requireSingleClientId(ctx);
     if (!clientId) {
       await reply.code(401).send({ error: 'unauthorized' });
       return;
     }
 
     const { id } = request.params as { id: string };
-    const body = (request.body ?? {}) as {
-      correctedPayload?: ParsedInvoice;
-      carrierId?: string;
-      contractVersionId?: string;
-    };
+    const body = (request.body ?? {}) as Record<string, unknown>;
+    if (!isUuid(id)) {
+      await reply.code(400).send({ error: 'invalid draft id: must be a well-formed UUID' });
+      return;
+    }
+    if (body.carrierId !== undefined && (typeof body.carrierId !== 'string' || !isUuid(body.carrierId))) {
+      await reply.code(400).send({ error: 'invalid carrierId: must be a well-formed UUID' });
+      return;
+    }
+    if (body.contractVersionId !== undefined && (typeof body.contractVersionId !== 'string' || !isUuid(body.contractVersionId))) {
+      await reply.code(400).send({ error: 'invalid contractVersionId: must be a well-formed UUID' });
+      return;
+    }
+    const corrected = body.correctedPayload === undefined
+      ? undefined
+      : CorrectedInvoiceSchema.safeParse(body.correctedPayload);
+    if (corrected && !corrected.success) {
+      await reply.code(400).send({ error: 'invalid correctedPayload', details: corrected.error.issues });
+      return;
+    }
 
     try {
       const result = await withTenantTx(ctx, async (client) =>
         confirmInvoiceDraft(client, {
           clientId,
           draftId: id,
-          correctedPayload: body.correctedPayload,
-          carrierId: body.carrierId,
-          contractVersionId: body.contractVersionId,
+          correctedPayload: corrected?.data
+            ? {
+                ...corrected.data,
+                charges: corrected.data.charges.map((charge) => ({ ...charge, amount: charge.amount })),
+              } satisfies ParsedInvoice
+            : undefined,
+          carrierId: body.carrierId as string | undefined,
+          contractVersionId: body.contractVersionId as string | undefined,
         }),
       );
       await reply.code(201).send({ auditRunId: result.auditRunId });
@@ -108,6 +120,41 @@ export async function registerInvoiceDraftsRoutes(routes: FastifyInstance): Prom
         return;
       }
       if (err instanceof DraftAlreadyConfirmedError) {
+        await reply.code(409).send({ error: err.message });
+        return;
+      }
+      if (err instanceof DraftAlreadyFinalizedError) {
+        await reply.code(409).send({ error: err.message });
+        return;
+      }
+      if (err instanceof CarrierRequiredError) {
+        await reply.code(422).send({ error: err.message });
+        return;
+      }
+      throw err;
+    }
+  });
+
+  routes.post('/api/invoice-drafts/:id/reject', async (request, reply) => {
+    const ctx = request.tenantContext!;
+    if (!requireSingleClientId(ctx)) {
+      await reply.code(401).send({ error: 'unauthorized' });
+      return;
+    }
+    const { id } = request.params as { id: string };
+    if (!isUuid(id)) {
+      await reply.code(400).send({ error: 'invalid draft id: must be a well-formed UUID' });
+      return;
+    }
+    try {
+      await withTenantTx(ctx, (client) => rejectInvoiceDraft(client, id));
+      await reply.code(200).send({ id, status: 'rejected' });
+    } catch (err) {
+      if (err instanceof DraftNotFoundError) {
+        await reply.code(404).send({ error: err.message });
+        return;
+      }
+      if (err instanceof DraftAlreadyFinalizedError) {
         await reply.code(409).send({ error: err.message });
         return;
       }

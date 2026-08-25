@@ -17,6 +17,7 @@ import { resolveCriterionIds } from './resolve-criterion-ids.js';
 
 export interface PersistInput {
   clientId: string;
+  carrierId?: string;
   invoice: ParsedInvoice;
   result: AuditResult;
   /** A rubric_snapshot row id (pre-seeded); pins the run for reproducibility. */
@@ -40,9 +41,9 @@ export async function persistAuditRun(
   // 1. invoice header (always persisted — the audit trail covers rejected
   // invoices too, via gate_failure below).
   const inv = await client.query<{ id: string }>(
-    `INSERT INTO invoice (client_id, transaction_set, invoice_number, currency, parser_version)
-     VALUES ($1, $2, $3, $4, $5) RETURNING id`,
-    [clientId, invoice.transactionSet, invoice.invoiceNumber ?? null, invoice.headerCurrency ?? null, invoice.parserVersion],
+    `INSERT INTO invoice (client_id, carrier_id, transaction_set, invoice_number, currency, parser_version)
+     VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+    [clientId, input.carrierId ?? null, invoice.transactionSet, invoice.invoiceNumber ?? null, invoice.headerCurrency ?? null, invoice.parserVersion],
   );
   const invoiceId = inv.rows[0]!.id;
 

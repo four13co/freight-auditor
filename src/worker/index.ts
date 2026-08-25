@@ -1,7 +1,8 @@
-import { startJobWorker } from '../jobs/boss.js';
+import { installWorkerShutdown, startJobWorker } from '../jobs/boss.js';
 
 async function main(): Promise<void> {
-  await startJobWorker();
+  const boss = await startJobWorker();
+  installWorkerShutdown(boss);
 }
 
 void main().catch((error: unknown) => {

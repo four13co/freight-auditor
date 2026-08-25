@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import PgBoss from 'pg-boss';
 import {
   createJobBoss,
+  installWorkerShutdown,
   requireWorkerDatabaseUrl,
   startJobWorker,
   type BossLifecycle,
@@ -26,6 +27,7 @@ describe('pg-boss worker bootstrap', () => {
       }),
       start: vi.fn().mockResolvedValue(undefined),
       createQueue: vi.fn().mockResolvedValue(undefined),
+      stop: vi.fn().mockResolvedValue(undefined),
     };
     const logger: WorkerLogger = { info: vi.fn(), error: vi.fn() };
     const createBoss = vi.fn().mockReturnValue(boss);
@@ -51,6 +53,7 @@ describe('pg-boss worker bootstrap', () => {
       on: vi.fn(),
       start: vi.fn().mockRejectedValue(failure),
       createQueue: vi.fn(),
+      stop: vi.fn(),
     };
     const logger: WorkerLogger = { info: vi.fn(), error: vi.fn() };
 
@@ -61,5 +64,22 @@ describe('pg-boss worker bootstrap', () => {
     })).rejects.toBe(failure);
     expect(logger.info).not.toHaveBeenCalled();
     expect(logger.error).not.toHaveBeenCalled();
+  });
+
+  it('drains once on SIGTERM/SIGINT and closes the queue connection', async () => {
+    const listeners = new Map<string, () => void>();
+    const signals = { once: vi.fn((signal: string, listener: () => void) => listeners.set(signal, listener)) };
+    const stop = vi.fn().mockResolvedValue(undefined);
+    const logger: WorkerLogger = { info: vi.fn(), error: vi.fn() };
+    const onStopped = vi.fn();
+
+    installWorkerShutdown({ stop }, logger, signals as never, onStopped);
+    listeners.get('SIGTERM')!();
+    listeners.get('SIGINT')!();
+    await vi.waitFor(() => expect(onStopped).toHaveBeenCalledOnce());
+
+    expect(stop).toHaveBeenCalledOnce();
+    expect(stop).toHaveBeenCalledWith({ graceful: true, wait: true, close: true, timeout: 30_000 });
+    expect(logger.info).toHaveBeenCalledWith('job worker stopped');
   });
 });

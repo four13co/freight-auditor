@@ -12,6 +12,7 @@ export interface BossLifecycle {
   on(event: 'error', handler: (error: Error) => void): unknown;
   start(): Promise<unknown>;
   createQueue(name: string, options?: PgBoss.Queue): Promise<void>;
+  stop(options?: PgBoss.StopOptions): Promise<void>;
 }
 
 export interface StartWorkerOptions {
@@ -31,6 +32,8 @@ export function createJobBoss(databaseUrl: string): PgBoss {
     connectionString: databaseUrl,
     application_name: 'freight-auditor-worker',
     schema: 'pgboss',
+    supervise: true,
+    maintenanceIntervalSeconds: 30,
   });
 }
 
@@ -50,4 +53,34 @@ export async function startJobWorker(options: StartWorkerOptions = {}): Promise<
   await registerJobQueues(boss);
   logger.info('job worker started');
   return boss;
+}
+
+interface SignalSource {
+  once(signal: NodeJS.Signals, listener: () => void): unknown;
+}
+
+export function installWorkerShutdown(
+  boss: Pick<BossLifecycle, 'stop'>,
+  logger: WorkerLogger = console,
+  signals: SignalSource = process,
+  onStopped: () => void = () => undefined,
+): void {
+  let stopping = false;
+  const stop = () => {
+    if (stopping) return;
+    stopping = true;
+    logger.info('job worker stopping');
+    void boss.stop({ graceful: true, wait: true, close: true, timeout: 30_000 })
+      .then(() => {
+        logger.info('job worker stopped');
+        onStopped();
+      })
+      .catch((error: unknown) => {
+        const errorName = error instanceof Error ? error.name : 'UnknownError';
+        logger.error('job worker shutdown error', { errorName });
+        onStopped();
+      });
+  };
+  signals.once('SIGTERM', stop);
+  signals.once('SIGINT', stop);
 }

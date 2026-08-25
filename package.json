@@ -12,6 +12,7 @@
     "start": "node dist/server/index.js",
     "worker:start": "node dist/worker/index.js",
     "worker:dev": "tsx watch src/worker/index.ts",
+    "worker:metrics": "node dist/worker/metrics.js",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "test:watch": "vitest",

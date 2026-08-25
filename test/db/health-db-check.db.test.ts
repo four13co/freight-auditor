@@ -23,4 +23,19 @@ describe('GET /health against a live database', () => {
       await app.close();
     }
   });
+
+  it('reports ready when Postgres and the configured local test store are reachable', async () => {
+    const app = buildApp();
+    try {
+      const res = await app.inject({ method: 'GET', url: '/ready' });
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toMatchObject({
+        status: 'ready',
+        database: 'ok',
+        object_store: 'ok',
+      });
+    } finally {
+      await app.close();
+    }
+  });
 });

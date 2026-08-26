@@ -177,7 +177,7 @@ describe('Phase 0 foundations (runtime)', () => {
     expect((await store.get(expectedSha)).equals(bytes)).toBe(true);
   });
 
-  it('AC4b: cross-tenant sha256 collision returns the existing ref instead of throwing', async () => {
+  it('AC4b: identical cross-tenant bytes share storage but receive isolated metadata refs', async () => {
     const store = new LocalDiskObjectStore(storeRoot);
     const bytes = Buffer.from('ISA*00*...shared-carrier-boilerplate...~');
     const expectedSha = sha256Hex(bytes);
@@ -193,14 +193,14 @@ describe('Phase 0 foundations (runtime)', () => {
     );
 
     expect(first.created).toBe(true);
-    expect(second.created).toBe(false); // no duplicate row inserted for B
-    expect(second.id).toBe(first.id);
+    expect(second.created).toBe(true);
+    expect(second.id).not.toBe(first.id);
     expect(second.sha256).toBe(expectedSha);
     expect(second.storageUri).toBe(first.storageUri);
     expect(second.byteSize).toBe(first.byteSize);
   });
 
-  it('AC4c: ownedByCaller distinguishes the creating tenant from a cross-tenant collision', async () => {
+  it('AC4c: tenant-local dedup references are always owned by the caller', async () => {
     const store = new LocalDiskObjectStore(storeRoot);
     const bytes = Buffer.from('ISA*00*...another-shared-boilerplate...~');
 
@@ -212,7 +212,7 @@ describe('Phase 0 foundations (runtime)', () => {
     );
 
     expect(first.ownedByCaller).toBe(true);
-    expect(second.ownedByCaller).toBe(false);
+    expect(second.ownedByCaller).toBe(true);
   });
 
   it('AC5: crosswalk resolves the most-specific rule per precedence', async () => {

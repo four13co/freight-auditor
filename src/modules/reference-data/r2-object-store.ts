@@ -10,18 +10,22 @@ export interface R2ObjectStoreConfig {
   prefix?: string;
 }
 
+interface R2Client {
+  send(command: object): Promise<{ Body?: { transformToByteArray(): Promise<Uint8Array> } }>;
+}
+
 /** Cloudflare R2's S3-compatible, immutable content-addressed object store. */
 export class R2ObjectStore implements ObjectStore {
-  private readonly client: S3Client;
+  private readonly client: R2Client;
   private readonly prefix: string;
 
-  constructor(private readonly config: R2ObjectStoreConfig) {
+  constructor(private readonly config: R2ObjectStoreConfig, client?: R2Client) {
     this.prefix = config.prefix?.replace(/^\/+|\/+$/g, '') ?? 'source-documents';
-    this.client = new S3Client({
+    this.client = client ?? new S3Client({
       region: 'auto',
       endpoint: `https://${config.accountId}.r2.cloudflarestorage.com`,
       credentials: { accessKeyId: config.accessKeyId, secretAccessKey: config.secretAccessKey },
-    });
+    }) as unknown as R2Client;
   }
 
   private key(sha256: string): string {
@@ -43,13 +47,21 @@ export class R2ObjectStore implements ObjectStore {
     const sha256 = sha256Hex(bytes);
     const key = this.key(sha256);
     if (!(await this.has(sha256))) {
-      await this.client.send(new PutObjectCommand({
-        Bucket: this.config.bucket,
-        Key: key,
-        Body: bytes,
-        ChecksumSHA256: Buffer.from(sha256, 'hex').toString('base64'),
-        Metadata: { sha256 },
-      }));
+      try {
+        await this.client.send(new PutObjectCommand({
+          Bucket: this.config.bucket,
+          Key: key,
+          Body: bytes,
+          IfNoneMatch: '*',
+          ChecksumSHA256: Buffer.from(sha256, 'hex').toString('base64'),
+          Metadata: { sha256 },
+        }));
+      } catch (error) {
+        // Another writer won the HEAD→PUT race. If-None-Match guarantees it
+        // could not overwrite an existing immutable object.
+        const status = (error as { $metadata?: { httpStatusCode?: number } }).$metadata?.httpStatusCode;
+        if (status !== 412) throw error;
+      }
     }
     return { sha256, uri: `r2://${this.config.bucket}/${key}`, byteSize: bytes.byteLength };
   }

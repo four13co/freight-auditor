@@ -7,16 +7,13 @@ import type { ObjectStore } from './object-store.js';
  * row pointing at them. Both layers are idempotent on the sha256:
  *
  *   - the object store writes the bytes at most once;
- *   - the row insert uses `ON CONFLICT (sha256) DO NOTHING` and returns the
+ *   - the row insert uses tenant+sha conflict handling and returns the
  *     existing row, so re-ingesting identical bytes never duplicates storage
  *     — even across tenants, since sha256 is a global unique index while the
  *     table itself is RLS-scoped by client_id.
  *
- * This is dedup, not tenant-symmetric idempotency: on a cross-tenant sha256
- * collision, the returned `id` belongs to whichever tenant stored the bytes
- * first, and `ownedByCaller` on the result is `false` for every other tenant
- * — that id is invisible to their own future non-internal queries (RLS), so
- * callers must not persist it as a foreign key into a tenant-scoped table.
+ * R2 may share the physical content-addressed blob across tenants, but each
+ * tenant receives its own RLS-scoped metadata row and foreign-key-safe id.
  *
  * Must be called inside a tenant transaction (withTenantTx) — the insert is
  * subject to RLS on source_document.
@@ -54,7 +51,7 @@ export async function storeSourceDocument(
   const inserted = await client.query<{ id: string }>(
     `INSERT INTO source_document (client_id, sha256, content_type, byte_size, storage_uri)
      VALUES ($1, $2, $3, $4, $5)
-     ON CONFLICT (sha256) DO NOTHING
+     ON CONFLICT (client_id, sha256) DO NOTHING
      RETURNING id`,
     [input.clientId, sha256, input.contentType ?? null, byteSize, uri],
   );
@@ -70,30 +67,11 @@ export async function storeSourceDocument(
     };
   }
 
-  // Conflict: an identical document already exists. The UNIQUE(sha256) index is
-  // global while source_document is RLS-scoped by client_id, so the existing row
-  // may belong to a *different* tenant than the caller's transaction scope — the
-  // fallback SELECT under that scope then sees zero rows. Since the content is
-  // already known-identical (same sha256/uri/byteSize from the content-addressed
-  // store.put() above), only the row `id` needs cross-tenant resolution: widen to
-  // an internal-scoped lookup for just this query, then restore the caller's
-  // original scope so the rest of their transaction keeps its original isolation.
-  const priorInternal = await client.query<{ v: string | null }>(
-    `SELECT current_setting('app.is_internal', true) AS v`,
+  const existing = await client.query<{ id: string }>(
+    `SELECT id FROM source_document WHERE client_id IS NOT DISTINCT FROM $1 AND sha256 = $2`,
+    [input.clientId, sha256],
   );
-  await client.query(`SELECT set_config('app.is_internal', 'true', true)`);
-  let row: { id: string; client_id: string | null } | undefined;
-  try {
-    const existing = await client.query<{ id: string; client_id: string | null }>(
-      `SELECT id, client_id FROM source_document WHERE sha256 = $1`,
-      [sha256],
-    );
-    row = existing.rows[0];
-  } finally {
-    await client.query(`SELECT set_config('app.is_internal', $1, true)`, [
-      priorInternal.rows[0]?.v ?? 'false',
-    ]);
-  }
+  const row = existing.rows[0];
   if (!row) {
     // Genuinely unreachable: ON CONFLICT fired, so a row with this sha256
     // exists somewhere — the internal-scoped lookup above sees every tenant.
@@ -105,6 +83,6 @@ export async function storeSourceDocument(
     storageUri: uri,
     byteSize,
     created: false,
-    ownedByCaller: row.client_id === input.clientId,
+    ownedByCaller: true,
   };
 }

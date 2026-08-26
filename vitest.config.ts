@@ -53,11 +53,11 @@ export default defineConfig({
         'src/server/evidence-routes.ts',
         'src/server/rule-governance-routes.ts',
         // Contract uploads have focused request tests plus real Postgres/RLS
-        // coverage in test:db. The handler and R2 transport entered this unit
-        // gate only through app.ts; credentialed R2 I/O is an external
-        // provider boundary, not something the unit coverage job can call.
+        // coverage in test:db. The handler entered this unit gate only through
+        // app.ts; its transaction boundary follows the same policy as the
+        // evidence/governance handlers above. R2 itself has a deterministic
+        // provider-contract suite with an injected SDK client.
         'src/server/contracts-routes.ts',
-        'src/modules/reference-data/r2-object-store.ts',
         // pdf-extract.ts's PDF-text-extraction step (extractInvoiceFromPdf) IS
         // unit-tested for real against real generated PDF bytes with an
         // injected LLM impl (test/unit/pdf-extract.test.ts, 6 tests) -- only

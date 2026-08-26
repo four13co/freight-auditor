@@ -20,6 +20,14 @@ export function parse310(raw: string, categorize: Categorize): ParsedInvoice {
   const ix = parseEdiEnvelope(raw, 'IO');
   const { invoiceNumber, declaredTotal } = readB3Header(ix);
   const shipmentReferences = normalizeReferences(segmentsByTag(ix, 'N9').map((segment) => el(segment, 2)));
+  const containerNumbers = normalizeReferences(segmentsByTag(ix, 'N7').map((segment) => {
+    const prefix = el(segment, 1);
+    const number = el(segment, 2);
+    return prefix && number ? `${prefix}${number}` : undefined;
+  }));
+  const vessel = firstSegment(ix, 'V1');
+  const vesselVoyage = normalizeReferences([el(vessel, 4) ?? el(vessel, 2) ?? el(vessel, 1)])[0];
+  const portCodes = normalizeReferences(segmentsByTag(ix, 'R4').map((segment) => el(segment, 2) ?? el(segment, 3)));
 
   // C3 = currency segment; C3-01 is the interchange-level currency, if declared.
   const c3 = firstSegment(ix, 'C3');
@@ -38,6 +46,9 @@ export function parse310(raw: string, categorize: Categorize): ParsedInvoice {
     parserVersion: PARSER_310_VERSION,
     invoiceNumber,
     shipmentReferences,
+    containerNumbers,
+    vesselVoyage,
+    portCodes,
     headerCurrency: interchangeCurrency,
     charges,
     footing: buildFooting(declaredTotal, charges),

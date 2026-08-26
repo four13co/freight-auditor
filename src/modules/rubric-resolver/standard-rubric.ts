@@ -130,6 +130,20 @@ export const STANDARD_RUBRIC: ComposedRubric = {
       citation: 'Motor-carrier invoice must state B3-11 Standard Carrier Alpha Code.',
       ast: { type: 'compare', op: 'eq', left: { type: 'fact', key: 'required_210_scac' }, right: { type: 'lit', value: true } },
     },
+    ...[
+      ['STD.310.INVOICE_NUMBER_REQUIRED', 38, 'required_310_invoice_number', 'B3-02 invoice number'],
+      ['STD.310.REFERENCE_REQUIRED', 40, 'required_310_reference', 'N9 shipment reference'],
+      ['STD.310.CONTAINER_REQUIRED', 42, 'required_310_container', 'N7 container identity'],
+      ['STD.310.VESSEL_VOYAGE_REQUIRED', 44, 'required_310_vessel_voyage', 'V1 vessel/voyage'],
+      ['STD.310.PORTS_REQUIRED', 46, 'required_310_ports', 'origin and destination R4 ports'],
+    ].map(([criterionKey, evalOrder, key, field]) => ({
+      criterionKey: criterionKey as string,
+      kind: 'GATING' as const,
+      evalOrder: evalOrder as number,
+      description: `EDI 310 states its ${field}.`,
+      citation: `Ocean freight invoice must state ${field}.`,
+      ast: { type: 'compare' as const, op: 'eq' as const, left: { type: 'fact' as const, key: key as string }, right: { type: 'lit' as const, value: true } },
+    })),
     // ---- SCORING criteria (per-criterion observations on a valid invoice) ----
     {
       criterionKey: 'STD.NO_QUARANTINED_CODES',

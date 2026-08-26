@@ -15,6 +15,9 @@ const ISA_310 =
   'ISA*00*          *00*          *ZZ*SENDER         *ZZ*RECEIVER       *260703*1200*U*00401*000000002*0*P*>~' +
   'GS*IO*SENDER*RECEIVER*20260703*1200*2*X*004010~';
 
+const OCEAN_REQUIRED =
+  'N9*BM*BOOK310001~N7*MSCU*1234567~V1*IMO1234567*VESSEL**VOY42~R4*L*USLAX~R4*D*CNSHA~';
+
 /**
  * GOLDEN 210 — a well-formed motor invoice that FOOTS.
  * B3-07 declared total = 1250.00; two L1 charges: 1000.00 (LINEHAUL) + 250.00 (FUEL).
@@ -53,6 +56,7 @@ export const GOLDEN_310 =
   'ST*310*0002~' +
   'B3**INV310002*****3150.00***~' +
   'C3*USD~' +
+  OCEAN_REQUIRED +
   'L1*1***3000.00****500****Ocean Freight********USD~' +
   'L1*2***150.00****510****Documentation Fee********EUR~' +
   'SE*6*0002~';
@@ -88,6 +92,7 @@ export const MALFORMED_310_NOCURRENCY =
   ISA_310 +
   'ST*310*0004~' +
   'B3**INV310004*****500.00***~' +
+  OCEAN_REQUIRED +
   'L1*1***500.00****500****Ocean Freight~' +
   'SE*4*0004~';
 
@@ -132,6 +137,7 @@ export const MALFORMED_310_BADAMOUNT =
   'ST*310*0007~' +
   'B3**INV310007*****N/A***~' +
   'C3*USD~' +
+  OCEAN_REQUIRED +
   'L1*1***500.00****500****Ocean Freight********USD~' +
   'SE*5*0007~';
 
@@ -157,6 +163,7 @@ export const MISMATCHED_GROUP_310 =
   'ST*310*0007~' +
   'B3**INV310007*****100.00***~' +
   'C3*USD~' +
+  OCEAN_REQUIRED +
   'L1*1***100.00****500****Ocean Freight~' +
   'SE*5*0007~';
 
@@ -173,6 +180,7 @@ export const MIXED_CURRENCY_LINEHAUL_310 =
   'ST*310*0008~' +
   'B3**INV310008*****2000.00***~' +
   'C3*USD~' +
+  OCEAN_REQUIRED +
   'L1*1***1000.00****400****Linehaul Leg 1********USD~' +
   'L1*2***1000.00****400****Linehaul Leg 2********EUR~' +
   'SE*6*0008~';

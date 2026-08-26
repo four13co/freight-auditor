@@ -37,6 +37,9 @@ export interface ParsedInvoice {
   shipmentReferences?: string[];
   /** Carrier SCAC where the source transaction set declares it (B3-11 for 210). */
   carrierCode?: string;
+  containerNumbers?: string[];
+  vesselVoyage?: string;
+  portCodes?: string[];
   /** Header currency where the set declares one (210 often does; 310 is per-charge). */
   headerCurrency?: string;
   charges: NormalizedCharge[];

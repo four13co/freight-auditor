@@ -50,6 +50,9 @@ export const CorrectedInvoiceSchema = z.object({
   invoiceNumber: z.string().optional(),
   shipmentReferences: z.array(z.string().min(1)).optional(),
   carrierCode: z.string().optional(),
+  containerNumbers: z.array(z.string().min(1)).optional(),
+  vesselVoyage: z.string().optional(),
+  portCodes: z.array(z.string().min(1)).optional(),
   headerCurrency: z.string().optional(),
   charges: z.array(CorrectedChargeSchema).min(1),
   footing: z.object({

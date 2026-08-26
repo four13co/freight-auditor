@@ -52,6 +52,11 @@ export function buildFactBundle(inv: ParsedInvoice, contract?: ContractFacts): F
     required_210_invoice_number: inv.transactionSet !== '210' || Boolean(inv.invoiceNumber?.trim()),
     required_210_shipment_id: inv.transactionSet !== '210' || Boolean(inv.shipmentReferences?.length),
     required_210_scac: inv.transactionSet !== '210' || Boolean(inv.carrierCode?.trim()),
+    required_310_invoice_number: inv.transactionSet !== '310' || Boolean(inv.invoiceNumber?.trim()),
+    required_310_reference: inv.transactionSet !== '310' || Boolean(inv.shipmentReferences?.length),
+    required_310_container: inv.transactionSet !== '310' || Boolean(inv.containerNumbers?.length),
+    required_310_vessel_voyage: inv.transactionSet !== '310' || Boolean(inv.vesselVoyage?.trim()),
+    required_310_ports: inv.transactionSet !== '310' || (inv.portCodes?.length ?? 0) >= 2,
   };
 
   if (contract?.linehaulRate !== undefined) {

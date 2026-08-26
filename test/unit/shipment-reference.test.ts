@@ -16,7 +16,7 @@ describe('cross-document shipment-reference checks', () => {
 
   it('extracts and case-insensitively deduplicates N9-02 references from a 310', () => {
     const raw = GOLDEN_310.replace('L1*', 'N9*BM*BOOK-310~N9*SI* book-310 ~N9*BN*BOL-310~L1*');
-    expect(parse310(raw, categorize).shipmentReferences).toEqual(['BOOK-310', 'BOL-310']);
+    expect(parse310(raw, categorize).shipmentReferences).toEqual(['BOOK310001', 'BOOK-310', 'BOL-310']);
   });
 
   it('matches normalized references inside the caller tenant transaction', async () => {

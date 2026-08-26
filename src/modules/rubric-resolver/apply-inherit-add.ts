@@ -7,7 +7,7 @@ export interface ResolvedCriterionMember {
   criterionVersionId: string;
   introducedBy: RubricTier;
   rubricVersionId: string;
-  sourceVerb: 'INHERIT' | 'ADD';
+  sourceVerb: 'INHERIT' | 'ADD' | 'REPLACE';
 }
 
 export interface InheritAddCriterion {

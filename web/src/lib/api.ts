@@ -8,6 +8,8 @@ import { devHeaderPathActive } from './dev-auth.js';
  */
 export interface FindingRow {
   id: string;
+  auditRunId?: string;
+  invoiceId?: string;
   invoiceNumber: string | null;
   carrierName: string | null;
   /** null when the backing variance_finding has no single charge to attribute the billed amount to (86e2v17p5). */
@@ -19,6 +21,22 @@ export interface FindingRow {
   createdAt: string;
   ruleDescription: string | null;
 }
+
+export interface InvoiceScorecard {
+  audit_run_id: string; invoice_id: string; invoice_number: string | null; outcome: string;
+  conformed_count: number | null; variance_count: number | null; unassessable_count: number | null;
+  total_overcharge: string | null; total_undercharge: string | null; currency: string | null;
+}
+export interface FindingProvenance {
+  finding: { evaluatedExpr: unknown }; criterion: { key: string }; ruleVersion: { astHash: string };
+  clause: { id: string; reference: string; page: string | null } | null;
+  rateCell: { id: string; reference: string } | null;
+  sourceDocument: { id: string; sha256: string; storageUri: string } | null;
+}
+export interface ReviewQueueItem { id: string; auditRunId: string; invoiceNumber: string | null; criterionKey: string; createdAt: string }
+export interface ReviewQueues { escalation: ReviewQueueItem[]; unassessable: ReviewQueueItem[] }
+export interface RubricConflict { id: string; criterion_key: string | null; conflict_type: string; detail: Record<string, unknown>; recorded_at: string }
+export interface RuleProposal { id: string; slug: string; rule_type: string; hardness: string; lifecycle_state: 'PROPOSED' | 'SHADOW'; ast_hash: string; recorded_at: string }
 
 export interface FindingsSummary {
   recoverableOpen: string;
@@ -40,6 +58,11 @@ export interface GateFailureRow {
   defect: string;
   citation: string | null;
   recordedAt: string;
+  criterionKey?: string;
+  evaluatedExpr?: unknown;
+  clauseReference?: string | null;
+  sourceDocumentId?: string | null;
+  transportDocumentId?: string | null;
 }
 
 export type FindingsSortKey = 'variance' | 'age';
@@ -156,6 +179,30 @@ export async function fetchFindingsSummary(): Promise<FindingsSummary> {
   if (!res.ok) throw new Error(`GET /api/findings/summary failed: ${res.status}`);
   return (await res.json()) as FindingsSummary;
 }
+export async function fetchReviewQueues(): Promise<ReviewQueues> {
+  const res = await fetch('/api/findings/queues', { headers: authHeaders() });
+  if (!res.ok) throw new Error(`GET review queues failed: ${res.status}`);
+  const body = (await res.json()) as Partial<ReviewQueues>;
+  return { escalation: body.escalation ?? [], unassessable: body.unassessable ?? [] };
+}
+export async function fetchRubricConflicts(): Promise<RubricConflict[]> {
+  const res = await fetch('/api/rubric-conflicts', { headers: authHeaders() });
+  if (!res.ok) throw new Error(`GET rubric conflicts failed: ${res.status}`);
+  const body = (await res.json()) as { conflicts?: RubricConflict[] };
+  return body.conflicts ?? [];
+}
+export async function fetchRuleProposals(): Promise<RuleProposal[]> {
+  const res = await fetch('/api/rules/proposals', { headers: authHeaders() }); if (!res.ok) throw new Error('GET proposals failed');
+  return ((await res.json()) as { proposals?: RuleProposal[] }).proposals ?? [];
+}
+export async function ratifyRuleProposal(id: string, rationale: string): Promise<void> {
+  const res = await fetch(`/api/rules/${id}/ratify`, { method: 'POST', headers: { ...authHeaders(), 'content-type': 'application/json' }, body: JSON.stringify({ rationale }) });
+  if (!res.ok) throw new Error('POST ratify failed');
+}
+export async function activateShadowRule(id: string, rationale: string): Promise<void> {
+  const res = await fetch(`/api/rules/${id}/activate`, { method: 'POST', headers: { ...authHeaders(), 'content-type': 'application/json' }, body: JSON.stringify({ rationale }) });
+  if (!res.ok) throw new Error('POST activate failed');
+}
 
 export async function fetchGateFailures(): Promise<GateFailureRow[]> {
   const res = await fetch('/api/gate-failures', { headers: authHeaders() });
@@ -179,4 +226,22 @@ export async function updateFindingStatus(id: string, status: string): Promise<v
     body: JSON.stringify({ status }),
   });
   if (!res.ok) throw new Error(`PATCH /api/findings/${id}/status failed: ${res.status}`);
+}
+export async function applyFindingAction(id: string, action: 'accept' | 'waive' | 'escalate'): Promise<{ status: string }> {
+  const res = await fetch(`/api/findings/${id}/action`, { method: 'POST',
+    headers: { ...authHeaders(), 'content-type': 'application/json' }, body: JSON.stringify({ action }) });
+  if (!res.ok) throw new Error(`POST finding action failed: ${res.status}`);
+  return (await res.json()) as { status: string };
+}
+
+export async function fetchInvoiceScorecard(auditRunId: string): Promise<InvoiceScorecard> {
+  const res = await fetch(`/api/audit-runs/${auditRunId}/scorecard`, { headers: authHeaders() });
+  if (!res.ok) throw new Error(`GET scorecard failed: ${res.status}`);
+  return (await res.json()) as InvoiceScorecard;
+}
+
+export async function fetchFindingProvenance(id: string): Promise<FindingProvenance> {
+  const res = await fetch(`/api/findings/${id}/provenance`, { headers: authHeaders() });
+  if (!res.ok) throw new Error(`GET finding provenance failed: ${res.status}`);
+  return (await res.json()) as FindingProvenance;
 }

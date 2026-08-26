@@ -144,8 +144,11 @@ describe('canonical data model', () => {
       );
       await c.query(
         `INSERT INTO variance_finding
-           (client_id, audit_run_id, transport_document_id, variance_amount, currency, direction)
-         VALUES ($1,$2,$3, 412.1800, 'USD', 'OVERCHARGE')`,
+           (client_id, audit_run_id, transport_document_id, criterion_id, rule_version_id, variance_amount, currency, direction, evaluated_expr)
+         SELECT $1, $2, $3, c.id, rv.id, 412.1800, 'USD', 'OVERCHARGE', '{}'::jsonb
+         FROM criterion c JOIN rule r ON r.slug = 'contract-rate_variance'
+         JOIN rule_version rv ON rv.rule_id = r.id
+         WHERE c.criterion_key = 'CONTRACT.RATE_VARIANCE' ORDER BY rv.recorded_at DESC LIMIT 1`,
         [clientId, run[0].id, td[0].id],
       );
       // Resolve the defensibility chain: finding → transport-document evidence.

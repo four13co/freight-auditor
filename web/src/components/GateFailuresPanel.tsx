@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import type { GateFailureRow } from '../lib/api.js';
 import { formatAge } from '../lib/format.js';
 
@@ -22,6 +23,7 @@ interface GateFailuresPanelProps {
  * anyway in case a future caller renders it unconditionally.
  */
 export function GateFailuresPanel({ rows }: GateFailuresPanelProps) {
+  const [reviewing, setReviewing] = useState<string | null>(null);
   if (rows.length === 0) return null;
 
   return (
@@ -41,7 +43,10 @@ export function GateFailuresPanel({ rows }: GateFailuresPanelProps) {
           <div
             key={row.id}
             data-testid="gate-failure-row"
-            className="flex flex-col gap-2 border-b border-[rgba(32,30,29,0.14)] px-5 py-3"
+            className="flex cursor-pointer flex-col gap-2 border-b border-[rgba(32,30,29,0.14)] px-5 py-3"
+            role="button" tabIndex={0} aria-label={`Review kickback ${row.invoiceNumber ?? row.id}`}
+            onClick={() => setReviewing((current) => current === row.id ? null : row.id)}
+            onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') setReviewing((current) => current === row.id ? null : row.id); }}
           >
             <div className="flex items-center gap-3">
               <span className="border border-[#7c1405] bg-[#ec3013] px-1.5 py-0.5 text-[11px] font-extrabold uppercase tracking-[0.04em] text-[#f3f2f2]">
@@ -57,6 +62,14 @@ export function GateFailuresPanel({ rows }: GateFailuresPanelProps) {
             </div>
             <div className="text-sm font-semibold text-[#201e1d]">{row.defect}</div>
             {row.citation && <div className="text-xs text-[rgba(32,30,29,0.65)]">{row.citation}</div>}
+            {reviewing === row.id && (
+              <div data-testid="gate-kickback-review" className="border border-[#7c1405] bg-[#fff4f1] p-3 text-xs">
+                <div className="font-extrabold">{row.criterionKey ?? 'Structural gate'}</div>
+                {row.clauseReference && <div>Clause {row.clauseReference}</div>}
+                <pre className="mt-2 overflow-auto whitespace-pre-wrap">{JSON.stringify(row.evaluatedExpr ?? {}, null, 2)}</pre>
+                <div className="mt-2 text-[11px]">Source evidence: {row.sourceDocumentId ?? 'not linked'} · Transport evidence: {row.transportDocumentId ?? 'not linked'}</div>
+              </div>
+            )}
           </div>
         ))}
       </div>

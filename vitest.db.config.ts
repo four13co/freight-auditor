@@ -9,6 +9,7 @@ export default defineConfig({
     env: {
       NODE_ENV: 'test',
     },
+    globalSetup: ['./test/db/global-setup.ts'],
     // DB tests share a schema; keep them serial to avoid cross-test contention.
     fileParallelism: false,
   },

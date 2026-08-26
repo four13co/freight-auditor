@@ -21,6 +21,15 @@ function mockFetchOnce(url: string) {
   if (url.includes('/api/gate-failures')) {
     return Promise.resolve(new Response(JSON.stringify({ gateFailures: [] }), { status: 200 }));
   }
+  if (url.includes('/api/findings/queues')) {
+    return Promise.resolve(new Response(JSON.stringify({ escalation: [], unassessable: [] }), { status: 200 }));
+  }
+  if (url.includes('/api/rubric-conflicts')) {
+    return Promise.resolve(new Response(JSON.stringify({ conflicts: [] }), { status: 200 }));
+  }
+  if (url.includes('/api/rules/proposals')) {
+    return Promise.resolve(new Response(JSON.stringify({ proposals: [] }), { status: 200 }));
+  }
   if (url.includes('/api/findings')) {
     return Promise.resolve(new Response(JSON.stringify({ findings: ROWS }), { status: 200 }));
   }

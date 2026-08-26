@@ -58,8 +58,11 @@ describe('GET /api/findings/summary (DB, e2e)', () => {
           [clientId, inv.rows[0].id],
         );
         await c2.query(
-          `INSERT INTO variance_finding (client_id, audit_run_id, charge_fact_id, direction, variance_amount, currency, status)
-           VALUES ($1, $2, $3, 'OVERCHARGE', '250.0000', 'USD', 'open')`,
+          `INSERT INTO variance_finding (client_id, audit_run_id, charge_fact_id, criterion_id, rule_version_id, direction, variance_amount, currency, status, evaluated_expr)
+           SELECT $1, $2, $3, c.id, rv.id, 'OVERCHARGE', '250.0000', 'USD', 'open', '{}'::jsonb
+           FROM criterion c JOIN rule r ON r.slug = 'contract-rate_variance'
+           JOIN rule_version rv ON rv.rule_id = r.id
+           WHERE c.criterion_key = 'CONTRACT.RATE_VARIANCE' ORDER BY rv.recorded_at DESC LIMIT 1`,
           [clientId, run.rows[0].id, cf.rows[0].id],
         );
       });

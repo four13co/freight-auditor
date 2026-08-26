@@ -97,15 +97,18 @@ describe('listFindings (DB)', () => {
     const chargeFactId = cf.rows[0].id;
 
     await client.query(
-      `INSERT INTO expected_charge (client_id, audit_run_id, charge_fact_id, category, expected_amount, currency)
-       VALUES ($1, $2, $3, 'LINEHAUL', $4, 'USD')`,
+      `INSERT INTO expected_charge (client_id, audit_run_id, charge_fact_id, category, expected_amount, currency, created_at)
+       VALUES ($1, $2, $3, 'LINEHAUL', $4, 'USD', now() - interval '1 minute')`,
       [opts.clientId, auditRunId, chargeFactId, opts.expected ?? '900.0000'],
     );
 
     const vf = await client.query(
       `INSERT INTO variance_finding
-         (client_id, audit_run_id, charge_fact_id, criterion_id, direction, variance_amount, currency, status)
-       VALUES ($1, $2, $3, $4, $5, $6, 'USD', $7) RETURNING id`,
+         (client_id, audit_run_id, charge_fact_id, criterion_id, rule_version_id, direction, variance_amount, currency, status, evaluated_expr)
+       SELECT $1, $2, $3, COALESCE($4::uuid, c.id), rv.id, $5, $6, 'USD', $7, '{}'::jsonb
+       FROM criterion c JOIN rule r ON r.slug = 'contract-rate_variance'
+       JOIN rule_version rv ON rv.rule_id = r.id
+       WHERE c.criterion_key = 'CONTRACT.RATE_VARIANCE' ORDER BY rv.recorded_at DESC LIMIT 1 RETURNING id`,
       [
         opts.clientId,
         auditRunId,
@@ -206,11 +209,6 @@ describe('listFindings (DB)', () => {
         variance: '150.0000',
       });
       await c.query(
-        `UPDATE expected_charge SET created_at = now() - interval '1 minute'
-         WHERE charge_fact_id = $1 AND expected_amount = '900.0000'`,
-        [chargeFactId],
-      );
-      await c.query(
         `INSERT INTO expected_charge (client_id, audit_run_id, charge_fact_id, category, expected_amount, currency, created_at)
          VALUES ($1, $2, $3, 'LINEHAUL', '850.0000', 'USD', now())`,
         [clientAId, auditRunId, chargeFactId],
@@ -251,16 +249,18 @@ describe('listFindings (DB)', () => {
     expect(matching[0]?.ruleDescription).toBe('Duplicate invoice for the same PRO');
   });
 
-  it('86e2up8c8: ruleDescription is null when the finding has no criterion attached (existing rows, no regression)', async () => {
+  it('new findings always expose the canonical rule description required by the evidence guard', async () => {
     const noCriterionInvoiceNumber = `INV-${tag}-no-criterion`;
     const rows = await withTenantTx({ clientIds: [clientAId], internal: true }, async (c) => {
-      // No criterionId passed -- variance_finding.criterion_id defaults NULL.
+      // No override passed: the modern fixture uses the canonical criterion.
       await seedFinding(c, { clientId: clientAId, invoiceNumber: noCriterionInvoiceNumber });
       return listFindings(c, { clientIds: [clientAId], carrier: `Carrier-${tag}` });
     });
     const matching = rows.filter((r) => r.invoiceNumber === noCriterionInvoiceNumber);
     expect(matching).toHaveLength(1);
-    expect(matching[0]?.ruleDescription).toBeNull();
+    expect(matching[0]?.ruleDescription).toBe(
+      'Billed linehaul charge matches the contracted rate within tolerance, in the same currency.',
+    );
   });
 
   it('86e2up8c8: takes the most-recently-recorded criterion_version when more than one exists', async () => {
@@ -311,8 +311,11 @@ describe('listFindings (DB)', () => {
           [clientAId, inv.rows[0].id],
         );
         await c.query(
-          `INSERT INTO variance_finding (client_id, audit_run_id, charge_fact_id, direction, variance_amount, currency, status)
-           VALUES ($1, $2, NULL, 'OVERCHARGE', '250.0000', 'USD', 'open')`,
+          `INSERT INTO variance_finding (client_id, audit_run_id, charge_fact_id, criterion_id, rule_version_id, direction, variance_amount, currency, status, evaluated_expr)
+           SELECT $1, $2, NULL, c.id, rv.id, 'OVERCHARGE', '250.0000', 'USD', 'open', '{}'::jsonb
+           FROM criterion c JOIN rule r ON r.slug = 'contract-rate_variance'
+           JOIN rule_version rv ON rv.rule_id = r.id
+           WHERE c.criterion_key = 'CONTRACT.RATE_VARIANCE' ORDER BY rv.recorded_at DESC LIMIT 1`,
           [clientAId, run.rows[0].id],
         );
         return listFindings(c, { clientIds: [clientAId], carrier: `Carrier-${tag}` });
@@ -341,8 +344,11 @@ describe('listFindings (DB)', () => {
           [clientAId, inv.rows[0].id],
         );
         await c.query(
-          `INSERT INTO variance_finding (client_id, audit_run_id, charge_fact_id, direction, variance_amount, currency, status)
-           VALUES ($1, $2, NULL, 'OVERCHARGE', '250.0000', 'USD', 'open')`,
+          `INSERT INTO variance_finding (client_id, audit_run_id, charge_fact_id, criterion_id, rule_version_id, direction, variance_amount, currency, status, evaluated_expr)
+           SELECT $1, $2, NULL, c.id, rv.id, 'OVERCHARGE', '250.0000', 'USD', 'open', '{}'::jsonb
+           FROM criterion c JOIN rule r ON r.slug = 'contract-rate_variance'
+           JOIN rule_version rv ON rv.rule_id = r.id
+           WHERE c.criterion_key = 'CONTRACT.RATE_VARIANCE' ORDER BY rv.recorded_at DESC LIMIT 1`,
           [clientAId, run.rows[0].id],
         );
       });
@@ -423,9 +429,9 @@ describe('listFindings (DB)', () => {
       // Small, distinct variance amounts (1.00 .. count.00) -- all comfortably
       // below the "interesting" large-variance row seeded per-test, so sort
       // correctness is unambiguous regardless of direction.
-      const vfValues = runIds.map((_, i) => `($1, $${i + 2}, 'OVERCHARGE', ${(i + 1).toFixed(2)}, 'USD', 'open')`).join(', ');
+      const vfValues = runIds.map((_, i) => `($1, $${i + 2}, (SELECT id FROM criterion WHERE criterion_key = 'CONTRACT.RATE_VARIANCE'), (SELECT rv.id FROM rule_version rv JOIN rule r ON r.id = rv.rule_id WHERE r.slug = 'contract-rate_variance' ORDER BY rv.recorded_at DESC LIMIT 1), 'OVERCHARGE', ${(i + 1).toFixed(2)}, 'USD', 'open', '{}'::jsonb)`).join(', ');
       await client.query(
-        `INSERT INTO variance_finding (client_id, audit_run_id, direction, variance_amount, currency, status)
+        `INSERT INTO variance_finding (client_id, audit_run_id, criterion_id, rule_version_id, direction, variance_amount, currency, status, evaluated_expr)
          VALUES ${vfValues}`,
         [sortClientId, ...runIds],
       );
@@ -458,8 +464,11 @@ describe('listFindings (DB)', () => {
           [sortClientId, inv.rows[0].id],
         );
         await c.query(
-          `INSERT INTO variance_finding (client_id, audit_run_id, direction, variance_amount, currency, status, created_at)
-           VALUES ($1, $2, 'OVERCHARGE', '99999.0000', 'USD', 'open', NOW() - INTERVAL '1 day')`,
+          `INSERT INTO variance_finding (client_id, audit_run_id, criterion_id, rule_version_id, direction, variance_amount, currency, status, evaluated_expr, created_at)
+           SELECT $1, $2, c.id, rv.id, 'OVERCHARGE', '99999.0000', 'USD', 'open', '{}'::jsonb, NOW() - INTERVAL '1 day'
+           FROM criterion c JOIN rule r ON r.slug = 'contract-rate_variance'
+           JOIN rule_version rv ON rv.rule_id = r.id
+           WHERE c.criterion_key = 'CONTRACT.RATE_VARIANCE' ORDER BY rv.recorded_at DESC LIMIT 1`,
           [sortClientId, run.rows[0].id],
         );
 

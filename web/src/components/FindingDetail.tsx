@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { updateFindingStatus, type FindingRow } from '../lib/api.js';
+import { applyFindingAction, fetchFindingProvenance, fetchInvoiceScorecard, updateFindingStatus, type FindingProvenance, type FindingRow, type InvoiceScorecard } from '../lib/api.js';
 import { formatMoney, formatVariance } from '../lib/format.js';
 import { getStatusDisplay, titleCase } from '../lib/status-display.js';
 import { WRITABLE_VARIANCE_STATUSES } from '../../../src/shared/variance-status.js';
@@ -49,6 +49,10 @@ export function FindingDetail({ row, onClose, onStatusChange }: FindingDetailPro
   const [status, setStatus] = useState(row.status);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState(false);
+  const [scorecard, setScorecard] = useState<InvoiceScorecard | null>(null);
+  const [scorecardError, setScorecardError] = useState(false);
+  const [provenance, setProvenance] = useState<FindingProvenance | null>(null);
+  const [provenanceError, setProvenanceError] = useState(false);
 
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
@@ -81,6 +85,18 @@ export function FindingDetail({ row, onClose, onStatusChange }: FindingDetailPro
     } finally {
       setPending(false);
     }
+  }
+
+  function loadProvenance(): void {
+    setProvenanceError(false);
+    void fetchFindingProvenance(row.id).then(setProvenance, () => setProvenanceError(true));
+  }
+
+  function runAction(action: 'accept' | 'waive' | 'escalate'): void {
+    setPending(true); setError(false);
+    void applyFindingAction(row.id, action).then(({ status: next }) => {
+      setStatus(next); onStatusChange?.(row.id, next);
+    }, () => setError(true)).finally(() => setPending(false));
   }
 
   const display = getStatusDisplay({ ...row, status });
@@ -117,13 +133,61 @@ export function FindingDetail({ row, onClose, onStatusChange }: FindingDetailPro
           </div>
 
           <div className="flex flex-col gap-3">
-            <Field label="Invoice">{row.invoiceNumber ?? '—'}</Field>
+            <Field label="Invoice">
+              <span>{row.invoiceNumber ?? '—'}</span>
+              {row.auditRunId && (
+                <button type="button" className="ml-2 text-xs font-extrabold underline" onClick={() => {
+                  setScorecardError(false);
+                  void fetchInvoiceScorecard(row.auditRunId!).then(setScorecard, () => setScorecardError(true));
+                }}>View scorecard</button>
+              )}
+            </Field>
+            {scorecard && (
+              <div data-testid="invoice-scorecard" className="grid grid-cols-3 gap-2 border border-[rgba(32,30,29,0.3)] p-3 text-center text-xs">
+                <div><strong>{scorecard.conformed_count ?? 0}</strong><br />Conformed</div>
+                <div><strong>{scorecard.variance_count ?? 0}</strong><br />Variances</div>
+                <div><strong>{scorecard.unassessable_count ?? 0}</strong><br />Needs data</div>
+                <div className="col-span-3">Overcharge {formatMoney(scorecard.total_overcharge)} · Undercharge {formatMoney(scorecard.total_undercharge)}</div>
+              </div>
+            )}
+            {scorecardError && <span className="text-xs font-semibold text-[#7c1405]">Couldn&rsquo;t load invoice scorecard.</span>}
             <Field label="Carrier">{row.carrierName ?? '—'}</Field>
             <Field label="Finding">{row.ruleDescription ?? '—'}</Field>
             <Field label="Billed">{formatMoney(row.billed)}</Field>
             <Field label="Expected">{formatMoney(row.expected)}</Field>
             <Field label="Variance">{formatVariance(row.varianceAmount)}</Field>
             <Field label="Direction">{formatDirection(row.direction)}</Field>
+            <div className="grid grid-cols-2 gap-2">
+              <button type="button" className="h-8 border border-[rgba(32,30,29,0.4)] text-xs font-extrabold" onClick={loadProvenance}>Explain evaluation</button>
+              <button type="button" className="h-8 border border-[rgba(32,30,29,0.4)] text-xs font-extrabold" onClick={loadProvenance}>View source citation</button>
+            </div>
+            {provenance && (
+              <div data-testid="evaluated-ast" className="border border-[rgba(32,30,29,0.3)] p-3">
+                <div className="mb-2 text-xs font-extrabold">{provenance.criterion.key}</div>
+                <pre className="overflow-auto whitespace-pre-wrap text-[11px]">{JSON.stringify(provenance.finding.evaluatedExpr, null, 2)}</pre>
+              </div>
+            )}
+            {provenance?.clause && (
+              <div data-testid="source-citation" className="border border-[rgba(32,30,29,0.3)] p-3 text-xs">
+                <div className="font-extrabold">Clause {provenance.clause.reference}{provenance.clause.page ? ` · page ${provenance.clause.page}` : ''}</div>
+                {provenance.rateCell && <div className="mt-1">Rate cell {provenance.rateCell.reference}</div>}
+                {provenance.sourceDocument && (
+                  <div className="mt-2 break-all text-[11px]">
+                    SHA-256: {provenance.sourceDocument.sha256}
+                    {/^https?:/.test(provenance.sourceDocument.storageUri) ? (
+                      <a className="ml-2 font-extrabold underline" target="_blank" rel="noreferrer"
+                        href={`${provenance.sourceDocument.storageUri}${provenance.clause.page ? `#page=${provenance.clause.page}` : ''}`}>Open source page</a>
+                    ) : <div>Stored securely; direct preview unavailable.</div>}
+                  </div>
+                )}
+              </div>
+            )}
+            {provenanceError && <span className="text-xs font-semibold text-[#7c1405]">Couldn&rsquo;t load evaluation explanation.</span>}
+            <div className="grid grid-cols-3 gap-2" aria-label="Finding actions">
+              <button disabled={pending} type="button" onClick={() => runAction('accept')} className="h-8 border border-[#287a3d] text-xs font-extrabold">Accept</button>
+              <button disabled={pending} type="button" onClick={() => runAction('waive')} className="h-8 border border-[#8a6b00] text-xs font-extrabold">Waive</button>
+              <button disabled={pending} type="button" onClick={() => runAction('escalate')} className="h-8 border border-[#7c1405] text-xs font-extrabold">Escalate</button>
+            </div>
             <div className="flex flex-col gap-0.5">
               <label htmlFor="finding-status-select" className="text-[11px] font-extrabold uppercase tracking-[0.08em] text-[rgba(32,30,29,0.55)]">
                 Status

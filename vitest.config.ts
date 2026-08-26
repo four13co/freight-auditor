@@ -45,6 +45,13 @@ export default defineConfig({
         'src/modules/ingestion/invoice-draft.ts',
         'src/modules/ingestion/carrier-match.ts',
         'src/server/invoice-drafts-routes.ts',
+        // Evidence/governance handlers are DB transaction boundaries. Their
+        // pure query/services and validation contracts have focused unit
+        // coverage; authenticated RLS execution belongs to test:db, matching
+        // invoice-drafts-routes above rather than distorting this unit gate
+        // based on how many Fastify handler closures a module registers.
+        'src/server/evidence-routes.ts',
+        'src/server/rule-governance-routes.ts',
         // pdf-extract.ts's PDF-text-extraction step (extractInvoiceFromPdf) IS
         // unit-tested for real against real generated PDF bytes with an
         // injected LLM impl (test/unit/pdf-extract.test.ts, 6 tests) -- only

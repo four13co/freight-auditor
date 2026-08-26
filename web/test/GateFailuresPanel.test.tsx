@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { GateFailuresPanel } from '../src/components/GateFailuresPanel.js';
 import { GATE_FAILURE_ROWS } from './fixtures.js';
 
@@ -37,5 +37,15 @@ describe('GateFailuresPanel (86e2v17xn)', () => {
   it('renders nothing when there are zero rejected invoices', () => {
     const { container } = render(<GateFailuresPanel rows={[]} />);
     expect(container).toBeEmptyDOMElement();
+  });
+
+  it('opens a gate-kickback evidence review without dropping sibling failures', () => {
+    const rows = [{ ...GATE_FAILURE_ROWS[0]!, criterionKey: 'STANDARD.AMOUNT_STATED', evaluatedExpr: { result: false },
+      clauseReference: '210.L1', sourceDocumentId: 'sd1', transportDocumentId: 'td1' }, GATE_FAILURE_ROWS[1]!];
+    render(<GateFailuresPanel rows={rows} />);
+    fireEvent.click(screen.getAllByRole('button', { name: /Review kickback INV-REJECT-1/ })[0]!);
+    expect(screen.getByTestId('gate-kickback-review')).toHaveTextContent('STANDARD.AMOUNT_STATED');
+    expect(screen.getByTestId('gate-kickback-review')).toHaveTextContent('Clause 210.L1');
+    expect(screen.getAllByTestId('gate-failure-row')).toHaveLength(2);
   });
 });

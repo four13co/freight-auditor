@@ -113,6 +113,8 @@ describe('seedCriteria + resolveCriterionIds (DB)', () => {
     expect(resolved).toEqual({
       criterionId: expectedCriterionId.rows[0].id,
       ruleVersionId: expectedRuleVersionId.rows[0].id,
+      clauseId: null,
+      sourceDocumentId: null,
     });
   });
 

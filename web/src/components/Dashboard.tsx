@@ -5,15 +5,24 @@ import { PasskeyRegistration } from './PasskeyRegistration.js';
 import { KpiRow } from './KpiRow.js';
 import { FindingsTable } from './FindingsTable.js';
 import { GateFailuresPanel } from './GateFailuresPanel.js';
+import { ReviewQueues } from './ReviewQueues.js';
+import { RubricConflictQueue } from './RubricConflictQueue.js';
+import { RuleProposalQueue } from './RuleProposalQueue.js';
 import {
   fetchFindings,
   fetchFindingsSummary,
   fetchGateFailures,
+  fetchReviewQueues,
+  fetchRubricConflicts,
+  fetchRuleProposals,
   type FindingRow,
   type FindingsSortDir,
   type FindingsSortKey,
   type FindingsSummary,
   type GateFailureRow,
+  type ReviewQueues as ReviewQueuesData,
+  type RubricConflict,
+  type RuleProposal,
 } from '../lib/api.js';
 
 /**
@@ -48,6 +57,9 @@ export function Dashboard() {
   // failing silently just means "no rejected-invoices panel this load,"
   // which is the same visual result as "no rejected invoices exist."
   const [gateFailures, setGateFailures] = useState<GateFailureRow[]>([]);
+  const [reviewQueues, setReviewQueues] = useState<ReviewQueuesData>({ escalation: [], unassessable: [] });
+  const [rubricConflicts, setRubricConflicts] = useState<RubricConflict[]>([]);
+  const [ruleProposals, setRuleProposals] = useState<RuleProposal[]>([]);
 
   const load = useCallback(() => {
     setStatus('loading');
@@ -90,6 +102,9 @@ export function Dashboard() {
 
   useEffect(() => {
     fetchGateFailures().then(setGateFailures, () => setGateFailures([]));
+    fetchReviewQueues().then(setReviewQueues, () => setReviewQueues({ escalation: [], unassessable: [] }));
+    fetchRubricConflicts().then(setRubricConflicts, () => setRubricConflicts([]));
+    fetchRuleProposals().then(setRuleProposals, () => setRuleProposals([]));
   }, []);
 
   return (
@@ -123,6 +138,10 @@ export function Dashboard() {
             <>
               {summary && <KpiRow summary={summary} />}
               <GateFailuresPanel rows={gateFailures} />
+              <ReviewQueues queues={reviewQueues} />
+              <RubricConflictQueue rows={rubricConflicts} />
+              <RuleProposalQueue rows={ruleProposals} onRatified={(id, lifecycle) => setRuleProposals((rows) => lifecycle === 'ACTIVE'
+                ? rows.filter((r) => r.id !== id) : rows.map((r) => r.id === id ? { ...r, lifecycle_state: 'SHADOW' } : r))} />
               <FindingsTable
                 rows={rows}
                 carrierFilter={carrierFilter}

@@ -25,6 +25,11 @@ export interface GateFailureRow {
   defect: string;
   citation: string | null;
   recordedAt: Date;
+  criterionKey: string;
+  evaluatedExpr: unknown;
+  clauseReference: string | null;
+  sourceDocumentId: string | null;
+  transportDocumentId: string | null;
 }
 
 export interface ListGateFailuresOptions {
@@ -73,6 +78,11 @@ export async function listGateFailures(
     defect: string;
     citation: string | null;
     recorded_at: Date;
+    criterion_key: string;
+    evaluated_expr: unknown;
+    clause_ref: string | null;
+    source_document_id: string | null;
+    transport_document_id: string | null;
   }>(
     `SELECT
        gate_failure.id,
@@ -82,10 +92,14 @@ export async function listGateFailures(
        gate_failure.defect,
        gate_failure.citation,
        gate_failure.recorded_at
+       , criterion.criterion_key, gate_failure.evaluated_expr, contract_clause.clause_ref,
+       gate_failure.source_document_id, gate_failure.transport_document_id
      FROM gate_failure
      JOIN audit_run ON audit_run.id = gate_failure.audit_run_id
      JOIN invoice ON invoice.id = audit_run.invoice_id
      LEFT JOIN carrier ON carrier.id = invoice.carrier_id
+     JOIN criterion ON criterion.id = gate_failure.criterion_id
+     LEFT JOIN contract_clause ON contract_clause.id = gate_failure.clause_id
      ${where}
      ORDER BY gate_failure.recorded_at DESC, gate_failure.id
      LIMIT $${params.length - 1} OFFSET $${params.length}`,
@@ -100,5 +114,10 @@ export async function listGateFailures(
     defect: row.defect,
     citation: row.citation,
     recordedAt: row.recorded_at,
+    criterionKey: row.criterion_key,
+    evaluatedExpr: row.evaluated_expr,
+    clauseReference: row.clause_ref,
+    sourceDocumentId: row.source_document_id,
+    transportDocumentId: row.transport_document_id,
   }));
 }

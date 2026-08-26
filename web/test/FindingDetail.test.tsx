@@ -58,4 +58,49 @@ describe('FindingDetail status control (86e2v1xyr)', () => {
     await waitFor(() => expect(screen.getByText(/Couldn.t update status/)).toBeInTheDocument());
     expect(select.value).toBe('open');
   });
+
+  it('navigates from a finding to its per-invoice scorecard', async () => {
+    fetchMock.mockResolvedValue(new Response(JSON.stringify({ audit_run_id: 'run-1', invoice_id: 'inv-1',
+      invoice_number: 'INV-1', outcome: 'SCORED', conformed_count: 4, variance_count: 2,
+      unassessable_count: 1, total_overcharge: '12.5000', total_undercharge: '2.0000', currency: 'USD' }), { status: 200 }));
+    render(<FindingDetail row={{ ...ROW, auditRunId: 'run-1', invoiceId: 'inv-1' }} onClose={() => {}} />);
+    fireEvent.click(screen.getByRole('button', { name: 'View scorecard' }));
+    await waitFor(() => expect(screen.getByTestId('invoice-scorecard')).toBeInTheDocument());
+    expect(fetchMock).toHaveBeenCalledWith('/api/audit-runs/run-1/scorecard', expect.any(Object));
+    expect(screen.getByText('4')).toBeInTheDocument();
+    expect(screen.getByText('2')).toBeInTheDocument();
+    expect(screen.getByText('1')).toBeInTheDocument();
+  });
+
+  it('drills down into the exact persisted evaluated AST', async () => {
+    fetchMock.mockResolvedValue(new Response(JSON.stringify({ finding: { evaluatedExpr: { type: 'compare', result: false } },
+      criterion: { key: 'CONTRACT.RATE_VARIANCE' }, ruleVersion: { astHash: 'hash' }, clause: null, rateCell: null, sourceDocument: null }), { status: 200 }));
+    render(<FindingDetail row={ROW} onClose={() => {}} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Explain evaluation' }));
+    await waitFor(() => expect(screen.getByTestId('evaluated-ast')).toBeInTheDocument());
+    expect(screen.getByText('CONTRACT.RATE_VARIANCE')).toBeInTheDocument();
+    expect(screen.getByText(/"result": false/)).toBeInTheDocument();
+  });
+
+  it('opens a page-aware clause and immutable source citation', async () => {
+    fetchMock.mockResolvedValue(new Response(JSON.stringify({ finding: { evaluatedExpr: {} }, criterion: { key: 'RATE' },
+      ruleVersion: { astHash: 'hash' }, clause: { id: 'cl', reference: '4.2', page: '7' },
+      rateCell: { id: 'rc', reference: 'B12' }, sourceDocument: { id: 'sd', sha256: 'abc123', storageUri: 'https://docs.example/contract.pdf' } }), { status: 200 }));
+    render(<FindingDetail row={ROW} onClose={() => {}} />);
+    fireEvent.click(screen.getByRole('button', { name: 'View source citation' }));
+    await waitFor(() => expect(screen.getByTestId('source-citation')).toBeInTheDocument());
+    expect(screen.getByText(/Clause 4.2 · page 7/)).toBeInTheDocument();
+    expect(screen.getByText(/Rate cell B12/)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Open source page' })).toHaveAttribute('href', 'https://docs.example/contract.pdf#page=7');
+  });
+
+  it('applies accept, waive, and escalation through the audited action endpoint', async () => {
+    fetchMock.mockResolvedValue(new Response(JSON.stringify({ status: 'accepted' }), { status: 200 }));
+    const onStatusChange = vi.fn();
+    render(<FindingDetail row={ROW} onClose={() => {}} onStatusChange={onStatusChange} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Accept' }));
+    await waitFor(() => expect(onStatusChange).toHaveBeenCalledWith(ROW.id, 'accepted'));
+    expect(fetchMock).toHaveBeenCalledWith(`/api/findings/${ROW.id}/action`, expect.objectContaining({ method: 'POST' }));
+    expect(JSON.parse((fetchMock.mock.calls[0]?.[1] as RequestInit).body as string)).toEqual({ action: 'accept' });
+  });
 });

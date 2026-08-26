@@ -42,6 +42,7 @@ import { CONTRACT_RUBRIC } from '../src/modules/rubric-resolver/contract-rubric.
 import { lookupContractRate } from '../src/modules/rate-engine/rate-lookup.js';
 import { stubCategorize } from '../src/modules/ingestion/stub-crosswalk.js';
 import { DEV_CLIENT_ID } from './seed-dev-tenant.mjs';
+import { seedCriteria } from './seed-criteria.mjs';
 
 export const FIXTURE_INVOICE_NUMBER = 'E2E-FULLSTACK-001';
 export const FIXTURE_CARRIER_NAME = 'E2E Fullstack Carrier';
@@ -109,6 +110,11 @@ export async function seedFullstackE2eFixture({ pool } = {}) {
       FIXTURE_INVOICE_NUMBER,
     ]);
     if (existing.rows.length > 0) return;
+
+    // persistAuditRun deliberately fails closed when canonical criterion/rule
+    // evidence is missing. CI builds a fresh database, so seed that global
+    // reference data before running the real evaluator pipeline.
+    await seedCriteria({ client: ownerPool });
 
     const invoice = parse210(FIXTURE_EDI_210, categorize);
 

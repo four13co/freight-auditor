@@ -86,8 +86,11 @@ describe('getFindingsSummary (DB)', () => {
 
     const vf = await client.query(
       `INSERT INTO variance_finding
-         (client_id, audit_run_id, charge_fact_id, direction, variance_amount, currency, status${createdAtClause})
-       VALUES ($1, $2, $3, 'OVERCHARGE', $4, 'USD', $5${createdAtValue}) RETURNING id`,
+         (client_id, audit_run_id, charge_fact_id, criterion_id, rule_version_id, direction, variance_amount, currency, status, evaluated_expr${createdAtClause})
+       SELECT $1, $2, $3, c.id, rv.id, 'OVERCHARGE', $4, 'USD', $5, '{}'::jsonb${createdAtValue}
+       FROM criterion c JOIN rule r ON r.slug = 'contract-rate_variance'
+       JOIN rule_version rv ON rv.rule_id = r.id
+       WHERE c.criterion_key = 'CONTRACT.RATE_VARIANCE' ORDER BY rv.recorded_at DESC LIMIT 1 RETURNING id`,
       params,
     );
     return vf.rows[0].id;

@@ -3,6 +3,8 @@ import type pg from 'pg';
 export interface ResolvedCriterionIds {
   criterionId: string;
   ruleVersionId: string;
+  clauseId: string | null;
+  sourceDocumentId: string | null;
 }
 
 /**
@@ -29,10 +31,12 @@ export async function resolveCriterionIds(
   const criterionId = critRes.rows[0]!.id;
 
   const ruleSlug = criterionKey.toLowerCase().replace(/\./g, '-');
-  const ruleVersionRes = await client.query<{ id: string }>(
-    `SELECT rule_version.id
+  const ruleVersionRes = await client.query<{ id: string; clause_id: string | null; source_document_id: string | null }>(
+    `SELECT rule_version.id, rule_version.clause_id, contract_version.source_document_id
      FROM rule_version
      JOIN rule ON rule.id = rule_version.rule_id
+     LEFT JOIN contract_clause ON contract_clause.id = rule_version.clause_id
+     LEFT JOIN contract_version ON contract_version.id = contract_clause.contract_version_id
      WHERE rule.slug = $1
      ORDER BY rule_version.recorded_at DESC
      LIMIT 1`,
@@ -40,5 +44,6 @@ export async function resolveCriterionIds(
   );
   if (ruleVersionRes.rows.length === 0) return null;
 
-  return { criterionId, ruleVersionId: ruleVersionRes.rows[0]!.id };
+  return { criterionId, ruleVersionId: ruleVersionRes.rows[0]!.id,
+    clauseId: ruleVersionRes.rows[0]!.clause_id, sourceDocumentId: ruleVersionRes.rows[0]!.source_document_id };
 }

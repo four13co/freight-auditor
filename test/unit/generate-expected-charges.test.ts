@@ -33,7 +33,7 @@ describe('generateExpectedCharges', () => {
       .mockResolvedValueOnce({ rows: [{
         id: 'new-id', category: charge.category, currency: charge.currency,
         expected_amount: charge.expectedAmount, source_key: charge.sourceKey,
-        calculation: charge.calculation, charge_fact_id: null, clause_id: null,
+        calculation: charge.calculation, charge_fact_id: null, clause_id: null, rate_cell_id: null, source_document_id: null,
       }] });
     const client = { query } as never;
     await expect(persistExpectedCharges(client, { clientId: 'c', auditRunId: 'r', charges: [charge] })).resolves.toEqual(['new-id']);
@@ -44,7 +44,7 @@ describe('generateExpectedCharges', () => {
     const charge = generateExpectedCharges([{ sourceKey: 'x', category: 'FUEL', currency: 'USD', calculation: { kind: 'FLAT', amount: '1' } }])[0]!;
     const query = vi.fn().mockResolvedValueOnce({ rows: [] }).mockResolvedValueOnce({ rows: [{
       id: 'old-id', category: 'FUEL', currency: 'USD', expected_amount: '2.0000', source_key: 'x',
-      calculation: { kind: 'FLAT', amount: '2.0000' }, charge_fact_id: null, clause_id: null,
+      calculation: { kind: 'FLAT', amount: '2.0000' }, charge_fact_id: null, clause_id: null, rate_cell_id: null, source_document_id: null,
     }] });
     await expect(persistExpectedCharges({ query } as never, { clientId: 'c', auditRunId: 'r', charges: [charge] }))
       .rejects.toThrow('expected-charge source conflict: x');

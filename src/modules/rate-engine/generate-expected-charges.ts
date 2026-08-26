@@ -13,6 +13,8 @@ export interface ExpectedChargeSpec {
   currency: string;
   chargeFactId?: string | null;
   clauseId?: string | null;
+  rateCellId?: string | null;
+  sourceDocumentId?: string | null;
   calculation: ExpectedChargeCalculation;
 }
 
@@ -24,6 +26,8 @@ export interface GeneratedExpectedCharge {
   expectedAmount: string;
   chargeFactId: string | null;
   clauseId: string | null;
+  rateCellId: string | null;
+  sourceDocumentId: string | null;
   calculation: Readonly<Record<string, string>>;
 }
 
@@ -73,6 +77,8 @@ export function generateExpectedCharges(specs: readonly ExpectedChargeSpec[]): G
       expectedAmount,
       chargeFactId: spec.chargeFactId ?? null,
       clauseId: spec.clauseId ?? null,
+      rateCellId: spec.rateCellId ?? null,
+      sourceDocumentId: spec.sourceDocumentId ?? null,
       calculation,
     };
   });
@@ -95,12 +101,13 @@ export async function persistExpectedCharges(
     const inserted = await client.query<{ id: string }>(
       `INSERT INTO expected_charge
          (client_id, audit_run_id, charge_fact_id, category, expected_amount, currency,
-          idempotency_key, source_key, calculation, clause_id)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+          idempotency_key, source_key, calculation, clause_id, rate_cell_id, source_document_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
        ON CONFLICT (client_id, audit_run_id, idempotency_key) WHERE idempotency_key IS NOT NULL
        DO NOTHING RETURNING id`,
       [input.clientId, input.auditRunId, charge.chargeFactId, charge.category, charge.expectedAmount,
-        charge.currency, charge.idempotencyKey, charge.sourceKey, JSON.stringify(charge.calculation), charge.clauseId],
+        charge.currency, charge.idempotencyKey, charge.sourceKey, JSON.stringify(charge.calculation), charge.clauseId,
+        charge.rateCellId, charge.sourceDocumentId],
     );
     if (inserted.rows[0]) {
       ids.push(inserted.rows[0].id);
@@ -109,8 +116,9 @@ export async function persistExpectedCharges(
     const existing = await client.query<{
       id: string; category: string; currency: string; expected_amount: string; source_key: string;
       calculation: Record<string, string>; charge_fact_id: string | null; clause_id: string | null;
+      rate_cell_id: string | null; source_document_id: string | null;
     }>(
-      `SELECT id, category, currency, expected_amount, source_key, calculation, charge_fact_id, clause_id
+      `SELECT id, category, currency, expected_amount, source_key, calculation, charge_fact_id, clause_id, rate_cell_id, source_document_id
        FROM expected_charge
        WHERE client_id = $1 AND audit_run_id = $2 AND idempotency_key = $3`,
       [input.clientId, input.auditRunId, charge.idempotencyKey],
@@ -120,7 +128,8 @@ export async function persistExpectedCharges(
     const exactRetry = row.category === charge.category && row.currency === charge.currency
       && new Decimal(row.expected_amount).toFixed(4) === charge.expectedAmount && row.source_key === charge.sourceKey
       && JSON.stringify(row.calculation) === JSON.stringify(charge.calculation)
-      && row.charge_fact_id === charge.chargeFactId && row.clause_id === charge.clauseId;
+      && row.charge_fact_id === charge.chargeFactId && row.clause_id === charge.clauseId
+      && row.rate_cell_id === charge.rateCellId && row.source_document_id === charge.sourceDocumentId;
     if (!exactRetry) throw new Error(`expected-charge source conflict: ${charge.sourceKey}`);
     ids.push(row.id);
   }

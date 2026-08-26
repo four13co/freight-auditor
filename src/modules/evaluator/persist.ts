@@ -126,10 +126,11 @@ export async function persistAuditRun(
   const gateFailureIds: string[] = [];
   for (const g of result.gateFailures) {
     const gf = await client.query<{ id: string }>(
-      `INSERT INTO gate_failure (client_id, audit_run_id, criterion_id, rule_version_id, defect, citation, evaluated_expr)
-       VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
+      `INSERT INTO gate_failure (client_id, audit_run_id, criterion_id, rule_version_id, clause_id, source_document_id, defect, citation, evaluated_expr)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id`,
       [clientId, auditRunId, resolvedIdsByCriterionKey.get(g.criterionKey)!.criterionId,
-        resolvedIdsByCriterionKey.get(g.criterionKey)!.ruleVersionId, g.defect, g.citation ?? null, JSON.stringify(g.evaluatedExpr)],
+        resolvedIdsByCriterionKey.get(g.criterionKey)!.ruleVersionId, resolvedIdsByCriterionKey.get(g.criterionKey)!.clauseId,
+        resolvedIdsByCriterionKey.get(g.criterionKey)!.sourceDocumentId, g.defect, g.citation ?? null, JSON.stringify(g.evaluatedExpr)],
     );
     gateFailureIds.push(gf.rows[0]!.id);
   }
@@ -142,9 +143,9 @@ export async function persistAuditRun(
   for (const f of result.findings) {
     const resolved = resolvedIdsByCriterionKey.get(f.criterionKey)!;
     const cf = await client.query<{ id: string }>(
-      `INSERT INTO charge_finding (client_id, audit_run_id, criterion_id, rule_version_id, result, evaluated_expr)
-       VALUES ($1,$2,$3,$4,$5,$6) RETURNING id`,
-      [clientId, auditRunId, resolved.criterionId, resolved.ruleVersionId, f.result, JSON.stringify(f.evaluatedExpr)],
+      `INSERT INTO charge_finding (client_id, audit_run_id, criterion_id, rule_version_id, clause_id, source_document_id, result, evaluated_expr)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id`,
+      [clientId, auditRunId, resolved.criterionId, resolved.ruleVersionId, resolved.clauseId, resolved.sourceDocumentId, f.result, JSON.stringify(f.evaluatedExpr)],
     );
     chargeFindingIds.push(cf.rows[0]!.id);
   }
@@ -176,13 +177,15 @@ export async function persistAuditRun(
     const resolved = resolvedIdsByCriterionKey.get(f.criterionKey)!;
     await client.query(
       `INSERT INTO variance_finding
-         (client_id, audit_run_id, criterion_id, rule_version_id, charge_fact_id, direction, materiality, variance_amount, currency, classification, status)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'open')`,
+         (client_id, audit_run_id, criterion_id, rule_version_id, clause_id, source_document_id, charge_fact_id, direction, materiality, variance_amount, currency, classification, status)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'open')`,
       [
         clientId,
         auditRunId,
         resolved.criterionId,
         resolved.ruleVersionId,
+        resolved.clauseId,
+        resolved.sourceDocumentId,
         chargeFactId,
         f.direction === 'INTEGRITY_ONLY' ? null : f.direction,
         f.varianceAmount === null ? null : new Decimal(f.varianceAmount).abs().toFixed(4),

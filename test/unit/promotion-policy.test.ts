@@ -13,4 +13,10 @@ describe('promotion policy', () => {
     await expect(resolvePromotionPolicy({ query } as never, 'c', 'STRUCTURAL')).resolves.toMatchObject({ clientId: 'c', n2Confirm: 5 });
     expect(query.mock.calls[0]?.[0]).toContain('ORDER BY (client_id IS NOT NULL) DESC');
   });
+  it('upserts a valid tenant policy', async () => {
+    const id = crypto.randomUUID();
+    const query = vi.fn().mockResolvedValue({ rows: [{ client_id: id, rule_type: 'STRUCTURAL', n1_confirm: 2, n2_confirm: 4, max_reversals: 0 }] });
+    await expect(upsertPromotionPolicy({ query } as never, { clientId: id, ruleType: 'STRUCTURAL', n1Confirm: 2, n2Confirm: 4, maxReversals: 0 }))
+      .resolves.toMatchObject({ clientId: id, n1Confirm: 2, maxReversals: 0 });
+  });
 });

@@ -21,7 +21,7 @@ describe('duplicate invoice detection', () => {
       '10000000-0000-4000-8000-000000000001', ' INV-1 ', '210',
     )).resolves.toBe(true);
     expect(query).toHaveBeenNthCalledWith(1, expect.stringContaining('pg_advisory_xact_lock'), [
-      '10000000-0000-4000-8000-000000000001\u0000210\u0000inv-1',
+      '36:10000000-0000-4000-8000-000000000001|3:210|5:inv-1',
     ]);
     expect(query).toHaveBeenNthCalledWith(2, expect.stringContaining('lower(btrim(invoice_number))'), [
       '10000000-0000-4000-8000-000000000001', '210', 'INV-1',

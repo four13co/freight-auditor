@@ -144,7 +144,11 @@ export async function seedFullstackE2eFixture({ pool } = {}) {
       );
 
       const rate = await lookupContractRate(client, contractVersionId, 'LINEHAUL');
-      const result = evaluateInvoice(invoice, CONTRACT_RUBRIC, { linehaulRate: rate });
+      const result = evaluateInvoice(invoice, CONTRACT_RUBRIC, {
+        linehaulRate: rate,
+        duplicateInvoice: false,
+        shipmentReferenceMatch: true,
+      });
       const persisted = await persistAuditRun(client, {
         clientId: DEV_CLIENT_ID,
         carrierId,

@@ -11,8 +11,9 @@ export async function detectDuplicateInvoice(
   if (!normalized) return undefined;
   // Serialize identical business keys until the surrounding transaction
   // commits, preventing two concurrent first-seen invoices both passing.
+  const lockParts = [clientId, transactionSet, normalized.toLowerCase()];
   await client.query(`SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, [
-    `${clientId}\0${transactionSet}\0${normalized.toLowerCase()}`,
+    lockParts.map((part) => `${Buffer.byteLength(part, 'utf8')}:${part}`).join('|'),
   ]);
   const result = await client.query(
     `SELECT 1 FROM invoice

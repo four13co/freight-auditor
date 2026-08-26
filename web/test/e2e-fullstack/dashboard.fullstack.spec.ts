@@ -34,7 +34,9 @@ test.beforeAll(async ({ request }) => {
 test('AC1/AC2: dashboard loads findings and KPI values from the real API, no mocking', async ({ page }) => {
   await page.goto('/');
 
-  const row = page.getByTestId('finding-row').filter({ hasText: FIXTURE_INVOICE_NUMBER });
+  const row = page.getByTestId('finding-row')
+    .filter({ hasText: FIXTURE_INVOICE_NUMBER })
+    .filter({ hasText: '$100.00' });
   await expect(row).toBeVisible();
   await expect(row).toContainText(FIXTURE_CARRIER_NAME);
 

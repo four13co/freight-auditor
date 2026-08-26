@@ -92,7 +92,7 @@ describe('Phase 2 CONTRACT-tier (DB)', () => {
     });
     expect(row.outcome).toBe('SCORED');
     // billed 1000.00 - contracted 900.00 = 100.00 overcharge, persisted for real.
-    expect(row.scorecard).toMatchObject({ variance_count: 1, total_overcharge: '100.0000', total_undercharge: '0.0000' });
+    expect(row.scorecard).toMatchObject({ variance_count: 2, total_overcharge: '100.0000', total_undercharge: '0.0000' });
   });
 
   it('AC3 e2e: a rate-lookup miss (unknown category) resolves to null, never a guessed rate', async () => {

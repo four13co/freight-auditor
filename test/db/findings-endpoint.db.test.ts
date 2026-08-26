@@ -179,7 +179,7 @@ describe('GET /api/findings (DB, e2e)', () => {
     });
     expect(res.statusCode).toBe(200);
     const findings = res.json().findings as Array<{ invoiceNumber: string; direction: string; varianceAmount: string }>;
-    const derived = findings.find((f) => f.invoiceNumber === inv.invoiceNumber);
+    const derived = findings.find((f) => f.invoiceNumber === inv.invoiceNumber && f.direction === 'OVERCHARGE');
     expect(derived).toMatchObject({ direction: 'OVERCHARGE', varianceAmount: '100.0000' });
   });
 });

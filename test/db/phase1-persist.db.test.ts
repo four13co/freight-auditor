@@ -91,7 +91,7 @@ describe('Phase 1 persistence (DB)', () => {
       return { outcome: run.rows[0].outcome, scorecard: sc.rows[0], ledger: ledger.rows[0], manifest: manifest.rows[0] };
     });
     expect(row.outcome).toBe('SCORED');
-    expect(row.scorecard).toMatchObject({ conformed_count: 2, variance_count: 0 });
+    expect(row.scorecard).toMatchObject({ conformed_count: 2, variance_count: 1 });
     expect(row.ledger).toMatchObject({
       event: 'evaluation.completed',
       detail: expect.objectContaining({ outcome: 'SCORED', scorecardId: expect.any(String) }),

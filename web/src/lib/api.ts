@@ -27,7 +27,12 @@ export interface InvoiceScorecard {
   conformed_count: number | null; variance_count: number | null; unassessable_count: number | null;
   total_overcharge: string | null; total_undercharge: string | null; currency: string | null;
 }
-export interface FindingProvenance { finding: { evaluatedExpr: unknown }; criterion: { key: string }; ruleVersion: { astHash: string } }
+export interface FindingProvenance {
+  finding: { evaluatedExpr: unknown }; criterion: { key: string }; ruleVersion: { astHash: string };
+  clause: { id: string; reference: string; page: string | null } | null;
+  rateCell: { id: string; reference: string } | null;
+  sourceDocument: { id: string; sha256: string; storageUri: string } | null;
+}
 
 export interface FindingsSummary {
   recoverableOpen: string;

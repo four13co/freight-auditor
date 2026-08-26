@@ -87,6 +87,11 @@ export function FindingDetail({ row, onClose, onStatusChange }: FindingDetailPro
     }
   }
 
+  function loadProvenance(): void {
+    setProvenanceError(false);
+    void fetchFindingProvenance(row.id).then(setProvenance, () => setProvenanceError(true));
+  }
+
   const display = getStatusDisplay({ ...row, status });
 
   return (
@@ -145,14 +150,29 @@ export function FindingDetail({ row, onClose, onStatusChange }: FindingDetailPro
             <Field label="Expected">{formatMoney(row.expected)}</Field>
             <Field label="Variance">{formatVariance(row.varianceAmount)}</Field>
             <Field label="Direction">{formatDirection(row.direction)}</Field>
-            <button type="button" className="h-8 border border-[rgba(32,30,29,0.4)] text-xs font-extrabold" onClick={() => {
-              setProvenanceError(false);
-              void fetchFindingProvenance(row.id).then(setProvenance, () => setProvenanceError(true));
-            }}>Explain evaluation</button>
+            <div className="grid grid-cols-2 gap-2">
+              <button type="button" className="h-8 border border-[rgba(32,30,29,0.4)] text-xs font-extrabold" onClick={loadProvenance}>Explain evaluation</button>
+              <button type="button" className="h-8 border border-[rgba(32,30,29,0.4)] text-xs font-extrabold" onClick={loadProvenance}>View source citation</button>
+            </div>
             {provenance && (
               <div data-testid="evaluated-ast" className="border border-[rgba(32,30,29,0.3)] p-3">
                 <div className="mb-2 text-xs font-extrabold">{provenance.criterion.key}</div>
                 <pre className="overflow-auto whitespace-pre-wrap text-[11px]">{JSON.stringify(provenance.finding.evaluatedExpr, null, 2)}</pre>
+              </div>
+            )}
+            {provenance?.clause && (
+              <div data-testid="source-citation" className="border border-[rgba(32,30,29,0.3)] p-3 text-xs">
+                <div className="font-extrabold">Clause {provenance.clause.reference}{provenance.clause.page ? ` · page ${provenance.clause.page}` : ''}</div>
+                {provenance.rateCell && <div className="mt-1">Rate cell {provenance.rateCell.reference}</div>}
+                {provenance.sourceDocument && (
+                  <div className="mt-2 break-all text-[11px]">
+                    SHA-256: {provenance.sourceDocument.sha256}
+                    {/^https?:/.test(provenance.sourceDocument.storageUri) ? (
+                      <a className="ml-2 font-extrabold underline" target="_blank" rel="noreferrer"
+                        href={`${provenance.sourceDocument.storageUri}${provenance.clause.page ? `#page=${provenance.clause.page}` : ''}`}>Open source page</a>
+                    ) : <div>Stored securely; direct preview unavailable.</div>}
+                  </div>
+                )}
               </div>
             )}
             {provenanceError && <span className="text-xs font-semibold text-[#7c1405]">Couldn&rsquo;t load evaluation explanation.</span>}

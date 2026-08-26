@@ -74,11 +74,23 @@ describe('FindingDetail status control (86e2v1xyr)', () => {
 
   it('drills down into the exact persisted evaluated AST', async () => {
     fetchMock.mockResolvedValue(new Response(JSON.stringify({ finding: { evaluatedExpr: { type: 'compare', result: false } },
-      criterion: { key: 'CONTRACT.RATE_VARIANCE' }, ruleVersion: { astHash: 'hash' } }), { status: 200 }));
+      criterion: { key: 'CONTRACT.RATE_VARIANCE' }, ruleVersion: { astHash: 'hash' }, clause: null, rateCell: null, sourceDocument: null }), { status: 200 }));
     render(<FindingDetail row={ROW} onClose={() => {}} />);
     fireEvent.click(screen.getByRole('button', { name: 'Explain evaluation' }));
     await waitFor(() => expect(screen.getByTestId('evaluated-ast')).toBeInTheDocument());
     expect(screen.getByText('CONTRACT.RATE_VARIANCE')).toBeInTheDocument();
     expect(screen.getByText(/"result": false/)).toBeInTheDocument();
+  });
+
+  it('opens a page-aware clause and immutable source citation', async () => {
+    fetchMock.mockResolvedValue(new Response(JSON.stringify({ finding: { evaluatedExpr: {} }, criterion: { key: 'RATE' },
+      ruleVersion: { astHash: 'hash' }, clause: { id: 'cl', reference: '4.2', page: '7' },
+      rateCell: { id: 'rc', reference: 'B12' }, sourceDocument: { id: 'sd', sha256: 'abc123', storageUri: 'https://docs.example/contract.pdf' } }), { status: 200 }));
+    render(<FindingDetail row={ROW} onClose={() => {}} />);
+    fireEvent.click(screen.getByRole('button', { name: 'View source citation' }));
+    await waitFor(() => expect(screen.getByTestId('source-citation')).toBeInTheDocument());
+    expect(screen.getByText(/Clause 4.2 · page 7/)).toBeInTheDocument();
+    expect(screen.getByText(/Rate cell B12/)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Open source page' })).toHaveAttribute('href', 'https://docs.example/contract.pdf#page=7');
   });
 });

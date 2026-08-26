@@ -5,6 +5,7 @@ import type { AuditResult } from './evaluate-invoice.js';
 import { resolveCriterionIds } from './resolve-criterion-ids.js';
 import { deterministicAuditEventId, writeAuditEvent } from '../audit-ledger/write-audit-event.js';
 import { replayManifestHash, type AuditReplayManifest } from '../audit-ledger/replay-manifest.js';
+import { resolveTransportEvidence } from './resolve-transport-evidence.js';
 
 /**
  * Persist a parsed invoice + its audit result into the canonical schema
@@ -20,6 +21,7 @@ import { replayManifestHash, type AuditReplayManifest } from '../audit-ledger/re
 export interface PersistInput {
   clientId: string;
   carrierId?: string;
+  shipmentId?: string;
   invoice: ParsedInvoice;
   result: AuditResult;
   /** A rubric_snapshot row id (pre-seeded); pins the run for reproducibility. */
@@ -43,13 +45,14 @@ export async function persistAuditRun(
   input: PersistInput,
 ): Promise<PersistedRun> {
   const { clientId, invoice, result } = input;
+  const transportDocumentId = await resolveTransportEvidence(client, clientId, input.shipmentId);
 
   // 1. invoice header (always persisted — the audit trail covers rejected
   // invoices too, via gate_failure below).
   const inv = await client.query<{ id: string }>(
-    `INSERT INTO invoice (client_id, carrier_id, transaction_set, invoice_number, currency, parser_version)
-     VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
-    [clientId, input.carrierId ?? null, invoice.transactionSet, invoice.invoiceNumber ?? null, invoice.headerCurrency ?? null, invoice.parserVersion],
+    `INSERT INTO invoice (client_id, shipment_id, carrier_id, transaction_set, invoice_number, currency, parser_version)
+     VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
+    [clientId, input.shipmentId ?? null, input.carrierId ?? null, invoice.transactionSet, invoice.invoiceNumber ?? null, invoice.headerCurrency ?? null, invoice.parserVersion],
   );
   const invoiceId = inv.rows[0]!.id;
 
@@ -126,11 +129,11 @@ export async function persistAuditRun(
   const gateFailureIds: string[] = [];
   for (const g of result.gateFailures) {
     const gf = await client.query<{ id: string }>(
-      `INSERT INTO gate_failure (client_id, audit_run_id, criterion_id, rule_version_id, clause_id, source_document_id, defect, citation, evaluated_expr)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id`,
+      `INSERT INTO gate_failure (client_id, audit_run_id, criterion_id, rule_version_id, clause_id, source_document_id, transport_document_id, defect, citation, evaluated_expr)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id`,
       [clientId, auditRunId, resolvedIdsByCriterionKey.get(g.criterionKey)!.criterionId,
         resolvedIdsByCriterionKey.get(g.criterionKey)!.ruleVersionId, resolvedIdsByCriterionKey.get(g.criterionKey)!.clauseId,
-        resolvedIdsByCriterionKey.get(g.criterionKey)!.sourceDocumentId, g.defect, g.citation ?? null, JSON.stringify(g.evaluatedExpr)],
+        resolvedIdsByCriterionKey.get(g.criterionKey)!.sourceDocumentId, transportDocumentId, g.defect, g.citation ?? null, JSON.stringify(g.evaluatedExpr)],
     );
     gateFailureIds.push(gf.rows[0]!.id);
   }
@@ -143,9 +146,10 @@ export async function persistAuditRun(
   for (const f of result.findings) {
     const resolved = resolvedIdsByCriterionKey.get(f.criterionKey)!;
     const cf = await client.query<{ id: string }>(
-      `INSERT INTO charge_finding (client_id, audit_run_id, criterion_id, rule_version_id, clause_id, source_document_id, result, evaluated_expr)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id`,
-      [clientId, auditRunId, resolved.criterionId, resolved.ruleVersionId, resolved.clauseId, resolved.sourceDocumentId, f.result, JSON.stringify(f.evaluatedExpr)],
+      `INSERT INTO charge_finding (client_id, audit_run_id, criterion_id, rule_version_id, clause_id, source_document_id, transport_document_id, result, evaluated_expr)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id`,
+      [clientId, auditRunId, resolved.criterionId, resolved.ruleVersionId, resolved.clauseId, resolved.sourceDocumentId,
+        transportDocumentId, f.result, JSON.stringify(f.evaluatedExpr)],
     );
     chargeFindingIds.push(cf.rows[0]!.id);
   }
@@ -177,8 +181,8 @@ export async function persistAuditRun(
     const resolved = resolvedIdsByCriterionKey.get(f.criterionKey)!;
     await client.query(
       `INSERT INTO variance_finding
-         (client_id, audit_run_id, criterion_id, rule_version_id, clause_id, source_document_id, charge_fact_id, direction, materiality, variance_amount, currency, classification, status)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'open')`,
+         (client_id, audit_run_id, criterion_id, rule_version_id, clause_id, source_document_id, transport_document_id, charge_fact_id, direction, materiality, variance_amount, currency, classification, status)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'open')`,
       [
         clientId,
         auditRunId,
@@ -186,6 +190,7 @@ export async function persistAuditRun(
         resolved.ruleVersionId,
         resolved.clauseId,
         resolved.sourceDocumentId,
+        transportDocumentId,
         chargeFactId,
         f.direction === 'INTEGRITY_ONLY' ? null : f.direction,
         f.varianceAmount === null ? null : new Decimal(f.varianceAmount).abs().toFixed(4),

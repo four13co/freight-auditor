@@ -1,17 +1,20 @@
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
 
-const pin = z.object({ id: z.string().uuid(), contentHash: z.string().regex(/^[a-f0-9]{64}$/).optional() }).strict();
+// PostgreSQL's uuid type accepts all canonical 8-4-4-4-12 hexadecimal values;
+// do not impose RFC version/variant bits on database-generated or fixture IDs.
+const postgresUuid = z.string().regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
+const pin = z.object({ id: postgresUuid, contentHash: z.string().regex(/^[a-f0-9]{64}$/).optional() }).strict();
 
 export const AuditReplayManifestSchema = z.object({
   schemaVersion: z.literal(1),
-  auditRunId: z.string().uuid(),
-  clientId: z.string().uuid(),
+  auditRunId: postgresUuid,
+  clientId: postgresUuid,
   engineSpecVersion: z.string().min(1),
   parser: z.object({ transactionSet: z.string().min(1), version: z.string().min(1) }).strict(),
-  sourceDocuments: z.array(z.object({ id: z.string().uuid(), sha256: z.string().regex(/^[a-f0-9]{64}$/) }).strict()),
+  sourceDocuments: z.array(z.object({ id: postgresUuid, sha256: z.string().regex(/^[a-f0-9]{64}$/) }).strict()),
   rubric: z.object({
-    snapshotId: z.string().uuid().nullable(),
+    snapshotId: postgresUuid.nullable(),
     contentHash: z.string().regex(/^[a-f0-9]{64}$/).nullable(),
     resolverVersion: z.string().nullable(),
   }).strict(),

@@ -55,6 +55,7 @@ describe('PATCH /api/findings/:id/status (DB, e2e)', () => {
     await app.close();
     const owner = await pool.connect();
     try {
+      await owner.query(`DELETE FROM audit_event WHERE client_id IN ($1, $2)`, [clientId, otherClientId]);
       await owner.query(`DELETE FROM finding_status_event WHERE client_id IN ($1, $2)`, [clientId, otherClientId]);
       await owner.query(`DELETE FROM variance_finding WHERE client_id IN ($1, $2)`, [clientId, otherClientId]);
       await owner.query(`DELETE FROM charge_fact WHERE client_id IN ($1, $2)`, [clientId, otherClientId]);

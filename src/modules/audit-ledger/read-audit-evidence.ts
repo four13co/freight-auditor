@@ -7,10 +7,14 @@ export async function getRubricSnapshot(client: pg.PoolClient, auditRunId: strin
 }
 
 export async function listResolutionConflicts(client: pg.PoolClient, auditRunId: string): Promise<unknown[]> {
-  return (await client.query(`SELECT rc.id, rc.criterion_key, rc.conflict_type, rc.reason_code,
-      rc.source_rubric_version_ids, rc.source_rule_version_ids, rc.resolver_version, rc.recorded_at
-    FROM audit_run ar JOIN resolution_conflict rc ON rc.rubric_snapshot_id = ar.rubric_snapshot_id
+  return (await client.query(`SELECT rc.id, rc.criterion_key, rc.conflict_type, rc.detail, rc.recorded_at
+    FROM audit_run ar JOIN resolution_conflict rc ON rc.tenant_id = ar.client_id OR rc.tenant_id IS NULL
     WHERE ar.id = $1 ORDER BY rc.recorded_at, rc.id`, [auditRunId])).rows;
+}
+
+export async function listTenantResolutionConflicts(client: pg.PoolClient): Promise<unknown[]> {
+  return (await client.query(`SELECT id, criterion_key, conflict_type, detail, recorded_at
+    FROM resolution_conflict ORDER BY recorded_at, id`)).rows;
 }
 
 export async function getReplayManifest(client: pg.PoolClient, auditRunId: string): Promise<unknown | null> {

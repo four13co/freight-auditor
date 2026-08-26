@@ -35,6 +35,7 @@ export interface FindingProvenance {
 }
 export interface ReviewQueueItem { id: string; auditRunId: string; invoiceNumber: string | null; criterionKey: string; createdAt: string }
 export interface ReviewQueues { escalation: ReviewQueueItem[]; unassessable: ReviewQueueItem[] }
+export interface RubricConflict { id: string; criterion_key: string | null; conflict_type: string; detail: Record<string, unknown>; recorded_at: string }
 
 export interface FindingsSummary {
   recoverableOpen: string;
@@ -182,6 +183,12 @@ export async function fetchReviewQueues(): Promise<ReviewQueues> {
   if (!res.ok) throw new Error(`GET review queues failed: ${res.status}`);
   const body = (await res.json()) as Partial<ReviewQueues>;
   return { escalation: body.escalation ?? [], unassessable: body.unassessable ?? [] };
+}
+export async function fetchRubricConflicts(): Promise<RubricConflict[]> {
+  const res = await fetch('/api/rubric-conflicts', { headers: authHeaders() });
+  if (!res.ok) throw new Error(`GET rubric conflicts failed: ${res.status}`);
+  const body = (await res.json()) as { conflicts?: RubricConflict[] };
+  return body.conflicts ?? [];
 }
 
 export async function fetchGateFailures(): Promise<GateFailureRow[]> {

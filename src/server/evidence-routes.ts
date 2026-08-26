@@ -3,7 +3,7 @@ import { withTenantTx } from '../db/tenant-context.js';
 import { registerTenantAuthPreHandler } from '../modules/findings/tenant-auth.js';
 import { isUuid } from '../shared/request-validation.js';
 import { getDefensibilityChain } from '../modules/findings/get-defensibility-chain.js';
-import { getInvoiceScorecard, getReplayManifest, getRubricSnapshot, listResolutionConflicts } from '../modules/audit-ledger/read-audit-evidence.js';
+import { getInvoiceScorecard, getReplayManifest, getRubricSnapshot, listResolutionConflicts, listTenantResolutionConflicts } from '../modules/audit-ledger/read-audit-evidence.js';
 
 const validId = async (id: string, reply: FastifyReply): Promise<boolean> => {
   if (isUuid(id)) return true;
@@ -21,6 +21,8 @@ export async function registerEvidenceRoutes(routes: FastifyInstance): Promise<v
     const chain = await withTenantTx(request.tenantContext!, (client) => getDefensibilityChain(client, clientId, id));
     return chain ?? reply.code(404).send({ error: 'finding not found' });
   });
+  routes.get('/api/rubric-conflicts', async (request) => ({ conflicts:
+    await withTenantTx(request.tenantContext!, (client) => listTenantResolutionConflicts(client)) }));
   routes.get('/api/audit-runs/:id/rubric-snapshot', async (request, reply) => {
     const { id } = request.params as { id: string }; if (!await validId(id, reply)) return;
     const value = await withTenantTx(request.tenantContext!, (client) => getRubricSnapshot(client, id));

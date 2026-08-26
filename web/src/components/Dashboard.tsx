@@ -6,17 +6,20 @@ import { KpiRow } from './KpiRow.js';
 import { FindingsTable } from './FindingsTable.js';
 import { GateFailuresPanel } from './GateFailuresPanel.js';
 import { ReviewQueues } from './ReviewQueues.js';
+import { RubricConflictQueue } from './RubricConflictQueue.js';
 import {
   fetchFindings,
   fetchFindingsSummary,
   fetchGateFailures,
   fetchReviewQueues,
+  fetchRubricConflicts,
   type FindingRow,
   type FindingsSortDir,
   type FindingsSortKey,
   type FindingsSummary,
   type GateFailureRow,
   type ReviewQueues as ReviewQueuesData,
+  type RubricConflict,
 } from '../lib/api.js';
 
 /**
@@ -52,6 +55,7 @@ export function Dashboard() {
   // which is the same visual result as "no rejected invoices exist."
   const [gateFailures, setGateFailures] = useState<GateFailureRow[]>([]);
   const [reviewQueues, setReviewQueues] = useState<ReviewQueuesData>({ escalation: [], unassessable: [] });
+  const [rubricConflicts, setRubricConflicts] = useState<RubricConflict[]>([]);
 
   const load = useCallback(() => {
     setStatus('loading');
@@ -95,6 +99,7 @@ export function Dashboard() {
   useEffect(() => {
     fetchGateFailures().then(setGateFailures, () => setGateFailures([]));
     fetchReviewQueues().then(setReviewQueues, () => setReviewQueues({ escalation: [], unassessable: [] }));
+    fetchRubricConflicts().then(setRubricConflicts, () => setRubricConflicts([]));
   }, []);
 
   return (
@@ -129,6 +134,7 @@ export function Dashboard() {
               {summary && <KpiRow summary={summary} />}
               <GateFailuresPanel rows={gateFailures} />
               <ReviewQueues queues={reviewQueues} />
+              <RubricConflictQueue rows={rubricConflicts} />
               <FindingsTable
                 rows={rows}
                 carrierFilter={carrierFilter}

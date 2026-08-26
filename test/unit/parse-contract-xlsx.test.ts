@@ -9,6 +9,8 @@ async function workbookBytes(): Promise<Buffer> {
   second.getCell('A1').value = 'Cafe\u0301';
   second.getCell('C2').value = { formula: 'B2*2', result: 25 };
   second.getCell('D2').value = new Date('2026-01-02T00:00:00.000Z');
+  second.getCell('A4').value = 'Inherited header';
+  second.mergeCells('A4:C5');
   const first = workbook.addWorksheet('A Notes');
   first.getCell('A1').value = { richText: [{ text: 'Fuel ' }, { text: 'rate' }] };
   return Buffer.from(await workbook.xlsx.writeBuffer());
@@ -22,9 +24,16 @@ describe('parseContractXlsx', () => {
     expect(first).toEqual(second);
     expect(first.parserVersion).toBe(XLSX_PARSER_VERSION);
     expect(first.sheets.map((sheet) => sheet.name)).toEqual(['Z Rates', 'A Notes']);
-    expect(first.sheets[0]!.cells.map((cell) => cell.address)).toEqual(['A1', 'B2', 'C2', 'D2']);
+    expect(first.sheets[0]!.cells.map((cell) => cell.address)).toEqual(['A1', 'B2', 'C2', 'D2', 'A4', 'B4', 'C4', 'A5', 'B5', 'C5']);
     expect(first.sheets[0]!.cells[0]!.value).toBe('Café');
     expect(first.sheets[1]!.cells[0]!.value).toBe('Fuel rate');
+  });
+
+  it('preserves merge ranges and marks inherited cells without duplicating the master value', async () => {
+    const parsed = await parseContractXlsx(await workbookBytes());
+    expect(parsed.sheets[0]!.merges).toEqual([{ range: 'A4:C5', masterAddress: 'A4', start: { row: 4, column: 1 }, end: { row: 5, column: 3 } }]);
+    expect(parsed.sheets[0]!.cells.find((cell) => cell.address === 'A4')).toMatchObject({ value: 'Inherited header', merge: { role: 'master', masterAddress: 'A4' } });
+    expect(parsed.sheets[0]!.cells.find((cell) => cell.address === 'C5')).toMatchObject({ value: null, merge: { role: 'inherited', masterAddress: 'A4' } });
   });
 
   it('records formulas and cached values without executing arithmetic', async () => {

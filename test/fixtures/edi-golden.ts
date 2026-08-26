@@ -15,6 +15,9 @@ const ISA_310 =
   'ISA*00*          *00*          *ZZ*SENDER         *ZZ*RECEIVER       *260703*1200*U*00401*000000002*0*P*>~' +
   'GS*IO*SENDER*RECEIVER*20260703*1200*2*X*004010~';
 
+const OCEAN_REQUIRED =
+  'N9*BM*BOOK310001~N7*MSCU*1234567~V1*IMO1234567*VESSEL**VOY42~R4*L*USLAX~R4*D*CNSHA~';
+
 /**
  * GOLDEN 210 — a well-formed motor invoice that FOOTS.
  * B3-07 declared total = 1250.00; two L1 charges: 1000.00 (LINEHAUL) + 250.00 (FUEL).
@@ -28,7 +31,7 @@ const ISA_310 =
 export const GOLDEN_210 =
   ISA_210 +
   'ST*210*0001~' +
-  'B3**INV210001*****1250.00***USD~' +
+  'B3**INV210001*SHIP210001****1250.00****ABCD~' +
   'L1*1***1000.00****400****Linehaul~' +
   'L1*2***250.00****405****Fuel Surcharge~' +
   'SE*5*0001~';
@@ -53,6 +56,7 @@ export const GOLDEN_310 =
   'ST*310*0002~' +
   'B3**INV310002*****3150.00***~' +
   'C3*USD~' +
+  OCEAN_REQUIRED +
   'L1*1***3000.00****500****Ocean Freight********USD~' +
   'L1*2***150.00****510****Documentation Fee********EUR~' +
   'SE*6*0002~';
@@ -75,7 +79,7 @@ export const GOLDEN_310_EXPECTED = {
 export const MALFORMED_210_NOFOOT =
   ISA_210 +
   'ST*210*0003~' +
-  'B3**INV210003*****1250.00***USD~' +
+  'B3**INV210003*SHIP210003****1250.00****ABCD~' +
   'L1*1***800.00****400****Linehaul~' +
   'L1*2***250.00****405****Fuel Surcharge~' +
   'SE*5*0003~';
@@ -88,6 +92,7 @@ export const MALFORMED_310_NOCURRENCY =
   ISA_310 +
   'ST*310*0004~' +
   'B3**INV310004*****500.00***~' +
+  OCEAN_REQUIRED +
   'L1*1***500.00****500****Ocean Freight~' +
   'SE*4*0004~';
 
@@ -100,7 +105,7 @@ export const MALFORMED_310_NOCURRENCY =
 export const MALFORMED_210_BADAMOUNT =
   ISA_210 +
   'ST*210*0005~' +
-  'B3**INV210005*****1250.00***USD~' +
+  'B3**INV210005*SHIP210005****1250.00****ABCD~' +
   'L1*1***N/A****400****Linehaul~' +
   'L1*2***250.00****405****Fuel Surcharge~' +
   'SE*5*0005~';
@@ -115,7 +120,7 @@ export const MALFORMED_210_BADAMOUNT =
 export const MALFORMED_210_MISSINGAMOUNT =
   ISA_210 +
   'ST*210*0006~' +
-  'B3**INV210006*****1250.00***USD~' +
+  'B3**INV210006*SHIP210006****1250.00****ABCD~' +
   'L1*1*******400****Linehaul~' +
   'L1*2***250.00****405****Fuel Surcharge~' +
   'SE*5*0006~';
@@ -132,6 +137,7 @@ export const MALFORMED_310_BADAMOUNT =
   'ST*310*0007~' +
   'B3**INV310007*****N/A***~' +
   'C3*USD~' +
+  OCEAN_REQUIRED +
   'L1*1***500.00****500****Ocean Freight********USD~' +
   'SE*5*0007~';
 
@@ -144,7 +150,7 @@ export const MALFORMED_310_BADAMOUNT =
 export const MISMATCHED_GROUP_210 =
   ISA_310 +
   'ST*210*0006~' +
-  'B3**INV210006*****100.00***USD~' +
+  'B3**INV210006*SHIP210006****100.00****ABCD~' +
   'L1*1***100.00****400****Linehaul~' +
   'SE*4*0006~';
 
@@ -157,6 +163,7 @@ export const MISMATCHED_GROUP_310 =
   'ST*310*0007~' +
   'B3**INV310007*****100.00***~' +
   'C3*USD~' +
+  OCEAN_REQUIRED +
   'L1*1***100.00****500****Ocean Freight~' +
   'SE*5*0007~';
 
@@ -173,6 +180,7 @@ export const MIXED_CURRENCY_LINEHAUL_310 =
   'ST*310*0008~' +
   'B3**INV310008*****2000.00***~' +
   'C3*USD~' +
+  OCEAN_REQUIRED +
   'L1*1***1000.00****400****Linehaul Leg 1********USD~' +
   'L1*2***1000.00****400****Linehaul Leg 2********EUR~' +
   'SE*6*0008~';

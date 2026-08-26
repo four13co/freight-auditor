@@ -12,6 +12,7 @@ import { getAuth } from '../../auth/better-auth.js';
 declare module 'fastify' {
   interface FastifyRequest {
     tenantContext?: TenantContext;
+    actorUserId?: string;
   }
 }
 
@@ -77,6 +78,7 @@ async function resolveViaDevHeaders(request: FastifyRequest): Promise<TenantCont
 
   const hasMembership = await lookupMembership(userId, clientId);
   if (!hasMembership) return null;
+  request.actorUserId = userId;
   return { clientIds: [clientId], internal: false };
 }
 
@@ -123,6 +125,7 @@ async function resolveViaSession(request: FastifyRequest): Promise<TenantContext
 
   const hasMembership = await lookupMembership(session.user.id, clientId);
   if (!hasMembership) return null;
+  request.actorUserId = session.user.id;
   return { clientIds: [clientId], internal: false };
 }
 

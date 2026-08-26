@@ -3,6 +3,8 @@ import { Decimal } from 'decimal.js';
 import type { ParsedInvoice } from '../ingestion/charge-fact.js';
 import type { AuditResult } from './evaluate-invoice.js';
 import { resolveCriterionIds } from './resolve-criterion-ids.js';
+import { deterministicAuditEventId, writeAuditEvent } from '../audit-ledger/write-audit-event.js';
+import { replayManifestHash, type AuditReplayManifest } from '../audit-ledger/replay-manifest.js';
 
 /**
  * Persist a parsed invoice + its audit result into the canonical schema
@@ -22,6 +24,9 @@ export interface PersistInput {
   result: AuditResult;
   /** A rubric_snapshot row id (pre-seeded); pins the run for reproducibility. */
   rubricSnapshotId: string | null;
+  sourceDocuments?: Array<{ id: string; sha256: string }>;
+  contractVersionIds?: string[];
+  resolvedInputs?: Record<string, unknown>;
 }
 
 export interface PersistedRun {
@@ -29,6 +34,7 @@ export interface PersistedRun {
   auditRunId: string;
   gateFailureIds: string[];
   chargeFindingIds: string[];
+  coverageMarkerIds: string[];
   scorecardId: string | null;
 }
 
@@ -92,6 +98,20 @@ export async function persistAuditRun(
     [clientId, invoiceId, input.rubricSnapshotId, result.pins.engineSpecVersion, result.outcome],
   );
   const auditRunId = run.rows[0]!.id;
+
+  // Suspicious-pass coverage gaps are append-only discovery inputs. They are
+  // persisted even for rejected invoices so missing evidence never disappears
+  // merely because another structural gate also failed.
+  const coverageMarkerIds: string[] = [];
+  for (const marker of result.coverageMarkers) {
+    const persistedMarker = await client.query<{ id: string }>(
+      `INSERT INTO coverage_marker
+         (client_id, audit_run_id, charge_index, marker_code, missing_fields)
+       VALUES ($1,$2,$3,$4,$5) RETURNING id`,
+      [clientId, auditRunId, marker.chargeIndex, marker.code, marker.missingFields],
+    );
+    coverageMarkerIds.push(persistedMarker.rows[0]!.id);
+  }
 
   // 3. gate_failures (the kickback) — append-only.
   const gateFailureIds: string[] = [];
@@ -192,5 +212,66 @@ export async function persistAuditRun(
     scorecardId = sc.rows[0]!.id;
   }
 
-  return { invoiceId, auditRunId, gateFailureIds, chargeFindingIds, scorecardId };
+  const ruleVersionIds = [...new Set([...resolvedIdsByCriterionKey.values()]
+    .map((resolved) => resolved?.ruleVersionId).filter((id): id is string => id !== null && id !== undefined))];
+  const rulePins = ruleVersionIds.length === 0 ? [] : (await client.query<{ id: string; ast_hash: string }>(
+    `SELECT id, ast_hash FROM rule_version WHERE id = ANY($1::uuid[]) ORDER BY id`, [ruleVersionIds],
+  )).rows.map((row) => ({ id: row.id, contentHash: row.ast_hash }));
+  const rubricPin = input.rubricSnapshotId === null ? null : (await client.query<{
+    content_hash: string; resolver_version: string;
+  }>(`SELECT content_hash, resolver_version FROM rubric_snapshot WHERE id = $1`, [input.rubricSnapshotId])).rows[0] ?? null;
+  const contractIds = input.contractVersionIds ?? [];
+  const contractPins = contractIds.length === 0 ? [] : (await client.query<{ id: string; sha256: string | null }>(
+    `SELECT cv.id, sd.sha256 FROM contract_version cv
+     LEFT JOIN source_document sd ON sd.id = cv.source_document_id
+     WHERE cv.id = ANY($1::uuid[]) ORDER BY cv.id`, [contractIds],
+  )).rows.map((row) => ({ id: row.id, ...(row.sha256 ? { contentHash: row.sha256 } : {}) }));
+
+  const manifest: AuditReplayManifest = {
+    schemaVersion: 1,
+    auditRunId,
+    clientId,
+    engineSpecVersion: result.pins.engineSpecVersion,
+    parser: { transactionSet: invoice.transactionSet, version: invoice.parserVersion },
+    sourceDocuments: input.sourceDocuments ?? [],
+    rubric: {
+      snapshotId: input.rubricSnapshotId,
+      contentHash: rubricPin?.content_hash ?? null,
+      resolverVersion: rubricPin?.resolver_version ?? null,
+    },
+    ruleVersions: rulePins,
+    contractVersions: contractPins,
+    externalValues: [],
+    crosswalkRows: [],
+    ai: [],
+    resolvedInputs: JSON.parse(JSON.stringify(input.resolvedInputs ?? {})) as AuditReplayManifest['resolvedInputs'],
+    invoice: JSON.parse(JSON.stringify(invoice)) as AuditReplayManifest['invoice'],
+    result: JSON.parse(JSON.stringify(result)) as AuditReplayManifest['result'],
+  };
+  const manifestHash = replayManifestHash(manifest);
+  await client.query(
+    `INSERT INTO audit_replay_manifest (client_id, audit_run_id, schema_version, content_hash, manifest)
+     VALUES ($1, $2, 1, $3, $4)`,
+    [clientId, auditRunId, manifestHash, JSON.stringify(manifest)],
+  );
+
+  await writeAuditEvent(client, {
+    id: deterministicAuditEventId(clientId, auditRunId, 'evaluation.completed'),
+    clientId,
+    entity: 'audit_run',
+    entityId: auditRunId,
+    event: 'evaluation.completed',
+    actorKind: 'system',
+    rubricSnapshotId: input.rubricSnapshotId,
+    detail: {
+      outcome: result.outcome,
+      engineSpecVersion: result.pins.engineSpecVersion,
+      gateFailureCount: gateFailureIds.length,
+      findingCount: chargeFindingIds.length,
+      scorecardId,
+      replayManifestHash: manifestHash,
+    },
+  });
+
+  return { invoiceId, auditRunId, gateFailureIds, chargeFindingIds, coverageMarkerIds, scorecardId };
 }

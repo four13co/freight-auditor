@@ -1,4 +1,5 @@
 import type pg from 'pg';
+import { deterministicAuditEventId, writeAuditEvent } from '../audit-ledger/write-audit-event.js';
 
 export interface UpdateFindingStatusResult {
   /** false when the finding doesn't exist / isn't visible under RLS for this tenant -- caller maps this to 404. */
@@ -27,8 +28,10 @@ export async function updateFindingStatus(
   findingId: string,
   toStatus: string,
   note?: string,
+  actorUserId?: string,
 ): Promise<UpdateFindingStatusResult> {
-  const result = await client.query<{ id: string; client_id: string; from_status: string }>(
+  const actorKind = 'analyst' as const;
+  const result = await client.query<{ id: string; client_id: string; from_status: string; status_event_id: string }>(
     `WITH old AS (
        SELECT id, client_id, status AS from_status FROM variance_finding WHERE id = $1
      ),
@@ -40,15 +43,27 @@ export async function updateFindingStatus(
      ),
      logged AS (
        INSERT INTO finding_status_event (client_id, variance_finding_id, from_status, to_status, actor_kind, note)
-       SELECT updated.client_id, updated.id, old.from_status, $2::variance_status, 'analyst', $3
+       SELECT updated.client_id, updated.id, old.from_status, $2::variance_status, $4::actor_kind, $3
        FROM updated JOIN old ON true
-       RETURNING variance_finding_id
+       RETURNING id, variance_finding_id
      )
-     SELECT id, client_id, (SELECT from_status FROM old) AS from_status FROM updated`,
-    [findingId, toStatus, note ?? null],
+     SELECT updated.id, updated.client_id, (SELECT from_status FROM old) AS from_status,
+       (SELECT id FROM logged) AS status_event_id
+     FROM updated`,
+    [findingId, toStatus, note ?? null, actorKind],
   );
 
   const row = result.rows[0];
   if (!row) return { found: false };
+  await writeAuditEvent(client, {
+    id: deterministicAuditEventId(row.client_id, row.status_event_id, 'finding.status_changed'),
+    clientId: row.client_id,
+    entity: 'variance_finding',
+    entityId: row.id,
+    event: 'finding.status_changed',
+    actorKind,
+    actorUserId: actorUserId ?? null,
+    detail: { fromStatus: row.from_status, toStatus, note: note ?? null, statusEventId: row.status_event_id },
+  });
   return { found: true };
 }

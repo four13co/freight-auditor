@@ -34,6 +34,8 @@ describe('Phase 1 persistence (DB)', () => {
   afterAll(async () => {
     const owner = await pool.connect();
     try {
+      await owner.query(`DELETE FROM audit_event WHERE client_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM audit_replay_manifest WHERE client_id = $1`, [clientId]);
       // Children of the runs first, then invoices, then client.
       // variance_finding before audit_run (86e2v17p5's derivation now writes
       // here too).
@@ -41,6 +43,7 @@ describe('Phase 1 persistence (DB)', () => {
       await owner.query(`DELETE FROM scorecard WHERE client_id = $1`, [clientId]);
       await owner.query(`DELETE FROM charge_finding WHERE client_id = $1`, [clientId]);
       await owner.query(`DELETE FROM gate_failure WHERE client_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM coverage_marker WHERE client_id = $1`, [clientId]);
       await owner.query(`DELETE FROM audit_run WHERE client_id = $1`, [clientId]);
       await owner.query(`DELETE FROM charge_fact WHERE client_id = $1`, [clientId]);
       await owner.query(`DELETE FROM invoice WHERE client_id = $1`, [clientId]);
@@ -56,6 +59,7 @@ describe('Phase 1 persistence (DB)', () => {
     const result = evaluateInvoice(inv);
     const persisted = await withTenantTx({ clientIds: [clientId], internal: true }, async (c) => {
       const p = await persistAuditRun(c, { clientId, invoice: inv, result, rubricSnapshotId: null });
+      expect(p.coverageMarkerIds.length).toBeGreaterThan(0);
       const facts = await c.query(
         `SELECT code, category, amount, currency FROM charge_fact WHERE invoice_id = $1 ORDER BY amount DESC`,
         [p.invoiceId],
@@ -79,10 +83,30 @@ describe('Phase 1 persistence (DB)', () => {
         `SELECT conformed_count, variance_count, unassessable_count FROM scorecard WHERE audit_run_id = $1`,
         [p.auditRunId],
       );
-      return { outcome: run.rows[0].outcome, scorecard: sc.rows[0] };
+      const ledger = await c.query(`SELECT event, detail FROM audit_event WHERE entity_id = $1`, [p.auditRunId]);
+      const manifest = await c.query(
+        `SELECT schema_version, content_hash, manifest FROM audit_replay_manifest WHERE audit_run_id = $1`,
+        [p.auditRunId],
+      );
+      return { outcome: run.rows[0].outcome, scorecard: sc.rows[0], ledger: ledger.rows[0], manifest: manifest.rows[0] };
     });
     expect(row.outcome).toBe('SCORED');
-    expect(row.scorecard).toMatchObject({ conformed_count: 2, variance_count: 0 });
+    expect(row.scorecard).toMatchObject({ conformed_count: 2, variance_count: 1 });
+    expect(row.ledger).toMatchObject({
+      event: 'evaluation.completed',
+      detail: expect.objectContaining({ outcome: 'SCORED', scorecardId: expect.any(String) }),
+    });
+    expect(row.manifest).toMatchObject({
+      schema_version: 1,
+      content_hash: expect.stringMatching(/^[a-f0-9]{64}$/),
+      manifest: expect.objectContaining({
+        schemaVersion: 1,
+        auditRunId: expect.any(String),
+        externalValues: [],
+        crosswalkRows: [],
+        ai: [],
+      }),
+    });
   });
 
   it('AC2 e2e: malformed 210 → REJECTED_REWORK audit_run + gate_failure rows, NO scorecard', async () => {

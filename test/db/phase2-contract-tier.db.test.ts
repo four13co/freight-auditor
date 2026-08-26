@@ -55,6 +55,8 @@ describe('Phase 2 CONTRACT-tier (DB)', () => {
   afterAll(async () => {
     const owner = await pool.connect();
     try {
+      await owner.query(`DELETE FROM audit_event WHERE client_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM audit_replay_manifest WHERE client_id = $1`, [clientId]);
       // variance_finding before audit_run (86e2v17p5's derivation now writes
       // here too -- same FK-ordering fix as phase1-persist.db.test.ts).
       await owner.query(`DELETE FROM variance_finding WHERE client_id = $1`, [clientId]);
@@ -90,7 +92,7 @@ describe('Phase 2 CONTRACT-tier (DB)', () => {
     });
     expect(row.outcome).toBe('SCORED');
     // billed 1000.00 - contracted 900.00 = 100.00 overcharge, persisted for real.
-    expect(row.scorecard).toMatchObject({ variance_count: 1, total_overcharge: '100.0000', total_undercharge: '0.0000' });
+    expect(row.scorecard).toMatchObject({ variance_count: 2, total_overcharge: '100.0000', total_undercharge: '0.0000' });
   });
 
   it('AC3 e2e: a rate-lookup miss (unknown category) resolves to null, never a guessed rate', async () => {

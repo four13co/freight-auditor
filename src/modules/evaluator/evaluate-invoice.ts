@@ -7,7 +7,7 @@ import {
   type ComposedRubric,
   type StandardCriterion,
 } from '../rubric-resolver/standard-rubric.js';
-import { buildFactBundle, type ContractFacts } from './fact-bundle.js';
+import { buildFactBundle, findCoverageMarkers, type ContractFacts, type CoverageMarker } from './fact-bundle.js';
 import { rubricContentHash } from './snapshot.js';
 
 /**
@@ -60,6 +60,7 @@ export interface AuditResult {
   gateFailures: GateFailure[]; // the kickback (non-empty iff REJECTED_REWORK)
   findings: ChargeFinding[]; // empty on REJECTED_REWORK (SCORE phase skipped)
   scorecard: Scorecard | null; // null on REJECTED_REWORK
+  coverageMarkers: CoverageMarker[];
   pins: {
     parserVersion: string;
     engineSpecVersion: string;
@@ -73,6 +74,7 @@ export function evaluateInvoice(
   contract?: ContractFacts,
 ): AuditResult {
   const facts = buildFactBundle(invoice, contract);
+  const coverageMarkers = findCoverageMarkers(invoice);
   const pins = {
     parserVersion: invoice.parserVersion,
     engineSpecVersion: ENGINE_SPEC_VERSION,
@@ -101,7 +103,7 @@ export function evaluateInvoice(
 
   if (gateFailures.length > 0) {
     // Hard gate failed → REJECTED_REWORK, SCORE phase does NOT run.
-    return { outcome: 'REJECTED_REWORK', gateFailures, findings: [], scorecard: null, pins };
+    return { outcome: 'REJECTED_REWORK', gateFailures, findings: [], scorecard: null, coverageMarkers, pins };
   }
 
   // ---- SCORE phase: only on a clean gate ---------------------------------
@@ -154,7 +156,7 @@ export function evaluateInvoice(
     totalUndercharge: totalUndercharge.toFixed(4),
   };
 
-  return { outcome: 'SCORED', gateFailures: [], findings, scorecard, pins };
+  return { outcome: 'SCORED', gateFailures: [], findings, scorecard, coverageMarkers, pins };
 }
 
 function orderedCriteria(rubric: ComposedRubric, kind: StandardCriterion['kind']): StandardCriterion[] {

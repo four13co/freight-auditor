@@ -1,6 +1,12 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 
+const { writeSecurityEvent } = vi.hoisted(() => ({ writeSecurityEvent: vi.fn().mockResolvedValue(undefined) }));
+vi.mock('../../src/modules/audit-ledger/security-events.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../src/modules/audit-ledger/security-events.js')>()),
+  writeSecurityEvent,
+}));
+
 /**
  * Request-level unit coverage of the /api/auth/* mount's Fastify<->Fetch
  * adaptation (86e2v1bdj), with getAuth() mocked so this runs with no live

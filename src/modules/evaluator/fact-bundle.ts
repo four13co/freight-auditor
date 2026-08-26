@@ -2,6 +2,7 @@ import { Decimal } from 'decimal.js';
 import type { FactBundle } from '../rule-engine/ast.js';
 import type { ParsedInvoice } from '../ingestion/charge-fact.js';
 import type { ContractRate } from '../rate-engine/rate-lookup.js';
+import type { ExternalValueResolution } from '../reference-data/external-value-resolver.js';
 
 /**
  * Contract-scoped facts resolved by the caller BEFORE building the bundle
@@ -13,7 +14,38 @@ import type { ContractRate } from '../rate-engine/rate-lookup.js';
  * entirely (a STANDARD-only audit run).
  */
 export interface ContractFacts {
-  linehaulRate: ContractRate | null;
+  linehaulRate?: ContractRate | null;
+  duplicateInvoice?: boolean;
+  shipmentReferenceMatch?: boolean;
+  externalResolutions?: Readonly<Record<string, ExternalValueResolution>>;
+}
+
+export interface CoverageMarker {
+  chargeIndex: number;
+  code: 'INCOMPLETE_RATE_BASIS' | 'FUEL_WITHOUT_RATE_BASIS' | 'MISSING_CHARGE_IDENTITY';
+  missingFields: string[];
+}
+
+/** Deterministic discovery inputs: gaps on charges that otherwise passed structural validation. */
+export function findCoverageMarkers(inv: ParsedInvoice): CoverageMarker[] {
+  const markers: CoverageMarker[] = [];
+  inv.charges.forEach((charge, chargeIndex) => {
+    const hasRate = charge.rate !== undefined;
+    const hasBasis = charge.basis !== undefined;
+    if (hasRate !== hasBasis) {
+      markers.push({
+        chargeIndex,
+        code: 'INCOMPLETE_RATE_BASIS',
+        missingFields: [hasRate ? 'basis' : 'rate'],
+      });
+    } else if (charge.category === 'FUEL' && !hasRate && !hasBasis) {
+      markers.push({ chargeIndex, code: 'FUEL_WITHOUT_RATE_BASIS', missingFields: ['rate', 'basis'] });
+    }
+    if (!charge.code?.trim() && !charge.rawDescription?.trim()) {
+      markers.push({ chargeIndex, code: 'MISSING_CHARGE_IDENTITY', missingFields: ['code', 'rawDescription'] });
+    }
+  });
+  return markers;
 }
 
 /**
@@ -29,6 +61,15 @@ export function buildFactBundle(inv: ParsedInvoice, contract?: ContractFacts): F
   const allAmountsStated = inv.charges.every((c) => c.amount !== undefined);
   const quarantinedCount = inv.charges.filter((c) => c.quarantined).length;
   const hasFuel = inv.charges.some((c) => c.category === 'FUEL');
+  const rateBasisCharges = inv.charges.filter((c) => c.rate !== undefined || c.basis !== undefined);
+  const rateBasisArithmeticMatches = rateBasisCharges.length === 0 || rateBasisCharges.some(
+    (c) => c.rate === undefined || c.basis === undefined || c.amount === undefined,
+  )
+    ? undefined
+    : rateBasisCharges.every((c) => new Decimal(c.rate!).times(c.basis!).minus(c.amount!).abs().lte('0.01'));
+  const currencies = inv.charges.map((charge) => charge.currency);
+  const firstCurrency = currencies[0];
+  const coverageMarkers = findCoverageMarkers(inv);
 
   const bundle: FactBundle = {
     declared_total: declaredTotal === undefined ? undefined : { amount: declaredTotal, currency: inv.headerCurrency ?? '' },
@@ -38,9 +79,44 @@ export function buildFactBundle(inv: ParsedInvoice, contract?: ContractFacts): F
     charge_count: inv.charges.length,
     quarantined_count: quarantinedCount,
     has_fuel_category: hasFuel,
+    duplicate_invoice: contract?.duplicateInvoice,
+    shipment_reference_match: contract?.shipmentReferenceMatch,
+    rate_basis_arithmetic_matches: rateBasisArithmeticMatches,
+    required_210_invoice_number: inv.transactionSet !== '210' || Boolean(inv.invoiceNumber?.trim()),
+    required_210_shipment_id: inv.transactionSet !== '210' || Boolean(inv.shipmentReferences?.length),
+    required_210_scac: inv.transactionSet !== '210' || Boolean(inv.carrierCode?.trim()),
+    required_310_invoice_number: inv.transactionSet !== '310' || Boolean(inv.invoiceNumber?.trim()),
+    required_310_reference: inv.transactionSet !== '310' || Boolean(inv.shipmentReferences?.length),
+    required_310_container: inv.transactionSet !== '310' || Boolean(inv.containerNumbers?.length),
+    required_310_vessel_voyage: inv.transactionSet !== '310' || Boolean(inv.vesselVoyage?.trim()),
+    required_310_ports: inv.transactionSet !== '310' || (inv.portCodes?.length ?? 0) >= 2,
+    required_310_charge_identity: inv.transactionSet !== '310' || inv.charges.every(
+      (charge) => Boolean(charge.code?.trim() || charge.rawDescription?.trim()),
+    ),
+    valid_310_currency_codes: inv.transactionSet !== '310' || currencies.every(
+      (currency) => /^[A-Z]{3}$/.test(currency),
+    ),
+    consistent_310_charge_currencies: inv.transactionSet !== '310'
+      ? undefined
+      : firstCurrency === undefined || currencies.every((currency) => currency === firstCurrency),
+    suspicious_missing_data_count: coverageMarkers.length,
   };
 
-  if (contract !== undefined) {
+  for (const [sourceCode, resolution] of Object.entries(contract?.externalResolutions ?? {}).sort(([a], [b]) => a.localeCompare(b))) {
+    const key = externalValueFactKey(sourceCode);
+    if (resolution.status === 'FOUND') {
+      bundle[key] = { decimal: resolution.value };
+      bundle[`${key}_resolver_version`] = resolution.resolverVersion;
+      bundle[`${key}_external_value_id`] = resolution.pin.externalValueId;
+    } else {
+      // The value stays absent so an AST `require` resolves UNASSESSABLE.
+      // Preserve the stable cause beside it for discovery/explanation APIs.
+      bundle[`${key}_unavailable_reason`] = resolution.reason;
+      bundle[`${key}_resolver_version`] = resolution.resolverVersion;
+    }
+  }
+
+  if (contract?.linehaulRate !== undefined) {
     // Sum all LINEHAUL charges on the invoice — the billed side of the variance
     // comparison. Excludes quarantined charges (an unparseable/uncategorized
     // amount can't be compared; the STANDARD gates already handle that defect).
@@ -85,4 +161,8 @@ export function buildFactBundle(inv: ParsedInvoice, contract?: ContractFacts): F
   }
 
   return bundle;
+}
+
+export function externalValueFactKey(sourceCode: string): string {
+  return `external_${sourceCode.trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '')}`;
 }

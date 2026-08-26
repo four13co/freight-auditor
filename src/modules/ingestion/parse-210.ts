@@ -1,6 +1,6 @@
 import { firstSegment, el } from './x12.js';
 import { type Categorize, type ParsedInvoice } from './charge-fact.js';
-import { parseEdiEnvelope, readB3Header, buildCharges, buildFooting } from './edi-envelope.js';
+import { parseEdiEnvelope, readB3Header, buildCharges, buildFooting, normalizeReferences } from './edi-envelope.js';
 
 export const PARSER_210_VERSION = '210-v1';
 
@@ -20,7 +20,11 @@ export function parse210(raw: string, categorize: Categorize): ParsedInvoice {
   const { invoiceNumber, declaredTotal } = readB3Header(ix);
 
   const b3 = firstSegment(ix, 'B3');
-  const headerCurrency = el(b3, 11) ?? 'USD'; // B3-11 = currency; 210 declares one, defaults to USD
+  const shipmentReferences = normalizeReferences([el(b3, 3)]); // B3-03 = shipment identification number
+  const carrierCode = el(b3, 11); // B3-11 = Standard Carrier Alpha Code (SCAC)
+  // The 210 does not carry per-line currency like the 310; this platform's
+  // North-American motor profile uses USD. B3-11 is SCAC, never currency.
+  const headerCurrency = 'USD';
 
   // 210 applies the single header currency to every charge line.
   const { charges, quarantinedCodes } = buildCharges(ix, categorize, () => headerCurrency, 'L0/L1');
@@ -29,6 +33,8 @@ export function parse210(raw: string, categorize: Categorize): ParsedInvoice {
     transactionSet: '210',
     parserVersion: PARSER_210_VERSION,
     invoiceNumber,
+    shipmentReferences,
+    carrierCode,
     headerCurrency,
     charges,
     footing: buildFooting(declaredTotal, charges),

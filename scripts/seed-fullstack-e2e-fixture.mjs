@@ -61,7 +61,7 @@ const ISA_210 =
 const FIXTURE_EDI_210 =
   ISA_210 +
   'ST*210*0009~' +
-  `B3**${FIXTURE_INVOICE_NUMBER}*****1250.00***USD~` +
+  `B3**${FIXTURE_INVOICE_NUMBER}*SHIP-E2E-001****1250.00****E2EF~` +
   'L1*1***1000.00****400****Linehaul~' +
   'L1*2***250.00****405****Fuel Surcharge~' +
   'SE*5*0009~';
@@ -144,7 +144,11 @@ export async function seedFullstackE2eFixture({ pool } = {}) {
       );
 
       const rate = await lookupContractRate(client, contractVersionId, 'LINEHAUL');
-      const result = evaluateInvoice(invoice, CONTRACT_RUBRIC, { linehaulRate: rate });
+      const result = evaluateInvoice(invoice, CONTRACT_RUBRIC, {
+        linehaulRate: rate,
+        duplicateInvoice: false,
+        shipmentReferenceMatch: true,
+      });
       const persisted = await persistAuditRun(client, {
         clientId: DEV_CLIENT_ID,
         carrierId,

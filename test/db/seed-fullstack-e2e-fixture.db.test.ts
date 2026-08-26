@@ -47,6 +47,8 @@ describe('seedFullstackE2eFixture (DB)', () => {
     await pool.query(`DELETE FROM scorecard WHERE client_id = $1`, [DEV_CLIENT_ID]);
     await pool.query(`DELETE FROM charge_finding WHERE client_id = $1`, [DEV_CLIENT_ID]);
     await pool.query(`DELETE FROM gate_failure WHERE client_id = $1`, [DEV_CLIENT_ID]);
+    await pool.query(`DELETE FROM audit_event WHERE client_id = $1`, [DEV_CLIENT_ID]);
+    await pool.query(`DELETE FROM audit_replay_manifest WHERE client_id = $1`, [DEV_CLIENT_ID]);
     await pool.query(`DELETE FROM audit_run WHERE client_id = $1`, [DEV_CLIENT_ID]);
     await pool.query(`DELETE FROM charge_fact WHERE client_id = $1`, [DEV_CLIENT_ID]);
     await pool.query(`DELETE FROM source_document WHERE client_id = $1`, [DEV_CLIENT_ID]);
@@ -79,7 +81,9 @@ describe('seedFullstackE2eFixture (DB)', () => {
           varianceAmount: string | null;
           direction: string | null;
         }>;
-        const row = findings.find((f) => f.invoiceNumber === FIXTURE_INVOICE_NUMBER);
+        const row = findings.find((f) =>
+          f.invoiceNumber === FIXTURE_INVOICE_NUMBER && f.direction === 'OVERCHARGE'
+        );
         expect(row).toMatchObject({
           invoiceNumber: FIXTURE_INVOICE_NUMBER,
           carrierName: FIXTURE_CARRIER_NAME,
@@ -92,7 +96,7 @@ describe('seedFullstackE2eFixture (DB)', () => {
             `SELECT charge_fact_id FROM variance_finding
              JOIN audit_run ON audit_run.id = variance_finding.audit_run_id
              JOIN invoice ON invoice.id = audit_run.invoice_id
-             WHERE invoice.invoice_number = $1`,
+             WHERE invoice.invoice_number = $1 AND variance_finding.direction = 'OVERCHARGE'`,
             [FIXTURE_INVOICE_NUMBER],
           );
           return vf.rows[0]?.charge_fact_id;
@@ -120,7 +124,7 @@ describe('seedFullstackE2eFixture (DB)', () => {
           `SELECT count(*)::int AS n FROM variance_finding
            JOIN audit_run ON audit_run.id = variance_finding.audit_run_id
            JOIN invoice ON invoice.id = audit_run.invoice_id
-           WHERE invoice.invoice_number = $1`,
+           WHERE invoice.invoice_number = $1 AND variance_finding.direction = 'OVERCHARGE'`,
           [FIXTURE_INVOICE_NUMBER],
         );
         const contract = await c.query(`SELECT count(*)::int AS n FROM contract WHERE client_id = $1`, [

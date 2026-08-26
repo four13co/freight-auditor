@@ -81,6 +81,8 @@ describe('GET /api/findings (DB, e2e)', () => {
     await app.close();
     const owner = await pool.connect();
     try {
+      await owner.query(`DELETE FROM audit_event WHERE client_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM audit_replay_manifest WHERE client_id = $1`, [clientId]);
       // variance_finding + charge_finding + scorecard before audit_run
       // (86e2v17p5's real-pipeline test below calls the full persistAuditRun,
       // which writes all three -- this file's cleanup previously only ever
@@ -177,7 +179,7 @@ describe('GET /api/findings (DB, e2e)', () => {
     });
     expect(res.statusCode).toBe(200);
     const findings = res.json().findings as Array<{ invoiceNumber: string; direction: string; varianceAmount: string }>;
-    const derived = findings.find((f) => f.invoiceNumber === inv.invoiceNumber);
+    const derived = findings.find((f) => f.invoiceNumber === inv.invoiceNumber && f.direction === 'OVERCHARGE');
     expect(derived).toMatchObject({ direction: 'OVERCHARGE', varianceAmount: '100.0000' });
   });
 });

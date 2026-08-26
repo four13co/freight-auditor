@@ -10,6 +10,9 @@ import { CONTRACT_RUBRIC } from '../rubric-resolver/contract-rubric.js';
 import { STANDARD_RUBRIC } from '../rubric-resolver/standard-rubric.js';
 import { persistAuditRun, type PersistedRun } from '../evaluator/persist.js';
 import { lookupContractRate } from '../rate-engine/rate-lookup.js';
+import { detectDuplicateInvoice } from './duplicate-invoice.js';
+import { resolveShipmentReferenceMatch } from './shipment-reference.js';
+import { deterministicAuditEventId, writeAuditEvent } from '../audit-ledger/write-audit-event.js';
 
 /**
  * 86e2v17u9: the raw-EDI-to-audit-run orchestration the item's Solution
@@ -77,10 +80,19 @@ export async function ingestInvoice(
   const raw = input.rawBytes.toString('utf8');
 
   // 1. Immutable raw-bytes storage (reused as-is, per the item's Solution).
-  await storeSourceDocument(client, store, {
+  const sourceDocument = await storeSourceDocument(client, store, {
     clientId: input.clientId,
     bytes: input.rawBytes,
     contentType: input.contentType,
+  });
+  await writeAuditEvent(client, {
+    id: deterministicAuditEventId(input.clientId, sourceDocument.id, 'ingestion.source_stored'),
+    clientId: input.clientId,
+    entity: 'source_document',
+    entityId: sourceDocument.id,
+    event: 'ingestion.source_stored',
+    actorKind: 'system',
+    detail: { contentType: input.contentType ?? null, sha256: sourceDocument.sha256 },
   });
 
   // 2. Transaction-set detection + matching parser. A parse failure (garbage
@@ -121,11 +133,17 @@ export async function ingestInvoice(
   // UNASSESSABLE, never a guessed/defaulted rate (rate-lookup.ts's own
   // contract).
   let result: AuditResult;
+  const duplicateInvoice = await detectDuplicateInvoice(
+    client, input.clientId, invoice.invoiceNumber, invoice.transactionSet,
+  );
+  const shipmentReferenceMatch = await resolveShipmentReferenceMatch(client, input.clientId, invoice.shipmentReferences);
+  let resolvedInputs: Record<string, unknown> = { duplicateInvoice, shipmentReferenceMatch };
   if (input.contractVersionId) {
     const rate = await lookupContractRate(client, input.contractVersionId, 'LINEHAUL');
-    result = evaluateInvoice(invoice, CONTRACT_RUBRIC, { linehaulRate: rate });
+    resolvedInputs = { ...resolvedInputs, linehaulRate: rate };
+    result = evaluateInvoice(invoice, CONTRACT_RUBRIC, { linehaulRate: rate, duplicateInvoice, shipmentReferenceMatch });
   } else {
-    result = evaluateInvoice(invoice, STANDARD_RUBRIC);
+    result = evaluateInvoice(invoice, STANDARD_RUBRIC, { duplicateInvoice, shipmentReferenceMatch });
   }
 
   // 4. Persist (variance_finding derivation already lives inside
@@ -136,6 +154,18 @@ export async function ingestInvoice(
     invoice,
     result,
     rubricSnapshotId: null,
+    sourceDocuments: [{ id: sourceDocument.id, sha256: sourceDocument.sha256 }],
+    contractVersionIds: input.contractVersionId ? [input.contractVersionId] : [],
+    resolvedInputs,
+  });
+  await writeAuditEvent(client, {
+    id: deterministicAuditEventId(input.clientId, persisted.auditRunId, 'ingestion.audit_created'),
+    clientId: input.clientId,
+    entity: 'audit_run',
+    entityId: persisted.auditRunId,
+    event: 'ingestion.audit_created',
+    actorKind: 'system',
+    detail: { invoiceId: persisted.invoiceId, outcome: result.outcome, transactionSet },
   });
 
   return { auditRunId: persisted.auditRunId, invoiceId: persisted.invoiceId, outcome: result.outcome };

@@ -1,0 +1,53 @@
+import { Decimal } from 'decimal.js';
+import type pg from 'pg';
+import { canonicalAxisKey, type ExternalValueRequest, type ExternalValueResolution, type ExternalValueResolver } from './external-value-resolver.js';
+
+export type OceanIndexSource = 'OCEAN_BAF' | 'OCEAN_GRI' | 'OCEAN_PSS';
+export const OCEAN_INDEX_RESOLVER_VERSION = 'ocean-index-db-v1';
+
+/** Version-pinned resolver for ocean BAF, GRI, and peak-season surcharge publications. */
+export class OceanIndexResolver implements ExternalValueResolver {
+  readonly resolverVersion = OCEAN_INDEX_RESOLVER_VERSION;
+
+  constructor(readonly sourceCode: OceanIndexSource) {}
+
+  async resolve(client: pg.PoolClient, request: ExternalValueRequest): Promise<ExternalValueResolution> {
+    const tradeLane = request.axisKey.trade_lane;
+    const currency = request.axisKey.currency;
+    if (request.sourceCode !== this.sourceCode || typeof tradeLane !== 'string' || !tradeLane.trim()
+      || typeof currency !== 'string' || !/^[A-Za-z]{3}$/.test(currency)) {
+      return { status: 'UNAVAILABLE', reason: 'INVALID_REQUEST', resolverVersion: this.resolverVersion };
+    }
+    const axisKey = canonicalAxisKey({
+      ...request.axisKey,
+      trade_lane: tradeLane.trim().toUpperCase(),
+      currency: currency.toUpperCase(),
+    });
+    const params: unknown[] = [this.sourceCode, JSON.stringify(axisKey), request.publishedFor];
+    const cutoff = request.recordedAsOf ? `AND ev.recorded_at <= $${params.push(request.recordedAsOf)}` : '';
+    const result = await client.query<{
+      id: string; source_id: string; value: string; published_for: string; recorded_at: Date | string;
+    }>(
+      `SELECT ev.id, ev.source_id, ev.value, ev.published_for, ev.recorded_at
+       FROM external_value ev JOIN external_source es ON es.id = ev.source_id
+       LEFT JOIN external_publication ep ON ep.id = ev.publication_id
+       WHERE es.code = $1 AND ev.axis_key @> $2::jsonb AND ev.published_for = $3 ${cutoff}
+       ORDER BY COALESCE(ep.published_at, ev.recorded_at) DESC, ev.recorded_at DESC, ev.id DESC LIMIT 1`,
+      params,
+    );
+    const row = result.rows[0];
+    if (!row) return { status: 'UNAVAILABLE', reason: 'VALUE_NOT_PUBLISHED', resolverVersion: this.resolverVersion };
+    return {
+      status: 'FOUND', value: new Decimal(row.value).toFixed(6), resolverVersion: this.resolverVersion,
+      pin: {
+        externalValueId: row.id, sourceId: row.source_id, sourceCode: this.sourceCode, axisKey,
+        publishedFor: row.published_for,
+        recordedAt: row.recorded_at instanceof Date ? row.recorded_at.toISOString() : row.recorded_at,
+      },
+    };
+  }
+}
+
+export function oceanIndexResolvers(): OceanIndexResolver[] {
+  return [new OceanIndexResolver('OCEAN_BAF'), new OceanIndexResolver('OCEAN_GRI'), new OceanIndexResolver('OCEAN_PSS')];
+}

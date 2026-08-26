@@ -15,7 +15,7 @@ const base = {
 
 describe('versioned job contracts', () => {
   it('keeps every registered queue name explicitly versioned and mapped to a schema', () => {
-    expect(Object.values(JOB_NAMES)).toHaveLength(4);
+    expect(Object.values(JOB_NAMES)).toHaveLength(5);
     for (const name of Object.values(JOB_NAMES)) {
       expect(name).toMatch(/\.v1$/);
       expect(jobPayloadSchemas[name]).toBeDefined();

@@ -36,6 +36,7 @@ describe('updateFindingStatus (DB)', () => {
   afterAll(async () => {
     const owner = await pool.connect();
     try {
+      await owner.query(`DELETE FROM audit_event WHERE client_id IN ($1, $2)`, [clientAId, clientBId]);
       await owner.query(`DELETE FROM finding_status_event WHERE client_id IN ($1, $2)`, [clientAId, clientBId]);
       await owner.query(`DELETE FROM variance_finding WHERE client_id IN ($1, $2)`, [clientAId, clientBId]);
       await owner.query(`DELETE FROM charge_fact WHERE client_id IN ($1, $2)`, [clientAId, clientBId]);
@@ -85,7 +86,7 @@ describe('updateFindingStatus (DB)', () => {
   }
 
   it('AC1: transitions status and writes a finding_status_event row with the correct from/to/actor', async () => {
-    const { findingId, event } = await withTenantTx({ clientIds: [clientAId], internal: true }, async (c) => {
+    const { findingId, event, ledger } = await withTenantTx({ clientIds: [clientAId], internal: true }, async (c) => {
       const id = await seedFinding(c, { clientId: clientAId, status: 'open' });
       const result = await updateFindingStatus(c, id, 'in_review');
       expect(result.found).toBe(true);
@@ -95,7 +96,11 @@ describe('updateFindingStatus (DB)', () => {
         `SELECT from_status, to_status, actor_kind FROM finding_status_event WHERE variance_finding_id = $1`,
         [id],
       );
-      return { findingId: id, event: { status: row.rows[0].status, ...ev.rows[0] } };
+      const ledger = await c.query(
+        `SELECT event, actor_kind, detail FROM audit_event WHERE entity = 'variance_finding' AND entity_id = $1`,
+        [id],
+      );
+      return { findingId: id, event: { status: row.rows[0].status, ...ev.rows[0] }, ledger: ledger.rows[0] };
     });
 
     expect(findingId).toBeTruthy();
@@ -103,6 +108,11 @@ describe('updateFindingStatus (DB)', () => {
     expect(event.from_status).toBe('open');
     expect(event.to_status).toBe('in_review');
     expect(event.actor_kind).toBe('analyst');
+    expect(ledger).toMatchObject({
+      event: 'finding.status_changed',
+      actor_kind: 'analyst',
+      detail: expect.objectContaining({ fromStatus: 'open', toStatus: 'in_review' }),
+    });
   });
 
   it('AC2: recoverableOpen no longer includes a finding moved out of open', async () => {

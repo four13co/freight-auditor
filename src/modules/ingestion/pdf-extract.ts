@@ -19,6 +19,8 @@ const ExtractedChargeSchema = z.object({
   code: z.string().optional(),
   category: z.string().optional(),
   amount: z.string().regex(/^-?\d+(\.\d+)?$/).optional(),
+  rate: z.string().regex(/^-?\d+(\.\d+)?$/).optional(),
+  basis: z.string().regex(/^-?\d+(\.\d+)?$/).optional(),
   currency: z.string(),
   rawDescription: z.string().optional(),
 });
@@ -82,6 +84,8 @@ function toNormalizedCharge(c: ExtractedInvoice['charges'][number]): NormalizedC
     category: c.category,
     quarantined: c.amount !== undefined && normalizedAmount === undefined,
     amount: normalizedAmount,
+    rate: money(c.rate),
+    basis: money(c.basis),
     currency: c.currency,
     rawDescription: c.rawDescription,
   };

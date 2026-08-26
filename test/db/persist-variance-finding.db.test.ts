@@ -59,6 +59,8 @@ describe('persistAuditRun variance_finding derivation (DB)', () => {
   afterAll(async () => {
     const owner = await pool.connect();
     try {
+      await owner.query(`DELETE FROM audit_event WHERE client_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM audit_replay_manifest WHERE client_id = $1`, [clientId]);
       // variance_finding before audit_run (86e2v250p-adjacent regression this
       // item's own prior build attempt introduced and fixed: FK ordering).
       await owner.query(`DELETE FROM variance_finding WHERE client_id = $1`, [clientId]);
@@ -94,7 +96,7 @@ describe('persistAuditRun variance_finding derivation (DB)', () => {
       const p = await persistAuditRun(c, { clientId, invoice: inv, result, rubricSnapshotId: null });
       const vf = await c.query(
         `SELECT charge_fact_id, direction, variance_amount, currency, classification, status
-         FROM variance_finding WHERE audit_run_id = $1`,
+         FROM variance_finding WHERE audit_run_id = $1 AND direction = 'OVERCHARGE'`,
         [p.auditRunId],
       );
       return { auditRunId: p.auditRunId, chargeFactIds: p.chargeFindingIds, rows: vf.rows };
@@ -174,7 +176,9 @@ describe('persistAuditRun variance_finding derivation (DB)', () => {
     const row = await withTenantTx({ clientIds: [clientId], internal: true }, async (c) => {
       const p = await persistAuditRun(c, { clientId, invoice: inv, result, rubricSnapshotId: null });
       const vf = await c.query(
-        `SELECT direction, variance_amount, classification FROM variance_finding WHERE audit_run_id = $1`,
+        `SELECT vf.direction, vf.variance_amount, vf.classification
+         FROM variance_finding vf JOIN criterion c ON c.id = vf.criterion_id
+         WHERE vf.audit_run_id = $1 AND c.criterion_key = 'CONTRACT.RATE_VARIANCE'`,
         [p.auditRunId],
       );
       return vf.rows;
@@ -194,7 +198,12 @@ describe('persistAuditRun variance_finding derivation (DB)', () => {
 
     const count = await withTenantTx({ clientIds: [clientId], internal: true }, async (c) => {
       const p = await persistAuditRun(c, { clientId, invoice: inv, result, rubricSnapshotId: null });
-      const vf = await c.query(`SELECT count(*)::int AS n FROM variance_finding WHERE audit_run_id = $1`, [p.auditRunId]);
+      const vf = await c.query(
+        `SELECT count(*)::int AS n FROM variance_finding vf
+         JOIN criterion criterion_row ON criterion_row.id = vf.criterion_id
+         WHERE vf.audit_run_id = $1 AND criterion_row.criterion_key = 'CONTRACT.RATE_VARIANCE'`,
+        [p.auditRunId],
+      );
       return vf.rows[0].n;
     });
     expect(count).toBe(0);
@@ -236,8 +245,9 @@ describe('persistAuditRun variance_finding derivation (DB)', () => {
     const rows = await withTenantTx({ clientIds: [clientId], internal: true }, async (c) => {
       const p = await persistAuditRun(c, { clientId, invoice: inv, result, rubricSnapshotId: null });
       const cf = await c.query(
-        `SELECT criterion_id, rule_version_id FROM charge_finding
-         WHERE audit_run_id = $1 AND result = 'VARIANCE'`,
+        `SELECT cf.criterion_id, cf.rule_version_id FROM charge_finding cf
+         JOIN criterion c ON c.id = cf.criterion_id
+         WHERE cf.audit_run_id = $1 AND c.criterion_key = 'CONTRACT.RATE_VARIANCE'`,
         [p.auditRunId],
       );
       const vf = await c.query(

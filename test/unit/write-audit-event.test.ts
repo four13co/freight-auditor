@@ -28,6 +28,13 @@ describe('central audit-event writer', () => {
     await expect(writeAuditEvent({ query } as unknown as PoolClient, event)).resolves.toEqual({ id: event.id, created: false });
   });
 
+  it('accepts canonical PostgreSQL UUIDs without imposing RFC version bits', async () => {
+    const query = vi.fn().mockResolvedValue({ rows: [{ id: event.id, created: true }] });
+    await expect(writeAuditEvent({ query } as unknown as PoolClient, {
+      ...event, clientId: '11111111-1111-1111-1111-111111111111',
+    })).resolves.toMatchObject({ created: true });
+  });
+
   it('fails closed when an id is bound to different evidence', async () => {
     const query = vi.fn().mockResolvedValue({ rows: [] });
     await expect(writeAuditEvent({ query } as unknown as PoolClient, event)).rejects.toBeInstanceOf(AuditEventConflictError);

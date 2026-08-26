@@ -6,17 +6,18 @@ const jsonValue: z.ZodType<unknown> = z.lazy(() => z.union([
   z.string(), z.number().finite(), z.boolean(), z.null(),
   z.array(jsonValue), z.record(z.string(), jsonValue),
 ]));
+const postgresUuid = z.string().regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
 
 export const AuditEventInputSchema = z.object({
-  id: z.string().uuid(),
-  clientId: z.string().uuid().nullable(),
+  id: postgresUuid,
+  clientId: postgresUuid.nullable(),
   entity: z.string().trim().min(1).max(100).regex(/^[a-z][a-z0-9_.-]*$/),
-  entityId: z.string().uuid().nullable().default(null),
+  entityId: postgresUuid.nullable().default(null),
   event: z.string().trim().min(1).max(100).regex(/^[a-z][a-z0-9_.-]*$/),
   actorKind: z.enum(['analyst', 'ai', 'system']),
-  actorUserId: z.string().uuid().nullable().default(null),
-  ruleVersionId: z.string().uuid().nullable().default(null),
-  rubricSnapshotId: z.string().uuid().nullable().default(null),
+  actorUserId: postgresUuid.nullable().default(null),
+  ruleVersionId: postgresUuid.nullable().default(null),
+  rubricSnapshotId: postgresUuid.nullable().default(null),
   detail: jsonValue.nullable().default(null),
 }).strict();
 

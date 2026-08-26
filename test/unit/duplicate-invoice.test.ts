@@ -6,6 +6,7 @@ import type { ParsedInvoice } from '../../src/modules/ingestion/charge-fact.js';
 
 const invoice: ParsedInvoice = {
   transactionSet: '210', parserVersion: 'test', invoiceNumber: ' INV-1 ', headerCurrency: 'USD',
+  shipmentReferences: ['SHIP-1'], carrierCode: 'ABCD',
   charges: [{ amount: '10.0000', currency: 'USD', quarantined: false, category: 'LINEHAUL' }],
   footing: { declaredTotal: '10.0000', lineSum: '10.0000' }, quarantinedCodes: [],
 };

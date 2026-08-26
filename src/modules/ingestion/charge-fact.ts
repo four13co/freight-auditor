@@ -35,6 +35,8 @@ export interface ParsedInvoice {
   invoiceNumber?: string;
   /** Transport/shipment references supplied by the source document, normalized and deduplicated by the adapter. */
   shipmentReferences?: string[];
+  /** Carrier SCAC where the source transaction set declares it (B3-11 for 210). */
+  carrierCode?: string;
   /** Header currency where the set declares one (210 often does; 310 is per-charge). */
   headerCurrency?: string;
   charges: NormalizedCharge[];

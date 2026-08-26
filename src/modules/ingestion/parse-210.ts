@@ -21,7 +21,10 @@ export function parse210(raw: string, categorize: Categorize): ParsedInvoice {
 
   const b3 = firstSegment(ix, 'B3');
   const shipmentReferences = normalizeReferences([el(b3, 3)]); // B3-03 = shipment identification number
-  const headerCurrency = el(b3, 11) ?? 'USD'; // B3-11 = currency; 210 declares one, defaults to USD
+  const carrierCode = el(b3, 11); // B3-11 = Standard Carrier Alpha Code (SCAC)
+  // The 210 does not carry per-line currency like the 310; this platform's
+  // North-American motor profile uses USD. B3-11 is SCAC, never currency.
+  const headerCurrency = 'USD';
 
   // 210 applies the single header currency to every charge line.
   const { charges, quarantinedCodes } = buildCharges(ix, categorize, () => headerCurrency, 'L0/L1');
@@ -31,6 +34,7 @@ export function parse210(raw: string, categorize: Categorize): ParsedInvoice {
     parserVersion: PARSER_210_VERSION,
     invoiceNumber,
     shipmentReferences,
+    carrierCode,
     headerCurrency,
     charges,
     footing: buildFooting(declaredTotal, charges),

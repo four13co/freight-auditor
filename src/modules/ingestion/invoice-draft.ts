@@ -48,6 +48,8 @@ export const CorrectedInvoiceSchema = z.object({
   transactionSet: z.literal('PDF'),
   parserVersion: z.literal('pdf-llm-v1'),
   invoiceNumber: z.string().optional(),
+  shipmentReferences: z.array(z.string().min(1)).optional(),
+  carrierCode: z.string().optional(),
   headerCurrency: z.string().optional(),
   charges: z.array(CorrectedChargeSchema).min(1),
   footing: z.object({

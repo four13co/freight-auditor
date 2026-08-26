@@ -28,7 +28,7 @@ const ISA_310 =
 export const GOLDEN_210 =
   ISA_210 +
   'ST*210*0001~' +
-  'B3**INV210001*****1250.00***USD~' +
+  'B3**INV210001*SHIP210001****1250.00****ABCD~' +
   'L1*1***1000.00****400****Linehaul~' +
   'L1*2***250.00****405****Fuel Surcharge~' +
   'SE*5*0001~';
@@ -75,7 +75,7 @@ export const GOLDEN_310_EXPECTED = {
 export const MALFORMED_210_NOFOOT =
   ISA_210 +
   'ST*210*0003~' +
-  'B3**INV210003*****1250.00***USD~' +
+  'B3**INV210003*SHIP210003****1250.00****ABCD~' +
   'L1*1***800.00****400****Linehaul~' +
   'L1*2***250.00****405****Fuel Surcharge~' +
   'SE*5*0003~';
@@ -100,7 +100,7 @@ export const MALFORMED_310_NOCURRENCY =
 export const MALFORMED_210_BADAMOUNT =
   ISA_210 +
   'ST*210*0005~' +
-  'B3**INV210005*****1250.00***USD~' +
+  'B3**INV210005*SHIP210005****1250.00****ABCD~' +
   'L1*1***N/A****400****Linehaul~' +
   'L1*2***250.00****405****Fuel Surcharge~' +
   'SE*5*0005~';
@@ -115,7 +115,7 @@ export const MALFORMED_210_BADAMOUNT =
 export const MALFORMED_210_MISSINGAMOUNT =
   ISA_210 +
   'ST*210*0006~' +
-  'B3**INV210006*****1250.00***USD~' +
+  'B3**INV210006*SHIP210006****1250.00****ABCD~' +
   'L1*1*******400****Linehaul~' +
   'L1*2***250.00****405****Fuel Surcharge~' +
   'SE*5*0006~';
@@ -144,7 +144,7 @@ export const MALFORMED_310_BADAMOUNT =
 export const MISMATCHED_GROUP_210 =
   ISA_310 +
   'ST*210*0006~' +
-  'B3**INV210006*****100.00***USD~' +
+  'B3**INV210006*SHIP210006****100.00****ABCD~' +
   'L1*1***100.00****400****Linehaul~' +
   'SE*4*0006~';
 

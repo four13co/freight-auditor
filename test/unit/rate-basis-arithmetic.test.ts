@@ -5,7 +5,7 @@ import { evaluateInvoice } from '../../src/modules/evaluator/evaluate-invoice.js
 
 const envelope = (total: string) =>
   'ISA*00*          *00*          *ZZ*SENDER         *ZZ*RECEIVER       *260703*1200*U*00401*000000001*0*P*>~' +
-  `GS*IM*S*R*20260703*1200*1*X*004010~ST*210*1~B3**INV-RATE*****${total}***USD~`;
+  `GS*IM*S*R*20260703*1200*1*X*004010~ST*210*1~B3**INV-RATE*SHIP-RATE****${total}****ABCD~`;
 const tail = '~SE*4*1~';
 const categorize = () => 'LINEHAUL';
 

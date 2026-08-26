@@ -49,6 +49,9 @@ export function buildFactBundle(inv: ParsedInvoice, contract?: ContractFacts): F
     duplicate_invoice: contract?.duplicateInvoice,
     shipment_reference_match: contract?.shipmentReferenceMatch,
     rate_basis_arithmetic_matches: rateBasisArithmeticMatches,
+    required_210_invoice_number: inv.transactionSet !== '210' || Boolean(inv.invoiceNumber?.trim()),
+    required_210_shipment_id: inv.transactionSet !== '210' || Boolean(inv.shipmentReferences?.length),
+    required_210_scac: inv.transactionSet !== '210' || Boolean(inv.carrierCode?.trim()),
   };
 
   if (contract?.linehaulRate !== undefined) {

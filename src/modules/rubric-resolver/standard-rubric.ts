@@ -106,6 +106,30 @@ export const STANDARD_RUBRIC: ComposedRubric = {
         right: { type: 'lit', value: 0 },
       },
     },
+    {
+      criterionKey: 'STD.210.INVOICE_NUMBER_REQUIRED',
+      kind: 'GATING',
+      evalOrder: 32,
+      description: 'EDI 210 states its invoice number in B3-02.',
+      citation: 'Motor-carrier invoice must state B3-02 invoice number.',
+      ast: { type: 'compare', op: 'eq', left: { type: 'fact', key: 'required_210_invoice_number' }, right: { type: 'lit', value: true } },
+    },
+    {
+      criterionKey: 'STD.210.SHIPMENT_ID_REQUIRED',
+      kind: 'GATING',
+      evalOrder: 34,
+      description: 'EDI 210 states its shipment identification in B3-03.',
+      citation: 'Motor-carrier invoice must state B3-03 shipment identification.',
+      ast: { type: 'compare', op: 'eq', left: { type: 'fact', key: 'required_210_shipment_id' }, right: { type: 'lit', value: true } },
+    },
+    {
+      criterionKey: 'STD.210.SCAC_REQUIRED',
+      kind: 'GATING',
+      evalOrder: 36,
+      description: 'EDI 210 states its carrier SCAC in B3-11.',
+      citation: 'Motor-carrier invoice must state B3-11 Standard Carrier Alpha Code.',
+      ast: { type: 'compare', op: 'eq', left: { type: 'fact', key: 'required_210_scac' }, right: { type: 'lit', value: true } },
+    },
     // ---- SCORING criteria (per-criterion observations on a valid invoice) ----
     {
       criterionKey: 'STD.NO_QUARANTINED_CODES',

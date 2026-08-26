@@ -2,6 +2,7 @@ import { Decimal } from 'decimal.js';
 import type { FactBundle } from '../rule-engine/ast.js';
 import type { ParsedInvoice } from '../ingestion/charge-fact.js';
 import type { ContractRate } from '../rate-engine/rate-lookup.js';
+import type { ExternalValueResolution } from '../reference-data/external-value-resolver.js';
 
 /**
  * Contract-scoped facts resolved by the caller BEFORE building the bundle
@@ -16,6 +17,7 @@ export interface ContractFacts {
   linehaulRate?: ContractRate | null;
   duplicateInvoice?: boolean;
   shipmentReferenceMatch?: boolean;
+  externalResolutions?: Readonly<Record<string, ExternalValueResolution>>;
 }
 
 export interface CoverageMarker {
@@ -100,6 +102,20 @@ export function buildFactBundle(inv: ParsedInvoice, contract?: ContractFacts): F
     suspicious_missing_data_count: coverageMarkers.length,
   };
 
+  for (const [sourceCode, resolution] of Object.entries(contract?.externalResolutions ?? {}).sort(([a], [b]) => a.localeCompare(b))) {
+    const key = externalValueFactKey(sourceCode);
+    if (resolution.status === 'FOUND') {
+      bundle[key] = { decimal: resolution.value };
+      bundle[`${key}_resolver_version`] = resolution.resolverVersion;
+      bundle[`${key}_external_value_id`] = resolution.pin.externalValueId;
+    } else {
+      // The value stays absent so an AST `require` resolves UNASSESSABLE.
+      // Preserve the stable cause beside it for discovery/explanation APIs.
+      bundle[`${key}_unavailable_reason`] = resolution.reason;
+      bundle[`${key}_resolver_version`] = resolution.resolverVersion;
+    }
+  }
+
   if (contract?.linehaulRate !== undefined) {
     // Sum all LINEHAUL charges on the invoice — the billed side of the variance
     // comparison. Excludes quarantined charges (an unparseable/uncategorized
@@ -145,4 +161,8 @@ export function buildFactBundle(inv: ParsedInvoice, contract?: ContractFacts): F
   }
 
   return bundle;
+}
+
+export function externalValueFactKey(sourceCode: string): string {
+  return `external_${sourceCode.trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '')}`;
 }

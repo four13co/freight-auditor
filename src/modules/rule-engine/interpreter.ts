@@ -86,9 +86,15 @@ export function evaluate(node: AstNode, facts: FactBundle): EvalNode {
         if (d === undefined) return { node, value: UNASSESSABLE(`fact '${node.key}' is NaN/Infinity`) };
         value = { kind: 'number', value: d.toString() };
       } else if (typeof raw === 'object') {
-        const d = safeDecimal(raw.amount);
-        if (d === undefined) return { node, value: UNASSESSABLE(`fact '${node.key}' has a non-numeric money amount`) };
-        value = { kind: 'money', amount: d.toFixed(4), currency: raw.currency };
+        if ('decimal' in raw) {
+          const d = safeDecimal(raw.decimal);
+          if (d === undefined) return { node, value: UNASSESSABLE(`fact '${node.key}' has a non-numeric decimal`) };
+          value = { kind: 'number', value: d.toString() };
+        } else {
+          const d = safeDecimal(raw.amount);
+          if (d === undefined) return { node, value: UNASSESSABLE(`fact '${node.key}' has a non-numeric money amount`) };
+          value = { kind: 'money', amount: d.toFixed(4), currency: raw.currency };
+        }
       } else {
         value = { kind: 'string', value: raw };
       }

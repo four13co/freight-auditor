@@ -60,4 +60,4 @@ export type AstNode =
   | AstRequire;
 
 /** A resolved fact bundle — the ONLY input to eval. No I/O or clock inside eval. */
-export type FactBundle = Record<string, number | string | boolean | { amount: string; currency: string } | undefined>;
+export type FactBundle = Record<string, number | string | boolean | { amount: string; currency: string } | { decimal: string } | undefined>;

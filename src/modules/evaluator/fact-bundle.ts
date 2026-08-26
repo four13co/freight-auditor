@@ -37,6 +37,8 @@ export function buildFactBundle(inv: ParsedInvoice, contract?: ContractFacts): F
   )
     ? undefined
     : rateBasisCharges.every((c) => new Decimal(c.rate!).times(c.basis!).minus(c.amount!).abs().lte('0.01'));
+  const currencies = inv.charges.map((charge) => charge.currency);
+  const firstCurrency = currencies[0];
 
   const bundle: FactBundle = {
     declared_total: declaredTotal === undefined ? undefined : { amount: declaredTotal, currency: inv.headerCurrency ?? '' },
@@ -57,6 +59,15 @@ export function buildFactBundle(inv: ParsedInvoice, contract?: ContractFacts): F
     required_310_container: inv.transactionSet !== '310' || Boolean(inv.containerNumbers?.length),
     required_310_vessel_voyage: inv.transactionSet !== '310' || Boolean(inv.vesselVoyage?.trim()),
     required_310_ports: inv.transactionSet !== '310' || (inv.portCodes?.length ?? 0) >= 2,
+    required_310_charge_identity: inv.transactionSet !== '310' || inv.charges.every(
+      (charge) => Boolean(charge.code?.trim() || charge.rawDescription?.trim()),
+    ),
+    valid_310_currency_codes: inv.transactionSet !== '310' || currencies.every(
+      (currency) => /^[A-Z]{3}$/.test(currency),
+    ),
+    consistent_310_charge_currencies: inv.transactionSet !== '310'
+      ? undefined
+      : firstCurrency === undefined || currencies.every((currency) => currency === firstCurrency),
   };
 
   if (contract?.linehaulRate !== undefined) {

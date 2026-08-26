@@ -144,6 +144,22 @@ export const STANDARD_RUBRIC: ComposedRubric = {
       citation: `Ocean freight invoice must state ${field}.`,
       ast: { type: 'compare' as const, op: 'eq' as const, left: { type: 'fact' as const, key: key as string }, right: { type: 'lit' as const, value: true } },
     })),
+    {
+      criterionKey: 'STD.310.CHARGE_IDENTITY_REQUIRED',
+      kind: 'GATING',
+      evalOrder: 48,
+      description: 'Every EDI 310 charge has a charge code or source description.',
+      citation: 'Each ocean charge must be identifiable from L1-08 or L1-12.',
+      ast: { type: 'compare', op: 'eq', left: { type: 'fact', key: 'required_310_charge_identity' }, right: { type: 'lit', value: true } },
+    },
+    {
+      criterionKey: 'STD.310.CURRENCY_CODE_VALID',
+      kind: 'GATING',
+      evalOrder: 50,
+      description: 'Every EDI 310 charge currency is a normalized three-letter ISO code.',
+      citation: 'Ocean charge currencies from C3/L1-20 must be normalized ISO-4217 codes.',
+      ast: { type: 'compare', op: 'eq', left: { type: 'fact', key: 'valid_310_currency_codes' }, right: { type: 'lit', value: true } },
+    },
     // ---- SCORING criteria (per-criterion observations on a valid invoice) ----
     {
       criterionKey: 'STD.NO_QUARANTINED_CODES',
@@ -216,6 +232,13 @@ export const STANDARD_RUBRIC: ComposedRubric = {
           right: { type: 'lit', value: true },
         },
       },
+    },
+    {
+      criterionKey: 'STD.310.CURRENCY_CONSISTENCY',
+      kind: 'SCORING',
+      evalOrder: 150,
+      description: 'EDI 310 charge currencies are consistent for invoice-level aggregation.',
+      ast: { type: 'compare', op: 'eq', left: { type: 'fact', key: 'consistent_310_charge_currencies' }, right: { type: 'lit', value: true } },
     },
   ],
 };

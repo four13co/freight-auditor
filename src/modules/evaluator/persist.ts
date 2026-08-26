@@ -113,41 +113,38 @@ export async function persistAuditRun(
     coverageMarkerIds.push(persistedMarker.rows[0]!.id);
   }
 
+  // Resolve all evidence references before writing a finding. Missing seed data
+  // is an explicit configuration failure, never an uncited financial record.
+  const resolvedIdsByCriterionKey = new Map<string, NonNullable<Awaited<ReturnType<typeof resolveCriterionIds>>>>();
+  for (const criterionKey of new Set([...result.gateFailures, ...result.findings].map((item) => item.criterionKey))) {
+    const resolved = await resolveCriterionIds(client, criterionKey);
+    if (!resolved) throw new Error(`finding reference not found: ${criterionKey}`);
+    resolvedIdsByCriterionKey.set(criterionKey, resolved);
+  }
+
   // 3. gate_failures (the kickback) — append-only.
   const gateFailureIds: string[] = [];
   for (const g of result.gateFailures) {
     const gf = await client.query<{ id: string }>(
-      `INSERT INTO gate_failure (client_id, audit_run_id, defect, citation, evaluated_expr)
-       VALUES ($1,$2,$3,$4,$5) RETURNING id`,
-      [clientId, auditRunId, g.defect, g.citation ?? null, JSON.stringify(g.evaluatedExpr)],
+      `INSERT INTO gate_failure (client_id, audit_run_id, criterion_id, rule_version_id, defect, citation, evaluated_expr)
+       VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
+      [clientId, auditRunId, resolvedIdsByCriterionKey.get(g.criterionKey)!.criterionId,
+        resolvedIdsByCriterionKey.get(g.criterionKey)!.ruleVersionId, g.defect, g.citation ?? null, JSON.stringify(g.evaluatedExpr)],
     );
     gateFailureIds.push(gf.rows[0]!.id);
   }
 
   // 4. charge_findings (scoring observations) — append-only. Empty on REJECTED_REWORK.
   //
-  // 86e2v88u2: resolveCriterionIds (./resolve-criterion-ids.ts) was built and
-  // fully tested but never wired into a persist path — criterion_id/
-  // rule_version_id shipped NULL on every finding despite both columns
-  // existing to record which rule version produced it. Both are nullable
-  // (a criterion added after the last seed run must not fail persistence), so
-  // resolveCriterionIds' own null-on-miss contract composes directly here —
-  // no additional fallback logic needed.
+  // Every persisted finding must cite its criterion and executable rule. The
+  // nullable legacy columns are guarded for new rows by migration 0025.
   const chargeFindingIds: string[] = [];
-  // Resolved once per distinct criterionKey and reused below in the
-  // variance_finding loop (4.5) — both loops iterate the same result.findings
-  // and would otherwise issue duplicate resolveCriterionIds queries per key.
-  const resolvedIdsByCriterionKey = new Map<string, Awaited<ReturnType<typeof resolveCriterionIds>>>();
   for (const f of result.findings) {
-    let resolved = resolvedIdsByCriterionKey.get(f.criterionKey);
-    if (resolved === undefined) {
-      resolved = await resolveCriterionIds(client, f.criterionKey);
-      resolvedIdsByCriterionKey.set(f.criterionKey, resolved);
-    }
+    const resolved = resolvedIdsByCriterionKey.get(f.criterionKey)!;
     const cf = await client.query<{ id: string }>(
       `INSERT INTO charge_finding (client_id, audit_run_id, criterion_id, rule_version_id, result, evaluated_expr)
        VALUES ($1,$2,$3,$4,$5,$6) RETURNING id`,
-      [clientId, auditRunId, resolved?.criterionId ?? null, resolved?.ruleVersionId ?? null, f.result, JSON.stringify(f.evaluatedExpr)],
+      [clientId, auditRunId, resolved.criterionId, resolved.ruleVersionId, f.result, JSON.stringify(f.evaluatedExpr)],
     );
     chargeFindingIds.push(cf.rows[0]!.id);
   }
@@ -176,7 +173,7 @@ export async function persistAuditRun(
     // 86e2v88u2: same resolution cache populated in the charge_finding loop
     // above — every finding here already had resolveCriterionIds called for
     // its criterionKey once, so this is always a cache hit, never a new query.
-    const resolved = resolvedIdsByCriterionKey.get(f.criterionKey) ?? null;
+    const resolved = resolvedIdsByCriterionKey.get(f.criterionKey)!;
     await client.query(
       `INSERT INTO variance_finding
          (client_id, audit_run_id, criterion_id, rule_version_id, charge_fact_id, direction, materiality, variance_amount, currency, classification, status)
@@ -184,8 +181,8 @@ export async function persistAuditRun(
       [
         clientId,
         auditRunId,
-        resolved?.criterionId ?? null,
-        resolved?.ruleVersionId ?? null,
+        resolved.criterionId,
+        resolved.ruleVersionId,
         chargeFactId,
         f.direction === 'INTEGRITY_ONLY' ? null : f.direction,
         f.varianceAmount === null ? null : new Decimal(f.varianceAmount).abs().toFixed(4),

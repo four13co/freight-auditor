@@ -271,7 +271,7 @@ describe('persistAuditRun variance_finding derivation (DB)', () => {
     expect(rows.varianceFinding[0].rule_version_id).toBe(rows.chargeFinding[0].rule_version_id);
   });
 
-  it('leaves criterion_id/rule_version_id NULL (not a persist failure) for a criterionKey with no seeded row', async () => {
+  it('fails closed rather than writing uncited findings for an unseeded criterion', async () => {
     // resolveCriterionIds' own contract (scripts/seed-criteria.mjs): returns
     // null rather than throwing when a criterionKey has no seeded row, since a
     // caller must be able to write a finding for a criterion that predates the
@@ -285,20 +285,9 @@ describe('persistAuditRun variance_finding derivation (DB)', () => {
       findings: result.findings.map((f) => ({ ...f, criterionKey: 'UNSEEDED.NONEXISTENT_KEY' })),
     };
 
-    const rows = await withTenantTx({ clientIds: [clientId], internal: true }, async (c) => {
-      const p = await persistAuditRun(c, { clientId, invoice: inv, result: patched, rubricSnapshotId: null });
-      const cf = await c.query(
-        `SELECT criterion_id, rule_version_id FROM charge_finding WHERE audit_run_id = $1`,
-        [p.auditRunId],
-      );
-      return cf.rows;
-    });
-
-    expect(rows.length).toBeGreaterThan(0);
-    for (const row of rows) {
-      expect(row.criterion_id).toBeNull();
-      expect(row.rule_version_id).toBeNull();
-    }
+    await expect(withTenantTx({ clientIds: [clientId], internal: true }, (c) =>
+      persistAuditRun(c, { clientId, invoice: inv, result: patched, rubricSnapshotId: null })))
+      .rejects.toThrow('finding reference not found: UNSEEDED.NONEXISTENT_KEY');
   });
 
   it('the derivation runs inside the same transaction as the rest of persistAuditRun (no partial write on error)', async () => {

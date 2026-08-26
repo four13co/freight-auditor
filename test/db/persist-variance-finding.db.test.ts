@@ -60,6 +60,7 @@ describe('persistAuditRun variance_finding derivation (DB)', () => {
     const owner = await pool.connect();
     try {
       await owner.query(`DELETE FROM audit_event WHERE client_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM audit_replay_manifest WHERE client_id = $1`, [clientId]);
       // variance_finding before audit_run (86e2v250p-adjacent regression this
       // item's own prior build attempt introduced and fixed: FK ordering).
       await owner.query(`DELETE FROM variance_finding WHERE client_id = $1`, [clientId]);

@@ -35,6 +35,7 @@ describe('Phase 1 persistence (DB)', () => {
     const owner = await pool.connect();
     try {
       await owner.query(`DELETE FROM audit_event WHERE client_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM audit_replay_manifest WHERE client_id = $1`, [clientId]);
       // Children of the runs first, then invoices, then client.
       // variance_finding before audit_run (86e2v17p5's derivation now writes
       // here too).
@@ -81,13 +82,28 @@ describe('Phase 1 persistence (DB)', () => {
         [p.auditRunId],
       );
       const ledger = await c.query(`SELECT event, detail FROM audit_event WHERE entity_id = $1`, [p.auditRunId]);
-      return { outcome: run.rows[0].outcome, scorecard: sc.rows[0], ledger: ledger.rows[0] };
+      const manifest = await c.query(
+        `SELECT schema_version, content_hash, manifest FROM audit_replay_manifest WHERE audit_run_id = $1`,
+        [p.auditRunId],
+      );
+      return { outcome: run.rows[0].outcome, scorecard: sc.rows[0], ledger: ledger.rows[0], manifest: manifest.rows[0] };
     });
     expect(row.outcome).toBe('SCORED');
     expect(row.scorecard).toMatchObject({ conformed_count: 2, variance_count: 0 });
     expect(row.ledger).toMatchObject({
       event: 'evaluation.completed',
       detail: expect.objectContaining({ outcome: 'SCORED', scorecardId: expect.any(String) }),
+    });
+    expect(row.manifest).toMatchObject({
+      schema_version: 1,
+      content_hash: expect.stringMatching(/^[a-f0-9]{64}$/),
+      manifest: expect.objectContaining({
+        schemaVersion: 1,
+        auditRunId: expect.any(String),
+        externalValues: [],
+        crosswalkRows: [],
+        ai: [],
+      }),
     });
   });
 

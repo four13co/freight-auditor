@@ -158,6 +158,7 @@ interface DraftRow {
   client_id: string;
   status: string;
   source_document_id: string;
+  source_document_sha256: string;
   extracted_payload: ParsedInvoice;
   corrected_payload: ParsedInvoice | null;
   resolved_carrier_id: string | null;
@@ -165,7 +166,10 @@ interface DraftRow {
 
 async function loadDraft(client: pg.PoolClient, draftId: string): Promise<DraftRow> {
   const res = await client.query<DraftRow>(
-    `SELECT id, client_id, status, source_document_id, extracted_payload, corrected_payload, resolved_carrier_id FROM invoice_draft WHERE id = $1`,
+    `SELECT d.id, d.client_id, d.status, d.source_document_id, d.extracted_payload,
+       d.corrected_payload, d.resolved_carrier_id, sd.sha256 AS source_document_sha256
+     FROM invoice_draft d JOIN source_document sd ON sd.id = d.source_document_id
+     WHERE d.id = $1`,
     [draftId],
   );
   const row = res.rows[0];
@@ -227,6 +231,8 @@ export async function confirmInvoiceDraft(
     result,
     rubricSnapshotId: null,
     carrierId: input.carrierId ?? draft.resolved_carrier_id ?? undefined,
+    sourceDocuments: [{ id: draft.source_document_id, sha256: draft.source_document_sha256 }],
+    contractVersionIds: input.contractVersionId ? [input.contractVersionId] : [],
   });
 
   await client.query(

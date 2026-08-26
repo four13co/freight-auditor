@@ -56,6 +56,7 @@ describe('Phase 2 CONTRACT-tier (DB)', () => {
     const owner = await pool.connect();
     try {
       await owner.query(`DELETE FROM audit_event WHERE client_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM audit_replay_manifest WHERE client_id = $1`, [clientId]);
       // variance_finding before audit_run (86e2v17p5's derivation now writes
       // here too -- same FK-ordering fix as phase1-persist.db.test.ts).
       await owner.query(`DELETE FROM variance_finding WHERE client_id = $1`, [clientId]);

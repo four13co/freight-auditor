@@ -146,6 +146,8 @@ export async function ingestInvoice(
     invoice,
     result,
     rubricSnapshotId: null,
+    sourceDocuments: [{ id: sourceDocument.id, sha256: sourceDocument.sha256 }],
+    contractVersionIds: input.contractVersionId ? [input.contractVersionId] : [],
   });
   await writeAuditEvent(client, {
     id: deterministicAuditEventId(input.clientId, persisted.auditRunId, 'ingestion.audit_created'),

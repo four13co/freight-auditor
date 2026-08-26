@@ -72,6 +72,7 @@ describe('POST /api/invoice-drafts + confirm (DB, e2e)', () => {
     const owner = await pool.connect();
     try {
       await owner.query(`DELETE FROM audit_event WHERE client_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM audit_replay_manifest WHERE client_id = $1`, [clientId]);
       await owner.query(`DELETE FROM extraction_field WHERE client_id = $1`, [clientId]);
       // invoice_draft.confirmed_audit_run_id references audit_run -- clear the
       // draft rows (whole table for this client, not just referencing ones)

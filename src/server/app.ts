@@ -5,6 +5,7 @@ import { registerStaticRoutes } from './static-routes.js';
 import { registerAuditRunsRoutes } from './audit-runs-routes.js';
 import { registerInvoiceDraftsRoutes } from './invoice-drafts-routes.js';
 import { registerEvidenceRoutes } from './evidence-routes.js';
+import { registerRuleGovernanceRoutes } from './rule-governance-routes.js';
 
 /**
  * Build the Fastify application instance.
@@ -51,6 +52,7 @@ export function buildApp(): FastifyInstance {
   // content-type parser scoped to this plugin only.
   void app.register(registerInvoiceDraftsRoutes);
   void app.register(registerEvidenceRoutes);
+  void app.register(registerRuleGovernanceRoutes);
 
   return app;
 }

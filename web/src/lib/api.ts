@@ -36,6 +36,7 @@ export interface FindingProvenance {
 export interface ReviewQueueItem { id: string; auditRunId: string; invoiceNumber: string | null; criterionKey: string; createdAt: string }
 export interface ReviewQueues { escalation: ReviewQueueItem[]; unassessable: ReviewQueueItem[] }
 export interface RubricConflict { id: string; criterion_key: string | null; conflict_type: string; detail: Record<string, unknown>; recorded_at: string }
+export interface RuleProposal { id: string; slug: string; rule_type: string; hardness: string; lifecycle_state: 'PROPOSED' | 'SHADOW'; ast_hash: string; recorded_at: string }
 
 export interface FindingsSummary {
   recoverableOpen: string;
@@ -189,6 +190,14 @@ export async function fetchRubricConflicts(): Promise<RubricConflict[]> {
   if (!res.ok) throw new Error(`GET rubric conflicts failed: ${res.status}`);
   const body = (await res.json()) as { conflicts?: RubricConflict[] };
   return body.conflicts ?? [];
+}
+export async function fetchRuleProposals(): Promise<RuleProposal[]> {
+  const res = await fetch('/api/rules/proposals', { headers: authHeaders() }); if (!res.ok) throw new Error('GET proposals failed');
+  return ((await res.json()) as { proposals?: RuleProposal[] }).proposals ?? [];
+}
+export async function ratifyRuleProposal(id: string, rationale: string): Promise<void> {
+  const res = await fetch(`/api/rules/${id}/ratify`, { method: 'POST', headers: { ...authHeaders(), 'content-type': 'application/json' }, body: JSON.stringify({ rationale }) });
+  if (!res.ok) throw new Error('POST ratify failed');
 }
 
 export async function fetchGateFailures(): Promise<GateFailureRow[]> {

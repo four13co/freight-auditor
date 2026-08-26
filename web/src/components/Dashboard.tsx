@@ -7,12 +7,14 @@ import { FindingsTable } from './FindingsTable.js';
 import { GateFailuresPanel } from './GateFailuresPanel.js';
 import { ReviewQueues } from './ReviewQueues.js';
 import { RubricConflictQueue } from './RubricConflictQueue.js';
+import { RuleProposalQueue } from './RuleProposalQueue.js';
 import {
   fetchFindings,
   fetchFindingsSummary,
   fetchGateFailures,
   fetchReviewQueues,
   fetchRubricConflicts,
+  fetchRuleProposals,
   type FindingRow,
   type FindingsSortDir,
   type FindingsSortKey,
@@ -20,6 +22,7 @@ import {
   type GateFailureRow,
   type ReviewQueues as ReviewQueuesData,
   type RubricConflict,
+  type RuleProposal,
 } from '../lib/api.js';
 
 /**
@@ -56,6 +59,7 @@ export function Dashboard() {
   const [gateFailures, setGateFailures] = useState<GateFailureRow[]>([]);
   const [reviewQueues, setReviewQueues] = useState<ReviewQueuesData>({ escalation: [], unassessable: [] });
   const [rubricConflicts, setRubricConflicts] = useState<RubricConflict[]>([]);
+  const [ruleProposals, setRuleProposals] = useState<RuleProposal[]>([]);
 
   const load = useCallback(() => {
     setStatus('loading');
@@ -100,6 +104,7 @@ export function Dashboard() {
     fetchGateFailures().then(setGateFailures, () => setGateFailures([]));
     fetchReviewQueues().then(setReviewQueues, () => setReviewQueues({ escalation: [], unassessable: [] }));
     fetchRubricConflicts().then(setRubricConflicts, () => setRubricConflicts([]));
+    fetchRuleProposals().then(setRuleProposals, () => setRuleProposals([]));
   }, []);
 
   return (
@@ -135,6 +140,7 @@ export function Dashboard() {
               <GateFailuresPanel rows={gateFailures} />
               <ReviewQueues queues={reviewQueues} />
               <RubricConflictQueue rows={rubricConflicts} />
+              <RuleProposalQueue rows={ruleProposals} onRatified={(id) => setRuleProposals((rows) => rows.map((r) => r.id === id ? { ...r, lifecycle_state: 'SHADOW' } : r))} />
               <FindingsTable
                 rows={rows}
                 carrierFilter={carrierFilter}

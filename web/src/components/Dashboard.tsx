@@ -5,15 +5,18 @@ import { PasskeyRegistration } from './PasskeyRegistration.js';
 import { KpiRow } from './KpiRow.js';
 import { FindingsTable } from './FindingsTable.js';
 import { GateFailuresPanel } from './GateFailuresPanel.js';
+import { ReviewQueues } from './ReviewQueues.js';
 import {
   fetchFindings,
   fetchFindingsSummary,
   fetchGateFailures,
+  fetchReviewQueues,
   type FindingRow,
   type FindingsSortDir,
   type FindingsSortKey,
   type FindingsSummary,
   type GateFailureRow,
+  type ReviewQueues as ReviewQueuesData,
 } from '../lib/api.js';
 
 /**
@@ -48,6 +51,7 @@ export function Dashboard() {
   // failing silently just means "no rejected-invoices panel this load,"
   // which is the same visual result as "no rejected invoices exist."
   const [gateFailures, setGateFailures] = useState<GateFailureRow[]>([]);
+  const [reviewQueues, setReviewQueues] = useState<ReviewQueuesData>({ escalation: [], unassessable: [] });
 
   const load = useCallback(() => {
     setStatus('loading');
@@ -90,6 +94,7 @@ export function Dashboard() {
 
   useEffect(() => {
     fetchGateFailures().then(setGateFailures, () => setGateFailures([]));
+    fetchReviewQueues().then(setReviewQueues, () => setReviewQueues({ escalation: [], unassessable: [] }));
   }, []);
 
   return (
@@ -123,6 +128,7 @@ export function Dashboard() {
             <>
               {summary && <KpiRow summary={summary} />}
               <GateFailuresPanel rows={gateFailures} />
+              <ReviewQueues queues={reviewQueues} />
               <FindingsTable
                 rows={rows}
                 carrierFilter={carrierFilter}

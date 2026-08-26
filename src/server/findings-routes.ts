@@ -7,6 +7,7 @@ import { updateFindingStatus } from '../modules/findings/update-finding-status.j
 import { registerTenantAuthPreHandler } from '../modules/findings/tenant-auth.js';
 import { ALL_VARIANCE_STATUSES, WRITABLE_VARIANCE_STATUSES } from '../shared/variance-status.js';
 import { isUuid } from '../shared/request-validation.js';
+import { listReviewQueues } from '../modules/findings/list-review-queues.js';
 
 // 86e2v892h: derived from the shared source (mirrors migrations/0002_enums.sql's
 // variance_status enum exactly) rather than a separate hand-maintained literal.
@@ -109,6 +110,8 @@ export async function registerFindingsRoutes(findingsRoutes: FastifyInstance): P
     const summary = await withTenantTx(ctx, (client) => getFindingsSummary(client));
     return summary;
   });
+  findingsRoutes.get('/api/findings/queues', async (request) =>
+    withTenantTx(request.tenantContext!, (client) => listReviewQueues(client)));
 
   // 86e2v17xn: a rejected invoice's kickback -- structurally distinct from
   // a variance finding (no billed/expected/variance amounts), so it's a

@@ -21,6 +21,9 @@ function mockFetchOnce(url: string) {
   if (url.includes('/api/gate-failures')) {
     return Promise.resolve(new Response(JSON.stringify({ gateFailures: [] }), { status: 200 }));
   }
+  if (url.includes('/api/findings/queues')) {
+    return Promise.resolve(new Response(JSON.stringify({ escalation: [], unassessable: [] }), { status: 200 }));
+  }
   if (url.includes('/api/findings')) {
     return Promise.resolve(new Response(JSON.stringify({ findings: ROWS }), { status: 200 }));
   }

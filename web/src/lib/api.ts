@@ -33,6 +33,8 @@ export interface FindingProvenance {
   rateCell: { id: string; reference: string } | null;
   sourceDocument: { id: string; sha256: string; storageUri: string } | null;
 }
+export interface ReviewQueueItem { id: string; auditRunId: string; invoiceNumber: string | null; criterionKey: string; createdAt: string }
+export interface ReviewQueues { escalation: ReviewQueueItem[]; unassessable: ReviewQueueItem[] }
 
 export interface FindingsSummary {
   recoverableOpen: string;
@@ -174,6 +176,12 @@ export async function fetchFindingsSummary(): Promise<FindingsSummary> {
   const res = await fetch('/api/findings/summary', { headers: authHeaders() });
   if (!res.ok) throw new Error(`GET /api/findings/summary failed: ${res.status}`);
   return (await res.json()) as FindingsSummary;
+}
+export async function fetchReviewQueues(): Promise<ReviewQueues> {
+  const res = await fetch('/api/findings/queues', { headers: authHeaders() });
+  if (!res.ok) throw new Error(`GET review queues failed: ${res.status}`);
+  const body = (await res.json()) as Partial<ReviewQueues>;
+  return { escalation: body.escalation ?? [], unassessable: body.unassessable ?? [] };
 }
 
 export async function fetchGateFailures(): Promise<GateFailureRow[]> {

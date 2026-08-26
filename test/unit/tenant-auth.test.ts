@@ -333,7 +333,7 @@ describe('registerTenantAuthPreHandler', () => {
       headers: { 'x-client-id': 'client-1', 'x-user-id': 'user-1' },
     });
 
-    expect(res.statusCode).toBe(200);
+    expect(res.statusCode, res.body).toBe(200);
     expect(res.json()).toEqual({ tenantContext: { clientIds: ['client-1'], internal: false } });
     await app.close();
   });

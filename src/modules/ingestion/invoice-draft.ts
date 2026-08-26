@@ -18,6 +18,7 @@ import { lookupContractRate } from '../rate-engine/rate-lookup.js';
 import { detectDuplicateInvoice } from './duplicate-invoice.js';
 import { resolveShipmentReferenceMatch } from './shipment-reference.js';
 import { z } from 'zod';
+import { deterministicAuditEventId, writeAuditEvent } from '../audit-ledger/write-audit-event.js';
 
 /**
  * 86e2xb911: the PDF invoice draft/confirm flow. A new, separate path from
@@ -126,8 +127,19 @@ export async function createInvoiceDraft(
     ],
   );
 
+  const draftId = inserted.rows[0]!.id;
+  await writeAuditEvent(client, {
+    id: deterministicAuditEventId(input.clientId, draftId, 'invoice_draft.extracted'),
+    clientId: input.clientId,
+    entity: 'invoice_draft',
+    entityId: draftId,
+    event: 'invoice_draft.extracted',
+    actorKind: 'system',
+    detail: { sourceDocumentId: doc.id, status, extractionModel: EXTRACTION_MODEL },
+  });
+
   return {
-    id: inserted.rows[0]!.id,
+    id: draftId,
     status,
     extractedPayload: invoice,
     carrierCandidates: carrierMatch.candidates,
@@ -150,8 +162,10 @@ export interface ConfirmDraftResult extends PersistedRun {
 
 interface DraftRow {
   id: string;
+  client_id: string;
   status: string;
   source_document_id: string;
+  source_document_sha256: string;
   extracted_payload: ParsedInvoice;
   corrected_payload: ParsedInvoice | null;
   resolved_carrier_id: string | null;
@@ -159,7 +173,10 @@ interface DraftRow {
 
 async function loadDraft(client: pg.PoolClient, draftId: string): Promise<DraftRow> {
   const res = await client.query<DraftRow>(
-    `SELECT id, status, source_document_id, extracted_payload, corrected_payload, resolved_carrier_id FROM invoice_draft WHERE id = $1`,
+    `SELECT d.id, d.client_id, d.status, d.source_document_id, d.extracted_payload,
+       d.corrected_payload, d.resolved_carrier_id, sd.sha256 AS source_document_sha256
+     FROM invoice_draft d JOIN source_document sd ON sd.id = d.source_document_id
+     WHERE d.id = $1`,
     [draftId],
   );
   const row = res.rows[0];
@@ -212,8 +229,10 @@ export async function confirmInvoiceDraft(
     client, input.clientId, finalInvoice.invoiceNumber, finalInvoice.transactionSet,
   );
   const shipmentReferenceMatch = await resolveShipmentReferenceMatch(client, input.clientId, finalInvoice.shipmentReferences);
+  let resolvedInputs: Record<string, unknown> = { duplicateInvoice, shipmentReferenceMatch };
   if (input.contractVersionId) {
     const rate = await lookupContractRate(client, input.contractVersionId, 'LINEHAUL');
+    resolvedInputs = { ...resolvedInputs, linehaulRate: rate };
     result = evaluateInvoice(finalInvoice, CONTRACT_RUBRIC, { linehaulRate: rate, duplicateInvoice, shipmentReferenceMatch });
   } else {
     result = evaluateInvoice(finalInvoice, STANDARD_RUBRIC, { duplicateInvoice, shipmentReferenceMatch });
@@ -225,6 +244,9 @@ export async function confirmInvoiceDraft(
     result,
     rubricSnapshotId: null,
     carrierId: input.carrierId ?? draft.resolved_carrier_id ?? undefined,
+    sourceDocuments: [{ id: draft.source_document_id, sha256: draft.source_document_sha256 }],
+    contractVersionIds: input.contractVersionId ? [input.contractVersionId] : [],
+    resolvedInputs,
   });
 
   await client.query(
@@ -233,6 +255,19 @@ export async function confirmInvoiceDraft(
      WHERE id = $3`,
     [input.correctedPayload ? JSON.stringify(input.correctedPayload) : null, persisted.auditRunId, draft.id],
   );
+  await writeAuditEvent(client, {
+    id: deterministicAuditEventId(input.clientId, draft.id, 'invoice_draft.confirmed'),
+    clientId: input.clientId,
+    entity: 'invoice_draft',
+    entityId: draft.id,
+    event: 'invoice_draft.confirmed',
+    actorKind: 'system',
+    detail: {
+      auditRunId: persisted.auditRunId,
+      carrierId: input.carrierId ?? draft.resolved_carrier_id,
+      corrected: input.correctedPayload !== undefined,
+    },
+  });
 
   return persisted;
 }
@@ -249,6 +284,15 @@ export async function rejectInvoiceDraft(
     `UPDATE invoice_draft SET status = 'rejected', updated_at = now() WHERE id = $1`,
     [draftId],
   );
+  await writeAuditEvent(client, {
+    id: deterministicAuditEventId(draft.client_id, draft.id, 'invoice_draft.rejected'),
+    clientId: draft.client_id,
+    entity: 'invoice_draft',
+    entityId: draft.id,
+    event: 'invoice_draft.rejected',
+    actorKind: 'system',
+    detail: null,
+  });
 }
 
 // ParsedInvoice keys diffed as whole-value header fields (i.e. NOT the

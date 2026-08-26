@@ -71,6 +71,8 @@ describe('POST /api/invoice-drafts + confirm (DB, e2e)', () => {
     await app.close();
     const owner = await pool.connect();
     try {
+      await owner.query(`DELETE FROM audit_event WHERE client_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM audit_replay_manifest WHERE client_id = $1`, [clientId]);
       await owner.query(`DELETE FROM extraction_field WHERE client_id = $1`, [clientId]);
       // invoice_draft.confirmed_audit_run_id references audit_run -- clear the
       // draft rows (whole table for this client, not just referencing ones)
@@ -175,6 +177,18 @@ describe('POST /api/invoice-drafts + confirm (DB, e2e)', () => {
       c.query(`SELECT transaction_set FROM invoice WHERE client_id = $1 ORDER BY created_at DESC LIMIT 1`, [clientId]),
     );
     expect(persisted.rows[0].transaction_set).toBe('PDF');
+
+    const ledger = await withTenantTx({ clientIds: [clientId], internal: false }, (c) =>
+      c.query(`SELECT event, entity_id, detail FROM audit_event WHERE entity_id = $1 ORDER BY recorded_at`, [draftId]),
+    );
+    expect(ledger.rows).toEqual([
+      expect.objectContaining({ event: 'invoice_draft.extracted', entity_id: draftId }),
+      expect.objectContaining({
+        event: 'invoice_draft.confirmed',
+        entity_id: draftId,
+        detail: expect.objectContaining({ auditRunId }),
+      }),
+    ]);
   });
 
   it('AC3: confirming WITH corrections persists the corrected values and durably records the extraction/correction diff', async () => {

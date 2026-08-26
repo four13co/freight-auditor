@@ -61,7 +61,7 @@ const ISA_210 =
 const FIXTURE_EDI_210 =
   ISA_210 +
   'ST*210*0009~' +
-  `B3**${FIXTURE_INVOICE_NUMBER}*****1250.00***USD~` +
+  `B3**${FIXTURE_INVOICE_NUMBER}*SHIP-E2E-001****1250.00****E2EF~` +
   'L1*1***1000.00****400****Linehaul~' +
   'L1*2***250.00****405****Fuel Surcharge~' +
   'SE*5*0009~';

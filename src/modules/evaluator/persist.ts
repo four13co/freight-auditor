@@ -3,6 +3,7 @@ import { Decimal } from 'decimal.js';
 import type { ParsedInvoice } from '../ingestion/charge-fact.js';
 import type { AuditResult } from './evaluate-invoice.js';
 import { resolveCriterionIds } from './resolve-criterion-ids.js';
+import { deterministicAuditEventId, writeAuditEvent } from '../audit-ledger/write-audit-event.js';
 
 /**
  * Persist a parsed invoice + its audit result into the canonical schema
@@ -191,6 +192,23 @@ export async function persistAuditRun(
     );
     scorecardId = sc.rows[0]!.id;
   }
+
+  await writeAuditEvent(client, {
+    id: deterministicAuditEventId(clientId, auditRunId, 'evaluation.completed'),
+    clientId,
+    entity: 'audit_run',
+    entityId: auditRunId,
+    event: 'evaluation.completed',
+    actorKind: 'system',
+    rubricSnapshotId: input.rubricSnapshotId,
+    detail: {
+      outcome: result.outcome,
+      engineSpecVersion: result.pins.engineSpecVersion,
+      gateFailureCount: gateFailureIds.length,
+      findingCount: chargeFindingIds.length,
+      scorecardId,
+    },
+  });
 
   return { invoiceId, auditRunId, gateFailureIds, chargeFindingIds, scorecardId };
 }

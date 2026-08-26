@@ -297,7 +297,7 @@ describe('GET /api/findings (unit, mocked withTenantTx + tenant-auth)', () => {
 
       expect(res.statusCode).toBe(200);
       expect(res.json()).toEqual({ id: '11111111-1111-1111-1111-111111111111', status: 'in_review' });
-      expect(updateFindingStatus).toHaveBeenCalledWith({}, '11111111-1111-1111-1111-111111111111', 'in_review', undefined);
+      expect(updateFindingStatus).toHaveBeenCalledWith({}, '11111111-1111-1111-1111-111111111111', 'in_review', undefined, undefined);
     });
 
     it('returns 404 without calling reply with a 200 when the finding is not found for this tenant', async () => {
@@ -422,7 +422,7 @@ describe('GET /api/findings (unit, mocked withTenantTx + tenant-auth)', () => {
         headers: { 'x-client-id': 'client-abc', 'x-user-id': 'user-1', 'content-type': 'application/json' },
         payload: { status: 'closed', note: 'analyst note' },
       });
-      expect(updateFindingStatus).toHaveBeenCalledWith({}, '11111111-1111-1111-1111-111111111111', 'closed', 'analyst note');
+      expect(updateFindingStatus).toHaveBeenCalledWith({}, '11111111-1111-1111-1111-111111111111', 'closed', 'analyst note', undefined);
     });
   });
 

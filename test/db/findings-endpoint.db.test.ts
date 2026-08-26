@@ -81,6 +81,7 @@ describe('GET /api/findings (DB, e2e)', () => {
     await app.close();
     const owner = await pool.connect();
     try {
+      await owner.query(`DELETE FROM audit_event WHERE client_id = $1`, [clientId]);
       // variance_finding + charge_finding + scorecard before audit_run
       // (86e2v17p5's real-pipeline test below calls the full persistAuditRun,
       // which writes all three -- this file's cleanup previously only ever

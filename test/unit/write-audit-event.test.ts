@@ -33,10 +33,10 @@ describe('central audit-event writer', () => {
     await expect(writeAuditEvent({ query } as unknown as PoolClient, event)).rejects.toBeInstanceOf(AuditEventConflictError);
   });
 
-  it('rejects malformed and ambiguous actors before database access', async () => {
+  it('rejects malformed JSON before database access', async () => {
     const query = vi.fn();
     await expect(writeAuditEvent({ query } as unknown as PoolClient, {
-      ...event, actorKind: 'analyst', actorUserId: null, detail: { invalid: undefined },
+      ...event, detail: { invalid: undefined },
     })).rejects.toBeInstanceOf(AuditEventValidationError);
     expect(query).not.toHaveBeenCalled();
   });

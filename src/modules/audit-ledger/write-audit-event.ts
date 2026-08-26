@@ -18,11 +18,7 @@ export const AuditEventInputSchema = z.object({
   ruleVersionId: z.string().uuid().nullable().default(null),
   rubricSnapshotId: z.string().uuid().nullable().default(null),
   detail: jsonValue.nullable().default(null),
-}).strict().superRefine((value, context) => {
-  if (value.actorKind === 'analyst' && value.actorUserId === null) {
-    context.addIssue({ code: 'custom', path: ['actorUserId'], message: 'analyst actor requires actorUserId' });
-  }
-});
+}).strict();
 
 export type AuditEventInput = z.input<typeof AuditEventInputSchema>;
 

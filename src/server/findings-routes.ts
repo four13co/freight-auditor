@@ -149,7 +149,7 @@ export async function registerFindingsRoutes(findingsRoutes: FastifyInstance): P
 
     const ctx = request.tenantContext!;
     const result = await withTenantTx(ctx, (client) =>
-      updateFindingStatus(client, id, body.status as string, body.note as string | undefined),
+      updateFindingStatus(client, id, body.status as string, body.note as string | undefined, request.actorUserId),
     );
 
     if (!result.found) {

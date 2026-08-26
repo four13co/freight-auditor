@@ -34,6 +34,7 @@ describe('Phase 1 persistence (DB)', () => {
   afterAll(async () => {
     const owner = await pool.connect();
     try {
+      await owner.query(`DELETE FROM audit_event WHERE client_id = $1`, [clientId]);
       // Children of the runs first, then invoices, then client.
       // variance_finding before audit_run (86e2v17p5's derivation now writes
       // here too).
@@ -79,10 +80,15 @@ describe('Phase 1 persistence (DB)', () => {
         `SELECT conformed_count, variance_count, unassessable_count FROM scorecard WHERE audit_run_id = $1`,
         [p.auditRunId],
       );
-      return { outcome: run.rows[0].outcome, scorecard: sc.rows[0] };
+      const ledger = await c.query(`SELECT event, detail FROM audit_event WHERE entity_id = $1`, [p.auditRunId]);
+      return { outcome: run.rows[0].outcome, scorecard: sc.rows[0], ledger: ledger.rows[0] };
     });
     expect(row.outcome).toBe('SCORED');
     expect(row.scorecard).toMatchObject({ conformed_count: 2, variance_count: 0 });
+    expect(row.ledger).toMatchObject({
+      event: 'evaluation.completed',
+      detail: expect.objectContaining({ outcome: 'SCORED', scorecardId: expect.any(String) }),
+    });
   });
 
   it('AC2 e2e: malformed 210 → REJECTED_REWORK audit_run + gate_failure rows, NO scorecard', async () => {

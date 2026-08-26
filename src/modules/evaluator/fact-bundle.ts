@@ -15,6 +15,7 @@ import type { ContractRate } from '../rate-engine/rate-lookup.js';
 export interface ContractFacts {
   linehaulRate?: ContractRate | null;
   duplicateInvoice?: boolean;
+  shipmentReferenceMatch?: boolean;
 }
 
 /**
@@ -40,6 +41,7 @@ export function buildFactBundle(inv: ParsedInvoice, contract?: ContractFacts): F
     quarantined_count: quarantinedCount,
     has_fuel_category: hasFuel,
     duplicate_invoice: contract?.duplicateInvoice,
+    shipment_reference_match: contract?.shipmentReferenceMatch,
   };
 
   if (contract?.linehaulRate !== undefined) {

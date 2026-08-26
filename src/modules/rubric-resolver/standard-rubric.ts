@@ -147,5 +147,21 @@ export const STANDARD_RUBRIC: ComposedRubric = {
         },
       },
     },
+    {
+      criterionKey: 'STD.SHIPMENT_REFERENCE_MATCH',
+      kind: 'SCORING',
+      evalOrder: 130,
+      description: 'At least one stated shipment reference matches a shipment belonging to this tenant.',
+      ast: {
+        type: 'require',
+        key: 'shipment_reference_match',
+        then: {
+          type: 'compare',
+          op: 'eq',
+          left: { type: 'fact', key: 'shipment_reference_match' },
+          right: { type: 'lit', value: true },
+        },
+      },
+    },
   ],
 };

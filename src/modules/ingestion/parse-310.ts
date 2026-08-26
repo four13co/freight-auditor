@@ -1,6 +1,6 @@
-import { firstSegment, el } from './x12.js';
+import { firstSegment, segmentsByTag, el } from './x12.js';
 import { type Categorize, type ParsedInvoice } from './charge-fact.js';
-import { parseEdiEnvelope, readB3Header, buildCharges, buildFooting } from './edi-envelope.js';
+import { parseEdiEnvelope, readB3Header, buildCharges, buildFooting, normalizeReferences } from './edi-envelope.js';
 
 export const PARSER_310_VERSION = '310-v1';
 
@@ -19,6 +19,7 @@ export const PARSER_310_VERSION = '310-v1';
 export function parse310(raw: string, categorize: Categorize): ParsedInvoice {
   const ix = parseEdiEnvelope(raw, 'IO');
   const { invoiceNumber, declaredTotal } = readB3Header(ix);
+  const shipmentReferences = normalizeReferences(segmentsByTag(ix, 'N9').map((segment) => el(segment, 2)));
 
   // C3 = currency segment; C3-01 is the interchange-level currency, if declared.
   const c3 = firstSegment(ix, 'C3');
@@ -36,6 +37,7 @@ export function parse310(raw: string, categorize: Categorize): ParsedInvoice {
     transactionSet: '310',
     parserVersion: PARSER_310_VERSION,
     invoiceNumber,
+    shipmentReferences,
     headerCurrency: interchangeCurrency,
     charges,
     footing: buildFooting(declaredTotal, charges),

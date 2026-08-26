@@ -11,6 +11,7 @@ import { STANDARD_RUBRIC } from '../rubric-resolver/standard-rubric.js';
 import { persistAuditRun, type PersistedRun } from '../evaluator/persist.js';
 import { lookupContractRate } from '../rate-engine/rate-lookup.js';
 import { detectDuplicateInvoice } from './duplicate-invoice.js';
+import { resolveShipmentReferenceMatch } from './shipment-reference.js';
 
 /**
  * 86e2v17u9: the raw-EDI-to-audit-run orchestration the item's Solution
@@ -125,11 +126,12 @@ export async function ingestInvoice(
   const duplicateInvoice = await detectDuplicateInvoice(
     client, input.clientId, invoice.invoiceNumber, invoice.transactionSet,
   );
+  const shipmentReferenceMatch = await resolveShipmentReferenceMatch(client, input.clientId, invoice.shipmentReferences);
   if (input.contractVersionId) {
     const rate = await lookupContractRate(client, input.contractVersionId, 'LINEHAUL');
-    result = evaluateInvoice(invoice, CONTRACT_RUBRIC, { linehaulRate: rate, duplicateInvoice });
+    result = evaluateInvoice(invoice, CONTRACT_RUBRIC, { linehaulRate: rate, duplicateInvoice, shipmentReferenceMatch });
   } else {
-    result = evaluateInvoice(invoice, STANDARD_RUBRIC, { duplicateInvoice });
+    result = evaluateInvoice(invoice, STANDARD_RUBRIC, { duplicateInvoice, shipmentReferenceMatch });
   }
 
   // 4. Persist (variance_finding derivation already lives inside

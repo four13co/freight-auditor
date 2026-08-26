@@ -44,6 +44,19 @@ export function readB3Header(ix: X12Interchange): { invoiceNumber?: string; decl
   };
 }
 
+/** Trim, discard blanks, and deduplicate source references without changing their display casing. */
+export function normalizeReferences(values: Array<string | undefined>): string[] {
+  const seen = new Set<string>();
+  const references: string[] = [];
+  for (const value of values) {
+    const normalized = value?.trim();
+    if (!normalized || seen.has(normalized.toLowerCase())) continue;
+    seen.add(normalized.toLowerCase());
+    references.push(normalized);
+  }
+  return references;
+}
+
 /**
  * Resolve a charge line's currency, given its raw L1 segment. Injected per
  * transaction-set: 210 returns a fixed header currency; 310 reads C3/L1-20 and

@@ -199,6 +199,10 @@ export async function ratifyRuleProposal(id: string, rationale: string): Promise
   const res = await fetch(`/api/rules/${id}/ratify`, { method: 'POST', headers: { ...authHeaders(), 'content-type': 'application/json' }, body: JSON.stringify({ rationale }) });
   if (!res.ok) throw new Error('POST ratify failed');
 }
+export async function activateShadowRule(id: string, rationale: string): Promise<void> {
+  const res = await fetch(`/api/rules/${id}/activate`, { method: 'POST', headers: { ...authHeaders(), 'content-type': 'application/json' }, body: JSON.stringify({ rationale }) });
+  if (!res.ok) throw new Error('POST activate failed');
+}
 
 export async function fetchGateFailures(): Promise<GateFailureRow[]> {
   const res = await fetch('/api/gate-failures', { headers: authHeaders() });

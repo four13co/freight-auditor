@@ -3,6 +3,7 @@ import { withTenantTx } from '../db/tenant-context.js';
 import { registerTenantAuthPreHandler } from '../modules/findings/tenant-auth.js';
 import { transitionRuleLifecycle } from '../modules/rule-engine/transition-rule-lifecycle.js';
 import { isUuid } from '../shared/request-validation.js';
+import { promoteShadowRule } from '../modules/rule-engine/promote-shadow-rule.js';
 
 export async function registerRuleGovernanceRoutes(routes: FastifyInstance): Promise<void> {
   await registerTenantAuthPreHandler(routes);
@@ -16,6 +17,13 @@ export async function registerRuleGovernanceRoutes(routes: FastifyInstance): Pro
     if (typeof body.rationale !== 'string' || !body.rationale.trim()) return reply.code(400).send({ error: 'rationale is required' });
     const result = await withTenantTx(request.tenantContext!, (client) => transitionRuleLifecycle(client, {
       ruleVersionId: id, to: 'SHADOW', rationale: body.rationale as string }));
+    return reply.code(201).send(result);
+  });
+  routes.post('/api/rules/:id/activate', async (request, reply) => {
+    const { id } = request.params as { id: string }; if (!isUuid(id)) return reply.code(400).send({ error: 'invalid rule version id' });
+    const body = request.body as { rationale?: unknown };
+    if (typeof body.rationale !== 'string' || !body.rationale.trim()) return reply.code(400).send({ error: 'rationale is required' });
+    const result = await withTenantTx(request.tenantContext!, (client) => promoteShadowRule(client, { ruleVersionId: id, rationale: body.rationale as string }));
     return reply.code(201).send(result);
   });
 }

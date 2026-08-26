@@ -1,7 +1,7 @@
 import { useState } from 'react';
-import { ratifyRuleProposal, type RuleProposal } from '../lib/api.js';
+import { activateShadowRule, ratifyRuleProposal, type RuleProposal } from '../lib/api.js';
 
-export function RuleProposalQueue({ rows, onRatified }: { rows: RuleProposal[]; onRatified: (id: string) => void }) {
+export function RuleProposalQueue({ rows, onRatified }: { rows: RuleProposal[]; onRatified: (id: string, lifecycle: 'SHADOW' | 'ACTIVE') => void }) {
   const [pending, setPending] = useState<string | null>(null);
   if (!rows.length) return null;
   return <section data-testid="rule-proposal-queue" className="border border-[rgba(32,30,29,.3)] bg-[#f3f2f2] p-3">
@@ -9,8 +9,11 @@ export function RuleProposalQueue({ rows, onRatified }: { rows: RuleProposal[]; 
     {rows.map((row) => <div key={row.id} className="flex items-center gap-3 border-t py-2 text-xs">
       <span className="font-extrabold">{row.slug}</span><span>{row.rule_type}</span><span>{row.hardness}</span><span>{row.lifecycle_state}</span>
       {row.lifecycle_state === 'PROPOSED' && <button disabled={pending === row.id} className="ml-auto border px-2 py-1 font-extrabold" onClick={() => {
-        setPending(row.id); void ratifyRuleProposal(row.id, 'Analyst ratification').then(() => onRatified(row.id)).finally(() => setPending(null));
+        setPending(row.id); void ratifyRuleProposal(row.id, 'Analyst ratification').then(() => onRatified(row.id, 'SHADOW')).finally(() => setPending(null));
       }}>Ratify to shadow</button>}
+      {row.lifecycle_state === 'SHADOW' && <button disabled={pending === row.id} className="ml-auto border px-2 py-1 font-extrabold" onClick={() => {
+        setPending(row.id); void activateShadowRule(row.id, 'Backtest-approved activation').then(() => onRatified(row.id, 'ACTIVE')).finally(() => setPending(null));
+      }}>Activate</button>}
     </div>)}
   </section>;
 }

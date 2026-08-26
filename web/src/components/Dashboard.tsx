@@ -140,7 +140,8 @@ export function Dashboard() {
               <GateFailuresPanel rows={gateFailures} />
               <ReviewQueues queues={reviewQueues} />
               <RubricConflictQueue rows={rubricConflicts} />
-              <RuleProposalQueue rows={ruleProposals} onRatified={(id) => setRuleProposals((rows) => rows.map((r) => r.id === id ? { ...r, lifecycle_state: 'SHADOW' } : r))} />
+              <RuleProposalQueue rows={ruleProposals} onRatified={(id, lifecycle) => setRuleProposals((rows) => lifecycle === 'ACTIVE'
+                ? rows.filter((r) => r.id !== id) : rows.map((r) => r.id === id ? { ...r, lifecycle_state: 'SHADOW' } : r))} />
               <FindingsTable
                 rows={rows}
                 carrierFilter={carrierFilter}

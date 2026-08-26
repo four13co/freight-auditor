@@ -27,6 +27,7 @@ export interface InvoiceScorecard {
   conformed_count: number | null; variance_count: number | null; unassessable_count: number | null;
   total_overcharge: string | null; total_undercharge: string | null; currency: string | null;
 }
+export interface FindingProvenance { finding: { evaluatedExpr: unknown }; criterion: { key: string }; ruleVersion: { astHash: string } }
 
 export interface FindingsSummary {
   recoverableOpen: string;
@@ -193,4 +194,10 @@ export async function fetchInvoiceScorecard(auditRunId: string): Promise<Invoice
   const res = await fetch(`/api/audit-runs/${auditRunId}/scorecard`, { headers: authHeaders() });
   if (!res.ok) throw new Error(`GET scorecard failed: ${res.status}`);
   return (await res.json()) as InvoiceScorecard;
+}
+
+export async function fetchFindingProvenance(id: string): Promise<FindingProvenance> {
+  const res = await fetch(`/api/findings/${id}/provenance`, { headers: authHeaders() });
+  if (!res.ok) throw new Error(`GET finding provenance failed: ${res.status}`);
+  return (await res.json()) as FindingProvenance;
 }

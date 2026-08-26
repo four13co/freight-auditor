@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { fetchInvoiceScorecard, updateFindingStatus, type FindingRow, type InvoiceScorecard } from '../lib/api.js';
+import { fetchFindingProvenance, fetchInvoiceScorecard, updateFindingStatus, type FindingProvenance, type FindingRow, type InvoiceScorecard } from '../lib/api.js';
 import { formatMoney, formatVariance } from '../lib/format.js';
 import { getStatusDisplay, titleCase } from '../lib/status-display.js';
 import { WRITABLE_VARIANCE_STATUSES } from '../../../src/shared/variance-status.js';
@@ -51,6 +51,8 @@ export function FindingDetail({ row, onClose, onStatusChange }: FindingDetailPro
   const [error, setError] = useState(false);
   const [scorecard, setScorecard] = useState<InvoiceScorecard | null>(null);
   const [scorecardError, setScorecardError] = useState(false);
+  const [provenance, setProvenance] = useState<FindingProvenance | null>(null);
+  const [provenanceError, setProvenanceError] = useState(false);
 
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
@@ -143,6 +145,17 @@ export function FindingDetail({ row, onClose, onStatusChange }: FindingDetailPro
             <Field label="Expected">{formatMoney(row.expected)}</Field>
             <Field label="Variance">{formatVariance(row.varianceAmount)}</Field>
             <Field label="Direction">{formatDirection(row.direction)}</Field>
+            <button type="button" className="h-8 border border-[rgba(32,30,29,0.4)] text-xs font-extrabold" onClick={() => {
+              setProvenanceError(false);
+              void fetchFindingProvenance(row.id).then(setProvenance, () => setProvenanceError(true));
+            }}>Explain evaluation</button>
+            {provenance && (
+              <div data-testid="evaluated-ast" className="border border-[rgba(32,30,29,0.3)] p-3">
+                <div className="mb-2 text-xs font-extrabold">{provenance.criterion.key}</div>
+                <pre className="overflow-auto whitespace-pre-wrap text-[11px]">{JSON.stringify(provenance.finding.evaluatedExpr, null, 2)}</pre>
+              </div>
+            )}
+            {provenanceError && <span className="text-xs font-semibold text-[#7c1405]">Couldn&rsquo;t load evaluation explanation.</span>}
             <div className="flex flex-col gap-0.5">
               <label htmlFor="finding-status-select" className="text-[11px] font-extrabold uppercase tracking-[0.08em] text-[rgba(32,30,29,0.55)]">
                 Status

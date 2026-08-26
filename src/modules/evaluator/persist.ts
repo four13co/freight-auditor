@@ -181,8 +181,8 @@ export async function persistAuditRun(
     const resolved = resolvedIdsByCriterionKey.get(f.criterionKey)!;
     await client.query(
       `INSERT INTO variance_finding
-         (client_id, audit_run_id, criterion_id, rule_version_id, clause_id, source_document_id, transport_document_id, charge_fact_id, direction, materiality, variance_amount, currency, classification, status)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'open')`,
+         (client_id, audit_run_id, criterion_id, rule_version_id, clause_id, source_document_id, transport_document_id, charge_fact_id, direction, materiality, variance_amount, currency, classification, evaluated_expr, status)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,'open')`,
       [
         clientId,
         auditRunId,
@@ -197,6 +197,7 @@ export async function persistAuditRun(
         f.varianceAmount,
         f.currency,
         classification,
+        JSON.stringify(f.evaluatedExpr),
       ],
     );
   }

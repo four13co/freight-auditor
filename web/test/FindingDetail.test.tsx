@@ -71,4 +71,14 @@ describe('FindingDetail status control (86e2v1xyr)', () => {
     expect(screen.getByText('2')).toBeInTheDocument();
     expect(screen.getByText('1')).toBeInTheDocument();
   });
+
+  it('drills down into the exact persisted evaluated AST', async () => {
+    fetchMock.mockResolvedValue(new Response(JSON.stringify({ finding: { evaluatedExpr: { type: 'compare', result: false } },
+      criterion: { key: 'CONTRACT.RATE_VARIANCE' }, ruleVersion: { astHash: 'hash' } }), { status: 200 }));
+    render(<FindingDetail row={ROW} onClose={() => {}} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Explain evaluation' }));
+    await waitFor(() => expect(screen.getByTestId('evaluated-ast')).toBeInTheDocument());
+    expect(screen.getByText('CONTRACT.RATE_VARIANCE')).toBeInTheDocument();
+    expect(screen.getByText(/"result": false/)).toBeInTheDocument();
+  });
 });

@@ -1,7 +1,7 @@
 import type pg from 'pg';
 
 export interface DefensibilityChain {
-  finding: { id: string; auditRunId: string; classification: string | null; varianceAmount: string | null; currency: string | null };
+  finding: { id: string; auditRunId: string; classification: string | null; varianceAmount: string | null; currency: string | null; evaluatedExpr: unknown };
   criterion: { id: string; key: string };
   ruleVersion: { id: string; astHash: string };
   clause: { id: string; reference: string; page: string | null } | null;
@@ -15,7 +15,7 @@ export async function getDefensibilityChain(
   client: pg.PoolClient, clientId: string, findingId: string,
 ): Promise<DefensibilityChain | null> {
   const result = await client.query<{
-    id: string; audit_run_id: string; classification: string | null; variance_amount: string | null; currency: string | null;
+    id: string; audit_run_id: string; classification: string | null; variance_amount: string | null; currency: string | null; evaluated_expr: unknown;
     criterion_id: string; criterion_key: string; rule_version_id: string; ast_hash: string; alignment_id: string | null;
     clause_id: string | null; clause_ref: string | null; page_ref: string | null;
     rate_cell_id: string | null; cell_ref: string | null; source_document_id: string | null;
@@ -26,7 +26,7 @@ export async function getDefensibilityChain(
       cc.id clause_id, cc.clause_ref, cc.page_ref, rc.id rate_cell_id, rc.cell_ref,
       sd.id source_document_id, sd.sha256, sd.storage_uri,
       td.id transport_document_id, td.document_number, td.document_type::text,
-      td.source_document_id transport_source_document_id
+      td.source_document_id transport_source_document_id, vf.evaluated_expr
     FROM variance_finding vf
     JOIN criterion c ON c.id = vf.criterion_id
     JOIN rule_version rv ON rv.id = vf.rule_version_id
@@ -42,7 +42,7 @@ export async function getDefensibilityChain(
      WHERE alignment_id = $1 AND client_id = $2 ORDER BY coalesce(charge_fact_id::text, expected_charge_id::text)`,
     [row.alignment_id, clientId]) : { rows: [] };
   return {
-    finding: { id: row.id, auditRunId: row.audit_run_id, classification: row.classification, varianceAmount: row.variance_amount, currency: row.currency },
+    finding: { id: row.id, auditRunId: row.audit_run_id, classification: row.classification, varianceAmount: row.variance_amount, currency: row.currency, evaluatedExpr: row.evaluated_expr },
     criterion: { id: row.criterion_id, key: row.criterion_key }, ruleVersion: { id: row.rule_version_id, astHash: row.ast_hash },
     clause: row.clause_id ? { id: row.clause_id, reference: row.clause_ref!, page: row.page_ref } : null,
     rateCell: row.rate_cell_id ? { id: row.rate_cell_id, reference: row.cell_ref! } : null,

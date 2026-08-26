@@ -80,6 +80,8 @@ export function buildCharges(
 
   for (const l1 of segmentsByTag(ix, 'L1')) {
     const amount = money(el(l1, 4)); // L1-04 = charge amount
+    const rate = money(el(l1, 2)); // L1-02 = freight rate
+    const basis = money(el(l1, 17)); // L1-17 = rate/value basis
     const code = el(l1, 8); // L1-08 = special charge code
     const rawDescription = el(l1, 12); // L1-12 = description
     const category = categorize(code);
@@ -94,6 +96,8 @@ export function buildCharges(
       category,
       quarantined,
       amount,
+      rate,
+      basis,
       currency: resolveCurrency(l1) ?? '',
       rawDescription,
       sourceLoop,

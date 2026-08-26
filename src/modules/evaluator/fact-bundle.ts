@@ -31,6 +31,12 @@ export function buildFactBundle(inv: ParsedInvoice, contract?: ContractFacts): F
   const allAmountsStated = inv.charges.every((c) => c.amount !== undefined);
   const quarantinedCount = inv.charges.filter((c) => c.quarantined).length;
   const hasFuel = inv.charges.some((c) => c.category === 'FUEL');
+  const rateBasisCharges = inv.charges.filter((c) => c.rate !== undefined || c.basis !== undefined);
+  const rateBasisArithmeticMatches = rateBasisCharges.length === 0 || rateBasisCharges.some(
+    (c) => c.rate === undefined || c.basis === undefined || c.amount === undefined,
+  )
+    ? undefined
+    : rateBasisCharges.every((c) => new Decimal(c.rate!).times(c.basis!).minus(c.amount!).abs().lte('0.01'));
 
   const bundle: FactBundle = {
     declared_total: declaredTotal === undefined ? undefined : { amount: declaredTotal, currency: inv.headerCurrency ?? '' },
@@ -42,6 +48,7 @@ export function buildFactBundle(inv: ParsedInvoice, contract?: ContractFacts): F
     has_fuel_category: hasFuel,
     duplicate_invoice: contract?.duplicateInvoice,
     shipment_reference_match: contract?.shipmentReferenceMatch,
+    rate_basis_arithmetic_matches: rateBasisArithmeticMatches,
   };
 
   if (contract?.linehaulRate !== undefined) {

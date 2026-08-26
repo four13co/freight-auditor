@@ -163,5 +163,21 @@ export const STANDARD_RUBRIC: ComposedRubric = {
         },
       },
     },
+    {
+      criterionKey: 'STD.RATE_BASIS_ARITHMETIC',
+      kind: 'SCORING',
+      evalOrder: 140,
+      description: 'Every charge stating rate/basis has amount equal to rate × basis within one cent.',
+      ast: {
+        type: 'require',
+        key: 'rate_basis_arithmetic_matches',
+        then: {
+          type: 'compare',
+          op: 'eq',
+          left: { type: 'fact', key: 'rate_basis_arithmetic_matches' },
+          right: { type: 'lit', value: true },
+        },
+      },
+    },
   ],
 };

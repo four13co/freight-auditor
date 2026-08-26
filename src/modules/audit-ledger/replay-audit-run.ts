@@ -37,7 +37,8 @@ async function verifyPins(client: pg.PoolClient, manifest: AuditReplayManifest):
 }
 
 export async function replayAuditRun(client: pg.PoolClient, auditRunId: string): Promise<{
-  auditRunId: string; manifestHash: string; resultHash: string; matchesOriginal: boolean; result: unknown;
+  auditRunId: string; manifestHash: string; originalResultHash: string; resultHash: string;
+  byteIdentical: true; matchesOriginal: true; result: unknown;
 }> {
   const row = (await client.query<{ content_hash: string; manifest: unknown }>(
     `SELECT content_hash, manifest FROM audit_replay_manifest WHERE audit_run_id = $1`, [auditRunId],
@@ -63,9 +64,13 @@ export async function replayAuditRun(client: pg.PoolClient, auditRunId: string):
     ? manifest.resolvedInputs as unknown as ContractFacts
     : undefined;
   const result = evaluateInvoice(manifest.invoice as unknown as ParsedInvoice, rubric, contract);
-  const resultHash = createHash('sha256').update(canonicalJson(result)).digest('hex');
-  const originalHash = createHash('sha256').update(canonicalJson(manifest.result)).digest('hex');
-  const matchesOriginal = resultHash === originalHash;
+  const resultBytes = Buffer.from(canonicalJson(result));
+  const originalBytes = Buffer.from(canonicalJson(manifest.result));
+  const resultHash = createHash('sha256').update(resultBytes).digest('hex');
+  const originalResultHash = createHash('sha256').update(originalBytes).digest('hex');
+  if (!resultBytes.equals(originalBytes)) {
+    throw new ReplayIntegrityError('replay result is not byte-identical to the pinned result');
+  }
 
   await writeAuditEvent(client, {
     id: deterministicAuditEventId(manifest.clientId, auditRunId, resultHash, 'replay.executed'),
@@ -74,7 +79,10 @@ export async function replayAuditRun(client: pg.PoolClient, auditRunId: string):
     entityId: auditRunId,
     event: 'replay.executed',
     actorKind: 'system',
-    detail: { manifestHash: row.content_hash, resultHash, matchesOriginal },
+    detail: { manifestHash: row.content_hash, originalResultHash, resultHash, byteIdentical: true },
   });
-  return { auditRunId, manifestHash: row.content_hash, resultHash, matchesOriginal, result };
+  return {
+    auditRunId, manifestHash: row.content_hash, originalResultHash, resultHash,
+    byteIdentical: true, matchesOriginal: true, result,
+  };
 }

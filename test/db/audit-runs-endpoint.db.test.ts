@@ -139,6 +139,8 @@ describe('POST /api/audit-runs (DB, e2e)', () => {
       auditRunId: body.id,
       manifestHash: expect.stringMatching(/^[a-f0-9]{64}$/),
       resultHash: expect.stringMatching(/^[a-f0-9]{64}$/),
+      originalResultHash: expect.stringMatching(/^[a-f0-9]{64}$/),
+      byteIdentical: true,
       matchesOriginal: true,
     });
 

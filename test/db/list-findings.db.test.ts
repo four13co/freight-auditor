@@ -97,8 +97,8 @@ describe('listFindings (DB)', () => {
     const chargeFactId = cf.rows[0].id;
 
     await client.query(
-      `INSERT INTO expected_charge (client_id, audit_run_id, charge_fact_id, category, expected_amount, currency)
-       VALUES ($1, $2, $3, 'LINEHAUL', $4, 'USD')`,
+      `INSERT INTO expected_charge (client_id, audit_run_id, charge_fact_id, category, expected_amount, currency, created_at)
+       VALUES ($1, $2, $3, 'LINEHAUL', $4, 'USD', now() - interval '1 minute')`,
       [opts.clientId, auditRunId, chargeFactId, opts.expected ?? '900.0000'],
     );
 
@@ -209,11 +209,6 @@ describe('listFindings (DB)', () => {
         variance: '150.0000',
       });
       await c.query(
-        `UPDATE expected_charge SET created_at = now() - interval '1 minute'
-         WHERE charge_fact_id = $1 AND expected_amount = '900.0000'`,
-        [chargeFactId],
-      );
-      await c.query(
         `INSERT INTO expected_charge (client_id, audit_run_id, charge_fact_id, category, expected_amount, currency, created_at)
          VALUES ($1, $2, $3, 'LINEHAUL', '850.0000', 'USD', now())`,
         [clientAId, auditRunId, chargeFactId],
@@ -254,16 +249,18 @@ describe('listFindings (DB)', () => {
     expect(matching[0]?.ruleDescription).toBe('Duplicate invoice for the same PRO');
   });
 
-  it('86e2up8c8: ruleDescription is null when the finding has no criterion attached (existing rows, no regression)', async () => {
+  it('new findings always expose the canonical rule description required by the evidence guard', async () => {
     const noCriterionInvoiceNumber = `INV-${tag}-no-criterion`;
     const rows = await withTenantTx({ clientIds: [clientAId], internal: true }, async (c) => {
-      // No criterionId passed -- variance_finding.criterion_id defaults NULL.
+      // No override passed: the modern fixture uses the canonical criterion.
       await seedFinding(c, { clientId: clientAId, invoiceNumber: noCriterionInvoiceNumber });
       return listFindings(c, { clientIds: [clientAId], carrier: `Carrier-${tag}` });
     });
     const matching = rows.filter((r) => r.invoiceNumber === noCriterionInvoiceNumber);
     expect(matching).toHaveLength(1);
-    expect(matching[0]?.ruleDescription).toBeNull();
+    expect(matching[0]?.ruleDescription).toBe(
+      'Billed linehaul charge matches the contracted rate within tolerance, in the same currency.',
+    );
   });
 
   it('86e2up8c8: takes the most-recently-recorded criterion_version when more than one exists', async () => {

@@ -214,6 +214,12 @@ export async function updateFindingStatus(id: string, status: string): Promise<v
   });
   if (!res.ok) throw new Error(`PATCH /api/findings/${id}/status failed: ${res.status}`);
 }
+export async function applyFindingAction(id: string, action: 'accept' | 'waive' | 'escalate'): Promise<{ status: string }> {
+  const res = await fetch(`/api/findings/${id}/action`, { method: 'POST',
+    headers: { ...authHeaders(), 'content-type': 'application/json' }, body: JSON.stringify({ action }) });
+  if (!res.ok) throw new Error(`POST finding action failed: ${res.status}`);
+  return (await res.json()) as { status: string };
+}
 
 export async function fetchInvoiceScorecard(auditRunId: string): Promise<InvoiceScorecard> {
   const res = await fetch(`/api/audit-runs/${auditRunId}/scorecard`, { headers: authHeaders() });

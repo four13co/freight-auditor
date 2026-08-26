@@ -8,6 +8,7 @@ import { registerTenantAuthPreHandler } from '../modules/findings/tenant-auth.js
 import { ALL_VARIANCE_STATUSES, WRITABLE_VARIANCE_STATUSES } from '../shared/variance-status.js';
 import { isUuid } from '../shared/request-validation.js';
 import { listReviewQueues } from '../modules/findings/list-review-queues.js';
+import { applyFindingAction, FINDING_ACTION_STATUS, type FindingAction } from '../modules/findings/apply-finding-action.js';
 
 // 86e2v892h: derived from the shared source (mirrors migrations/0002_enums.sql's
 // variance_status enum exactly) rather than a separate hand-maintained literal.
@@ -160,5 +161,17 @@ export async function registerFindingsRoutes(findingsRoutes: FastifyInstance): P
       return;
     }
     return { id, status: body.status };
+  });
+  findingsRoutes.post('/api/findings/:id/action', async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const body = request.body as { action?: unknown; note?: unknown };
+    if (!isUuid(id)) return reply.code(400).send({ error: 'invalid finding id: must be a well-formed UUID' });
+    if (typeof body.action !== 'string' || !(body.action in FINDING_ACTION_STATUS))
+      return reply.code(400).send({ error: 'invalid action: must be accept, waive, or escalate' });
+    if (body.note !== undefined && typeof body.note !== 'string') return reply.code(400).send({ error: 'invalid note: must be a string' });
+    const result = await withTenantTx(request.tenantContext!, (client) => applyFindingAction(client, {
+      findingId: id, action: body.action as FindingAction, note: body.note as string | undefined, actorUserId: request.actorUserId }));
+    if (!result.found) return reply.code(404).send({ error: 'finding not found' });
+    return { id, action: body.action, status: result.status };
   });
 }

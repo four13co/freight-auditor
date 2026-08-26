@@ -93,4 +93,14 @@ describe('FindingDetail status control (86e2v1xyr)', () => {
     expect(screen.getByText(/Rate cell B12/)).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Open source page' })).toHaveAttribute('href', 'https://docs.example/contract.pdf#page=7');
   });
+
+  it('applies accept, waive, and escalation through the audited action endpoint', async () => {
+    fetchMock.mockResolvedValue(new Response(JSON.stringify({ status: 'accepted' }), { status: 200 }));
+    const onStatusChange = vi.fn();
+    render(<FindingDetail row={ROW} onClose={() => {}} onStatusChange={onStatusChange} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Accept' }));
+    await waitFor(() => expect(onStatusChange).toHaveBeenCalledWith(ROW.id, 'accepted'));
+    expect(fetchMock).toHaveBeenCalledWith(`/api/findings/${ROW.id}/action`, expect.objectContaining({ method: 'POST' }));
+    expect(JSON.parse((fetchMock.mock.calls[0]?.[1] as RequestInit).body as string)).toEqual({ action: 'accept' });
+  });
 });

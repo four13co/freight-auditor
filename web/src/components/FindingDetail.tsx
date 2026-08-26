@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { fetchFindingProvenance, fetchInvoiceScorecard, updateFindingStatus, type FindingProvenance, type FindingRow, type InvoiceScorecard } from '../lib/api.js';
+import { applyFindingAction, fetchFindingProvenance, fetchInvoiceScorecard, updateFindingStatus, type FindingProvenance, type FindingRow, type InvoiceScorecard } from '../lib/api.js';
 import { formatMoney, formatVariance } from '../lib/format.js';
 import { getStatusDisplay, titleCase } from '../lib/status-display.js';
 import { WRITABLE_VARIANCE_STATUSES } from '../../../src/shared/variance-status.js';
@@ -92,6 +92,13 @@ export function FindingDetail({ row, onClose, onStatusChange }: FindingDetailPro
     void fetchFindingProvenance(row.id).then(setProvenance, () => setProvenanceError(true));
   }
 
+  function runAction(action: 'accept' | 'waive' | 'escalate'): void {
+    setPending(true); setError(false);
+    void applyFindingAction(row.id, action).then(({ status: next }) => {
+      setStatus(next); onStatusChange?.(row.id, next);
+    }, () => setError(true)).finally(() => setPending(false));
+  }
+
   const display = getStatusDisplay({ ...row, status });
 
   return (
@@ -176,6 +183,11 @@ export function FindingDetail({ row, onClose, onStatusChange }: FindingDetailPro
               </div>
             )}
             {provenanceError && <span className="text-xs font-semibold text-[#7c1405]">Couldn&rsquo;t load evaluation explanation.</span>}
+            <div className="grid grid-cols-3 gap-2" aria-label="Finding actions">
+              <button disabled={pending} type="button" onClick={() => runAction('accept')} className="h-8 border border-[#287a3d] text-xs font-extrabold">Accept</button>
+              <button disabled={pending} type="button" onClick={() => runAction('waive')} className="h-8 border border-[#8a6b00] text-xs font-extrabold">Waive</button>
+              <button disabled={pending} type="button" onClick={() => runAction('escalate')} className="h-8 border border-[#7c1405] text-xs font-extrabold">Escalate</button>
+            </div>
             <div className="flex flex-col gap-0.5">
               <label htmlFor="finding-status-select" className="text-[11px] font-extrabold uppercase tracking-[0.08em] text-[rgba(32,30,29,0.55)]">
                 Status

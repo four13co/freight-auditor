@@ -62,6 +62,7 @@ describe('GET /api/auth/memberships (DB, e2e)', () => {
     await app.close();
     const owner = await pool.connect();
     try {
+      await owner.query(`DELETE FROM audit_event WHERE actor_user_id IN (SELECT id FROM app_user WHERE email LIKE $1)`, [`${tag}%`]);
       await owner.query(`DELETE FROM membership WHERE client_id IN ($1, $2)`, [clientAId, clientBId]);
       await owner.query(`DELETE FROM ba_session WHERE user_id IN (SELECT id FROM app_user WHERE email LIKE $1)`, [`${tag}%`]);
       await owner.query(`DELETE FROM ba_account WHERE user_id IN (SELECT id FROM app_user WHERE email LIKE $1)`, [`${tag}%`]);
@@ -105,6 +106,13 @@ describe('GET /api/auth/memberships (DB, e2e)', () => {
     const res = await app.inject({ method: 'GET', url: '/api/auth/memberships', headers: { cookie: cookieHeader } });
     expect(res.statusCode).toBe(200);
     expect(res.json()).toEqual({ clientIds: [clientAId] });
+    const ledger = await pool.query(
+      `SELECT actor_user_id, detail FROM audit_event WHERE event = 'authorization.memberships.granted' ORDER BY recorded_at DESC LIMIT 1`,
+    );
+    expect(ledger.rows[0]).toMatchObject({
+      actor_user_id: expect.any(String),
+      detail: { membershipCount: 1 },
+    });
   });
 
   it('returns an empty list for a signed-in user with no membership rows', async () => {

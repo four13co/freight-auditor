@@ -1,6 +1,7 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { getAuth } from '../auth/better-auth.js';
 import { listMembershipClientIds, toFetchHeaders } from '../modules/findings/tenant-auth.js';
+import { authenticationAction, writeSecurityEvent } from '../modules/audit-ledger/security-events.js';
 
 /**
  * 86e2wb4zg: the better-auth mount + membership lookup, split out of app.ts's
@@ -49,6 +50,11 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
   // each way.
   app.all('/api/auth/*', async (request: FastifyRequest, reply: FastifyReply) => {
     if (isBlockedPublicSignup(request)) {
+      await writeSecurityEvent({
+        request,
+        event: 'authentication.sign_up_email.denied',
+        detail: { reason: 'public_signup_disabled' },
+      });
       await reply.code(403).send({ error: 'public self-signup is disabled' });
       return;
     }
@@ -61,6 +67,14 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
     });
 
     const response = await getAuth().handler(fetchRequest);
+    const action = authenticationAction(request.method, request.url);
+    if (action) {
+      await writeSecurityEvent({
+        request,
+        event: `authentication.${action}.${response.ok ? 'succeeded' : 'failed'}`,
+        detail: { httpStatus: response.status },
+      });
+    }
     reply.status(response.status);
     response.headers.forEach((value, key) => {
       // set-cookie is the one header Fastify's reply.header() can't append
@@ -81,10 +95,21 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
   app.get('/api/auth/memberships', async (request: FastifyRequest, reply: FastifyReply) => {
     const session = await getAuth().api.getSession({ headers: toFetchHeaders(request) });
     if (!session) {
+      await writeSecurityEvent({
+        request,
+        event: 'authorization.memberships.denied',
+        detail: { reason: 'invalid_session' },
+      });
       await reply.code(401).send({ error: 'unauthorized' });
       return;
     }
     const clientIds = await listMembershipClientIds(session.user.id);
+    await writeSecurityEvent({
+      request,
+      event: 'authorization.memberships.granted',
+      actorUserId: session.user.id,
+      detail: { membershipCount: clientIds.length },
+    });
     return { clientIds };
   });
 }

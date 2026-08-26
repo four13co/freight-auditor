@@ -129,6 +129,19 @@ describe('POST /api/audit-runs (DB, e2e)', () => {
     expect(persisted!.outcome).toBe('SCORED');
     expect(persisted!.invoice_id).toEqual(expect.any(String));
 
+    const replay = await app.inject({
+      method: 'POST',
+      url: `/api/audit-runs/${body.id}/replay`,
+      headers: { 'x-client-id': clientId, 'x-user-id': userId },
+    });
+    expect(replay.statusCode).toBe(200);
+    expect(replay.json()).toMatchObject({
+      auditRunId: body.id,
+      manifestHash: expect.stringMatching(/^[a-f0-9]{64}$/),
+      resultHash: expect.stringMatching(/^[a-f0-9]{64}$/),
+      matchesOriginal: true,
+    });
+
     const ledger = await withTenantTx({ clientIds: [clientId], internal: false }, (c) =>
       c.query(`SELECT event, entity_id FROM audit_event WHERE client_id = $1 ORDER BY recorded_at`, [clientId]),
     );

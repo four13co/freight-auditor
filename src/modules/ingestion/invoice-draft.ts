@@ -218,8 +218,10 @@ export async function confirmInvoiceDraft(
   }
 
   let result: AuditResult;
+  let resolvedInputs: Record<string, unknown> = {};
   if (input.contractVersionId) {
     const rate = await lookupContractRate(client, input.contractVersionId, 'LINEHAUL');
+    resolvedInputs = { linehaulRate: rate };
     result = evaluateInvoice(finalInvoice, CONTRACT_RUBRIC, { linehaulRate: rate });
   } else {
     result = evaluateInvoice(finalInvoice, STANDARD_RUBRIC);
@@ -233,6 +235,7 @@ export async function confirmInvoiceDraft(
     carrierId: input.carrierId ?? draft.resolved_carrier_id ?? undefined,
     sourceDocuments: [{ id: draft.source_document_id, sha256: draft.source_document_sha256 }],
     contractVersionIds: input.contractVersionId ? [input.contractVersionId] : [],
+    resolvedInputs,
   });
 
   await client.query(

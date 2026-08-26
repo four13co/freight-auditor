@@ -5,6 +5,12 @@ import { LocalDiskObjectStore } from '../modules/reference-data/object-store.js'
 import { ingestInvoice, UnparseableEdiError } from '../modules/ingestion/ingest-invoice.js';
 import { objectStoreRoot, registerBufferContentTypeParser, requireNonEmptyBuffer, requireSingleClientId } from '../modules/ingestion/raw-upload-route.js';
 import { isUuid } from '../shared/request-validation.js';
+import {
+  replayAuditRun,
+  ReplayIntegrityError,
+  ReplayNotFoundError,
+  ReplayUnavailableError,
+} from '../modules/audit-ledger/replay-audit-run.js';
 
 // 86e2xcn18: contract_version_id binds against a uuid column
 // (lookupContractRate's SQL, migration 0011) -- a non-UUID value throws
@@ -84,6 +90,32 @@ export async function registerAuditRunsRoutes(auditRunsRoutes: FastifyInstance):
         return;
       }
       throw err;
+    }
+  });
+
+  auditRunsRoutes.post('/api/audit-runs/:id/replay', async (request, reply) => {
+    const { id } = request.params as { id: string };
+    if (!isUuid(id)) {
+      await reply.code(400).send({ error: 'invalid audit run id: must be a well-formed UUID' });
+      return;
+    }
+    try {
+      const replay = await withTenantTx(request.tenantContext!, (client) => replayAuditRun(client, id));
+      return replay;
+    } catch (error) {
+      if (error instanceof ReplayNotFoundError) {
+        await reply.code(404).send({ error: error.message });
+        return;
+      }
+      if (error instanceof ReplayIntegrityError) {
+        await reply.code(409).send({ error: error.code });
+        return;
+      }
+      if (error instanceof ReplayUnavailableError) {
+        await reply.code(422).send({ error: error.code });
+        return;
+      }
+      throw error;
     }
   });
 }

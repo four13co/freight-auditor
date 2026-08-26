@@ -131,8 +131,10 @@ export async function ingestInvoice(
   // UNASSESSABLE, never a guessed/defaulted rate (rate-lookup.ts's own
   // contract).
   let result: AuditResult;
+  let resolvedInputs: Record<string, unknown> = {};
   if (input.contractVersionId) {
     const rate = await lookupContractRate(client, input.contractVersionId, 'LINEHAUL');
+    resolvedInputs = { linehaulRate: rate };
     result = evaluateInvoice(invoice, CONTRACT_RUBRIC, { linehaulRate: rate });
   } else {
     result = evaluateInvoice(invoice, STANDARD_RUBRIC);
@@ -148,6 +150,7 @@ export async function ingestInvoice(
     rubricSnapshotId: null,
     sourceDocuments: [{ id: sourceDocument.id, sha256: sourceDocument.sha256 }],
     contractVersionIds: input.contractVersionId ? [input.contractVersionId] : [],
+    resolvedInputs,
   });
   await writeAuditEvent(client, {
     id: deterministicAuditEventId(input.clientId, persisted.auditRunId, 'ingestion.audit_created'),

@@ -20,22 +20,23 @@ export const AuditReplayManifestSchema = z.object({
   externalValues: z.array(pin),
   crosswalkRows: z.array(pin),
   ai: z.array(z.object({ model: z.string().min(1), promptVersion: z.string().min(1) }).strict()),
+  resolvedInputs: z.json(),
   invoice: z.json(),
   result: z.json(),
 }).strict();
 
 export type AuditReplayManifest = z.infer<typeof AuditReplayManifestSchema>;
 
-function canonicalize(value: unknown): string {
+export function canonicalJson(value: unknown): string {
   if (value === null || typeof value !== 'object') return JSON.stringify(value);
-  if (Array.isArray(value)) return `[${value.map(canonicalize).join(',')}]`;
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
   const record = value as Record<string, unknown>;
   return `{${Object.keys(record).sort().filter((key) => record[key] !== undefined)
-    .map((key) => `${JSON.stringify(key)}:${canonicalize(record[key])}`).join(',')}}`;
+    .map((key) => `${JSON.stringify(key)}:${canonicalJson(record[key])}`).join(',')}}`;
 }
 
 export function canonicalManifestJson(untrusted: unknown): string {
-  return canonicalize(AuditReplayManifestSchema.parse(untrusted));
+  return canonicalJson(AuditReplayManifestSchema.parse(untrusted));
 }
 
 export function replayManifestHash(manifest: AuditReplayManifest): string {

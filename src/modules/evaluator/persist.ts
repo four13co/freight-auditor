@@ -26,6 +26,7 @@ export interface PersistInput {
   rubricSnapshotId: string | null;
   sourceDocuments?: Array<{ id: string; sha256: string }>;
   contractVersionIds?: string[];
+  resolvedInputs?: Record<string, unknown>;
 }
 
 export interface PersistedRun {
@@ -228,6 +229,7 @@ export async function persistAuditRun(
     externalValues: [],
     crosswalkRows: [],
     ai: [],
+    resolvedInputs: JSON.parse(JSON.stringify(input.resolvedInputs ?? {})) as AuditReplayManifest['resolvedInputs'],
     invoice: JSON.parse(JSON.stringify(invoice)) as AuditReplayManifest['invoice'],
     result: JSON.parse(JSON.stringify(result)) as AuditReplayManifest['result'],
   };

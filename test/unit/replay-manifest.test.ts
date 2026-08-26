@@ -10,6 +10,7 @@ const manifest = {
   sourceDocuments: [{ id: '10000000-0000-4000-8000-000000000003', sha256: 'a'.repeat(64) }],
   rubric: { snapshotId: null, contentHash: null, resolverVersion: null },
   ruleVersions: [], contractVersions: [], externalValues: [], crosswalkRows: [], ai: [],
+  resolvedInputs: {},
   invoice: { currency: 'USD', amount: '0.10' },
   result: { outcome: 'SCORED', total: '0.10' },
 };

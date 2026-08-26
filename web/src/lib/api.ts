@@ -8,6 +8,8 @@ import { devHeaderPathActive } from './dev-auth.js';
  */
 export interface FindingRow {
   id: string;
+  auditRunId?: string;
+  invoiceId?: string;
   invoiceNumber: string | null;
   carrierName: string | null;
   /** null when the backing variance_finding has no single charge to attribute the billed amount to (86e2v17p5). */
@@ -18,6 +20,12 @@ export interface FindingRow {
   status: string;
   createdAt: string;
   ruleDescription: string | null;
+}
+
+export interface InvoiceScorecard {
+  audit_run_id: string; invoice_id: string; invoice_number: string | null; outcome: string;
+  conformed_count: number | null; variance_count: number | null; unassessable_count: number | null;
+  total_overcharge: string | null; total_undercharge: string | null; currency: string | null;
 }
 
 export interface FindingsSummary {
@@ -179,4 +187,10 @@ export async function updateFindingStatus(id: string, status: string): Promise<v
     body: JSON.stringify({ status }),
   });
   if (!res.ok) throw new Error(`PATCH /api/findings/${id}/status failed: ${res.status}`);
+}
+
+export async function fetchInvoiceScorecard(auditRunId: string): Promise<InvoiceScorecard> {
+  const res = await fetch(`/api/audit-runs/${auditRunId}/scorecard`, { headers: authHeaders() });
+  if (!res.ok) throw new Error(`GET scorecard failed: ${res.status}`);
+  return (await res.json()) as InvoiceScorecard;
 }

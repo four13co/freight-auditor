@@ -10,6 +10,8 @@ import type pg from 'pg';
  */
 export interface FindingRow {
   id: string;
+  auditRunId: string;
+  invoiceId: string;
   invoiceNumber: string | null;
   carrierName: string | null;
   /** null when charge_fact_id is null (86e2v17p5: ambiguous/invoice-level attribution, no single charge to source the billed amount from). */
@@ -100,6 +102,8 @@ export async function listFindings(
 
   const result = await client.query<{
     id: string;
+    audit_run_id: string;
+    invoice_id: string;
     invoice_number: string | null;
     carrier_name: string | null;
     billed: string | null;
@@ -112,6 +116,8 @@ export async function listFindings(
   }>(
     `SELECT
        variance_finding.id,
+       variance_finding.audit_run_id,
+       invoice.id AS invoice_id,
        invoice.invoice_number,
        carrier.name AS carrier_name,
        charge_fact.amount AS billed,
@@ -175,6 +181,8 @@ export async function listFindings(
 
   return result.rows.map((row) => ({
     id: row.id,
+    auditRunId: row.audit_run_id,
+    invoiceId: row.invoice_id,
     invoiceNumber: row.invoice_number,
     carrierName: row.carrier_name,
     billed: row.billed,

@@ -17,3 +17,10 @@ export async function getReplayManifest(client: pg.PoolClient, auditRunId: strin
   return (await client.query(`SELECT audit_run_id, content_hash, manifest, created_at
     FROM audit_replay_manifest WHERE audit_run_id = $1`, [auditRunId])).rows[0] ?? null;
 }
+
+export async function getInvoiceScorecard(client: pg.PoolClient, auditRunId: string): Promise<unknown | null> {
+  return (await client.query(`SELECT ar.id audit_run_id, i.id invoice_id, i.invoice_number, ar.outcome,
+      sc.conformed_count, sc.variance_count, sc.unassessable_count, sc.total_overcharge, sc.total_undercharge, sc.currency
+    FROM audit_run ar JOIN invoice i ON i.id = ar.invoice_id LEFT JOIN scorecard sc ON sc.audit_run_id = ar.id
+    WHERE ar.id = $1`, [auditRunId])).rows[0] ?? null;
+}

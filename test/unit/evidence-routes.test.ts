@@ -7,6 +7,7 @@ describe('evidence routes', () => {
   it.each([
     '/api/findings/not-a-uuid/provenance', '/api/audit-runs/not-a-uuid/rubric-snapshot',
     '/api/audit-runs/not-a-uuid/conflicts', '/api/audit-runs/not-a-uuid/replay-manifest',
+    '/api/audit-runs/not-a-uuid/scorecard',
   ])('requires authentication before evidence lookup: %s', async (url) => {
     const app = buildApp(); apps.push(app);
     const response = await app.inject({ method: 'GET', url });

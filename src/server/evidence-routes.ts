@@ -3,7 +3,7 @@ import { withTenantTx } from '../db/tenant-context.js';
 import { registerTenantAuthPreHandler } from '../modules/findings/tenant-auth.js';
 import { isUuid } from '../shared/request-validation.js';
 import { getDefensibilityChain } from '../modules/findings/get-defensibility-chain.js';
-import { getReplayManifest, getRubricSnapshot, listResolutionConflicts } from '../modules/audit-ledger/read-audit-evidence.js';
+import { getInvoiceScorecard, getReplayManifest, getRubricSnapshot, listResolutionConflicts } from '../modules/audit-ledger/read-audit-evidence.js';
 
 const validId = async (id: string, reply: FastifyReply): Promise<boolean> => {
   if (isUuid(id)) return true;
@@ -34,5 +34,10 @@ export async function registerEvidenceRoutes(routes: FastifyInstance): Promise<v
     const { id } = request.params as { id: string }; if (!await validId(id, reply)) return;
     const value = await withTenantTx(request.tenantContext!, (client) => getReplayManifest(client, id));
     return value ?? reply.code(404).send({ error: 'replay manifest not found' });
+  });
+  routes.get('/api/audit-runs/:id/scorecard', async (request, reply) => {
+    const { id } = request.params as { id: string }; if (!await validId(id, reply)) return;
+    const value = await withTenantTx(request.tenantContext!, (client) => getInvoiceScorecard(client, id));
+    return value ?? reply.code(404).send({ error: 'scorecard not found' });
   });
 }

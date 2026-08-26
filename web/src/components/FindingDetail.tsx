@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { updateFindingStatus, type FindingRow } from '../lib/api.js';
+import { fetchInvoiceScorecard, updateFindingStatus, type FindingRow, type InvoiceScorecard } from '../lib/api.js';
 import { formatMoney, formatVariance } from '../lib/format.js';
 import { getStatusDisplay, titleCase } from '../lib/status-display.js';
 import { WRITABLE_VARIANCE_STATUSES } from '../../../src/shared/variance-status.js';
@@ -49,6 +49,8 @@ export function FindingDetail({ row, onClose, onStatusChange }: FindingDetailPro
   const [status, setStatus] = useState(row.status);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState(false);
+  const [scorecard, setScorecard] = useState<InvoiceScorecard | null>(null);
+  const [scorecardError, setScorecardError] = useState(false);
 
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
@@ -117,7 +119,24 @@ export function FindingDetail({ row, onClose, onStatusChange }: FindingDetailPro
           </div>
 
           <div className="flex flex-col gap-3">
-            <Field label="Invoice">{row.invoiceNumber ?? '—'}</Field>
+            <Field label="Invoice">
+              <span>{row.invoiceNumber ?? '—'}</span>
+              {row.auditRunId && (
+                <button type="button" className="ml-2 text-xs font-extrabold underline" onClick={() => {
+                  setScorecardError(false);
+                  void fetchInvoiceScorecard(row.auditRunId!).then(setScorecard, () => setScorecardError(true));
+                }}>View scorecard</button>
+              )}
+            </Field>
+            {scorecard && (
+              <div data-testid="invoice-scorecard" className="grid grid-cols-3 gap-2 border border-[rgba(32,30,29,0.3)] p-3 text-center text-xs">
+                <div><strong>{scorecard.conformed_count ?? 0}</strong><br />Conformed</div>
+                <div><strong>{scorecard.variance_count ?? 0}</strong><br />Variances</div>
+                <div><strong>{scorecard.unassessable_count ?? 0}</strong><br />Needs data</div>
+                <div className="col-span-3">Overcharge {formatMoney(scorecard.total_overcharge)} · Undercharge {formatMoney(scorecard.total_undercharge)}</div>
+              </div>
+            )}
+            {scorecardError && <span className="text-xs font-semibold text-[#7c1405]">Couldn&rsquo;t load invoice scorecard.</span>}
             <Field label="Carrier">{row.carrierName ?? '—'}</Field>
             <Field label="Finding">{row.ruleDescription ?? '—'}</Field>
             <Field label="Billed">{formatMoney(row.billed)}</Field>

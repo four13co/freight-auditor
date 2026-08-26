@@ -58,4 +58,17 @@ describe('FindingDetail status control (86e2v1xyr)', () => {
     await waitFor(() => expect(screen.getByText(/Couldn.t update status/)).toBeInTheDocument());
     expect(select.value).toBe('open');
   });
+
+  it('navigates from a finding to its per-invoice scorecard', async () => {
+    fetchMock.mockResolvedValue(new Response(JSON.stringify({ audit_run_id: 'run-1', invoice_id: 'inv-1',
+      invoice_number: 'INV-1', outcome: 'SCORED', conformed_count: 4, variance_count: 2,
+      unassessable_count: 1, total_overcharge: '12.5000', total_undercharge: '2.0000', currency: 'USD' }), { status: 200 }));
+    render(<FindingDetail row={{ ...ROW, auditRunId: 'run-1', invoiceId: 'inv-1' }} onClose={() => {}} />);
+    fireEvent.click(screen.getByRole('button', { name: 'View scorecard' }));
+    await waitFor(() => expect(screen.getByTestId('invoice-scorecard')).toBeInTheDocument());
+    expect(fetchMock).toHaveBeenCalledWith('/api/audit-runs/run-1/scorecard', expect.any(Object));
+    expect(screen.getByText('4')).toBeInTheDocument();
+    expect(screen.getByText('2')).toBeInTheDocument();
+    expect(screen.getByText('1')).toBeInTheDocument();
+  });
 });

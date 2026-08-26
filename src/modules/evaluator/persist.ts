@@ -29,6 +29,7 @@ export interface PersistedRun {
   auditRunId: string;
   gateFailureIds: string[];
   chargeFindingIds: string[];
+  coverageMarkerIds: string[];
   scorecardId: string | null;
 }
 
@@ -92,6 +93,20 @@ export async function persistAuditRun(
     [clientId, invoiceId, input.rubricSnapshotId, result.pins.engineSpecVersion, result.outcome],
   );
   const auditRunId = run.rows[0]!.id;
+
+  // Suspicious-pass coverage gaps are append-only discovery inputs. They are
+  // persisted even for rejected invoices so missing evidence never disappears
+  // merely because another structural gate also failed.
+  const coverageMarkerIds: string[] = [];
+  for (const marker of result.coverageMarkers) {
+    const persistedMarker = await client.query<{ id: string }>(
+      `INSERT INTO coverage_marker
+         (client_id, audit_run_id, charge_index, marker_code, missing_fields)
+       VALUES ($1,$2,$3,$4,$5) RETURNING id`,
+      [clientId, auditRunId, marker.chargeIndex, marker.code, marker.missingFields],
+    );
+    coverageMarkerIds.push(persistedMarker.rows[0]!.id);
+  }
 
   // 3. gate_failures (the kickback) — append-only.
   const gateFailureIds: string[] = [];
@@ -192,5 +207,5 @@ export async function persistAuditRun(
     scorecardId = sc.rows[0]!.id;
   }
 
-  return { invoiceId, auditRunId, gateFailureIds, chargeFindingIds, scorecardId };
+  return { invoiceId, auditRunId, gateFailureIds, chargeFindingIds, coverageMarkerIds, scorecardId };
 }

@@ -18,6 +18,34 @@ export interface ContractFacts {
   shipmentReferenceMatch?: boolean;
 }
 
+export interface CoverageMarker {
+  chargeIndex: number;
+  code: 'INCOMPLETE_RATE_BASIS' | 'FUEL_WITHOUT_RATE_BASIS' | 'MISSING_CHARGE_IDENTITY';
+  missingFields: string[];
+}
+
+/** Deterministic discovery inputs: gaps on charges that otherwise passed structural validation. */
+export function findCoverageMarkers(inv: ParsedInvoice): CoverageMarker[] {
+  const markers: CoverageMarker[] = [];
+  inv.charges.forEach((charge, chargeIndex) => {
+    const hasRate = charge.rate !== undefined;
+    const hasBasis = charge.basis !== undefined;
+    if (hasRate !== hasBasis) {
+      markers.push({
+        chargeIndex,
+        code: 'INCOMPLETE_RATE_BASIS',
+        missingFields: [hasRate ? 'basis' : 'rate'],
+      });
+    } else if (charge.category === 'FUEL' && !hasRate && !hasBasis) {
+      markers.push({ chargeIndex, code: 'FUEL_WITHOUT_RATE_BASIS', missingFields: ['rate', 'basis'] });
+    }
+    if (!charge.code?.trim() && !charge.rawDescription?.trim()) {
+      markers.push({ chargeIndex, code: 'MISSING_CHARGE_IDENTITY', missingFields: ['code', 'rawDescription'] });
+    }
+  });
+  return markers;
+}
+
 /**
  * Resolve a parsed invoice into the flat fact bundle the interpreter reads
  * (Master Spec §3.2 — facts are resolved into a bundle BEFORE eval; the eval
@@ -39,6 +67,7 @@ export function buildFactBundle(inv: ParsedInvoice, contract?: ContractFacts): F
     : rateBasisCharges.every((c) => new Decimal(c.rate!).times(c.basis!).minus(c.amount!).abs().lte('0.01'));
   const currencies = inv.charges.map((charge) => charge.currency);
   const firstCurrency = currencies[0];
+  const coverageMarkers = findCoverageMarkers(inv);
 
   const bundle: FactBundle = {
     declared_total: declaredTotal === undefined ? undefined : { amount: declaredTotal, currency: inv.headerCurrency ?? '' },
@@ -68,6 +97,7 @@ export function buildFactBundle(inv: ParsedInvoice, contract?: ContractFacts): F
     consistent_310_charge_currencies: inv.transactionSet !== '310'
       ? undefined
       : firstCurrency === undefined || currencies.every((currency) => currency === firstCurrency),
+    suspicious_missing_data_count: coverageMarkers.length,
   };
 
   if (contract?.linehaulRate !== undefined) {

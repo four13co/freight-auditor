@@ -41,6 +41,7 @@ describe('Phase 1 persistence (DB)', () => {
       await owner.query(`DELETE FROM scorecard WHERE client_id = $1`, [clientId]);
       await owner.query(`DELETE FROM charge_finding WHERE client_id = $1`, [clientId]);
       await owner.query(`DELETE FROM gate_failure WHERE client_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM coverage_marker WHERE client_id = $1`, [clientId]);
       await owner.query(`DELETE FROM audit_run WHERE client_id = $1`, [clientId]);
       await owner.query(`DELETE FROM charge_fact WHERE client_id = $1`, [clientId]);
       await owner.query(`DELETE FROM invoice WHERE client_id = $1`, [clientId]);
@@ -56,6 +57,7 @@ describe('Phase 1 persistence (DB)', () => {
     const result = evaluateInvoice(inv);
     const persisted = await withTenantTx({ clientIds: [clientId], internal: true }, async (c) => {
       const p = await persistAuditRun(c, { clientId, invoice: inv, result, rubricSnapshotId: null });
+      expect(p.coverageMarkerIds.length).toBeGreaterThan(0);
       const facts = await c.query(
         `SELECT code, category, amount, currency FROM charge_fact WHERE invoice_id = $1 ORDER BY amount DESC`,
         [p.invoiceId],

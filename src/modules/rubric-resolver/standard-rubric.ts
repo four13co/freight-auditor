@@ -240,5 +240,17 @@ export const STANDARD_RUBRIC: ComposedRubric = {
       description: 'EDI 310 charge currencies are consistent for invoice-level aggregation.',
       ast: { type: 'compare', op: 'eq', left: { type: 'fact', key: 'consistent_310_charge_currencies' }, right: { type: 'lit', value: true } },
     },
+    {
+      criterionKey: 'STD.SUSPICIOUS_MISSING_DATA',
+      kind: 'SCORING',
+      evalOrder: 160,
+      description: 'No otherwise-valid charge carries a suspicious verification-data gap.',
+      ast: {
+        type: 'compare',
+        op: 'eq',
+        left: { type: 'fact', key: 'suspicious_missing_data_count' },
+        right: { type: 'lit', value: 0 },
+      },
+    },
   ],
 };

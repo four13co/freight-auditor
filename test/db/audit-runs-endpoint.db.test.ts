@@ -296,6 +296,17 @@ describe('POST /api/audit-runs (DB, e2e)', () => {
     });
     expect(second.statusCode).toBe(201);
 
+    const duplicateFinding = await withTenantTx({ clientIds: [clientId], internal: false }, async (c) => {
+      const res = await c.query(
+        `SELECT cf.result FROM charge_finding cf
+         JOIN criterion c ON c.id = cf.criterion_id
+         WHERE cf.audit_run_id = $1 AND c.criterion_key = 'STD.DUPLICATE_INVOICE'`,
+        [second.json().id],
+      );
+      return res.rows[0];
+    });
+    expect(duplicateFinding).toMatchObject({ result: 'VARIANCE' });
+
     const afterSecond = await withTenantTx({ clientIds: [clientId], internal: true }, async (c) => {
       const res = await c.query<{ id: string; uploaded_at: Date }>(
         `SELECT id, uploaded_at FROM source_document WHERE sha256 = $1`,

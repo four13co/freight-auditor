@@ -13,7 +13,8 @@ import type { ContractRate } from '../rate-engine/rate-lookup.js';
  * entirely (a STANDARD-only audit run).
  */
 export interface ContractFacts {
-  linehaulRate: ContractRate | null;
+  linehaulRate?: ContractRate | null;
+  duplicateInvoice?: boolean;
 }
 
 /**
@@ -38,9 +39,10 @@ export function buildFactBundle(inv: ParsedInvoice, contract?: ContractFacts): F
     charge_count: inv.charges.length,
     quarantined_count: quarantinedCount,
     has_fuel_category: hasFuel,
+    duplicate_invoice: contract?.duplicateInvoice,
   };
 
-  if (contract !== undefined) {
+  if (contract?.linehaulRate !== undefined) {
     // Sum all LINEHAUL charges on the invoice — the billed side of the variance
     // comparison. Excludes quarantined charges (an unparseable/uncategorized
     // amount can't be compared; the STANDARD gates already handle that defect).

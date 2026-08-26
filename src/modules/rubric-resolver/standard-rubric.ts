@@ -131,5 +131,21 @@ export const STANDARD_RUBRIC: ComposedRubric = {
         right: { type: 'lit', value: true },
       },
     },
+    {
+      criterionKey: 'STD.DUPLICATE_INVOICE',
+      kind: 'SCORING',
+      evalOrder: 120,
+      description: 'Invoice number has not already been billed for this tenant and transaction set.',
+      ast: {
+        type: 'require',
+        key: 'duplicate_invoice',
+        then: {
+          type: 'compare',
+          op: 'eq',
+          left: { type: 'fact', key: 'duplicate_invoice' },
+          right: { type: 'lit', value: false },
+        },
+      },
+    },
   ],
 };

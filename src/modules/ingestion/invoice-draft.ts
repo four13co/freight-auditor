@@ -15,6 +15,7 @@ import { STANDARD_RUBRIC } from '../rubric-resolver/standard-rubric.js';
 import { CONTRACT_RUBRIC } from '../rubric-resolver/contract-rubric.js';
 import { persistAuditRun, type PersistedRun } from '../evaluator/persist.js';
 import { lookupContractRate } from '../rate-engine/rate-lookup.js';
+import { detectDuplicateInvoice } from './duplicate-invoice.js';
 import { z } from 'zod';
 
 /**
@@ -201,11 +202,14 @@ export async function confirmInvoiceDraft(
   }
 
   let result: AuditResult;
+  const duplicateInvoice = await detectDuplicateInvoice(
+    client, input.clientId, finalInvoice.invoiceNumber, finalInvoice.transactionSet,
+  );
   if (input.contractVersionId) {
     const rate = await lookupContractRate(client, input.contractVersionId, 'LINEHAUL');
-    result = evaluateInvoice(finalInvoice, CONTRACT_RUBRIC, { linehaulRate: rate });
+    result = evaluateInvoice(finalInvoice, CONTRACT_RUBRIC, { linehaulRate: rate, duplicateInvoice });
   } else {
-    result = evaluateInvoice(finalInvoice, STANDARD_RUBRIC);
+    result = evaluateInvoice(finalInvoice, STANDARD_RUBRIC, { duplicateInvoice });
   }
 
   const persisted = await persistAuditRun(client, {

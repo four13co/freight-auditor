@@ -12,21 +12,24 @@ CREATE TABLE sftp_connection (
   host_key_sha256       char(64) NOT NULL CHECK (host_key_sha256 ~ '^[0-9a-f]{64}$'),
   enabled               boolean NOT NULL DEFAULT true,
   created_at            timestamptz NOT NULL DEFAULT now(),
-  UNIQUE (client_id, name)
+  UNIQUE (client_id, name),
+  UNIQUE (id, client_id)
 );
 
 CREATE TABLE sftp_intake (
   id                 uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   client_id          uuid NOT NULL REFERENCES client(id),
-  connection_id      uuid NOT NULL REFERENCES sftp_connection(id),
+  connection_id      uuid NOT NULL,
   remote_path        text NOT NULL,
   remote_fingerprint char(64) NOT NULL CHECK (remote_fingerprint ~ '^[0-9a-f]{64}$'),
   source_document_id uuid REFERENCES source_document(id),
   status             text NOT NULL CHECK (status IN ('discovered', 'stored', 'quarantined')),
   failure_code       text,
+  attempt_count      integer NOT NULL DEFAULT 1 CHECK (attempt_count > 0),
   discovered_at      timestamptz NOT NULL DEFAULT now(),
   stored_at          timestamptz,
-  UNIQUE (connection_id, remote_path, remote_fingerprint)
+  UNIQUE (connection_id, remote_path, remote_fingerprint),
+  FOREIGN KEY (connection_id, client_id) REFERENCES sftp_connection(id, client_id)
 );
 
 CREATE INDEX sftp_intake_client_status_idx ON sftp_intake (client_id, status, discovered_at);

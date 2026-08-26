@@ -64,7 +64,10 @@ export async function pollSftpIntake(
       `INSERT INTO sftp_intake
          (client_id, connection_id, remote_path, remote_fingerprint, status)
        VALUES ($1, $2, $3, $4, 'discovered')
-       ON CONFLICT (connection_id, remote_path, remote_fingerprint) DO NOTHING
+       ON CONFLICT (connection_id, remote_path, remote_fingerprint) DO UPDATE
+         SET status = 'discovered', failure_code = NULL,
+             attempt_count = sftp_intake.attempt_count + 1
+         WHERE sftp_intake.status = 'quarantined'
        RETURNING id`,
       [connection.clientId, connection.id, entry.path, fingerprint],
     );

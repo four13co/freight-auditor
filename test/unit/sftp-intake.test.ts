@@ -78,4 +78,28 @@ describe('SFTP immutable intake', () => {
     expect(result.quarantined).toBe(1);
     expect(updates[0]?.[0]).toBe('SIZE_MISMATCH');
   });
+
+  it('reclaims quarantined checkpoints while leaving stored checkpoints deduplicated', async () => {
+    let claim = 0;
+    const db = { query: vi.fn(async (sql: string) => {
+      if (sql.includes('INSERT INTO sftp_intake')) {
+        claim += 1;
+        return { rows: claim === 1 ? [{ id: 'retry-1' }] : [] };
+      }
+      if (sql.includes('INSERT INTO source_document')) return { rows: [{ id: 'document-1' }] };
+      return { rows: [] };
+    }) };
+    const bytes = Buffer.alloc(entry.size, 1);
+    const store: ObjectStore = {
+      put: vi.fn(async (value) => ({ sha256: sha256Hex(value), uri: 'r2://bucket/key', byteSize: value.byteLength })),
+      get: vi.fn(), has: vi.fn(),
+    };
+    const sftp = { list: vi.fn().mockResolvedValue([entry]), read: vi.fn().mockResolvedValue(bytes) };
+    const connection = { id: 'connection-1', clientId: 'client-1', remotePath: '/inbound' };
+
+    await expect(pollSftpIntake(db as never, store, sftp, connection)).resolves.toMatchObject({ stored: 1 });
+    await expect(pollSftpIntake(db as never, store, sftp, connection)).resolves.toMatchObject({ duplicates: 1 });
+    const claimSql = vi.mocked(db.query).mock.calls[0]![0];
+    expect(claimSql).toContain("WHERE sftp_intake.status = 'quarantined'");
+  });
 });

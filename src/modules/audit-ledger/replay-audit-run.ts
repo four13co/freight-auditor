@@ -60,10 +60,8 @@ export async function replayAuditRun(client: pg.PoolClient, auditRunId: string):
   }
 
   const rubric = manifest.contractVersions.length > 0 ? CONTRACT_RUBRIC : STANDARD_RUBRIC;
-  const contract = manifest.contractVersions.length > 0
-    ? manifest.resolvedInputs as unknown as ContractFacts
-    : undefined;
-  const result = evaluateInvoice(manifest.invoice as unknown as ParsedInvoice, rubric, contract);
+  const resolvedInputs = manifest.resolvedInputs as unknown as ContractFacts;
+  const result = evaluateInvoice(manifest.invoice as unknown as ParsedInvoice, rubric, resolvedInputs);
   const resultBytes = Buffer.from(canonicalJson(result));
   const originalBytes = Buffer.from(canonicalJson(manifest.result));
   const resultHash = createHash('sha256').update(resultBytes).digest('hex');

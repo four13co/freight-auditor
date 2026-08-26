@@ -45,7 +45,9 @@ test('AC1: full login -> dashboard round trip against the real-session (no DEV_A
 
   await loginViaForm(page, E2E_AUTH_EMAIL, E2E_AUTH_PASSWORD);
 
-  const row = page.getByTestId('finding-row').filter({ hasText: FIXTURE_INVOICE_NUMBER });
+  const row = page.getByTestId('finding-row')
+    .filter({ hasText: FIXTURE_INVOICE_NUMBER })
+    .filter({ hasText: '$100.00' });
   await expect(row).toBeVisible();
   await expect(page.getByTestId('kpi-row')).toBeVisible();
 });
@@ -55,7 +57,9 @@ test('AC2: session persists across a refresh, no re-login required', async ({ pa
 
   await loginViaForm(page, E2E_AUTH_EMAIL, E2E_AUTH_PASSWORD);
 
-  const row = page.getByTestId('finding-row').filter({ hasText: FIXTURE_INVOICE_NUMBER });
+  const row = page.getByTestId('finding-row')
+    .filter({ hasText: FIXTURE_INVOICE_NUMBER })
+    .filter({ hasText: '$100.00' });
   await expect(row).toBeVisible();
 
   await page.reload();

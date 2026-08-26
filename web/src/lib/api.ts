@@ -54,6 +54,11 @@ export interface GateFailureRow {
   defect: string;
   citation: string | null;
   recordedAt: string;
+  criterionKey?: string;
+  evaluatedExpr?: unknown;
+  clauseReference?: string | null;
+  sourceDocumentId?: string | null;
+  transportDocumentId?: string | null;
 }
 
 export type FindingsSortKey = 'variance' | 'age';

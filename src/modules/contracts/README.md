@@ -7,3 +7,5 @@ Contract ingestion and AI-assisted verification boundaries.
 `normalizeContractClauses` uses prompt `contract-clause-normalization/1` and schema `clause-normalization/1` to turn verified extracted clauses into cited semantic proposals or explicit abstentions. Its schema intentionally has no rule AST, lifecycle state, expected-charge, variance, or calculated-total fields.
 
 `generateProposedCriteria` uses prompt/schema `contract-proposed-criteria/1` and `proposed-criteria/1`. It accepts only a constrained subset of the owned interpreter AST over allowlisted, pre-resolved facts; rejects arithmetic, money, code, lifecycle, and unknown-fact output; verifies clause/citation grounding; then canonicalizes and hashes every proposal as `PROPOSED`.
+
+`requireProposalCitations` is the explicit fail-closed gate before proposal enrichment or downstream handling. It requires exact source citation coverage for every referenced normalized clause and emits stable, deterministically ordered rejection records for absent, unknown, abstained, partially covered, or foreign evidence.

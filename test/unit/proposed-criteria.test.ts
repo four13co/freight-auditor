@@ -59,10 +59,12 @@ describe('proposed criteria and deterministic AST generation', () => {
   it('fails closed on unknown, abstained, or mismatched citation provenance', async () => {
     const provider = (output: unknown) => ({ generateStructured: vi.fn().mockResolvedValue({ output }) }) as unknown as VersionedAnthropicProvider;
     await expect(generateProposedCriteria(provider({ ...modelOutput, criteria: [{ ...modelOutput.criteria[0], clauseReferences: ['99'] }] }),
-      'a'.repeat(64), normalization)).rejects.toMatchObject({ code: 'UNGROUNDED_PROPOSAL' });
+      'a'.repeat(64), normalization)).rejects.toMatchObject({ code: 'UNCITED_PROPOSAL',
+        rejections: expect.arrayContaining([expect.objectContaining({ code: 'UNKNOWN_CLAUSE' })]) });
     await expect(generateProposedCriteria(provider({ ...modelOutput, criteria: [{ ...modelOutput.criteria[0],
       citations: [{ ...citation, excerpt: 'invented' }] }] }), 'a'.repeat(64), normalization))
-      .rejects.toMatchObject({ code: 'UNGROUNDED_PROPOSAL' });
+      .rejects.toMatchObject({ code: 'UNCITED_PROPOSAL',
+        rejections: expect.arrayContaining([expect.objectContaining({ code: 'UNKNOWN_CITATION' })]) });
   });
 
   it('does not call the provider when every clause abstained', async () => {

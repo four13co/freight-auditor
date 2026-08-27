@@ -5,6 +5,7 @@ import { stableStringify } from '../evaluator/snapshot.js';
 import type { AnthropicStructuredResult, VersionedAnthropicProvider, VersionedPrompt } from './anthropic-provider.js';
 import { CLAUSE_NORMALIZATION_SCHEMA_VERSION, ClauseNormalizationSchema, ExtractionCitationSchema,
   type ClauseNormalization } from './clause-normalization.js';
+import { requireProposalCitations } from './proposal-citation-gate.js';
 
 export const PROPOSED_CRITERIA_SCHEMA_VERSION = 'proposed-criteria/1';
 export const PROPOSED_CRITERIA_PROMPT_VERSION = 'contract-proposed-criteria/1';
@@ -101,7 +102,7 @@ export async function generateProposedCriteria(
     outputSchema: ProposedCriteriaModelOutputSchema, sourceDocumentSha256,
     untrustedEvidence: JSON.stringify({ schemaVersion: CLAUSE_NORMALIZATION_SCHEMA_VERSION,
       availableFacts: PROPOSABLE_FACT_KEYS, clauses: verified.clauses }) });
-  assertProposalGrounding(providerResult.output, verified);
+  requireProposalCitations(providerResult.output, verified);
   const criteria = providerResult.output.criteria.map((criterion): ProposedCriterion => {
     const ast = canonicalizeAst(criterion.ast);
     return { ...criterion, ast, astHash: createHash('sha256').update(stableStringify(ast)).digest('hex'),
@@ -111,30 +112,9 @@ export async function generateProposedCriteria(
 }
 
 export class ProposedCriteriaError extends Error {
-  constructor(readonly code: 'NO_NORMALIZED_CLAUSES' | 'UNGROUNDED_PROPOSAL', message: string) {
+  constructor(readonly code: 'NO_NORMALIZED_CLAUSES', message: string) {
     super(message); this.name = 'ProposedCriteriaError';
   }
-}
-
-function assertProposalGrounding(output: z.infer<typeof ProposedCriteriaModelOutputSchema>, normalization: ClauseNormalization): void {
-  const normalized = normalization.clauses.filter((clause) => clause.status === 'NORMALIZED');
-  const byReference = new Map(normalized.map((clause) => [canonicalReference(clause.clauseReference), clause]));
-  for (const criterion of output.criteria) {
-    const sourceClauses = criterion.clauseReferences.map((reference) => byReference.get(canonicalReference(reference)));
-    if (sourceClauses.some((clause) => clause === undefined)) {
-      throw new ProposedCriteriaError('UNGROUNDED_PROPOSAL', `${criterion.criterionKey} references an unknown or abstained clause`);
-    }
-    const allowedCitations = new Set(sourceClauses.flatMap((clause) => clause!.citations).map(citationKey));
-    if (criterion.citations.some((citation) => !allowedCitations.has(citationKey(citation)))) {
-      throw new ProposedCriteriaError('UNGROUNDED_PROPOSAL', `${criterion.criterionKey} contains an unknown citation`);
-    }
-  }
-}
-
-function canonicalReference(value: string): string { return value.normalize('NFKC').toLowerCase(); }
-function citationKey(citation: z.infer<typeof ExtractionCitationSchema>): string {
-  return JSON.stringify([citation.pageNumber, citation.excerpt, citation.boundingBox ?? null,
-    citation.span ? [citation.span.offset, citation.span.length] : null]);
 }
 
 function isBooleanAst(ast: ProposalAst): boolean {

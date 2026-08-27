@@ -34,8 +34,8 @@ export async function persistExtractionFieldCorrection(
     ON CONFLICT (client_id,source_document_id,extraction_response_hash,field_path,correction_hash)
       WHERE correction_hash IS NOT NULL DO NOTHING RETURNING id`,
   [input.clientId, original.source_document_id, original.field_path, original.ai_value, JSON.stringify(correction.human_value),
-    original.confidence, original.page_ref, original.bbox, original.model_version, original.prompt_version,
-    original.extraction_response_hash, original.extraction_schema_version, original.extraction_status, original.citations,
+    original.confidence, original.page_ref, JSON.stringify(original.bbox), original.model_version, original.prompt_version,
+    original.extraction_response_hash, original.extraction_schema_version, original.extraction_status, JSON.stringify(original.citations),
     correctionHash, correction.answer_source, input.actorUserId]);
   let id = inserted.rows[0]?.id;
   const created = Boolean(id);

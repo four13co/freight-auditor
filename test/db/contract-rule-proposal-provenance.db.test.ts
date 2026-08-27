@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type pg from 'pg';
 import { makePool, withAppTx } from './helpers.js';
+import { setTenantTxScope } from '../../src/db/tenant-context.js';
 import { stableStringify } from '../../src/modules/evaluator/snapshot.js';
 import { persistContractRuleProposals, ProposalPersistenceError } from '../../src/modules/contracts/persist-contract-rule-proposals.js';
 
@@ -44,6 +45,13 @@ describe('contract rule proposal provenance (DB)', () => {
     sourceDocumentSha256: sourceSha, requestKey, providerMessageId: 'msg-proposal-1', usage: { inputTokens: 10, outputTokens: 5 },
   } });
 
+  async function withCommittedTenant<T>(ids: string[], fn: (client: pg.PoolClient) => Promise<T>): Promise<T> {
+    const client = await pool.connect();
+    try { await client.query('BEGIN'); await setTenantTxScope(client, { clientIds: ids });
+      const result = await fn(client); await client.query('COMMIT'); return result;
+    } catch (error) { await client.query('ROLLBACK'); throw error; } finally { client.release(); }
+  }
+
   afterAll(async () => {
     await pool.query(`DELETE FROM audit_event WHERE client_id=$1`, [clientId]);
     await pool.query(`DELETE FROM contract_rule_proposal_clause WHERE client_id=$1`, [clientId]);
@@ -57,8 +65,8 @@ describe('contract rule proposal provenance (DB)', () => {
   });
 
   it('persists complete proposal, extraction, verification, model, prompt, clause, and citation provenance exactly once', async () => {
-    const first = await withAppTx(pool, { clientIds: [clientId] }, (client) => persistContractRuleProposals(client, input()));
-    const retry = await withAppTx(pool, { clientIds: [clientId] }, (client) => persistContractRuleProposals(client, input()));
+    const first = await withCommittedTenant([clientId], (client) => persistContractRuleProposals(client, input()));
+    const retry = await withCommittedTenant([clientId], (client) => persistContractRuleProposals(client, input()));
     expect(first).toEqual({ proposalIds: retry.proposalIds, proposalCount: 1, createdCount: 1 }); expect(retry.createdCount).toBe(0);
     const row = (await pool.query(`SELECT * FROM contract_rule_proposal WHERE id=$1`, [first.proposalIds[0]])).rows[0];
     expect(row).toMatchObject({ verified_contract_version_id: verifiedId, criterion_key: 'CONTRACT.PROPOSED.FUEL_PRESENT',

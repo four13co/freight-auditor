@@ -3,6 +3,8 @@ import { z } from 'zod';
 import {
   ContractExtractionSchema, type ContractExtraction,
 } from './contract-extraction-schema.js';
+import { applyContractExtractionAbstention, type AbstentionPolicyResult,
+  type ContractExtractionAbstentionPolicy } from './apply-contract-extraction-abstention.js';
 
 const sha256 = z.string().regex(/^[a-f0-9]{64}$/);
 const pinsSchema = z.object({
@@ -59,6 +61,16 @@ export function contractExtractionIdempotencyKey(extraction: ContractExtraction)
   return createHash('sha256').update(stableStringify(parsed)).digest('hex');
 }
 
+export function validateContractExtractionResponseWithAbstention(
+  untrustedResponse: unknown,
+  expectedPins: ContractExtractionPins,
+  policy: ContractExtractionAbstentionPolicy,
+): ValidatedContractExtractionResponse & Pick<AbstentionPolicyResult, 'policyVersion' | 'abstentions'> {
+  const validated = validateContractExtractionResponse(untrustedResponse, expectedPins);
+  const processed = applyContractExtractionAbstention(validated.extraction, policy);
+  return { ...processed, idempotencyKey: contractExtractionIdempotencyKey(processed.extraction) };
+}
+
 /** The only supported handoff to persistence: invalid responses can never invoke the callback. */
 export async function persistValidatedContractExtraction<Result>(
   untrustedResponse: unknown,
@@ -68,6 +80,18 @@ export async function persistValidatedContractExtraction<Result>(
   const validated = validateContractExtractionResponse(untrustedResponse, expectedPins);
   const result = await persist(validated.extraction, validated.idempotencyKey);
   return { idempotencyKey: validated.idempotencyKey, result };
+}
+
+export async function persistValidatedContractExtractionWithAbstention<Result>(
+  untrustedResponse: unknown,
+  expectedPins: ContractExtractionPins,
+  policy: ContractExtractionAbstentionPolicy,
+  persist: (extraction: ContractExtraction, idempotencyKey: string) => Promise<Result>,
+): Promise<{ idempotencyKey: string; policyVersion: string; abstentions: AbstentionPolicyResult['abstentions']; result: Result }> {
+  const validated = validateContractExtractionResponseWithAbstention(untrustedResponse, expectedPins, policy);
+  const result = await persist(validated.extraction, validated.idempotencyKey);
+  return { idempotencyKey: validated.idempotencyKey, policyVersion: validated.policyVersion,
+    abstentions: validated.abstentions, result };
 }
 
 function stableStringify(value: unknown): string {

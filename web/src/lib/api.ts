@@ -37,6 +37,20 @@ export interface ReviewQueueItem { id: string; auditRunId: string; invoiceNumber
 export interface ReviewQueues { escalation: ReviewQueueItem[]; unassessable: ReviewQueueItem[] }
 export interface RubricConflict { id: string; criterion_key: string | null; conflict_type: string; detail: Record<string, unknown>; recorded_at: string }
 export interface RuleProposal { id: string; slug: string; rule_type: string; hardness: string; lifecycle_state: 'PROPOSED' | 'SHADOW'; ast_hash: string; recorded_at: string }
+export type ClarificationAnswerSource = 'read_from_doc' | 'analyst_knowledge' | 'carrier_confirmed';
+export interface ClarifyingQuestion {
+  id: string;
+  source_document_id: string;
+  field_path: string;
+  question: string;
+  answer: string | null;
+  answer_source: ClarificationAnswerSource | null;
+  abstention_status: 'NOT_FOUND' | 'AMBIGUOUS';
+  abstention_reason: string;
+  policy_version: string;
+  question_hash: string;
+  created_at: string;
+}
 
 export interface FindingsSummary {
   recoverableOpen: string;
@@ -244,4 +258,24 @@ export async function fetchFindingProvenance(id: string): Promise<FindingProvena
   const res = await fetch(`/api/findings/${id}/provenance`, { headers: authHeaders() });
   if (!res.ok) throw new Error(`GET finding provenance failed: ${res.status}`);
   return (await res.json()) as FindingProvenance;
+}
+
+export async function fetchClarifyingQuestions(sourceDocumentId: string): Promise<ClarifyingQuestion[]> {
+  const query = new URLSearchParams({ source_document_id: sourceDocumentId });
+  const res = await fetch(`/api/clarifying-questions?${query}`, { headers: authHeaders() });
+  if (!res.ok) throw new Error(`GET clarifying questions failed: ${res.status}`);
+  return ((await res.json()) as { questions: ClarifyingQuestion[] }).questions;
+}
+
+export async function answerClarifyingQuestion(
+  id: string,
+  answer: string,
+  answerSource: ClarificationAnswerSource,
+): Promise<{ id: string; answer: string; answer_source: ClarificationAnswerSource; changed: boolean }> {
+  const res = await fetch(`/api/clarifying-questions/${id}/answer`, {
+    method: 'PUT', headers: { ...authHeaders(), 'content-type': 'application/json' },
+    body: JSON.stringify({ answer, answer_source: answerSource }),
+  });
+  if (!res.ok) throw new Error(`PUT clarification answer failed: ${res.status}`);
+  return (await res.json()) as { id: string; answer: string; answer_source: ClarificationAnswerSource; changed: boolean };
 }

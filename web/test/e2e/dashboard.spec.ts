@@ -69,3 +69,34 @@ test('clicking a finding row opens its detail view; Escape closes it', async ({ 
   await page.keyboard.press('Escape');
   await expect(detail).not.toBeVisible();
 });
+
+test('analyst reviews an extraction abstention and records its answer source', async ({ page }) => {
+  const documentId = '44444444-4444-4444-8444-444444444444';
+  const questionId = '33333333-3333-4333-8333-333333333333';
+  await page.route('**/api/findings**', (route) => route.fulfill({ json: { findings: ROWS } }));
+  await page.route('**/api/findings/summary', (route) => route.fulfill({ json: SUMMARY }));
+  await page.route('**/api/clarifying-questions?**', (route) => route.fulfill({ json: { questions: [{
+    id: questionId, source_document_id: documentId, field_path: 'contract.currency',
+    question: 'Which currency applies?', answer: null, answer_source: null, abstention_status: 'NOT_FOUND',
+    abstention_reason: 'MISSING_REQUIRED_FIELD', policy_version: 'abstention/1', question_hash: 'a'.repeat(64),
+    created_at: '2026-08-27T00:00:00Z',
+  }] } }));
+  let submitted: unknown;
+  await page.route(`**/api/clarifying-questions/${questionId}/answer`, async (route) => {
+    submitted = route.request().postDataJSON();
+    await route.fulfill({ json: { id: questionId, answer: 'USD', answer_source: 'carrier_confirmed', changed: true } });
+  });
+
+  await page.goto('/');
+  await page.getByLabel('Source document ID').fill(documentId);
+  await page.getByRole('button', { name: 'Review' }).click();
+  await expect(page.getByText('Which currency applies?')).toBeVisible();
+  await page.getByLabel('Answer').fill('USD');
+  await page.getByLabel('Answer source for contract.currency').selectOption('carrier_confirmed');
+  await page.getByRole('button', { name: 'Save answer' }).click();
+
+  await expect(page.getByText('1 of 1 answered')).toBeVisible();
+  await expect(page.getByText('Answered · Carrier confirmed')).toBeVisible();
+  expect(submitted).toEqual({ answer: 'USD', answer_source: 'carrier_confirmed' });
+  await page.screenshot({ path: 'test-results/extraction-review-answered.png', fullPage: true });
+});

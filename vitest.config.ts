@@ -58,6 +58,11 @@ export default defineConfig({
         // evidence/governance handlers above. R2 itself has a deterministic
         // provider-contract suite with an injected SDK client.
         'src/server/contracts-routes.ts',
+        // Clarification answer persistence is a row-locking Postgres transaction
+        // boundary covered by test/db. The request schema and Fastify route have
+        // focused unit tests; importing app.ts must not count this DB-only module
+        // as untested unit code merely because the route registers it.
+        'src/modules/contracts/clarification-answers.ts',
         // pdf-extract.ts's PDF-text-extraction step (extractInvoiceFromPdf) IS
         // unit-tested for real against real generated PDF bytes with an
         // injected LLM impl (test/unit/pdf-extract.test.ts, 6 tests) -- only

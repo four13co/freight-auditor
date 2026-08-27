@@ -7,6 +7,7 @@ import { registerInvoiceDraftsRoutes } from './invoice-drafts-routes.js';
 import { registerEvidenceRoutes } from './evidence-routes.js';
 import { registerRuleGovernanceRoutes } from './rule-governance-routes.js';
 import { registerContractsRoutes } from './contracts-routes.js';
+import { registerClarificationAnswersRoutes } from './clarification-answers-routes.js';
 
 /**
  * Build the Fastify application instance.
@@ -55,6 +56,7 @@ export function buildApp(): FastifyInstance {
   void app.register(registerEvidenceRoutes);
   void app.register(registerRuleGovernanceRoutes);
   void app.register(registerContractsRoutes);
+  void app.register(registerClarificationAnswersRoutes);
 
   return app;
 }

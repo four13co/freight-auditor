@@ -8,6 +8,7 @@ import { GateFailuresPanel } from './GateFailuresPanel.js';
 import { ReviewQueues } from './ReviewQueues.js';
 import { RubricConflictQueue } from './RubricConflictQueue.js';
 import { RuleProposalQueue } from './RuleProposalQueue.js';
+import { ExtractionReview } from './ExtractionReview.js';
 import {
   fetchFindings,
   fetchFindingsSummary,
@@ -113,7 +114,7 @@ export function Dashboard() {
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
         <Header />
         <PasskeyRegistration />
-        <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-hidden p-6">
+        <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-6">
           {status === 'loading' && (
             <div data-testid="dashboard-loading" className="flex flex-1 items-center justify-center text-sm text-[rgba(32,30,29,0.6)]">
               Loading…
@@ -137,6 +138,7 @@ export function Dashboard() {
           {status === 'ready' && (
             <>
               {summary && <KpiRow summary={summary} />}
+              <ExtractionReview />
               <GateFailuresPanel rows={gateFailures} />
               <ReviewQueues queues={reviewQueues} />
               <RubricConflictQueue rows={rubricConflicts} />

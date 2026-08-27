@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { ContractExtractionSchema, ExtractionCitationSchema, type ContractExtraction } from './contract-extraction-schema.js';
+export { ExtractionCitationSchema } from './contract-extraction-schema.js';
 import type { AnthropicStructuredResult, VersionedAnthropicProvider, VersionedPrompt } from './anthropic-provider.js';
 
 export const CLAUSE_NORMALIZATION_SCHEMA_VERSION = 'clause-normalization/1';

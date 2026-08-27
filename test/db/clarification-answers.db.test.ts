@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type pg from 'pg';
 import { makePool, withAppTx } from './helpers.js';
+import { setTenantTxScope, type TenantContext } from '../../src/db/tenant-context.js';
 import {
   answerClarifyingQuestion,
   listClarifyingQuestions,
@@ -43,19 +44,29 @@ describe('clarification answers (DB)', () => {
     await pool.end();
   });
 
+  async function withCommittedTenant<T>(ctx: TenantContext, fn: (client: pg.PoolClient) => Promise<T>): Promise<T> {
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN'); await setTenantTxScope(client, ctx);
+      const result = await fn(client); await client.query('COMMIT'); return result;
+    } catch (error) {
+      await client.query('ROLLBACK'); throw error;
+    } finally { client.release(); }
+  }
+
   it('answers idempotently, audits changes, and rejects superseded replay', async () => {
-    const first = await withAppTx(pool, { clientIds: [clientId] }, (client) => answerClarifyingQuestion(client, {
+    const first = await withCommittedTenant({ clientIds: [clientId] }, (client) => answerClarifyingQuestion(client, {
       clientId, questionId, actorUserId: userId, answer: { answer: 'USD', answer_source: 'read_from_doc' },
     }));
     expect(first.changed).toBe(true);
-    const retry = await withAppTx(pool, { clientIds: [clientId] }, (client) => answerClarifyingQuestion(client, {
+    const retry = await withCommittedTenant({ clientIds: [clientId] }, (client) => answerClarifyingQuestion(client, {
       clientId, questionId, actorUserId: userId, answer: { answer: 'USD', answer_source: 'read_from_doc' },
     }));
     expect(retry.changed).toBe(false);
-    await withAppTx(pool, { clientIds: [clientId] }, (client) => answerClarifyingQuestion(client, {
+    await withCommittedTenant({ clientIds: [clientId] }, (client) => answerClarifyingQuestion(client, {
       clientId, questionId, actorUserId: userId, answer: { answer: 'US dollars', answer_source: 'carrier_confirmed' },
     }));
-    await expect(withAppTx(pool, { clientIds: [clientId] }, (client) => answerClarifyingQuestion(client, {
+    await expect(withCommittedTenant({ clientIds: [clientId] }, (client) => answerClarifyingQuestion(client, {
       clientId, questionId, actorUserId: userId, answer: { answer: 'USD', answer_source: 'read_from_doc' },
     }))).rejects.toBeInstanceOf(ClarificationAnswerConflictError);
     const row = (await pool.query(`SELECT answer,answer_source FROM clarifying_question WHERE id=$1`, [questionId])).rows[0];

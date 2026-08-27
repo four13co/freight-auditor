@@ -91,7 +91,7 @@ test('analyst reviews an extraction abstention and records its answer source', a
   await page.getByLabel('Source document ID').fill(documentId);
   await page.getByRole('button', { name: 'Review' }).click();
   await expect(page.getByText('Which currency applies?')).toBeVisible();
-  await page.getByLabel('Answer').fill('USD');
+  await page.getByRole('textbox', { name: 'Answer', exact: true }).fill('USD');
   await page.getByLabel('Answer source for contract.currency').selectOption('carrier_confirmed');
   await page.getByRole('button', { name: 'Save answer' }).click();
 

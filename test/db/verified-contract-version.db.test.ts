@@ -23,7 +23,8 @@ describe('verified contract version finalization (DB)', () => {
     schemaVersion: CONTRACT_EXTRACTION_SCHEMA_VERSION, sourceDocumentSha256: sourceSha,
     model: { provider: 'anthropic', modelId: 'claude-opus-4-8', promptVersion: 'contract-extract/1' },
     fields: [{ path: 'contract.currency', semanticType: 'CURRENCY', value: { status: 'FOUND', rawText: 'US currency',
-      normalizedValue: 'USD', confidence: 0.9, citations: [{ pageNumber: 2, excerpt: 'All charges in US currency' }] } }],
+      normalizedValue: 'USD', confidence: 0.9, citations: [{ pageNumber: 2, excerpt: 'All charges in US currency',
+        boundingBox: [1, 2, 3, 2, 3, 4, 1, 4] }] } }],
     clauses: [], rateTables: [],
   });
 

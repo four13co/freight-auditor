@@ -93,6 +93,15 @@ export interface ProposedCriteria {
   criteria: ProposedCriterion[];
 }
 
+export const ProposedCriteriaSchema = z.object({
+  schemaVersion: z.literal(PROPOSED_CRITERIA_SCHEMA_VERSION),
+  criteria: z.array(proposedCriterionSchema.extend({
+    astHash: z.string().regex(/^[a-f0-9]{64}$/),
+    expectedInputs: z.array(factKeySchema).max(PROPOSABLE_FACT_KEYS.length),
+    lifecycleState: z.literal('PROPOSED'),
+  }).strict()).max(1_000),
+}).strict();
+
 export const PROPOSED_CRITERIA_PROMPT: VersionedPrompt = {
   version: PROPOSED_CRITERIA_PROMPT_VERSION,
   system: [

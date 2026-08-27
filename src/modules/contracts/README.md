@@ -3,3 +3,5 @@
 Contract ingestion and AI-assisted verification boundaries.
 
 `VersionedAnthropicProvider` is the sole reusable structured-generation boundary for contract-rubric prompts. Callers must provide an immutable prompt version, pinned model configuration, source-document SHA-256, untrusted evidence, and a strict Zod output schema. The adapter returns provider/message/token provenance and a deterministic request key; it does not persist, activate, or evaluate rules.
+
+`normalizeContractClauses` uses prompt `contract-clause-normalization/1` and schema `clause-normalization/1` to turn verified extracted clauses into cited semantic proposals or explicit abstentions. Its schema intentionally has no rule AST, lifecycle state, expected-charge, variance, or calculated-total fields.

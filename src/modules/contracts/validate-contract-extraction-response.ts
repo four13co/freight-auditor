@@ -51,8 +51,12 @@ export function validateContractExtractionResponse(
     || parsed.data.model.promptVersion !== expected.promptVersion || parsed.data.sourceDocumentSha256 !== expected.sourceDocumentSha256) {
     throw new ContractExtractionValidationError('PIN_MISMATCH', 'contract extraction output metadata does not match the trusted pin');
   }
-  const canonical = stableStringify(parsed.data);
-  return { extraction: parsed.data, idempotencyKey: createHash('sha256').update(canonical).digest('hex') };
+  return { extraction: parsed.data, idempotencyKey: contractExtractionIdempotencyKey(parsed.data) };
+}
+
+export function contractExtractionIdempotencyKey(extraction: ContractExtraction): string {
+  const parsed = ContractExtractionSchema.parse(extraction);
+  return createHash('sha256').update(stableStringify(parsed)).digest('hex');
 }
 
 /** The only supported handoff to persistence: invalid responses can never invoke the callback. */

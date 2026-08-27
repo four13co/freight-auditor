@@ -13,3 +13,5 @@ Contract ingestion and AI-assisted verification boundaries.
 `rejectModelMoneyAuthority` recursively rejects arithmetic ASTs, money literals, and authoritative financial-result fields before strict proposal parsing. Source-stated monetary text remains evidence only; calculations stay exclusively in owned deterministic engine code.
 
 `persistContractRuleProposals` stores proposal-only, tenant-scoped immutable records pinned to a verified contract version, extraction/verification hashes, exact AST/input hashes, provider/model/prompt/message/request provenance, analyst, and real contract-clause/citation junctions. Exact retries are idempotent and audited; these records are not executable `rule_version`s.
+
+`backtestContractRuleProposals` requires one deterministic corpus for every proposal in a verified contract version, evaluates only the persisted AST with the owned interpreter, and stores append-only case inputs, expected/actual verdicts, evaluated trees, and hashes. Missing/foreign proposals, duplicate cases, unexpected facts, changed ASTs, and conflicting retries fail closed; this records evidence only and cannot activate a proposal.

@@ -13,6 +13,8 @@ import {
 } from '../modules/contracts/upload-contract-document.js';
 import { objectStoreRoot, registerBufferContentTypeParser, requireNonEmptyBuffer, requireSingleClientId } from '../modules/ingestion/raw-upload-route.js';
 import { isUuid } from '../shared/request-validation.js';
+import { FinalizeContractVersionInputSchema, ContractVersionFinalizationError } from '../modules/contracts/finalize-contract-version-schema.js';
+import { finalizeContractVersion } from '../modules/contracts/finalize-contract-version.js';
 
 const contentTypes = [
   'application/pdf',
@@ -78,6 +80,27 @@ export async function registerContractsRoutes(routes: FastifyInstance): Promise<
       if (error instanceof ZodError) return reply.code(400).send({ error: 'invalid contract version upload metadata', details: error.issues });
       if (error instanceof ContractNotFoundError) return reply.code(404).send({ error: error.message });
       if (error instanceof ContractUploadConflictError) return reply.code(409).send({ error: error.message });
+      throw error;
+    }
+  });
+
+  routes.post('/api/contract-versions/:id/finalize', async (request, reply) => {
+    const { id } = request.params as { id: string };
+    if (!isUuid(id)) return reply.code(400).send({ error: 'invalid contract version id' });
+    const clientId = requireSingleClientId(request.tenantContext!);
+    if (!clientId || !request.actorUserId) return reply.code(401).send({ error: 'unauthorized' });
+    try {
+      const body = FinalizeContractVersionInputSchema.parse(request.body);
+      const result = await withTenantTx(request.tenantContext!, (client) => finalizeContractVersion(client, {
+        clientId, contractVersionId: id, actorUserId: request.actorUserId!, extractionResponseHash: body.extraction_response_hash,
+      }));
+      return reply.code(result.created ? 201 : 200).send(result);
+    } catch (error) {
+      if (error instanceof ZodError) return reply.code(400).send({ error: 'invalid contract finalization', details: error.issues });
+      if (error instanceof ContractVersionFinalizationError) {
+        const status = error.code === 'CONTRACT_VERSION_NOT_FOUND' || error.code === 'EXTRACTION_NOT_FOUND' ? 404 : 409;
+        return reply.code(status).send({ error: error.message, code: error.code });
+      }
       throw error;
     }
   });

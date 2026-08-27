@@ -5,7 +5,8 @@ import { makePool, withAppTx } from './helpers.js';
 import { setTenantTxScope } from '../../src/db/tenant-context.js';
 import { CONTRACT_EXTRACTION_SCHEMA_VERSION, type ContractExtraction } from '../../src/modules/contracts/contract-extraction-schema.js';
 import { applyContractExtractionAbstention } from '../../src/modules/contracts/apply-contract-extraction-abstention.js';
-import { generateClarifyingQuestions, persistClarifyingQuestions } from '../../src/modules/contracts/clarifying-questions.js';
+import { generateClarifyingQuestions } from '../../src/modules/contracts/clarifying-questions.js';
+import { persistClarifyingQuestions } from '../../src/modules/contracts/persist-clarifying-questions.js';
 import { persistContractExtraction } from '../../src/modules/contracts/persist-contract-extraction.js';
 import { contractExtractionIdempotencyKey } from '../../src/modules/contracts/validate-contract-extraction-response.js';
 

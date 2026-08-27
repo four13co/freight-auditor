@@ -54,12 +54,12 @@ export async function persistContractExtraction(
          SELECT $2, $3, field_path, ai_value, confidence, page_ref, bbox,
            $4, $5, $6, $7, extraction_status, citations FROM payload
          ON CONFLICT (client_id, source_document_id, extraction_response_hash, field_path)
-           WHERE extraction_response_hash IS NOT NULL DO NOTHING RETURNING id
+           WHERE extraction_response_hash IS NOT NULL AND correction_hash IS NULL DO NOTHING RETURNING id
        )
        SELECT (SELECT count(*) FROM inserted)::text inserted_count,
          ((SELECT count(*) FROM inserted) +
           (SELECT count(*) FROM extraction_field WHERE client_id=$2 AND source_document_id=$3
-            AND extraction_response_hash=$6))::text stored_count`,
+            AND extraction_response_hash=$6 AND correction_hash IS NULL))::text stored_count`,
       [JSON.stringify(rows.map(toDatabaseRow)), input.clientId, input.sourceDocumentId,
         input.extraction.model.modelId, input.extraction.model.promptVersion, expectedKey, input.extraction.schemaVersion],
     );

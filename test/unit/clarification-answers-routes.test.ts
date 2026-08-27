@@ -10,7 +10,7 @@ describe('clarification answer routes', () => {
   let app: FastifyInstance | undefined;
   afterEach(async () => { if (app) await app.close(); app = undefined; vi.resetModules(); });
 
-  async function setup() {
+  async function setup(correctionError?: 'notfound' | 'conflict') {
     vi.doMock('../../src/modules/findings/tenant-auth.js', () => ({
       registerTenantAuthPreHandler: async (routes: FastifyInstance) => routes.addHook('preHandler', async (
         request: FastifyRequest, _reply: FastifyReply,
@@ -19,10 +19,16 @@ describe('clarification answer routes', () => {
     vi.doMock('../../src/db/tenant-context.js', () => ({ withTenantTx: vi.fn(async (_ctx, fn) => fn({})) }));
     const answerClarifyingQuestion = vi.fn().mockResolvedValue({ id: questionId, answer: 'USD', answer_source: 'read_from_doc', changed: true });
     const listClarifyingQuestions = vi.fn().mockResolvedValue([{ id: questionId }]);
+    const errors = await import('../../src/modules/contracts/extraction-field-correction-schema.js');
+    const persistExtractionFieldCorrection = correctionError
+      ? vi.fn().mockRejectedValue(correctionError === 'notfound'
+        ? new errors.ExtractionFieldNotFoundError() : new errors.ExtractionFieldCorrectionConflictError())
+      : vi.fn().mockResolvedValue({ id: questionId, correctionHash: 'a'.repeat(64), created: true });
     vi.doMock('../../src/modules/contracts/clarification-answers.js', () => ({ answerClarifyingQuestion, listClarifyingQuestions }));
+    vi.doMock('../../src/modules/contracts/persist-extraction-field-correction.js', () => ({ persistExtractionFieldCorrection }));
     const { registerClarificationAnswersRoutes } = await import('../../src/server/clarification-answers-routes.js');
     app = Fastify(); await app.register(registerClarificationAnswersRoutes); await app.ready();
-    return { answerClarifyingQuestion, listClarifyingQuestions };
+    return { answerClarifyingQuestion, listClarifyingQuestions, persistExtractionFieldCorrection };
   }
 
   it('lists tenant-scoped questions for a source document', async () => {
@@ -50,5 +56,31 @@ describe('clarification answer routes', () => {
     expect(calls.answerClarifyingQuestion).toHaveBeenCalledWith({}, {
       clientId, questionId, actorUserId: userId, answer: { answer: 'USD', answer_source: 'read_from_doc' },
     });
+  });
+
+  it('creates a schema-validated extraction-field correction', async () => {
+    const calls = await setup();
+    const invalid = await app!.inject({ method: 'POST', url: `/api/extraction-fields/${questionId}/corrections`,
+      payload: { human_value: 'value', answer_source: 'model_guess' } });
+    expect(invalid.statusCode).toBe(400);
+    const response = await app!.inject({ method: 'POST', url: `/api/extraction-fields/${questionId}/corrections`,
+      payload: { human_value: { normalizedValue: '2026-02-01' }, answer_source: 'analyst_knowledge' } });
+    expect(response.statusCode).toBe(201);
+    expect(calls.persistExtractionFieldCorrection).toHaveBeenCalledWith({}, {
+      clientId, fieldId: questionId, actorUserId: userId,
+      correction: { human_value: { normalizedValue: '2026-02-01' }, answer_source: 'analyst_knowledge' },
+    });
+  });
+
+  it('maps missing and conflicting correction evidence to stable API errors', async () => {
+    await setup('notfound');
+    const missing = await app!.inject({ method: 'POST', url: `/api/extraction-fields/${questionId}/corrections`,
+      payload: { human_value: 'value', answer_source: 'read_from_doc' } });
+    expect(missing.statusCode).toBe(404);
+    await app!.close(); app = undefined; vi.resetModules();
+    await setup('conflict');
+    const conflict = await app!.inject({ method: 'POST', url: `/api/extraction-fields/${questionId}/corrections`,
+      payload: { human_value: 'value', answer_source: 'read_from_doc' } });
+    expect(conflict.statusCode).toBe(409);
   });
 });

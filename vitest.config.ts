@@ -63,6 +63,7 @@ export default defineConfig({
         // focused unit tests; importing app.ts must not count this DB-only module
         // as untested unit code merely because the route registers it.
         'src/modules/contracts/clarification-answers.ts',
+        'src/modules/contracts/persist-extraction-field-correction.ts',
         // pdf-extract.ts's PDF-text-extraction step (extractInvoiceFromPdf) IS
         // unit-tested for real against real generated PDF bytes with an
         // injected LLM impl (test/unit/pdf-extract.test.ts, 6 tests) -- only

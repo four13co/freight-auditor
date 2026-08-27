@@ -13,6 +13,12 @@ import {
   answerClarifyingQuestion,
   listClarifyingQuestions,
 } from '../modules/contracts/clarification-answers.js';
+import {
+  ExtractionFieldCorrectionConflictError,
+  ExtractionFieldCorrectionInputSchema,
+  ExtractionFieldNotFoundError,
+} from '../modules/contracts/extraction-field-correction-schema.js';
+import { persistExtractionFieldCorrection } from '../modules/contracts/persist-extraction-field-correction.js';
 
 export async function registerClarificationAnswersRoutes(routes: FastifyInstance): Promise<void> {
   await registerTenantAuthPreHandler(routes);
@@ -41,6 +47,25 @@ export async function registerClarificationAnswersRoutes(routes: FastifyInstance
       if (error instanceof ZodError) return reply.code(400).send({ error: 'invalid clarification answer', details: error.issues });
       if (error instanceof ClarifyingQuestionNotFoundError) return reply.code(404).send({ error: error.message });
       if (error instanceof ClarificationAnswerConflictError) return reply.code(409).send({ error: error.message });
+      throw error;
+    }
+  });
+
+  routes.post('/api/extraction-fields/:id/corrections', async (request, reply) => {
+    const { id } = request.params as { id: string };
+    if (!isUuid(id)) return reply.code(400).send({ error: 'invalid extraction field id' });
+    const clientId = requireSingleClientId(request.tenantContext!);
+    if (!clientId || !request.actorUserId) return reply.code(401).send({ error: 'unauthorized' });
+    try {
+      const correction = ExtractionFieldCorrectionInputSchema.parse(request.body);
+      const result = await withTenantTx(request.tenantContext!, (client) => persistExtractionFieldCorrection(client, {
+        clientId, fieldId: id, actorUserId: request.actorUserId!, correction,
+      }));
+      return reply.code(result.created ? 201 : 200).send(result);
+    } catch (error) {
+      if (error instanceof ZodError) return reply.code(400).send({ error: 'invalid extraction field correction', details: error.issues });
+      if (error instanceof ExtractionFieldNotFoundError) return reply.code(404).send({ error: error.message });
+      if (error instanceof ExtractionFieldCorrectionConflictError) return reply.code(409).send({ error: error.message });
       throw error;
     }
   });

@@ -6,6 +6,7 @@ import type { AnthropicStructuredResult, VersionedAnthropicProvider, VersionedPr
 import { CLAUSE_NORMALIZATION_SCHEMA_VERSION, ClauseNormalizationSchema, ExtractionCitationSchema,
   type ClauseNormalization } from './clause-normalization.js';
 import { requireProposalCitations } from './proposal-citation-gate.js';
+import { rejectModelMoneyAuthority } from './model-money-authority-gate.js';
 
 export const PROPOSED_CRITERIA_SCHEMA_VERSION = 'proposed-criteria/1';
 export const PROPOSED_CRITERIA_PROMPT_VERSION = 'contract-proposed-criteria/1';
@@ -66,6 +67,20 @@ export const ProposedCriteriaModelOutputSchema = z.object({
   }
 });
 
+/** Retains suspicious model fields long enough for the authority gate to classify them before strict parsing. */
+export const ProposedCriteriaProviderEnvelopeSchema = z.object({
+  schemaVersion: z.literal(PROPOSED_CRITERIA_SCHEMA_VERSION),
+  criteria: z.array(z.object({
+    criterionKey: z.string().trim().min(1).max(255),
+    kind: z.string(),
+    ruleType: z.string(),
+    description: z.string(),
+    clauseReferences: z.array(z.string()),
+    citations: z.array(ExtractionCitationSchema),
+    ast: z.unknown(),
+  }).passthrough()).max(1_000),
+}).passthrough();
+
 export interface ProposedCriterion extends Omit<z.infer<typeof proposedCriterionSchema>, 'ast'> {
   ast: AstNode;
   astHash: string;
@@ -99,11 +114,13 @@ export async function generateProposedCriteria(
     throw new ProposedCriteriaError('NO_NORMALIZED_CLAUSES', 'no normalized clauses are available for proposals');
   }
   const providerResult = await provider.generateStructured({ prompt: PROPOSED_CRITERIA_PROMPT,
-    outputSchema: ProposedCriteriaModelOutputSchema, sourceDocumentSha256,
+    outputSchema: ProposedCriteriaProviderEnvelopeSchema, sourceDocumentSha256,
     untrustedEvidence: JSON.stringify({ schemaVersion: CLAUSE_NORMALIZATION_SCHEMA_VERSION,
       availableFacts: PROPOSABLE_FACT_KEYS, clauses: verified.clauses }) });
-  requireProposalCitations(providerResult.output, verified);
-  const criteria = providerResult.output.criteria.map((criterion): ProposedCriterion => {
+  rejectModelMoneyAuthority(providerResult.output);
+  const safeOutput = ProposedCriteriaModelOutputSchema.parse(providerResult.output);
+  requireProposalCitations(safeOutput, verified);
+  const criteria = safeOutput.criteria.map((criterion): ProposedCriterion => {
     const ast = canonicalizeAst(criterion.ast);
     return { ...criterion, ast, astHash: createHash('sha256').update(stableStringify(ast)).digest('hex'),
       expectedInputs: [...collectFactKeys(ast)].sort(), lifecycleState: 'PROPOSED' };

@@ -3,7 +3,7 @@ import { evaluate, verdict } from '../../src/modules/rule-engine/interpreter.js'
 import type { VersionedAnthropicProvider } from '../../src/modules/contracts/anthropic-provider.js';
 import { CLAUSE_NORMALIZATION_SCHEMA_VERSION, type ClauseNormalization } from '../../src/modules/contracts/clause-normalization.js';
 import { generateProposedCriteria, PROPOSED_CRITERIA_PROMPT, PROPOSED_CRITERIA_SCHEMA_VERSION,
-  ProposedCriteriaModelOutputSchema } from '../../src/modules/contracts/proposed-criteria.js';
+  ProposedCriteriaModelOutputSchema, ProposedCriteriaProviderEnvelopeSchema } from '../../src/modules/contracts/proposed-criteria.js';
 
 const citation = { pageNumber: 2, excerpt: 'A fuel surcharge applies to every shipment.', span: { offset: 410, length: 42 } };
 const normalization: ClauseNormalization = { schemaVersion: CLAUSE_NORMALIZATION_SCHEMA_VERSION, clauses: [{ status: 'NORMALIZED',
@@ -25,6 +25,17 @@ describe('proposed criteria and deterministic AST generation', () => {
       lifecycleState: 'ACTIVE' }] })).toThrow();
     expect(() => ProposedCriteriaModelOutputSchema.parse({ ...modelOutput, criteria: [{ ...criterion,
       ast: { type: 'arith', op: 'mul', args: [] } }] })).toThrow();
+  });
+
+  it('preserves prohibited provider fields for explicit money-authority rejection before strict parsing', async () => {
+    const unsafe = { ...modelOutput, criteria: [{ ...criterion, varianceAmount: '12.00', ast: {
+      type: 'arith', op: 'mul', args: [{ type: 'money', amount: '10.00', currency: 'USD' }] } }] };
+    expect(ProposedCriteriaProviderEnvelopeSchema.parse(unsafe)).toEqual(unsafe);
+    const generateStructured = vi.fn().mockResolvedValue({ output: unsafe });
+    await expect(generateProposedCriteria({ generateStructured } as unknown as VersionedAnthropicProvider,
+      'a'.repeat(64), normalization)).rejects.toMatchObject({ code: 'MODEL_MONEY_AUTHORITY_REJECTED',
+        rejections: expect.arrayContaining([expect.objectContaining({ code: 'ARITHMETIC_AST' }),
+          expect.objectContaining({ code: 'MONEY_LITERAL' }), expect.objectContaining({ code: 'AUTHORITATIVE_FINANCIAL_FIELD' })]) });
   });
 
   it('rejects unknown facts, non-boolean roots, invalid logic arity, duplicate keys, and excessive depth', () => {

@@ -37,6 +37,16 @@ export interface ReviewQueueItem { id: string; auditRunId: string; invoiceNumber
 export interface ReviewQueues { escalation: ReviewQueueItem[]; unassessable: ReviewQueueItem[] }
 export interface RubricConflict { id: string; criterion_key: string | null; conflict_type: string; detail: Record<string, unknown>; recorded_at: string }
 export interface RuleProposal { id: string; slug: string; rule_type: string; hardness: string; lifecycle_state: 'PROPOSED' | 'SHADOW'; ast_hash: string; recorded_at: string }
+export interface ContractRuleProposalPreview {
+  id: string; verifiedContractVersionId: string; contractName: string; criterionKey: string; ruleType: string;
+  description: string; ast: unknown; astHash: string; expectedInputs: string[]; lifecycleState: 'PROPOSED';
+  modelId: string; promptVersion: string; sourceDocumentSha256: string; extractionResponseHash: string;
+  verificationHash: string; recordedAt: string;
+  clauses: Array<{ clauseId: string; clauseRef: string; textExcerpt: string | null; pageRef: string | null; citations: unknown[] }>;
+  backtest: { id: string; passed: boolean; passCount: number; regressionCount: number; corpusHash: string; recordedAt: string } | null;
+  baseline: { ast: unknown; astHash: string; description: string | null } | null;
+  diff: { status: 'NEW' | 'UNCHANGED' | 'CHANGED'; astChanged: boolean; descriptionChanged: boolean };
+}
 export type ClarificationAnswerSource = 'read_from_doc' | 'analyst_knowledge' | 'carrier_confirmed';
 export interface ClarifyingQuestion {
   id: string;
@@ -208,6 +218,11 @@ export async function fetchRubricConflicts(): Promise<RubricConflict[]> {
 export async function fetchRuleProposals(): Promise<RuleProposal[]> {
   const res = await fetch('/api/rules/proposals', { headers: authHeaders() }); if (!res.ok) throw new Error('GET proposals failed');
   return ((await res.json()) as { proposals?: RuleProposal[] }).proposals ?? [];
+}
+export async function fetchContractRuleProposalPreviews(): Promise<ContractRuleProposalPreview[]> {
+  const res = await fetch('/api/contracts/rule-proposal-previews', { headers: authHeaders() });
+  if (!res.ok) throw new Error(`GET contract rule proposal previews failed: ${res.status}`);
+  return ((await res.json()) as { proposals?: ContractRuleProposalPreview[] }).proposals ?? [];
 }
 export async function ratifyRuleProposal(id: string, rationale: string): Promise<void> {
   const res = await fetch(`/api/rules/${id}/ratify`, { method: 'POST', headers: { ...authHeaders(), 'content-type': 'application/json' }, body: JSON.stringify({ rationale }) });

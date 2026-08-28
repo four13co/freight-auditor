@@ -5,6 +5,7 @@ import { makePool, withAppTx } from './helpers.js';
 import { setTenantTxScope } from '../../src/db/tenant-context.js';
 import { stableStringify } from '../../src/modules/evaluator/snapshot.js';
 import { backtestContractRuleProposals, ProposalBacktestError } from '../../src/modules/contracts/backtest-contract-rule-proposals.js';
+import { listContractRuleProposalPreviews } from '../../src/modules/contracts/list-contract-rule-proposal-previews.js';
 
 describe('contract proposal backtest evidence (DB)', () => {
   let pool: pg.Pool;
@@ -89,6 +90,17 @@ describe('contract proposal backtest evidence (DB)', () => {
     expect(failed).toMatchObject({ proposalCount: 1, passed: false, createdCount: 1 });
     expect((await pool.query(`SELECT lifecycle_state FROM contract_rule_proposal WHERE id=$1`, [proposalId])).rows[0].lifecycle_state)
       .toBe('PROPOSED');
+  });
+
+  it('returns a tenant-scoped read-only proposal preview with latest backtest and provenance diff', async () => {
+    const previews = await withAppTx(pool, { clientIds: [clientId] }, listContractRuleProposalPreviews);
+    expect(previews).toHaveLength(1);
+    expect(previews[0]).toMatchObject({ id: proposalId, verifiedContractVersionId: verifiedId, contractName: 'Backtest',
+      criterionKey: 'CONTRACT.PROPOSED.FUEL_PRESENT', lifecycleState: 'PROPOSED', astHash, expectedInputs: ['has_fuel_category'],
+      modelId: 'claude-opus-5', promptVersion: 'contract-proposed-criteria/1', sourceDocumentSha256: sha,
+      backtest: { passed: false, passCount: 1, regressionCount: 1 }, baseline: null,
+      diff: { status: 'NEW', astChanged: false, descriptionChanged: false } });
+    expect(await withAppTx(pool, { clientIds: [otherClientId] }, listContractRuleProposalPreviews)).toEqual([]);
   });
 
   it('fails closed when the supplied corpus does not cover the tenant proposal set', async () => {

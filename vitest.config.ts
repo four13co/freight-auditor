@@ -83,6 +83,11 @@ export default defineConfig({
         // for that, matching the existing entries in this list) rather than
         // an inline ignore comment, which has no precedent in this codebase.
         'src/modules/ingestion/pdf-extract.ts',
+        // P5.A.6: getClaimCurrencyConsistency is a Postgres transaction
+        // boundary (claim + recovery_event reads), same reasoning as
+        // get-derived-claim-status.ts (#175). The pure
+        // check-currency-consistency.ts has full unit coverage.
+        'src/modules/claims/get-claim-currency-consistency.ts',
       ],
       reporter: ['text', 'json-summary'],
       // Floor ratcheted up in this same PR (86e2u72u2) to match the coverage this

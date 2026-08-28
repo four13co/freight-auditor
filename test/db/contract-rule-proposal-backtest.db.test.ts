@@ -6,6 +6,7 @@ import { setTenantTxScope } from '../../src/db/tenant-context.js';
 import { stableStringify } from '../../src/modules/evaluator/snapshot.js';
 import { backtestContractRuleProposals, ProposalBacktestError } from '../../src/modules/contracts/backtest-contract-rule-proposals.js';
 import { listContractRuleProposalPreviews } from '../../src/modules/contracts/list-contract-rule-proposal-previews.js';
+import { acceptContractRuleProposal } from '../../src/modules/contracts/accept-contract-rule-proposal.js';
 
 describe('contract proposal backtest evidence (DB)', () => {
   let pool: pg.Pool;
@@ -15,6 +16,7 @@ describe('contract proposal backtest evidence (DB)', () => {
   const astHash = createHash('sha256').update(stableStringify(ast)).digest('hex');
   let clientId: string; let otherClientId: string; let userId: string; let carrierId: string;
   let sourceId: string; let contractId: string; let versionId: string; let verifiedId: string; let proposalId: string;
+  let passingBacktestId: string;
 
   beforeAll(async () => {
     pool = makePool();
@@ -55,6 +57,9 @@ describe('contract proposal backtest evidence (DB)', () => {
 
   afterAll(async () => {
     await pool.query(`DELETE FROM audit_event WHERE client_id=$1`, [clientId]);
+    await pool.query(`DELETE FROM contract_rule_proposal_acceptance WHERE client_id=$1`, [clientId]);
+    await pool.query(`DELETE FROM rule_version WHERE source_contract_rule_proposal_id=$1`, [proposalId]);
+    await pool.query(`DELETE FROM rule WHERE slug=$1`, [`contract-proposal-${proposalId}`]);
     await pool.query(`DELETE FROM contract_rule_proposal_backtest_case WHERE client_id=$1`, [clientId]);
     await pool.query(`DELETE FROM contract_rule_proposal_backtest WHERE client_id=$1`, [clientId]);
     await pool.query(`DELETE FROM contract_rule_proposal WHERE id=$1`, [proposalId]);
@@ -67,6 +72,7 @@ describe('contract proposal backtest evidence (DB)', () => {
 
   it('backtests every proposal with immutable deterministic case evidence and exact retry behavior', async () => {
     const first = await committed((client) => backtestContractRuleProposals(client, input()));
+    passingBacktestId = first.backtestIds[0]!;
     const retry = await committed((client) => backtestContractRuleProposals(client, input()));
     expect(first).toEqual({ backtestIds: retry.backtestIds, proposalCount: 1, passed: true, createdCount: 1 });
     expect(retry.createdCount).toBe(0);
@@ -101,6 +107,40 @@ describe('contract proposal backtest evidence (DB)', () => {
       backtest: { passed: false, passCount: 1, regressionCount: 1 }, baseline: null,
       diff: { status: 'NEW', astChanged: false, descriptionChanged: false } });
     expect(await withAppTx(pool, { clientIds: [otherClientId] }, listContractRuleProposalPreviews)).toEqual([]);
+  });
+
+  it('routes a human-accepted proposal with a pinned passing backtest to SHADOW exactly once', async () => {
+    const acceptanceInput = { clientId, proposalId, backtestId: passingBacktestId, actorUserId: userId,
+      rationale: 'Reviewed citations and regression corpus.' };
+    const first = await committed((client) => acceptContractRuleProposal(client, acceptanceInput));
+    const retry = await committed((client) => acceptContractRuleProposal(client, acceptanceInput));
+    expect(first).toEqual({ acceptanceId: retry.acceptanceId, shadowRuleVersionId: retry.shadowRuleVersionId, created: true });
+    expect(retry.created).toBe(false);
+    const shadow = (await pool.query(`SELECT lifecycle_state,hardness,ast_hash,source_contract_rule_proposal_id,
+      source_contract_rule_proposal_backtest_id,provenance FROM rule_version WHERE id=$1`, [first.shadowRuleVersionId])).rows[0];
+    expect(shadow).toMatchObject({ lifecycle_state: 'SHADOW', hardness: 'AI_DOCS', ast_hash: astHash,
+      source_contract_rule_proposal_id: proposalId, source_contract_rule_proposal_backtest_id: passingBacktestId,
+      provenance: { clientId, proposalId, backtestId: passingBacktestId } });
+    expect((await pool.query(`SELECT count(*)::int count FROM contract_rule_proposal_acceptance WHERE client_id=$1 AND proposal_id=$2`,
+      [clientId, proposalId])).rows[0].count).toBe(1);
+    expect((await pool.query(`SELECT count(*)::int count FROM audit_event WHERE client_id=$1 AND entity_id=$2
+      AND event='accepted_to_shadow'`, [clientId, proposalId])).rows[0].count).toBe(1);
+    const preview = (await withAppTx(pool, { clientIds: [clientId] }, listContractRuleProposalPreviews))[0]!;
+    expect(preview.acceptance).toMatchObject({ shadowRuleVersionId: first.shadowRuleVersionId,
+      acceptedBy: userId, rationale: acceptanceInput.rationale });
+  });
+
+  it('rejects failed, foreign, and conflicting acceptance evidence without creating ACTIVE rules', async () => {
+    const failedBacktest = (await pool.query(`SELECT id FROM contract_rule_proposal_backtest WHERE proposal_id=$1 AND passed=false`,
+      [proposalId])).rows[0].id;
+    await expect(withAppTx(pool, { clientIds: [clientId] }, (client) => acceptContractRuleProposal(client, {
+      clientId, proposalId, backtestId: failedBacktest, actorUserId: userId, rationale: 'No' })))
+      .rejects.toMatchObject({ code: 'PASSING_BACKTEST_REQUIRED' });
+    await expect(withAppTx(pool, { clientIds: [otherClientId] }, (client) => acceptContractRuleProposal(client, {
+      clientId: otherClientId, proposalId, backtestId: passingBacktestId, actorUserId: userId, rationale: 'No' })))
+      .rejects.toMatchObject({ code: 'PROPOSAL_NOT_FOUND' });
+    expect((await pool.query(`SELECT count(*)::int count FROM rule_version WHERE source_contract_rule_proposal_id=$1
+      AND lifecycle_state='ACTIVE'`, [proposalId])).rows[0].count).toBe(0);
   });
 
   it('fails closed when the supplied corpus does not cover the tenant proposal set', async () => {

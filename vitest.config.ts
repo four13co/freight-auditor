@@ -72,6 +72,7 @@ export default defineConfig({
         'src/modules/contracts/list-contract-rule-proposal-previews.ts',
         'src/modules/contracts/accept-contract-rule-proposal.ts',
         'src/modules/contracts/ratify-contract-rule-proposal.ts',
+        'src/modules/discovery/detect-unassessable-triggers.ts',
         // pdf-extract.ts's PDF-text-extraction step (extractInvoiceFromPdf) IS
         // unit-tested for real against real generated PDF bytes with an
         // injected LLM impl (test/unit/pdf-extract.test.ts, 6 tests) -- only

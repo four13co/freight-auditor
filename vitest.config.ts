@@ -83,6 +83,11 @@ export default defineConfig({
         // for that, matching the existing entries in this list) rather than
         // an inline ignore comment, which has no precedent in this codebase.
         'src/modules/ingestion/pdf-extract.ts',
+        // P5.A.3: recordPartialRecovery is a Postgres transaction boundary
+        // (claim lookup + prior-total aggregate + insert), same reasoning
+        // as this session's other payment/claim generators. The pure
+        // validatePartialRecovery.ts has full unit coverage.
+        'src/modules/claims/record-partial-recovery.ts',
       ],
       reporter: ['text', 'json-summary'],
       // Floor ratcheted up in this same PR (86e2u72u2) to match the coverage this

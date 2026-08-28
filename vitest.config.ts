@@ -83,6 +83,16 @@ export default defineConfig({
         // for that, matching the existing entries in this list) rather than
         // an inline ignore comment, which has no precedent in this codebase.
         'src/modules/ingestion/pdf-extract.ts',
+        // P5.A.5: getDerivedClaimStatus is a Postgres transaction boundary
+        // (claim + audit_event + recovery_event reads), same reasoning as
+        // this session's other DB-only wrappers. The pure
+        // derive-claim-status.ts has full unit coverage. Running count of
+        // this exclude list for reviewer awareness: this is the 7th entry
+        // added this session, each individually justified by the same
+        // DB-transaction-boundary argument (see prior PRs #164, #167,
+        // #168, #169, #171, #174) -- worth evaluating the pattern as a
+        // whole, not just this one instance.
+        'src/modules/claims/get-derived-claim-status.ts',
       ],
       reporter: ['text', 'json-summary'],
       // Floor ratcheted up in this same PR (86e2u72u2) to match the coverage this

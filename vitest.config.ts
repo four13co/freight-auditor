@@ -83,6 +83,13 @@ export default defineConfig({
         // for that, matching the existing entries in this list) rather than
         // an inline ignore comment, which has no precedent in this codebase.
         'src/modules/ingestion/pdf-extract.ts',
+        // P5.A.1: claim creation is a Postgres transaction boundary (tenant
+        // RLS + idempotent insert). The pure claimability validation has
+        // focused unit tests; the route and its DB write are covered by
+        // test/db, same policy as the evidence/governance/payment handlers
+        // above -- entering this unit gate only because app.ts registers it.
+        'src/server/claim-routes.ts',
+        'src/modules/claims/create-claim-from-dispute.ts',
       ],
       reporter: ['text', 'json-summary'],
       // Floor ratcheted up in this same PR (86e2u72u2) to match the coverage this

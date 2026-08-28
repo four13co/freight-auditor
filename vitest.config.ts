@@ -109,6 +109,17 @@ export default defineConfig({
         // DB-only writers. The pure compute-claim-aging-deadline.ts has
         // full unit coverage.
         'src/modules/claims/set-claim-aging-deadline.ts',
+        // P5.B.4: the underlying claim/recovery query modules are Postgres
+        // transaction boundaries (list + join queries against RLS-scoped
+        // tables) requiring a real Postgres, covered by test/db. The route
+        // handler itself (claim-recovery-routes.ts) is NOT excluded --
+        // unlike this session's other route exclusions, its request
+        // validation and control flow are exercised directly via mocked
+        // withTenantTx/list-claims/get-claim-detail in
+        // claim-recovery-endpoint.test.ts, matching findings-endpoint.test.ts's
+        // precedent (86e2xcna3) for testing a route's own logic without a DB.
+        'src/modules/claims/list-claims.ts',
+        'src/modules/claims/get-claim-detail.ts',
       ],
       reporter: ['text', 'json-summary'],
       // Floor ratcheted up in this same PR (86e2u72u2) to match the coverage this

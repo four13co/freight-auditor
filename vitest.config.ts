@@ -73,6 +73,14 @@ export default defineConfig({
         'src/modules/contracts/accept-contract-rule-proposal.ts',
         'src/modules/contracts/ratify-contract-rule-proposal.ts',
         'src/modules/discovery/detect-unassessable-triggers.ts',
+        // P4.B.5: payment authorization is a DB transaction boundary (audit_run
+        // lookup + idempotent payment_gate_decision insert + audit event), same
+        // policy as the evidence/governance/contracts handlers above. The
+        // request-shape/action-mapping half (payment-authorization-action.ts)
+        // has its own focused unit tests; this pair is exercised for real
+        // against migrated Postgres in test/db.
+        'src/modules/payments/authorize-payment.ts',
+        'src/server/payment-routes.ts',
         // pdf-extract.ts's PDF-text-extraction step (extractInvoiceFromPdf) IS
         // unit-tested for real against real generated PDF bytes with an
         // injected LLM impl (test/unit/pdf-extract.test.ts, 6 tests) -- only

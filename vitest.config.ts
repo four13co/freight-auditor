@@ -71,6 +71,7 @@ export default defineConfig({
         // DB transaction-boundary exclusions above.
         'src/modules/contracts/list-contract-rule-proposal-previews.ts',
         'src/modules/contracts/accept-contract-rule-proposal.ts',
+        'src/modules/contracts/ratify-contract-rule-proposal.ts',
         // pdf-extract.ts's PDF-text-extraction step (extractInvoiceFromPdf) IS
         // unit-tested for real against real generated PDF bytes with an
         // injected LLM impl (test/unit/pdf-extract.test.ts, 6 tests) -- only

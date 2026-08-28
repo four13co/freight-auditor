@@ -35,7 +35,7 @@ export async function acceptContractRuleProposal(client: pg.PoolClient, untruste
   const insertedVersion = await client.query<{ id: string }>(`INSERT INTO rule_version(rule_id,hardness,lifecycle_state,ast,ast_hash,
     expected_inputs,emits,provenance,clause_id,source_contract_rule_proposal_id,source_contract_rule_proposal_backtest_id)
     VALUES($1,'AI_DOCS','SHADOW',$2::jsonb,$3,$4::jsonb,'PASS_FAIL',$5::jsonb,$6,$7,$8)
-    ON CONFLICT(source_contract_rule_proposal_id) WHERE source_contract_rule_proposal_id IS NOT NULL DO NOTHING RETURNING id`,
+    ON CONFLICT(source_contract_rule_proposal_id,lifecycle_state) WHERE source_contract_rule_proposal_id IS NOT NULL DO NOTHING RETURNING id`,
   [rule.rows[0]!.id, JSON.stringify(proposal.ast), proposal.ast_hash, JSON.stringify(proposal.expected_inputs),
     JSON.stringify(provenance), proposal.contract_clause_id, proposal.id, backtest.id]);
   let shadowId = insertedVersion.rows[0]?.id;

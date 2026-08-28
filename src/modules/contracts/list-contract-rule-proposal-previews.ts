@@ -9,6 +9,7 @@ export interface ContractRuleProposalPreview {
   backtest: { id: string; passed: boolean; passCount: number; regressionCount: number; corpusHash: string; recordedAt: string } | null;
   baseline: { ast: unknown; astHash: string; description: string | null } | null;
   acceptance: { id: string; shadowRuleVersionId: string; acceptedBy: string; rationale: string; recordedAt: string } | null;
+  ratification: { id: string; activeRuleVersionId: string; ratifiedBy: string; rationale: string; recordedAt: string } | null;
   diff: { status: 'NEW' | 'UNCHANGED' | 'CHANGED'; astChanged: boolean; descriptionChanged: boolean };
 }
 
@@ -22,6 +23,7 @@ interface PreviewRow {
   baseline_ast: unknown | null; baseline_ast_hash: string | null; baseline_description: string | null;
   acceptance_id: string | null; shadow_rule_version_id: string | null; accepted_by: string | null;
   acceptance_rationale: string | null; acceptance_recorded_at: Date | string | null;
+  ratification_id:string|null;active_rule_version_id:string|null;ratified_by:string|null;ratification_rationale:string|null;ratification_recorded_at:Date|string|null;
 }
 
 export async function listContractRuleProposalPreviews(client: pg.PoolClient): Promise<ContractRuleProposalPreview[]> {
@@ -32,7 +34,8 @@ export async function listContractRuleProposalPreviews(client: pg.PoolClient): P
     bt.pass_count,bt.regression_count,bt.corpus_hash,bt.recorded_at AS backtest_recorded_at,
     base.ast AS baseline_ast,base.ast_hash AS baseline_ast_hash,base.description AS baseline_description,
     acc.id AS acceptance_id,acc.shadow_rule_version_id,acc.accepted_by,acc.rationale AS acceptance_rationale,
-    acc.recorded_at AS acceptance_recorded_at
+    acc.recorded_at AS acceptance_recorded_at,rat.id AS ratification_id,rat.active_rule_version_id,rat.ratified_by,
+    rat.rationale AS ratification_rationale,rat.recorded_at AS ratification_recorded_at
     FROM contract_rule_proposal p
     JOIN verified_contract_version vv ON vv.id=p.verified_contract_version_id AND vv.client_id=p.client_id
     JOIN contract_version cv ON cv.id=vv.contract_version_id AND cv.client_id=p.client_id
@@ -51,6 +54,7 @@ export async function listContractRuleProposalPreviews(client: pg.PoolClient): P
       WHERE cb.criterion_key=p.criterion_key
       ORDER BY cvb.recorded_at DESC,cr.rank,rv.recorded_at DESC LIMIT 1) base ON true
     LEFT JOIN contract_rule_proposal_acceptance acc ON acc.client_id=p.client_id AND acc.proposal_id=p.id
+    LEFT JOIN contract_rule_proposal_ratification rat ON rat.client_id=p.client_id AND rat.acceptance_id=acc.id
     ORDER BY p.recorded_at,p.id`)).rows;
   return rows.map((row) => {
     const astChanged = row.baseline_ast_hash !== null && row.baseline_ast_hash !== row.ast_hash;
@@ -69,6 +73,7 @@ export async function listContractRuleProposalPreviews(client: pg.PoolClient): P
       acceptance: row.acceptance_id === null ? null : { id: row.acceptance_id, shadowRuleVersionId: row.shadow_rule_version_id!,
         acceptedBy: row.accepted_by!, rationale: row.acceptance_rationale!,
         recordedAt: new Date(row.acceptance_recorded_at!).toISOString() },
+      ratification:row.ratification_id===null?null:{id:row.ratification_id,activeRuleVersionId:row.active_rule_version_id!,ratifiedBy:row.ratified_by!,rationale:row.ratification_rationale!,recordedAt:new Date(row.ratification_recorded_at!).toISOString()},
       diff: { status: row.baseline_ast_hash === null ? 'NEW' : astChanged || descriptionChanged ? 'CHANGED' : 'UNCHANGED',
         astChanged, descriptionChanged } };
   });

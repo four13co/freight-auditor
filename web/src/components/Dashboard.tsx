@@ -152,7 +152,7 @@ export function Dashboard() {
               <ContractRubricPreview rows={contractProposals} onAccepted={(id, shadowRuleVersionId, rationale) =>
                 setContractProposals((items) => items.map((item) => item.id === id ? { ...item, acceptance: {
                   id: `accepted-${id}`, shadowRuleVersionId, acceptedBy: 'current analyst', rationale,
-                  recordedAt: new Date().toISOString() } } : item))} />
+                  recordedAt: new Date().toISOString() } } : item))} onRatified={(id,activeRuleVersionId,rationale)=>setContractProposals(items=>items.map(item=>item.id===id?{...item,ratification:{id:`ratified-${id}`,activeRuleVersionId,ratifiedBy:'current analyst',rationale,recordedAt:new Date().toISOString()}}:item))} />
               <FindingsTable
                 rows={rows}
                 carrierFilter={carrierFilter}

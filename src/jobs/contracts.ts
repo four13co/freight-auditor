@@ -12,6 +12,7 @@ export const JOB_NAMES = {
   POLL_SFTP_V1: 'freight.ingestion.sftp.poll.v1',
   ESCALATE_CLAIM_V1: 'freight.claims.escalate.v1',
   FOLLOW_UP_CLAIM_V1: 'freight.claims.follow-up.v1',
+  DISCOVER_TRIGGERS_V1: 'freight.discovery.detect-triggers.v1',
 } as const;
 
 export type JobName = (typeof JOB_NAMES)[keyof typeof JOB_NAMES];
@@ -24,6 +25,7 @@ export const JOB_DEAD_LETTER_NAMES: Record<JobName, string> = {
   [JOB_NAMES.POLL_SFTP_V1]: 'freight.ingestion.sftp.poll.dead-letter.v1',
   [JOB_NAMES.ESCALATE_CLAIM_V1]: 'freight.claims.escalate.dead-letter.v1',
   [JOB_NAMES.FOLLOW_UP_CLAIM_V1]: 'freight.claims.follow-up.dead-letter.v1',
+  [JOB_NAMES.DISCOVER_TRIGGERS_V1]: 'freight.discovery.detect-triggers.dead-letter.v1',
 };
 
 const id = z.string().uuid();
@@ -66,6 +68,10 @@ export const jobPayloadSchemas = {
   [JOB_NAMES.FOLLOW_UP_CLAIM_V1]: z.object({
     ...envelope,
     claimId: id,
+  }).strict(),
+  [JOB_NAMES.DISCOVER_TRIGGERS_V1]: z.object({
+    ...envelope,
+    auditRunId: id,
   }).strict(),
 } satisfies Record<JobName, z.ZodType>;
 

@@ -15,7 +15,7 @@ const base = {
 
 describe('versioned job contracts', () => {
   it('keeps every registered queue name explicitly versioned and mapped to a schema', () => {
-    expect(Object.values(JOB_NAMES)).toHaveLength(7);
+    expect(Object.values(JOB_NAMES)).toHaveLength(8);
     for (const name of Object.values(JOB_NAMES)) {
       expect(name).toMatch(/\.v1$/);
       expect(jobPayloadSchemas[name]).toBeDefined();
@@ -78,5 +78,14 @@ describe('versioned job contracts', () => {
 
   it('fails closed for a claim follow-up job missing claimId', () => {
     expect(() => parseJobPayload(JOB_NAMES.FOLLOW_UP_CLAIM_V1, { ...base })).toThrow(JobPayloadValidationError);
+  });
+
+  it('parses a valid tenant-scoped discovery-trigger job', () => {
+    const payload = { ...base, auditRunId: '10000000-0000-4000-8000-000000000002' };
+    expect(parseJobPayload(JOB_NAMES.DISCOVER_TRIGGERS_V1, payload)).toEqual(payload);
+  });
+
+  it('fails closed when a discovery-trigger job omits the audit run', () => {
+    expect(() => parseJobPayload(JOB_NAMES.DISCOVER_TRIGGERS_V1, base)).toThrow(JobPayloadValidationError);
   });
 });

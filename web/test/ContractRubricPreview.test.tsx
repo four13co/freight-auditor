@@ -14,6 +14,7 @@ const row: ContractRuleProposalPreview = {
   backtest: { id: 'bt1', passed: true, passCount: 3, regressionCount: 0, corpusHash: 'e'.repeat(64), recordedAt: '2026-08-27T00:01:00.000Z' },
   baseline: { ast: { type: 'lit', value: false }, astHash: 'f'.repeat(64), description: 'Old fuel rule.' },
   acceptance: null,
+  ratification: null,
   diff: { status: 'CHANGED', astChanged: true, descriptionChanged: true },
 };
 
@@ -58,4 +59,6 @@ describe('ContractRubricPreview', () => {
     expect(fetch).toHaveBeenCalledWith('/api/contracts/rule-proposals/p1/accept', expect.objectContaining({ method: 'POST' }));
     expect(JSON.parse((fetch.mock.calls[0]?.[1] as RequestInit).body as string)).toEqual({ backtestId: 'bt1', rationale: 'Reviewed evidence' });
   });
+
+  it('requires a second explicit human rationale before ACTIVE / FIRM ratification',async()=>{const fetch=vi.fn().mockResolvedValue(new Response(JSON.stringify({activeRuleVersionId:'active-1'}),{status:201}));vi.stubGlobal('fetch',fetch);const ratified=vi.fn();const accepted={...row,acceptance:{id:'accept-1',shadowRuleVersionId:'shadow-1',acceptedBy:'human',rationale:'accept',recordedAt:row.recordedAt}};render(<ContractRubricPreview rows={[accepted]} onRatified={ratified}/>);const button=screen.getByRole('button',{name:'Ratify ACTIVE / FIRM'});expect(button).toBeDisabled();fireEvent.focus(screen.getByLabelText(`Ratification rationale for ${row.criterionKey}`));fireEvent.change(screen.getByLabelText(`Ratification rationale for ${row.criterionKey}`),{target:{value:'Human reviewed shadow outcomes'}});fireEvent.click(button);await waitFor(()=>expect(ratified).toHaveBeenCalledWith('p1','active-1','Human reviewed shadow outcomes'));expect(fetch).toHaveBeenCalledWith('/api/contracts/rule-proposal-acceptances/accept-1/ratify',expect.objectContaining({method:'POST'}));});
 });

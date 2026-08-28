@@ -6,6 +6,7 @@ import { isUuid } from '../shared/request-validation.js';
 import { promoteShadowRule } from '../modules/rule-engine/promote-shadow-rule.js';
 import { listContractRuleProposalPreviews } from '../modules/contracts/list-contract-rule-proposal-previews.js';
 import { acceptContractRuleProposal, ProposalAcceptanceError } from '../modules/contracts/accept-contract-rule-proposal.js';
+import { ratifyContractRuleProposal, ProposalRatificationError } from '../modules/contracts/ratify-contract-rule-proposal.js';
 
 export async function registerRuleGovernanceRoutes(routes: FastifyInstance): Promise<void> {
   await registerTenantAuthPreHandler(routes);
@@ -29,6 +30,12 @@ export async function registerRuleGovernanceRoutes(routes: FastifyInstance): Pro
       if (error instanceof ProposalAcceptanceError) return reply.code(error.code === 'PROPOSAL_NOT_FOUND' ? 404 : 409).send({ error: error.code });
       throw error;
     }
+  });
+  routes.post('/api/contracts/rule-proposal-acceptances/:id/ratify', async (request, reply) => {
+    const { id }=request.params as {id:string}; if(!isUuid(id)) return reply.code(400).send({error:'invalid acceptance id'});
+    const body=request.body as {rationale?:unknown}; if(typeof body.rationale!=='string'||!body.rationale.trim()) return reply.code(400).send({error:'rationale is required'});
+    try { const result=await withTenantTx(request.tenantContext!,client=>ratifyContractRuleProposal(client,{clientId:request.tenantContext!.clientIds![0]!,acceptanceId:id,actorUserId:request.actorUserId!,rationale:body.rationale as string})); return reply.code(result.created?201:200).send(result); }
+    catch(error){if(error instanceof ProposalRatificationError)return reply.code(error.code==='ACCEPTANCE_NOT_FOUND'?404:409).send({error:error.code});throw error;}
   });
   routes.post('/api/rules/:id/ratify', async (request, reply) => {
     const { id } = request.params as { id: string }; if (!isUuid(id)) return reply.code(400).send({ error: 'invalid rule version id' });

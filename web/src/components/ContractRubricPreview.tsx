@@ -1,10 +1,10 @@
 import { useState } from 'react';
-import { acceptContractRuleProposal, type ContractRuleProposalPreview } from '../lib/api.js';
+import { acceptContractRuleProposal, ratifyContractRuleProposal, type ContractRuleProposalPreview } from '../lib/api.js';
 
 function shortHash(value: string) { return value.slice(0, 12); }
 function pretty(value: unknown) { return JSON.stringify(value, null, 2); }
 
-export function ContractRubricPreview({ rows, onAccepted }: { rows: ContractRuleProposalPreview[]; onAccepted?: (id: string, shadowId: string, rationale: string) => void }) {
+export function ContractRubricPreview({ rows, onAccepted, onRatified }: { rows: ContractRuleProposalPreview[]; onAccepted?: (id: string, shadowId: string, rationale: string) => void; onRatified?:(id:string,activeId:string,rationale:string)=>void }) {
   const [open, setOpen] = useState<string | null>(null);
   const [accepting, setAccepting] = useState<string | null>(null);
   const [rationale, setRationale] = useState('');
@@ -22,6 +22,7 @@ export function ContractRubricPreview({ rows, onAccepted }: { rows: ContractRule
         <span className={`px-2 py-1 text-[10px] font-extrabold uppercase tracking-wide ${row.diff.status === 'CHANGED' ? 'bg-[#fff0cc] text-[#7a4b00]' : row.diff.status === 'NEW' ? 'bg-[#dcecf7] text-[#175275]' : 'bg-[#dceddf] text-[#27603d]'}`}>{row.diff.status}</span>
         <span className={`px-2 py-1 text-[10px] font-extrabold uppercase tracking-wide ${row.backtest?.passed ? 'bg-[#dceddf] text-[#27603d]' : 'bg-[#f6d9d5] text-[#8a2418]'}`}>{row.backtest ? row.backtest.passed ? `Backtest passed ${row.backtest.passCount}/${row.backtest.passCount + row.backtest.regressionCount}` : `${row.backtest.regressionCount} regressions` : 'Backtest missing'}</span>
         {row.acceptance && <span className="bg-[#d8d3ef] px-2 py-1 text-[10px] font-extrabold uppercase tracking-wide text-[#463b78]">Accepted to SHADOW</span>}
+        {row.ratification && <span className="bg-[#201e1d] px-2 py-1 text-[10px] font-extrabold uppercase tracking-wide text-white">Human-ratified ACTIVE / FIRM</span>}
       </div>
       <dl className="mt-3 grid gap-2 text-[11px] sm:grid-cols-3"><div><dt className="font-extrabold uppercase">Rule type</dt><dd>{row.ruleType}</dd></div>
         <div><dt className="font-extrabold uppercase">AST hash</dt><dd className="font-mono" title={row.astHash}>{shortHash(row.astHash)}…</dd></div>
@@ -40,6 +41,8 @@ export function ContractRubricPreview({ rows, onAccepted }: { rows: ContractRule
             .then((result) => onAccepted?.(row.id, result.shadowRuleVersionId, reason), () => setError(row.id)); }}>Accept to SHADOW</button>
       </div>}
       {error === row.id && <p role="alert" className="mt-2 text-xs font-bold text-[#b3261e]">Proposal could not be accepted. Refresh its backtest evidence and try again.</p>}
+      {row.acceptance&&!row.ratification&&<div className="mt-3 flex flex-wrap gap-2"><label className="sr-only" htmlFor={`ratify-rationale-${row.id}`}>Ratification rationale for {row.criterionKey}</label><input id={`ratify-rationale-${row.id}`} value={accepting===`ratify-${row.id}`?rationale:''} onFocus={()=>{setAccepting(`ratify-${row.id}`);setRationale('');setError(null);}} onChange={event=>setRationale(event.target.value)} placeholder="Human ACTIVE / FIRM rationale" className="h-9 min-w-[240px] flex-1 border bg-white px-3 text-xs"/><button type="button" disabled={accepting!==`ratify-${row.id}`||!rationale.trim()} className="h-9 bg-[#ec3013] px-4 text-xs font-extrabold text-white disabled:opacity-35" onClick={()=>{const reason=rationale.trim();void ratifyContractRuleProposal(row.acceptance!.id,reason).then(result=>onRatified?.(row.id,result.activeRuleVersionId,reason),()=>setError(`ratify-${row.id}`));}}>Ratify ACTIVE / FIRM</button></div>}
+      {error===`ratify-${row.id}`&&<p role="alert" className="mt-2 text-xs font-bold text-[#b3261e]">Ratification failed closed. Refresh the acceptance evidence and try again.</p>}
       {open === row.id && <div className="mt-3 grid gap-3 lg:grid-cols-2" data-testid="proposal-diff">
         <div><h4 className="mb-1 text-xs font-extrabold">Current active criterion</h4><pre className="max-h-72 overflow-auto bg-[#201e1d] p-3 text-[11px] text-white">{row.baseline ? pretty(row.baseline.ast) : 'No active criterion with this key.'}</pre></div>
         <div><h4 className="mb-1 text-xs font-extrabold">Proposed criterion</h4><pre className="max-h-72 overflow-auto bg-[#201e1d] p-3 text-[11px] text-white">{pretty(row.ast)}</pre></div>

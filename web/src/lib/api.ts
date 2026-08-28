@@ -46,6 +46,7 @@ export interface ContractRuleProposalPreview {
   backtest: { id: string; passed: boolean; passCount: number; regressionCount: number; corpusHash: string; recordedAt: string } | null;
   baseline: { ast: unknown; astHash: string; description: string | null } | null;
   acceptance: { id: string; shadowRuleVersionId: string; acceptedBy: string; rationale: string; recordedAt: string } | null;
+  ratification: { id: string; activeRuleVersionId: string; ratifiedBy: string; rationale: string; recordedAt: string } | null;
   diff: { status: 'NEW' | 'UNCHANGED' | 'CHANGED'; astChanged: boolean; descriptionChanged: boolean };
 }
 export type ClarificationAnswerSource = 'read_from_doc' | 'analyst_knowledge' | 'carrier_confirmed';
@@ -231,6 +232,7 @@ export async function acceptContractRuleProposal(id: string, backtestId: string,
   if (!res.ok) throw new Error(`POST contract rule proposal acceptance failed: ${res.status}`);
   return (await res.json()) as { shadowRuleVersionId: string };
 }
+export async function ratifyContractRuleProposal(acceptanceId:string,rationale:string):Promise<{activeRuleVersionId:string}>{const res=await fetch(`/api/contracts/rule-proposal-acceptances/${acceptanceId}/ratify`,{method:'POST',headers:{...authHeaders(),'content-type':'application/json'},body:JSON.stringify({rationale})});if(!res.ok)throw new Error(`POST contract rule proposal ratification failed: ${res.status}`);return await res.json() as {activeRuleVersionId:string};}
 export async function ratifyRuleProposal(id: string, rationale: string): Promise<void> {
   const res = await fetch(`/api/rules/${id}/ratify`, { method: 'POST', headers: { ...authHeaders(), 'content-type': 'application/json' }, body: JSON.stringify({ rationale }) });
   if (!res.ok) throw new Error('POST ratify failed');

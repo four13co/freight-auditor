@@ -47,4 +47,24 @@ describe('central audit-event writer', () => {
     })).rejects.toBeInstanceOf(AuditEventValidationError);
     expect(query).not.toHaveBeenCalled();
   });
+
+  it('coerces a raw Date in detail to an ISO string instead of failing validation', async () => {
+    const query = vi.fn().mockImplementation(async (_sql: string, values: unknown[]) => ({ rows: [{ id: values[0], created: true }] }));
+    const recordedAt = new Date('2026-08-28T12:00:00.000Z');
+    await expect(writeAuditEvent({ query } as unknown as PoolClient, {
+      ...event, detail: { recordedAt },
+    })).resolves.toMatchObject({ created: true });
+    const [, values] = query.mock.calls[0]!;
+    expect((values as unknown[])[9]).toEqual({ recordedAt: '2026-08-28T12:00:00.000Z' });
+  });
+
+  it('coerces a Date nested inside an array or object within detail', async () => {
+    const query = vi.fn().mockImplementation(async (_sql: string, values: unknown[]) => ({ rows: [{ id: values[0], created: true }] }));
+    const at = new Date('2026-08-28T12:00:00.000Z');
+    await expect(writeAuditEvent({ query } as unknown as PoolClient, {
+      ...event, detail: { events: [{ at }] },
+    })).resolves.toMatchObject({ created: true });
+    const [, values] = query.mock.calls[0]!;
+    expect((values as unknown[])[9]).toEqual({ events: [{ at: '2026-08-28T12:00:00.000Z' }] });
+  });
 });

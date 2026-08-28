@@ -4,6 +4,7 @@ import { registerTenantAuthPreHandler } from '../modules/findings/tenant-auth.js
 import { transitionRuleLifecycle } from '../modules/rule-engine/transition-rule-lifecycle.js';
 import { isUuid } from '../shared/request-validation.js';
 import { promoteShadowRule } from '../modules/rule-engine/promote-shadow-rule.js';
+import { listContractRuleProposalPreviews } from '../modules/contracts/list-contract-rule-proposal-previews.js';
 
 export async function registerRuleGovernanceRoutes(routes: FastifyInstance): Promise<void> {
   await registerTenantAuthPreHandler(routes);
@@ -11,6 +12,8 @@ export async function registerRuleGovernanceRoutes(routes: FastifyInstance): Pro
     (await client.query(`SELECT rv.id, r.slug, r.rule_type, rv.hardness, rv.lifecycle_state, rv.ast_hash, rv.recorded_at
       FROM rule_version rv JOIN rule r ON r.id=rv.rule_id WHERE rv.lifecycle_state IN ('PROPOSED','SHADOW')
       ORDER BY rv.recorded_at, rv.id`)).rows) }));
+  routes.get('/api/contracts/rule-proposal-previews', async (request) => ({ proposals: await withTenantTx(
+    request.tenantContext!, (client) => listContractRuleProposalPreviews(client)) }));
   routes.post('/api/rules/:id/ratify', async (request, reply) => {
     const { id } = request.params as { id: string }; if (!isUuid(id)) return reply.code(400).send({ error: 'invalid rule version id' });
     const body = request.body as { rationale?: unknown };

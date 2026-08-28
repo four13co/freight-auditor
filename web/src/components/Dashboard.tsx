@@ -9,6 +9,7 @@ import { ReviewQueues } from './ReviewQueues.js';
 import { RubricConflictQueue } from './RubricConflictQueue.js';
 import { RuleProposalQueue } from './RuleProposalQueue.js';
 import { ExtractionReview } from './ExtractionReview.js';
+import { ContractRubricPreview } from './ContractRubricPreview.js';
 import {
   fetchFindings,
   fetchFindingsSummary,
@@ -16,6 +17,7 @@ import {
   fetchReviewQueues,
   fetchRubricConflicts,
   fetchRuleProposals,
+  fetchContractRuleProposalPreviews,
   type FindingRow,
   type FindingsSortDir,
   type FindingsSortKey,
@@ -24,6 +26,7 @@ import {
   type ReviewQueues as ReviewQueuesData,
   type RubricConflict,
   type RuleProposal,
+  type ContractRuleProposalPreview,
 } from '../lib/api.js';
 
 /**
@@ -61,6 +64,7 @@ export function Dashboard() {
   const [reviewQueues, setReviewQueues] = useState<ReviewQueuesData>({ escalation: [], unassessable: [] });
   const [rubricConflicts, setRubricConflicts] = useState<RubricConflict[]>([]);
   const [ruleProposals, setRuleProposals] = useState<RuleProposal[]>([]);
+  const [contractProposals, setContractProposals] = useState<ContractRuleProposalPreview[]>([]);
 
   const load = useCallback(() => {
     setStatus('loading');
@@ -106,6 +110,7 @@ export function Dashboard() {
     fetchReviewQueues().then(setReviewQueues, () => setReviewQueues({ escalation: [], unassessable: [] }));
     fetchRubricConflicts().then(setRubricConflicts, () => setRubricConflicts([]));
     fetchRuleProposals().then(setRuleProposals, () => setRuleProposals([]));
+    fetchContractRuleProposalPreviews().then(setContractProposals, () => setContractProposals([]));
   }, []);
 
   return (
@@ -144,6 +149,7 @@ export function Dashboard() {
               <RubricConflictQueue rows={rubricConflicts} />
               <RuleProposalQueue rows={ruleProposals} onRatified={(id, lifecycle) => setRuleProposals((rows) => lifecycle === 'ACTIVE'
                 ? rows.filter((r) => r.id !== id) : rows.map((r) => r.id === id ? { ...r, lifecycle_state: 'SHADOW' } : r))} />
+              <ContractRubricPreview rows={contractProposals} />
               <FindingsTable
                 rows={rows}
                 carrierFilter={carrierFilter}

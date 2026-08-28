@@ -65,6 +65,11 @@ export default defineConfig({
         'src/modules/contracts/clarification-answers.ts',
         'src/modules/contracts/persist-extraction-field-correction.ts',
         'src/modules/contracts/finalize-contract-version.ts',
+        // P3.C.8: read-only Postgres projection behind rule-governance-routes;
+        // its joins, tenant RLS, latest-backtest selection, and diff mapping
+        // are exercised against migrated Postgres in test/db, matching the
+        // DB transaction-boundary exclusions above.
+        'src/modules/contracts/list-contract-rule-proposal-previews.ts',
         // pdf-extract.ts's PDF-text-extraction step (extractInvoiceFromPdf) IS
         // unit-tested for real against real generated PDF bytes with an
         // injected LLM impl (test/unit/pdf-extract.test.ts, 6 tests) -- only

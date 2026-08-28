@@ -30,6 +30,9 @@ function mockFetchOnce(url: string) {
   if (url.includes('/api/rules/proposals')) {
     return Promise.resolve(new Response(JSON.stringify({ proposals: [] }), { status: 200 }));
   }
+  if (url.includes('/api/contracts/rule-proposal-previews')) {
+    return Promise.resolve(new Response(JSON.stringify({ proposals: [] }), { status: 200 }));
+  }
   if (url.includes('/api/findings')) {
     return Promise.resolve(new Response(JSON.stringify({ findings: ROWS }), { status: 200 }));
   }
@@ -46,6 +49,13 @@ afterEach(() => {
 });
 
 describe('Dashboard', () => {
+  it('loads the tenant contract-rubric preview through its read-only API boundary', async () => {
+    render(<Dashboard />);
+    await waitFor(() => expect(screen.getByTestId('contract-rubric-preview')).toBeInTheDocument());
+    expect(fetchMock.mock.calls.some(([input]) => String(input) === '/api/contracts/rule-proposal-previews')).toBe(true);
+    expect(screen.getByText('No contract rule proposals are ready to preview.')).toBeInTheDocument();
+  });
+
   it('AC1: renders N rows with correct billed/expected/variance/status display', async () => {
     render(<Dashboard />);
     const foundRows = await waitFor(() => {

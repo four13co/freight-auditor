@@ -83,6 +83,13 @@ export default defineConfig({
         // for that, matching the existing entries in this list) rather than
         // an inline ignore comment, which has no precedent in this codebase.
         'src/modules/ingestion/pdf-extract.ts',
+        // P4.B.2: default hold-decision generator is a Postgres transaction
+        // boundary (audit_run lookup + idempotent insert), same shape as
+        // generate-do-not-pay-decision.ts. The holdThenApprove:false
+        // short-circuit and the not-SCORED rejection path have focused unit
+        // tests with a mocked PoolClient; the SCORED/idempotent-insert
+        // branches require a real Postgres and are covered by test/db.
+        'src/modules/payments/generate-hold-decision.ts',
       ],
       reporter: ['text', 'json-summary'],
       // Floor ratcheted up in this same PR (86e2u72u2) to match the coverage this

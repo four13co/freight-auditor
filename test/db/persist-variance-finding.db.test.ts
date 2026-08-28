@@ -10,6 +10,7 @@ import { CONTRACT_RUBRIC } from '../../src/modules/rubric-resolver/contract-rubr
 import { STANDARD_RUBRIC } from '../../src/modules/rubric-resolver/standard-rubric.js';
 import { seedCriteria } from '../../scripts/seed-criteria.mjs';
 import { GOLDEN_210, MIXED_CURRENCY_LINEHAUL_310, testCategorize } from '../fixtures/edi-golden.js';
+import { detectUnassessableTriggers } from '../../src/modules/discovery/detect-unassessable-triggers.js';
 
 /**
  * 86e2v17p5: persistAuditRun derives variance_finding rows from the
@@ -60,6 +61,7 @@ describe('persistAuditRun variance_finding derivation (DB)', () => {
     const owner = await pool.connect();
     try {
       await owner.query(`DELETE FROM audit_event WHERE client_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM discovery_trigger WHERE client_id = $1`, [clientId]);
       await owner.query(`DELETE FROM audit_replay_manifest WHERE client_id = $1`, [clientId]);
       // variance_finding before audit_run (86e2v250p-adjacent regression this
       // item's own prior build attempt introduced and fixed: FK ordering).
@@ -181,13 +183,18 @@ describe('persistAuditRun variance_finding derivation (DB)', () => {
          WHERE vf.audit_run_id = $1 AND c.criterion_key = 'CONTRACT.RATE_VARIANCE'`,
         [p.auditRunId],
       );
-      return vf.rows;
+      const first=await detectUnassessableTriggers(c,{clientId,auditRunId:p.auditRunId});
+      const retry=await detectUnassessableTriggers(c,{clientId,auditRunId:p.auditRunId});
+      const triggers=await c.query(`SELECT source_kind,criterion_id,rule_version_id,evaluated_expr_hash,detail FROM discovery_trigger WHERE audit_run_id=$1`,[p.auditRunId]);
+      return {rows:vf.rows,first,retry,triggers:triggers.rows};
     });
 
-    expect(row).toHaveLength(1);
-    expect(row[0].direction).toBeNull();
-    expect(row[0].variance_amount).toBeNull();
-    expect(row[0].classification).toMatch(/unassessable/i);
+    expect(row.rows).toHaveLength(1);
+    expect(row.rows[0].direction).toBeNull();
+    expect(row.rows[0].variance_amount).toBeNull();
+    expect(row.rows[0].classification).toMatch(/unassessable/i);
+    expect(row.first.createdCount).toBeGreaterThan(0);expect(row.retry).toEqual({triggerIds:row.first.triggerIds,createdCount:0});
+    expect(row.triggers.some((trigger)=>trigger.source_kind==='VARIANCE_FINDING'&&/^[a-f0-9]{64}$/.test(trigger.evaluated_expr_hash))).toBe(true);
   });
 
   it('a CONFORMED charge_finding writes NO variance_finding row', async () => {

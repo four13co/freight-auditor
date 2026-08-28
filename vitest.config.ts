@@ -83,6 +83,14 @@ export default defineConfig({
         // for that, matching the existing entries in this list) rather than
         // an inline ignore comment, which has no precedent in this codebase.
         'src/modules/ingestion/pdf-extract.ts',
+        // P4.B.3: short-pay generator is a Postgres transaction boundary
+        // (audit_run + charge_fact + variance_finding lookups, idempotent
+        // insert), same shape/reasoning as generate-hold-decision.ts. The
+        // pure amount composition (compose-short-pay-decision.ts) and the
+        // opt-in default/not-SCORED short-circuits have focused unit tests;
+        // the SCORED/idempotent-insert branches require a real Postgres and
+        // are covered by test/db.
+        'src/modules/payments/generate-short-pay-decision.ts',
       ],
       reporter: ['text', 'json-summary'],
       // Floor ratcheted up in this same PR (86e2u72u2) to match the coverage this

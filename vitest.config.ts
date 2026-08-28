@@ -83,6 +83,11 @@ export default defineConfig({
         // for that, matching the existing entries in this list) rather than
         // an inline ignore comment, which has no precedent in this codebase.
         'src/modules/ingestion/pdf-extract.ts',
+        // P5.A.4: resolveClaim is a Postgres transaction boundary (claim +
+        // prior-total lookups, conditional insert, status update), same
+        // reasoning as record-partial-recovery.ts (#171). The pure
+        // validate-claim-resolution.ts has full unit coverage.
+        'src/modules/claims/resolve-claim.ts',
       ],
       reporter: ['text', 'json-summary'],
       // Floor ratcheted up in this same PR (86e2u72u2) to match the coverage this

@@ -70,6 +70,7 @@ export default defineConfig({
         // are exercised against migrated Postgres in test/db, matching the
         // DB transaction-boundary exclusions above.
         'src/modules/contracts/list-contract-rule-proposal-previews.ts',
+        'src/modules/contracts/accept-contract-rule-proposal.ts',
         // pdf-extract.ts's PDF-text-extraction step (extractInvoiceFromPdf) IS
         // unit-tested for real against real generated PDF bytes with an
         // injected LLM impl (test/unit/pdf-extract.test.ts, 6 tests) -- only

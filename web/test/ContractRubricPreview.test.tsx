@@ -1,5 +1,5 @@
-import { fireEvent, render, screen, within } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ContractRubricPreview } from '../src/components/ContractRubricPreview.js';
 import type { ContractRuleProposalPreview } from '../src/lib/api.js';
 
@@ -13,10 +13,12 @@ const row: ContractRuleProposalPreview = {
   clauses: [{ clauseId: 'cl1', clauseRef: '4.2', textExcerpt: 'Fuel applies.', pageRef: '7', citations: [{ pageNumber: 7 }] }],
   backtest: { id: 'bt1', passed: true, passCount: 3, regressionCount: 0, corpusHash: 'e'.repeat(64), recordedAt: '2026-08-27T00:01:00.000Z' },
   baseline: { ast: { type: 'lit', value: false }, astHash: 'f'.repeat(64), description: 'Old fuel rule.' },
+  acceptance: null,
   diff: { status: 'CHANGED', astChanged: true, descriptionChanged: true },
 };
 
 describe('ContractRubricPreview', () => {
+  afterEach(() => vi.unstubAllGlobals());
   it('shows immutable provenance, clause location, diff status, and passing backtest without activation controls', () => {
     render(<ContractRubricPreview rows={[row]} />);
     const card = screen.getByTestId('contract-proposal-preview');
@@ -44,5 +46,16 @@ describe('ContractRubricPreview', () => {
     expect(screen.getByText('NEW')).toBeInTheDocument(); expect(screen.getByText('Backtest missing')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Inspect diff' })); expect(screen.getByText('No active criterion with this key.')).toBeInTheDocument();
     rerender(<ContractRubricPreview rows={[]} />); expect(screen.getByText('No contract rule proposals are ready to preview.')).toBeInTheDocument();
+  });
+
+  it('requires analyst rationale and posts only a passing pinned backtest to SHADOW', async () => {
+    const fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({ shadowRuleVersionId: 'shadow-1' }), { status: 201 }));
+    vi.stubGlobal('fetch', fetch); const accepted = vi.fn(); render(<ContractRubricPreview rows={[row]} onAccepted={accepted} />);
+    const button = screen.getByRole('button', { name: 'Accept to SHADOW' }); expect(button).toBeDisabled();
+    fireEvent.focus(screen.getByLabelText(`Acceptance rationale for ${row.criterionKey}`));
+    fireEvent.change(screen.getByLabelText(`Acceptance rationale for ${row.criterionKey}`), { target: { value: '  Reviewed evidence  ' } });
+    fireEvent.click(button); await waitFor(() => expect(accepted).toHaveBeenCalledWith('p1', 'shadow-1', 'Reviewed evidence'));
+    expect(fetch).toHaveBeenCalledWith('/api/contracts/rule-proposals/p1/accept', expect.objectContaining({ method: 'POST' }));
+    expect(JSON.parse((fetch.mock.calls[0]?.[1] as RequestInit).body as string)).toEqual({ backtestId: 'bt1', rationale: 'Reviewed evidence' });
   });
 });

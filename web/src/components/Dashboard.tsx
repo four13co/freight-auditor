@@ -149,7 +149,10 @@ export function Dashboard() {
               <RubricConflictQueue rows={rubricConflicts} />
               <RuleProposalQueue rows={ruleProposals} onRatified={(id, lifecycle) => setRuleProposals((rows) => lifecycle === 'ACTIVE'
                 ? rows.filter((r) => r.id !== id) : rows.map((r) => r.id === id ? { ...r, lifecycle_state: 'SHADOW' } : r))} />
-              <ContractRubricPreview rows={contractProposals} />
+              <ContractRubricPreview rows={contractProposals} onAccepted={(id, shadowRuleVersionId, rationale) =>
+                setContractProposals((items) => items.map((item) => item.id === id ? { ...item, acceptance: {
+                  id: `accepted-${id}`, shadowRuleVersionId, acceptedBy: 'current analyst', rationale,
+                  recordedAt: new Date().toISOString() } } : item))} />
               <FindingsTable
                 rows={rows}
                 carrierFilter={carrierFilter}

@@ -45,6 +45,7 @@ export interface ContractRuleProposalPreview {
   clauses: Array<{ clauseId: string; clauseRef: string; textExcerpt: string | null; pageRef: string | null; citations: unknown[] }>;
   backtest: { id: string; passed: boolean; passCount: number; regressionCount: number; corpusHash: string; recordedAt: string } | null;
   baseline: { ast: unknown; astHash: string; description: string | null } | null;
+  acceptance: { id: string; shadowRuleVersionId: string; acceptedBy: string; rationale: string; recordedAt: string } | null;
   diff: { status: 'NEW' | 'UNCHANGED' | 'CHANGED'; astChanged: boolean; descriptionChanged: boolean };
 }
 export type ClarificationAnswerSource = 'read_from_doc' | 'analyst_knowledge' | 'carrier_confirmed';
@@ -223,6 +224,12 @@ export async function fetchContractRuleProposalPreviews(): Promise<ContractRuleP
   const res = await fetch('/api/contracts/rule-proposal-previews', { headers: authHeaders() });
   if (!res.ok) throw new Error(`GET contract rule proposal previews failed: ${res.status}`);
   return ((await res.json()) as { proposals?: ContractRuleProposalPreview[] }).proposals ?? [];
+}
+export async function acceptContractRuleProposal(id: string, backtestId: string, rationale: string): Promise<{ shadowRuleVersionId: string }> {
+  const res = await fetch(`/api/contracts/rule-proposals/${id}/accept`, { method: 'POST',
+    headers: { ...authHeaders(), 'content-type': 'application/json' }, body: JSON.stringify({ backtestId, rationale }) });
+  if (!res.ok) throw new Error(`POST contract rule proposal acceptance failed: ${res.status}`);
+  return (await res.json()) as { shadowRuleVersionId: string };
 }
 export async function ratifyRuleProposal(id: string, rationale: string): Promise<void> {
   const res = await fetch(`/api/rules/${id}/ratify`, { method: 'POST', headers: { ...authHeaders(), 'content-type': 'application/json' }, body: JSON.stringify({ rationale }) });

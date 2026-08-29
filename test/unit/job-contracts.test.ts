@@ -15,7 +15,7 @@ const base = {
 
 describe('versioned job contracts', () => {
   it('keeps every registered queue name explicitly versioned and mapped to a schema', () => {
-    expect(Object.values(JOB_NAMES)).toHaveLength(6);
+    expect(Object.values(JOB_NAMES)).toHaveLength(7);
     for (const name of Object.values(JOB_NAMES)) {
       expect(name).toMatch(/\.v1$/);
       expect(jobPayloadSchemas[name]).toBeDefined();
@@ -60,6 +60,15 @@ describe('versioned job contracts', () => {
       ...base,
       source: 'eia_diesel',
     })).toThrow(JobPayloadValidationError);
+  });
+
+  it('parses a valid claim escalation job', () => {
+    const payload = { ...base, claimId: '10000000-0000-4000-8000-000000000003' };
+    expect(parseJobPayload(JOB_NAMES.ESCALATE_CLAIM_V1, payload)).toEqual(payload);
+  });
+
+  it('fails closed for a claim escalation job missing claimId', () => {
+    expect(() => parseJobPayload(JOB_NAMES.ESCALATE_CLAIM_V1, { ...base })).toThrow(JobPayloadValidationError);
   });
 
   it('parses a valid claim follow-up job', () => {

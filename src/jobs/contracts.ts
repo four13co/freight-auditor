@@ -10,6 +10,7 @@ export const JOB_NAMES = {
   REPLAY_AUDIT_V1: 'freight.audit.replay.v1',
   SYNC_REFERENCE_DATA_V1: 'freight.reference-data.sync.v1',
   POLL_SFTP_V1: 'freight.ingestion.sftp.poll.v1',
+  ESCALATE_CLAIM_V1: 'freight.claims.escalate.v1',
   FOLLOW_UP_CLAIM_V1: 'freight.claims.follow-up.v1',
 } as const;
 
@@ -21,6 +22,7 @@ export const JOB_DEAD_LETTER_NAMES: Record<JobName, string> = {
   [JOB_NAMES.REPLAY_AUDIT_V1]: 'freight.audit.replay.dead-letter.v1',
   [JOB_NAMES.SYNC_REFERENCE_DATA_V1]: 'freight.reference-data.sync.dead-letter.v1',
   [JOB_NAMES.POLL_SFTP_V1]: 'freight.ingestion.sftp.poll.dead-letter.v1',
+  [JOB_NAMES.ESCALATE_CLAIM_V1]: 'freight.claims.escalate.dead-letter.v1',
   [JOB_NAMES.FOLLOW_UP_CLAIM_V1]: 'freight.claims.follow-up.dead-letter.v1',
 };
 
@@ -56,6 +58,10 @@ export const jobPayloadSchemas = {
   [JOB_NAMES.POLL_SFTP_V1]: z.object({
     ...envelope,
     connectionId: id,
+  }).strict(),
+  [JOB_NAMES.ESCALATE_CLAIM_V1]: z.object({
+    ...envelope,
+    claimId: id,
   }).strict(),
   [JOB_NAMES.FOLLOW_UP_CLAIM_V1]: z.object({
     ...envelope,

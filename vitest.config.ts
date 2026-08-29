@@ -83,6 +83,12 @@ export default defineConfig({
         // for that, matching the existing entries in this list) rather than
         // an inline ignore comment, which has no precedent in this codebase.
         'src/modules/ingestion/pdf-extract.ts',
+        // P5.A.7: getRecoveryTraceability is a Postgres transaction
+        // boundary (recovery_event + variance_finding + dispute_line
+        // joins), same reasoning as this session's other reconciliation
+        // reads (#175, #176). The pure check-recovery-traceability.ts has
+        // full unit coverage.
+        'src/modules/claims/get-recovery-traceability.ts',
         // P5.A.6: getClaimCurrencyConsistency is a Postgres transaction
         // boundary (claim + recovery_event reads), same reasoning as
         // get-derived-claim-status.ts (#175). The pure

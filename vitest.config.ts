@@ -83,6 +83,11 @@ export default defineConfig({
         // for that, matching the existing entries in this list) rather than
         // an inline ignore comment, which has no precedent in this codebase.
         'src/modules/ingestion/pdf-extract.ts',
+        // P5.A.3: recordPartialRecovery is a Postgres transaction boundary
+        // (claim lookup + prior-total aggregate + insert), same reasoning
+        // as this session's other payment/claim generators. The pure
+        // validatePartialRecovery.ts has full unit coverage.
+        'src/modules/claims/record-partial-recovery.ts',
         // P5.B.1: setClaimAgingDeadline is a Postgres transaction boundary
         // (claim lookup + update), same reasoning as this session's other
         // DB-only writers. The pure compute-claim-aging-deadline.ts has

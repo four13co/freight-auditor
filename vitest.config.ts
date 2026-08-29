@@ -83,6 +83,11 @@ export default defineConfig({
         // for that, matching the existing entries in this list) rather than
         // an inline ignore comment, which has no precedent in this codebase.
         'src/modules/ingestion/pdf-extract.ts',
+        // P5.A.6: getClaimCurrencyConsistency is a Postgres transaction
+        // boundary (claim + recovery_event reads), same reasoning as
+        // get-derived-claim-status.ts (#175). The pure
+        // check-currency-consistency.ts has full unit coverage.
+        'src/modules/claims/get-claim-currency-consistency.ts',
         // P5.A.4: resolveClaim is a Postgres transaction boundary (claim +
         // prior-total lookups, conditional insert, status update), same
         // reasoning as record-partial-recovery.ts (#171). The pure

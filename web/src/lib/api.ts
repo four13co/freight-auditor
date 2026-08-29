@@ -303,3 +303,25 @@ export async function answerClarifyingQuestion(
   if (!res.ok) throw new Error(`PUT clarification answer failed: ${res.status}`);
   return (await res.json()) as { id: string; answer: string; answer_source: ClarificationAnswerSource; changed: boolean };
 }
+
+/**
+ * Mirrors the backend's GET /api/recovery-report response shape exactly
+ * (get-client-recovery-summary.ts's ClientRecoverySummaryBucket): camelCase
+ * keys, money fields as strings (pg numeric). One bucket per currency the
+ * tenant's claims use.
+ */
+export interface RecoveryReportBucket {
+  currency: string | null;
+  claimed: string;
+  recovered: string;
+  outstanding: string;
+  writtenOff: string;
+  denied: string;
+  reconciles: boolean;
+}
+
+export async function fetchRecoveryReport(): Promise<RecoveryReportBucket[]> {
+  const res = await fetch('/api/recovery-report', { headers: authHeaders() });
+  if (!res.ok) throw new Error(`GET recovery report failed: ${res.status}`);
+  return ((await res.json()) as { buckets: RecoveryReportBucket[] }).buckets;
+}

@@ -88,6 +88,16 @@ export default defineConfig({
         // reasoning as record-partial-recovery.ts (#171). The pure
         // validate-claim-resolution.ts has full unit coverage.
         'src/modules/claims/resolve-claim.ts',
+        // P5.A.3: recordPartialRecovery is a Postgres transaction boundary
+        // (claim lookup + prior-total aggregate + insert), same reasoning
+        // as this session's other payment/claim generators. The pure
+        // validatePartialRecovery.ts has full unit coverage.
+        'src/modules/claims/record-partial-recovery.ts',
+        // P5.B.1: setClaimAgingDeadline is a Postgres transaction boundary
+        // (claim lookup + update), same reasoning as this session's other
+        // DB-only writers. The pure compute-claim-aging-deadline.ts has
+        // full unit coverage.
+        'src/modules/claims/set-claim-aging-deadline.ts',
       ],
       reporter: ['text', 'json-summary'],
       // Floor ratcheted up in this same PR (86e2u72u2) to match the coverage this

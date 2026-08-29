@@ -15,6 +15,7 @@
     "review_status": "update required",
     "done_status": "complete"
   },
+  "merge_policy": "auto-on-pass-safe",
   "git": {
     "integration_branch": "Development",
     "production_branch": "Production",
@@ -51,5 +52,5 @@
   "owner": {
     "clickup_handle": "greg@four13.co"
   },
-  "_bootstrap_notes": "Status labels mapped from this workspace's custom statuses (no native In-Review/Needs-Info labels existed): review_status=update required, blocked/ambiguous=on hold, done=complete. Chosen unattended on 2026-07-02 with defaults; adjust if wrong. (The build/lint/typecheck/test scripts above were aspirational at bootstrap, pending item 86e24cy2d — that scaffolding has since landed and every command is real and passing as of 2026-08-12.) queue.transport set to \"cli\" on 2026-08-14 after the MCP ClickUp transport hit a multi-hour rate limit mid-session (several rounds blocked on reads); the `cup` CLI was confirmed reachable and answering the same queries throughout, so every queue operation now goes through `cup` instead of mcp__claude_ai_ClickUp__* tools."
+  "_bootstrap_notes": "Status labels mapped from this workspace's custom statuses (no native In-Review/Needs-Info labels existed): review_status=update required, blocked/ambiguous=on hold, done=complete. Chosen unattended on 2026-07-02 with defaults; adjust if wrong. (The build/lint/typecheck/test scripts above were aspirational at bootstrap, pending item 86e24cy2d — that scaffolding has since landed and every command is real and passing as of 2026-08-12.) queue.transport set to \"cli\" on 2026-08-14 after the MCP ClickUp transport hit a multi-hour rate limit mid-session (several rounds blocked on reads); the `cup` CLI was confirmed reachable and answering the same queries throughout, so every queue operation now goes through `cup` instead of mcp__claude_ai_ClickUp__* tools. merge_policy set to \"auto-on-pass-safe\" on 2026-08-29 (Principle 4c) after a 30-PR reviewed-pass backlog piled up at the human merge gate with no policy set (absent defaults to \"human\"); Review's PASS verdict now auto-merges a unit only when every item is S/M appetite, unflagged (no rabbit-hole/solo-risk flag), and CI is fully green — anything else still lands in the manual merge-order table."
 }

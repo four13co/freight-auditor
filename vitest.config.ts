@@ -83,6 +83,32 @@ export default defineConfig({
         // for that, matching the existing entries in this list) rather than
         // an inline ignore comment, which has no precedent in this codebase.
         'src/modules/ingestion/pdf-extract.ts',
+        // P5.A.7: getRecoveryTraceability is a Postgres transaction
+        // boundary (recovery_event + variance_finding + dispute_line
+        // joins), same reasoning as this session's other reconciliation
+        // reads (#175, #176). The pure check-recovery-traceability.ts has
+        // full unit coverage.
+        'src/modules/claims/get-recovery-traceability.ts',
+        // P5.A.6: getClaimCurrencyConsistency is a Postgres transaction
+        // boundary (claim + recovery_event reads), same reasoning as
+        // get-derived-claim-status.ts (#175). The pure
+        // check-currency-consistency.ts has full unit coverage.
+        'src/modules/claims/get-claim-currency-consistency.ts',
+        // P5.A.4: resolveClaim is a Postgres transaction boundary (claim +
+        // prior-total lookups, conditional insert, status update), same
+        // reasoning as record-partial-recovery.ts (#171). The pure
+        // validate-claim-resolution.ts has full unit coverage.
+        'src/modules/claims/resolve-claim.ts',
+        // P5.A.3: recordPartialRecovery is a Postgres transaction boundary
+        // (claim lookup + prior-total aggregate + insert), same reasoning
+        // as this session's other payment/claim generators. The pure
+        // validatePartialRecovery.ts has full unit coverage.
+        'src/modules/claims/record-partial-recovery.ts',
+        // P5.B.1: setClaimAgingDeadline is a Postgres transaction boundary
+        // (claim lookup + update), same reasoning as this session's other
+        // DB-only writers. The pure compute-claim-aging-deadline.ts has
+        // full unit coverage.
+        'src/modules/claims/set-claim-aging-deadline.ts',
       ],
       reporter: ['text', 'json-summary'],
       // Floor ratcheted up in this same PR (86e2u72u2) to match the coverage this

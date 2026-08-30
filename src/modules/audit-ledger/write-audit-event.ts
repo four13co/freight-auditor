@@ -2,8 +2,14 @@ import type pg from 'pg';
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
 
+// pg returns timestamptz as a JS Date (no setTypeParser override in this repo),
+// so a raw Date reaching a call site's detail payload is expected input, not a
+// caller error -- coerce it to an ISO string here so every writeAuditEvent
+// call site is fixed at the enforcement point, instead of requiring each
+// caller to remember `.toISOString()` (86e30txf4: recurred 3x uncaught).
 const jsonValue: z.ZodType<unknown> = z.lazy(() => z.union([
   z.string(), z.number().finite(), z.boolean(), z.null(),
+  z.date().transform((d) => d.toISOString()),
   z.array(jsonValue), z.record(z.string(), jsonValue),
 ]));
 const postgresUuid = z.string().regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);

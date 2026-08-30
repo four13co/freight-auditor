@@ -35,7 +35,7 @@ export interface CreateClaimResult {
  * see validate-claimable-dispute.ts), and opens one claim row against it.
  *
  * Idempotent per dispute via a real UNIQUE(client_id, dispute_id) partial
- * index (migration 0045): INSERT ... ON CONFLICT DO NOTHING, then a
+ * index (migration 0051): INSERT ... ON CONFLICT DO NOTHING, then a
  * fallback SELECT for the winning row if this call lost a concurrent race
  * -- the pattern used elsewhere this session (createWorkflowInstance) once
  * a real constraint exists, replacing the earlier plain SELECT-then-INSERT

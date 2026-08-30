@@ -303,3 +303,32 @@ export async function answerClarifyingQuestion(
   if (!res.ok) throw new Error(`PUT clarification answer failed: ${res.status}`);
   return (await res.json()) as { id: string; answer: string; answer_source: ClarificationAnswerSource; changed: boolean };
 }
+
+/** Mirrors get-dispute-detail.ts's DisputeDetail shape exactly: camelCase keys, money fields as strings, createdAt as an ISO string over the wire. */
+export interface DisputeLineRow {
+  id: string;
+  varianceFindingId: string | null;
+  amount: string | null;
+  currency: string | null;
+}
+export interface DisputeDetail {
+  id: string;
+  carrierId: string | null;
+  status: string;
+  amountClaimed: string | null;
+  currency: string | null;
+  createdAt: string;
+  lines: DisputeLineRow[];
+}
+
+export async function fetchDisputeDetail(id: string): Promise<DisputeDetail> {
+  const res = await fetch(`/api/disputes/${id}`, { headers: authHeaders() });
+  if (!res.ok) throw new Error(`GET dispute detail failed: ${res.status}`);
+  return (await res.json()) as DisputeDetail;
+}
+
+export async function approveDispute(id: string): Promise<{ disputeId: string; status: string }> {
+  const res = await fetch(`/api/disputes/${id}/approve`, { method: 'POST', headers: authHeaders() });
+  if (!res.ok) throw new Error(`POST dispute approval failed: ${res.status}`);
+  return (await res.json()) as { disputeId: string; status: string };
+}

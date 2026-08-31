@@ -60,6 +60,28 @@ describe('deploy.yml (unit, job-dependency + guard wiring)', () => {
     expect(migrateStep!.run).toContain('op run --env-file=.env.migrate');
   });
 
+  it('runs migrate up with --no-check-order, so an out-of-order file never blocks a deploy (86e31e6vz)', () => {
+    // checkOrder is node-pg-migrate's pure ordering LINT, not a correctness
+    // requirement -- it never affects WHICH migrations run (getMigrationsToRun
+    // applies any not-yet-recorded file regardless of position), only whether
+    // an out-of-order one throws before anything runs. This repo's migrations
+    // are additive-only by policy (no renames/drops), and this exact
+    // "a same-day-merge race lands a lower number behind an already-applied
+    // higher one" collision has broken three separate deploys (#212, #217,
+    // #221) -- each required a reactive rename-and-re-PR cycle to unblock.
+    // Disabling the lint removes the failure mode structurally: a colliding
+    // number never blocks the deploy, and it still fails loudly (any other
+    // broken migration's own SQL error) if it genuinely depended on content
+    // that isn't there yet. Duplicate-number detection is unaffected --
+    // that's test/unit/migration-numbering.test.ts's separate, still-active
+    // static check.
+    const workflow = loadDeployWorkflow();
+    const migrateStep = getJob(workflow, 'migrate-database').steps.find((step) =>
+      step.run?.includes('npm run migrate'),
+    );
+    expect(migrateStep!.run).toContain('npm run migrate -- up --no-check-order');
+  });
+
   it('allows the guard to pass on Development (dedicated dev DB) but not on other branches (86e25uqxa)', () => {
     // freight-auditor-dev's DATABASE_URL is a dedicated dev Neon instance, not shared/
     // production, so CI is allowed to auto-migrate it. Production has no DATABASE_URL
@@ -468,7 +490,7 @@ describe('deploy.yml (unit, job-dependency + guard wiring)', () => {
       const migrateStep = getJob(workflow, 'migrate-database').steps.find((step) =>
         step.run?.includes('npm run migrate'),
       );
-      const migrateIndex = migrateStep!.run!.indexOf('npm run migrate up');
+      const migrateIndex = migrateStep!.run!.indexOf('npm run migrate');
       const seedCriteriaIndex = migrateStep!.run!.indexOf('npm run seed:criteria');
       expect(migrateIndex).toBeGreaterThan(-1);
       expect(seedCriteriaIndex).toBeGreaterThan(migrateIndex);

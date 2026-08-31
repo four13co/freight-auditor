@@ -1,20 +1,8 @@
 import { Decimal } from 'decimal.js';
+import { CLAIM_TERMINAL_EVENTS, type ClaimTerminalStatus } from './claim-status.js';
 
-/**
- * The three terminal claim.status values #174's resolveClaim writes, and the
- * audit_event names it writes alongside each ('claim.<status>'). Duplicated
- * here as string literals (not imported from resolve-claim.ts, #174, still
- * open/unmerged) -- a looser coupling than the shape-matching pattern used
- * elsewhere this session. If this drifts, the failure is loud (a resolved
- * claim derives as 'open'), not silent.
- */
-export const CLAIM_TERMINAL_EVENTS = {
-  recovered: 'claim.recovered',
-  denied: 'claim.denied',
-  written_off: 'claim.written_off',
-} as const;
+export { CLAIM_TERMINAL_EVENTS, type ClaimTerminalStatus };
 
-export type ClaimTerminalStatus = keyof typeof CLAIM_TERMINAL_EVENTS;
 const TERMINAL_EVENT_TO_STATUS = new Map<string, ClaimTerminalStatus>(
   Object.entries(CLAIM_TERMINAL_EVENTS).map(([status, event]) => [event, status as ClaimTerminalStatus]),
 );

@@ -1,7 +1,6 @@
 import type pg from 'pg';
 import { deterministicAuditEventId, writeAuditEvent } from '../audit-ledger/write-audit-event.js';
-
-const TERMINAL_STATUSES = new Set(['recovered', 'denied', 'written_off']);
+import { isClaimTerminalStatus } from './claim-status.js';
 
 /**
  * The audit_event name P5.B.2's generateClaimFollowUp writes. Duplicated
@@ -64,7 +63,7 @@ export async function generateClaimEscalation(
   );
   const claim = claimResult.rows[0];
   if (!claim) throw new GenerateClaimEscalationError('CLAIM_NOT_FOUND');
-  if (TERMINAL_STATUSES.has(claim.status)) throw new GenerateClaimEscalationError('CLAIM_TERMINAL');
+  if (isClaimTerminalStatus(claim.status)) throw new GenerateClaimEscalationError('CLAIM_TERMINAL');
 
   const followUpResult = await client.query<FollowUpEventRow>(
     `SELECT recorded_at FROM audit_event

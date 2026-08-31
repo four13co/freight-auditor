@@ -1,16 +1,6 @@
 import type pg from 'pg';
 import { z } from 'zod';
-
-/**
- * The terminal audit_event names #186's deriveClaimStatus/CLAIM_TERMINAL_EVENTS
- * (P5.A.5, still open/unmerged) treats as authoritative over claim.status --
- * that PR established status is DERIVED from these events, not read
- * directly off the column, so this queue filters the same way rather than
- * trusting claim.status (which can lag or diverge). Duplicated as string
- * literals rather than imported, same disclosed-duplication treatment
- * #187 (P5.B.3) gave this exact set of names.
- */
-const CLAIM_TERMINAL_EVENT_NAMES = ['claim.recovered', 'claim.denied', 'claim.written_off'] as const;
+import { CLAIM_TERMINAL_EVENT_NAMES } from './claim-status.js';
 
 /**
  * The audit_event name #184's generateClaimFollowUp (P5.B.2, still

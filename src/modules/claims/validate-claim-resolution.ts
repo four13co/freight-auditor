@@ -1,4 +1,5 @@
 import { Decimal } from 'decimal.js';
+import { isClaimTerminalStatus } from './claim-status.js';
 
 /**
  * Pure validation for the three ways a claim reaches a terminal outcome
@@ -38,8 +39,6 @@ export interface ValidatedClaimResolution {
   newStatus: 'recovered' | 'denied' | 'written_off';
 }
 
-const TERMINAL_STATUSES = new Set(['recovered', 'denied', 'written_off']);
-
 export class ClaimResolutionError extends Error {
   constructor(
     readonly code:
@@ -63,7 +62,7 @@ export function validateClaimResolution(
   amountRecovered: string | null,
   currency: string | null,
 ): ValidatedClaimResolution {
-  if (TERMINAL_STATUSES.has(claim.status)) throw new ClaimResolutionError('ALREADY_TERMINAL');
+  if (isClaimTerminalStatus(claim.status)) throw new ClaimResolutionError('ALREADY_TERMINAL');
 
   if (kind === 'DENIAL') {
     if (amountRecovered !== null) throw new ClaimResolutionError('DENIAL_MUST_NOT_INCLUDE_AMOUNT');

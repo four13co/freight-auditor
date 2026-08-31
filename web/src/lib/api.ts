@@ -303,3 +303,35 @@ export async function answerClarifyingQuestion(
   if (!res.ok) throw new Error(`PUT clarification answer failed: ${res.status}`);
   return (await res.json()) as { id: string; answer: string; answer_source: ClarificationAnswerSource; changed: boolean };
 }
+
+/**
+ * Mirrors #181's get-claim-detail.ts ClaimDetail shape exactly: camelCase
+ * keys, money fields as strings (pg numeric), Date fields serialize to ISO
+ * strings over the wire. recoveryEvents is the claim's full append-only
+ * history -- the endpoint returns detail + history in one response, so
+ * there is no separate history fetch.
+ */
+export interface RecoveryEventRow {
+  id: string;
+  amountRecovered: string;
+  currency: string | null;
+  varianceFindingId: string | null;
+  recordedAt: string;
+}
+export interface ClaimDetail {
+  id: string;
+  disputeId: string | null;
+  amountClaimed: string;
+  currency: string | null;
+  status: string;
+  openedAt: string;
+  agingDeadlineAt: string | null;
+  recoveryEvents: RecoveryEventRow[];
+  cumulativeRecovered: string;
+}
+
+export async function fetchClaimDetail(id: string): Promise<ClaimDetail> {
+  const res = await fetch(`/api/claims/${id}`, { headers: authHeaders() });
+  if (!res.ok) throw new Error(`GET claim detail failed: ${res.status}`);
+  return (await res.json()) as ClaimDetail;
+}

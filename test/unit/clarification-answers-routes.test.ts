@@ -10,11 +10,11 @@ describe('clarification answer routes', () => {
   let app: FastifyInstance | undefined;
   afterEach(async () => { if (app) await app.close(); app = undefined; vi.resetModules(); });
 
-  async function setup(correctionError?: 'notfound' | 'conflict') {
+  async function setup(correctionError?: 'notfound' | 'conflict', tenantContext: { clientIds?: string[] } = { clientIds: [clientId] }) {
     vi.doMock('../../src/modules/findings/tenant-auth.js', () => ({
       registerTenantAuthPreHandler: async (routes: FastifyInstance) => routes.addHook('preHandler', async (
         request: FastifyRequest, _reply: FastifyReply,
-      ) => { request.tenantContext = { clientIds: [clientId] }; request.actorUserId = userId; }),
+      ) => { request.tenantContext = tenantContext; request.actorUserId = userId; }),
     }));
     vi.doMock('../../src/db/tenant-context.js', () => ({ withTenantTx: vi.fn(async (_ctx, fn) => fn({})) }));
     const answerClarifyingQuestion = vi.fn().mockResolvedValue({ id: questionId, answer: 'USD', answer_source: 'read_from_doc', changed: true });
@@ -35,7 +35,14 @@ describe('clarification answer routes', () => {
     const calls = await setup();
     const response = await app!.inject({ method: 'GET', url: `/api/clarifying-questions?source_document_id=${documentId}` });
     expect(response.statusCode).toBe(200); expect(response.json()).toEqual({ questions: [{ id: questionId }] });
-    expect(calls.listClarifyingQuestions).toHaveBeenCalledWith({}, documentId);
+    expect(calls.listClarifyingQuestions).toHaveBeenCalledWith({}, documentId, clientId);
+  });
+
+  it('rejects listing clarifying questions when no single tenant scope resolves', async () => {
+    const calls = await setup(undefined, { clientIds: [clientId, '55555555-5555-4555-8555-555555555555'] });
+    const response = await app!.inject({ method: 'GET', url: `/api/clarifying-questions?source_document_id=${documentId}` });
+    expect(response.statusCode).toBe(401);
+    expect(calls.listClarifyingQuestions).not.toHaveBeenCalled();
   });
 
   it('validates list and answer identifiers before persistence', async () => {

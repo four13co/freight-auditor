@@ -28,7 +28,9 @@ export async function registerClarificationAnswersRoutes(routes: FastifyInstance
     if (!sourceDocumentId || !isUuid(sourceDocumentId)) {
       return reply.code(400).send({ error: 'source_document_id must be a well-formed UUID' });
     }
-    const questions = await withTenantTx(request.tenantContext!, (client) => listClarifyingQuestions(client, sourceDocumentId));
+    const clientId = requireSingleClientId(request.tenantContext!);
+    if (!clientId) return reply.code(401).send({ error: 'unauthorized' });
+    const questions = await withTenantTx(request.tenantContext!, (client) => listClarifyingQuestions(client, sourceDocumentId, clientId));
     return { questions };
   });
 

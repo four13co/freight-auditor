@@ -75,11 +75,19 @@ jobs:
       # this step doesn't reach Production today either -- unconditional here is
       # still correct: it means the seed runs the moment Production gets a
       # DATABASE_URL, with no second workflow change required.
+      # 86e31e6vz: assigns the real migration number against this DB's actual
+      # applied history right before migrate runs, instead of trusting the
+      # number an author reserved at branch-creation time (which only stays
+      # safe if merge order matches numeric order -- it didn't, twice: #212,
+      # #217). Runs after guard-protected-db so it can never touch a
+      # protected host, and before `migrate up` so checkOrder never sees a
+      # collision in the first place.
       - name: Run database migrations and seed dev tenant
         run: |
           op run --env-file=.env.migrate -- bash -c '
             set -euo pipefail
             node scripts/guard-protected-db.mjs
+            node scripts/renumber-pending-migrations.mjs
             npm run migrate up
             npm run seed:criteria
             if [ "$SEED_DEV_ON_DEPLOY" = "1" ]; then

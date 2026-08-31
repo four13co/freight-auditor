@@ -23,6 +23,13 @@ const GRANDFATHERED_DUPLICATE_NUMBERS = new Set(['0019']);
  * applied elsewhere, breaks every future deploy. A duplicate number on disk
  * is the one form of that collision this repo can catch statically, without
  * a real DB or knowledge of what's already applied in production.
+ *
+ * The other form -- a pending file numbered below one already applied on a
+ * specific persistent DB -- is no longer only caught reactively (#212,
+ * #217's rename-and-re-PR cycle). scripts/renumber-pending-migrations.mjs
+ * (86e31e6vz) now runs at deploy time, right before `migrate up`, and
+ * renumbers any pending file against that DB's real applied history before
+ * checkOrder ever sees it. See test/unit/renumber-pending-migrations.test.ts.
  */
 describe('migration file numbering', () => {
   it('has no new migration files claiming an already-used leading number', () => {

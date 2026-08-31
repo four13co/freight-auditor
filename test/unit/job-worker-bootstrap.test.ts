@@ -27,6 +27,9 @@ describe('pg-boss worker bootstrap', () => {
       }),
       start: vi.fn().mockResolvedValue(undefined),
       createQueue: vi.fn().mockResolvedValue(undefined),
+      work: vi.fn().mockResolvedValue('worker-id'),
+      send: vi.fn().mockResolvedValue(null),
+      schedule: vi.fn().mockResolvedValue(undefined),
       stop: vi.fn().mockResolvedValue(undefined),
     };
     const logger: WorkerLogger = { info: vi.fn(), error: vi.fn() };
@@ -40,6 +43,8 @@ describe('pg-boss worker bootstrap', () => {
 
     expect(createBoss).toHaveBeenCalledWith('postgresql://worker:secret@db.test/freight');
     expect(boss.start).toHaveBeenCalledOnce();
+    expect(boss.work).toHaveBeenCalled();
+    expect(boss.schedule).toHaveBeenCalled();
     expect(logger.info).toHaveBeenCalledWith('job worker started');
 
     runtimeErrorHandler!(new Error('postgresql://worker:secret@db.test/freight'));
@@ -53,6 +58,9 @@ describe('pg-boss worker bootstrap', () => {
       on: vi.fn(),
       start: vi.fn().mockRejectedValue(failure),
       createQueue: vi.fn(),
+      work: vi.fn(),
+      send: vi.fn(),
+      schedule: vi.fn(),
       stop: vi.fn(),
     };
     const logger: WorkerLogger = { info: vi.fn(), error: vi.fn() };

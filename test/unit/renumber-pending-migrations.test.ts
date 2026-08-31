@@ -78,6 +78,49 @@ describe('planRenumbering', () => {
     expect(plan).toEqual([{ from: '0010_pending.sql', to: '0021_pending.sql', digits: 4 }]);
     expect(plan.some((p: { from: string }) => p.from === '0020_applied.sql')).toBe(false);
   });
+
+  it('does not renumber a colliding pending file into a number another, non-colliding pending file already occupies', () => {
+    // Review-caught bug: a single push introduces two pending files -- one
+    // low (collides with applied history) and one already numbered above
+    // the applied high-water mark (not colliding, stays put). Naively
+    // assigning highestApplied+1 to the colliding file can land exactly on
+    // the number the untouched pending file already owns, producing a
+    // brand-new duplicate-number collision the script itself introduces.
+    const diskFiles = [
+      { number: '0010', file: '0010_old_pending.sql' },
+      { number: '0055', file: '0055_applied.sql' },
+      { number: '0056', file: '0056_already_taken.sql' },
+    ];
+    const appliedNames = new Set(['0055_applied']);
+
+    const plan = planRenumbering(diskFiles, appliedNames);
+
+    // highestApplied is 0055, so naive assignment would pick 0056 -- already
+    // occupied by 0056_already_taken.sql (untouched, non-colliding). The fix
+    // must skip past it to the next free number, 0057.
+    expect(plan).toEqual([{ from: '0010_old_pending.sql', to: '0057_old_pending.sql', digits: 4 }]);
+    expect(plan.some((p: { to: string }) => p.to === '0056_already_taken.sql')).toBe(false);
+  });
+
+  it('skips multiple already-occupied numbers in a row when several colliding files need renumbering past a cluster of pending files', () => {
+    const diskFiles = [
+      { number: '0005', file: '0005_old_a.sql' },
+      { number: '0006', file: '0006_old_b.sql' },
+      { number: '0020', file: '0020_applied.sql' },
+      { number: '0021', file: '0021_taken.sql' },
+      { number: '0022', file: '0022_also_taken.sql' },
+    ];
+    const appliedNames = new Set(['0020_applied']);
+
+    const plan = planRenumbering(diskFiles, appliedNames);
+
+    // highestApplied is 0020; naive assignment would try 0021 and 0022,
+    // both already occupied -- must skip to 0023 and 0024.
+    expect(plan).toEqual([
+      { from: '0005_old_a.sql', to: '0023_old_a.sql', digits: 4 },
+      { from: '0006_old_b.sql', to: '0024_old_b.sql', digits: 4 },
+    ]);
+  });
 });
 
 describe('renumberPendingMigrations', () => {

@@ -58,6 +58,15 @@ export function planRenumbering(diskFiles, appliedNames) {
   const collidingPending = pending.filter((f) => Number(f.number) <= highestApplied);
   if (collidingPending.length === 0) return [];
 
+  // A candidate new number must avoid every number already occupied on disk
+  // -- not just the applied high-water mark, but also any OTHER pending file
+  // that already numbers above it and is staying put (not itself colliding).
+  // Without this, renumbering a colliding file straight into
+  // highestApplied+1, +2, ... can land on a number a different, untouched
+  // pending file already claims, producing a fresh duplicate-number
+  // collision the script itself introduces.
+  const occupiedNumbers = new Set(diskFiles.map((f) => Number(f.number)));
+
   // Preserve on-disk relative order among the colliding files, and use the
   // same zero-padded digit width as the file being renamed (this repo pads
   // to 4 digits today, but deriving it per-file keeps the plan correct if
@@ -65,6 +74,8 @@ export function planRenumbering(diskFiles, appliedNames) {
   const plan = [];
   let next = highestApplied + 1;
   for (const f of collidingPending) {
+    while (occupiedNumbers.has(next)) next += 1;
+    occupiedNumbers.add(next);
     const digits = f.number.length;
     const newNumber = String(next).padStart(digits, '0');
     const rest = f.file.slice(f.number.length);

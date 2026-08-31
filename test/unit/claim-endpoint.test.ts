@@ -37,6 +37,7 @@ describe('POST /api/disputes/:id/claim (unit, mocked withTenantTx + tenant-auth)
     vi.doUnmock('../../src/db/tenant-context.js');
     vi.doUnmock('../../src/modules/findings/tenant-auth.js');
     vi.doUnmock('../../src/modules/claims/create-claim-from-dispute.js');
+    vi.doUnmock('../../src/modules/claims/detect-duplicate-claimed-finding.js');
   });
 
   function mockAuthorized() {
@@ -160,5 +161,33 @@ describe('POST /api/disputes/:id/claim (unit, mocked withTenantTx + tenant-auth)
       headers: { 'x-client-id': 'client-abc', 'x-user-id': 'user-1' },
     });
     expect(res.statusCode).toBe(409);
+  });
+
+  it('returns 409 with conflictingFindingIds when a backing finding is already claimed via another dispute', async () => {
+    mockAuthorized();
+    class DisputeNotFoundError extends Error {}
+    class DuplicateClaimedFindingError extends Error {
+      constructor(readonly conflictingFindingIds: string[]) { super('duplicate'); }
+    }
+    vi.doMock('../../src/db/tenant-context.js', () => ({
+      withTenantTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
+    }));
+    vi.doMock('../../src/modules/claims/create-claim-from-dispute.js', () => ({
+      createClaimFromDispute: vi.fn().mockRejectedValue(new DuplicateClaimedFindingError(['finding-1'])),
+      DisputeNotFoundError,
+    }));
+    vi.doMock('../../src/modules/claims/validate-claimable-dispute.js', () => ({
+      ClaimableDisputeError: class ClaimableDisputeError extends Error {},
+    }));
+    vi.doMock('../../src/modules/claims/detect-duplicate-claimed-finding.js', () => ({ DuplicateClaimedFindingError }));
+    const { buildApp } = await import('../../src/server/app.js');
+    app = buildApp();
+
+    const res = await app.inject({
+      method: 'POST', url: `/api/disputes/${DISPUTE_ID}/claim`,
+      headers: { 'x-client-id': 'client-abc', 'x-user-id': 'user-1' },
+    });
+    expect(res.statusCode).toBe(409);
+    expect(res.json().conflictingFindingIds).toEqual(['finding-1']);
   });
 });

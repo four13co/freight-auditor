@@ -4,6 +4,7 @@ import { registerTenantAuthPreHandler } from '../modules/findings/tenant-auth.js
 import { isUuid } from '../shared/request-validation.js';
 import { createClaimFromDispute, DisputeNotFoundError } from '../modules/claims/create-claim-from-dispute.js';
 import { ClaimableDisputeError } from '../modules/claims/validate-claimable-dispute.js';
+import { DuplicateClaimedFindingError } from '../modules/claims/detect-duplicate-claimed-finding.js';
 
 /**
  * Claim-creation API (P5.A.1): an analyst opens a claim against an accepted
@@ -53,6 +54,10 @@ export async function registerClaimRoutes(claimRoutes: FastifyInstance): Promise
       }
       if (error instanceof ClaimableDisputeError) {
         await reply.code(409).send({ error: error.message });
+        return;
+      }
+      if (error instanceof DuplicateClaimedFindingError) {
+        await reply.code(409).send({ error: error.message, conflictingFindingIds: error.conflictingFindingIds });
         return;
       }
       throw error;

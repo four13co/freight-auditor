@@ -5,6 +5,7 @@ import {
   validateClaimableDispute,
   type ClaimableDisputeRow,
 } from './validate-claimable-dispute.js';
+import { detectDuplicateClaimedFinding } from './detect-duplicate-claimed-finding.js';
 
 const schema = z.object({
   clientId: z.uuid(),
@@ -40,6 +41,12 @@ export interface CreateClaimResult {
  * -- the pattern used elsewhere this session (createWorkflowInstance) once
  * a real constraint exists, replacing the earlier plain SELECT-then-INSERT
  * that #165's review closure found unconstrained.
+ *
+ * Also prevents the same variance_finding's dollars being claimed twice
+ * through two different disputes (P5.A.2, 86e2zfj4w,
+ * detect-duplicate-claimed-finding.ts) -- checked after the idempotent-retry
+ * short-circuit (a retry never needs re-checking) and before the INSERT, so
+ * the conflict is caught before any write.
  */
 export async function createClaimFromDispute(
   client: pg.PoolClient,
@@ -60,6 +67,8 @@ export async function createClaimFromDispute(
   if (existing) return { ...existing, created: false };
 
   const validated = validateClaimableDispute(disputeRow);
+
+  await detectDuplicateClaimedFinding(client, input.clientId, input.disputeId);
 
   const { rows: inserted } = await client.query<{ id: string }>(
     `INSERT INTO claim (client_id, dispute_id, amount_claimed, currency, status)

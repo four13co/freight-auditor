@@ -115,4 +115,73 @@ describe.skipIf(!DATABASE_URL)('migrate-database job (e2e, ephemeral local Postg
       ).resolves.toBeDefined();
     });
   });
+
+  /**
+   * 86e31e6vz: a migration merged out of numeric order, relative to what's
+   * already applied on the target database, has broken three separate
+   * deploys (#212, #217, #221) -- each required a reactive rename-and-re-PR
+   * cycle to unblock. Runs in its own --migrations-schema, isolated from
+   * this file's shared ephemeral DB and its other describe blocks' real
+   * migration history, so the exact bug shape (a lower-numbered pending
+   * file behind an already-applied higher one) reproduces regardless of
+   * this file's run order.
+   */
+  describe('out-of-order migrations no longer block deploy (86e31e6vz)', () => {
+    let tmpMigrationsDir: string;
+    const migrationsSchema = `fa_test_checkorder_${Date.now()}`;
+
+    beforeAll(async () => {
+      tmpMigrationsDir = await mkdtemp(join(tmpdir(), 'fa-checkorder-'));
+      // Applied first, alone -- establishes this as the high-water mark in
+      // this isolated schema's own pgmigrations table.
+      await writeFile(join(tmpMigrationsDir, '9999999999996_high.sql'), '-- Up Migration\nSELECT 1;\n');
+      await run(
+        'npx',
+        [
+          'node-pg-migrate',
+          'up',
+          '-m',
+          tmpMigrationsDir,
+          '--migrations-schema',
+          migrationsSchema,
+          '--create-migrations-schema',
+        ],
+        { env: { ...process.env, DATABASE_URL } },
+      );
+      // Added afterward, numbered BELOW the file already applied above --
+      // the exact shape of #212/#217/#221 (a same-day-merge race where the
+      // slower PR's number sorts behind one the faster PR already pushed
+      // past the applied high-water mark).
+      await writeFile(join(tmpMigrationsDir, '9999999999995_low.sql'), '-- Up Migration\nSELECT 1;\n');
+    });
+
+    it('reproduces #212/#217/#221: checkOrder rejects the out-of-order pending file by default', async () => {
+      await expect(
+        run('npx', ['node-pg-migrate', 'up', '-m', tmpMigrationsDir, '--migrations-schema', migrationsSchema], {
+          env: { ...process.env, DATABASE_URL },
+        }),
+      ).rejects.toMatchObject({
+        code: expect.any(Number),
+        stderr: expect.stringContaining('is preceding already run migration'),
+      });
+    });
+
+    it('the real deploy invocation (migrate-with-retry + --no-check-order) applies it cleanly instead', async () => {
+      await expect(
+        run(
+          'node',
+          [
+            'scripts/migrate-with-retry.mjs',
+            'up',
+            '-m',
+            tmpMigrationsDir,
+            '--migrations-schema',
+            migrationsSchema,
+            '--no-check-order',
+          ],
+          { env: { ...process.env, DATABASE_URL } },
+        ),
+      ).resolves.toBeDefined();
+    });
+  });
 });

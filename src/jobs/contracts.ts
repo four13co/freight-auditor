@@ -12,6 +12,7 @@ export const JOB_NAMES = {
   POLL_SFTP_V1: 'freight.ingestion.sftp.poll.v1',
   ESCALATE_CLAIM_V1: 'freight.claims.escalate.v1',
   FOLLOW_UP_CLAIM_V1: 'freight.claims.follow-up.v1',
+  SCAN_CLAIM_AGING_V1: 'freight.claims.scan-aging.v1',
 } as const;
 
 export type JobName = (typeof JOB_NAMES)[keyof typeof JOB_NAMES];
@@ -24,6 +25,7 @@ export const JOB_DEAD_LETTER_NAMES: Record<JobName, string> = {
   [JOB_NAMES.POLL_SFTP_V1]: 'freight.ingestion.sftp.poll.dead-letter.v1',
   [JOB_NAMES.ESCALATE_CLAIM_V1]: 'freight.claims.escalate.dead-letter.v1',
   [JOB_NAMES.FOLLOW_UP_CLAIM_V1]: 'freight.claims.follow-up.dead-letter.v1',
+  [JOB_NAMES.SCAN_CLAIM_AGING_V1]: 'freight.claims.scan-aging.dead-letter.v1',
 };
 
 const id = z.string().uuid();
@@ -66,6 +68,12 @@ export const jobPayloadSchemas = {
   [JOB_NAMES.FOLLOW_UP_CLAIM_V1]: z.object({
     ...envelope,
     claimId: id,
+  }).strict(),
+  // No clientId: this tick is a portfolio-wide scan across every active
+  // client, not a per-tenant request, so the usual envelope doesn't fit.
+  [JOB_NAMES.SCAN_CLAIM_AGING_V1]: z.object({
+    schemaVersion: z.literal(1),
+    requestedAt: z.iso.datetime({ offset: true }),
   }).strict(),
 } satisfies Record<JobName, z.ZodType>;
 

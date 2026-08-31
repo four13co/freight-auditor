@@ -4,12 +4,18 @@ import type { PoolClient } from '../db/pool.js';
 import {
   parseJobPayload,
   type JobName,
+  type JobPayloads,
 } from './contracts.js';
 
 export interface EnqueueResult {
   jobId: string;
   inserted: boolean;
 }
+
+/** Job names whose payload carries the tenant envelope (clientId + idempotencyKey) -- everything except portfolio-wide scan ticks. */
+export type TenantScopedJobName = {
+  [Name in JobName]: JobPayloads[Name] extends { clientId: string; idempotencyKey: string } ? Name : never;
+}[JobName];
 
 export class JobTenantMismatchError extends Error {
   readonly code = 'JOB_TENANT_MISMATCH';
@@ -33,7 +39,7 @@ export function deterministicJobId(name: JobName, clientId: string, key: string)
  * Enqueue through the caller's PoolClient so domain writes and the job commit
  * or roll back together. Call only from an already tenant-scoped transaction.
  */
-export async function enqueueInTransaction<Name extends JobName>(
+export async function enqueueInTransaction<Name extends TenantScopedJobName>(
   boss: Pick<PgBoss, 'send'>,
   client: PoolClient,
   transactionClientId: string,

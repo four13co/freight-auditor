@@ -15,7 +15,7 @@ const base = {
 
 describe('versioned job contracts', () => {
   it('keeps every registered queue name explicitly versioned and mapped to a schema', () => {
-    expect(Object.values(JOB_NAMES)).toHaveLength(7);
+    expect(Object.values(JOB_NAMES)).toHaveLength(8);
     for (const name of Object.values(JOB_NAMES)) {
       expect(name).toMatch(/\.v1$/);
       expect(jobPayloadSchemas[name]).toBeDefined();
@@ -78,5 +78,18 @@ describe('versioned job contracts', () => {
 
   it('fails closed for a claim follow-up job missing claimId', () => {
     expect(() => parseJobPayload(JOB_NAMES.FOLLOW_UP_CLAIM_V1, { ...base })).toThrow(JobPayloadValidationError);
+  });
+
+  it('parses a valid claim-aging scan tick with no tenant scope', () => {
+    const payload = { schemaVersion: 1 as const, requestedAt: base.requestedAt };
+    expect(parseJobPayload(JOB_NAMES.SCAN_CLAIM_AGING_V1, payload)).toEqual(payload);
+  });
+
+  it('fails closed for a claim-aging scan tick carrying an unexpected clientId', () => {
+    expect(() => parseJobPayload(JOB_NAMES.SCAN_CLAIM_AGING_V1, {
+      schemaVersion: 1,
+      requestedAt: base.requestedAt,
+      clientId: base.clientId,
+    })).toThrow(JobPayloadValidationError);
   });
 });

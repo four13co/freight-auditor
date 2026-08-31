@@ -9,21 +9,31 @@ const DATABASE_URL = process.env.DATABASE_URL;
 describe.skipIf(!DATABASE_URL)('getCarrierRecoveryReport (database)', () => {
   const clientId = randomUUID();
   const carrierId = randomUUID();
-  const disputeId = randomUUID();
+  const openDisputeId = randomUUID();
+  const recoveredDisputeId = randomUUID();
   const openClaimId = randomUUID();
   const recoveredClaimId = randomUUID();
 
   beforeAll(async () => {
     await getPool().query(`INSERT INTO client (id, name, slug) VALUES ($1, 'Carrier Report Co', $2)`, [clientId, `carrier-report-${clientId}`]);
     await getPool().query(`INSERT INTO carrier (id, name) VALUES ($1, 'Test Carrier')`, [carrierId]);
+    // Two disputes, not one with two claims: `claim_dispute_unique_idx`
+    // (migration 0045) allows at most one claim per dispute.
     await getPool().query(
       `INSERT INTO dispute (id, client_id, carrier_id, status) VALUES ($1, $2, $3, 'draft')`,
-      [disputeId, clientId, carrierId],
+      [openDisputeId, clientId, carrierId],
     );
     await getPool().query(
-      `INSERT INTO claim (id, client_id, dispute_id, amount_claimed, currency, status)
-       VALUES ($1, $2, $3, '400.0000', 'USD', 'open'), ($4, $2, $3, '600.0000', 'USD', 'recovered')`,
-      [openClaimId, clientId, disputeId, recoveredClaimId],
+      `INSERT INTO dispute (id, client_id, carrier_id, status) VALUES ($1, $2, $3, 'draft')`,
+      [recoveredDisputeId, clientId, carrierId],
+    );
+    await getPool().query(
+      `INSERT INTO claim (id, client_id, dispute_id, amount_claimed, currency, status) VALUES ($1, $2, $3, '400.0000', 'USD', 'open')`,
+      [openClaimId, clientId, openDisputeId],
+    );
+    await getPool().query(
+      `INSERT INTO claim (id, client_id, dispute_id, amount_claimed, currency, status) VALUES ($1, $2, $3, '600.0000', 'USD', 'recovered')`,
+      [recoveredClaimId, clientId, recoveredDisputeId],
     );
     await getPool().query(
       `INSERT INTO recovery_event (client_id, claim_id, amount_recovered, currency) VALUES ($1, $2, '600.0000', 'USD')`,

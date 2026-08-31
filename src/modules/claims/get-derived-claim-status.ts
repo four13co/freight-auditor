@@ -1,5 +1,6 @@
 import type pg from 'pg';
 import { deriveClaimStatus, type DeriveClaimStatusResult } from './derive-claim-status.js';
+import { CLAIM_TERMINAL_EVENT_NAMES } from './claim-status.js';
 
 export class GetDerivedClaimStatusError extends Error {
   constructor(readonly code: 'CLAIM_NOT_FOUND') {
@@ -43,8 +44,8 @@ export async function getDerivedClaimStatus(
   const terminalEventsResult = await client.query<TerminalEventRow>(
     `SELECT event, recorded_at FROM audit_event
      WHERE client_id = $1 AND entity = 'claim' AND entity_id = $2
-       AND event IN ('claim.recovered', 'claim.denied', 'claim.written_off')`,
-    [clientId, claimId],
+       AND event = ANY($3::text[])`,
+    [clientId, claimId, CLAIM_TERMINAL_EVENT_NAMES],
   );
 
   const recoveryEventsResult = await client.query<RecoveryAmountRow>(

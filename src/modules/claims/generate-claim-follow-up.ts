@@ -1,7 +1,6 @@
 import type pg from 'pg';
 import { deterministicAuditEventId, writeAuditEvent } from '../audit-ledger/write-audit-event.js';
-
-const TERMINAL_STATUSES = new Set(['recovered', 'denied', 'written_off']);
+import { isClaimTerminalStatus } from './claim-status.js';
 
 export type GenerateClaimFollowUpErrorCode =
   | 'CLAIM_NOT_FOUND' | 'CLAIM_TERMINAL' | 'NO_DEADLINE_SET' | 'DEADLINE_NOT_PASSED';
@@ -50,7 +49,7 @@ export async function generateClaimFollowUp(
   );
   const claim = result.rows[0];
   if (!claim) throw new GenerateClaimFollowUpError('CLAIM_NOT_FOUND');
-  if (TERMINAL_STATUSES.has(claim.status)) throw new GenerateClaimFollowUpError('CLAIM_TERMINAL');
+  if (isClaimTerminalStatus(claim.status)) throw new GenerateClaimFollowUpError('CLAIM_TERMINAL');
   if (!claim.aging_deadline_at) throw new GenerateClaimFollowUpError('NO_DEADLINE_SET');
   if (claim.aging_deadline_at.getTime() > now.getTime()) throw new GenerateClaimFollowUpError('DEADLINE_NOT_PASSED');
 

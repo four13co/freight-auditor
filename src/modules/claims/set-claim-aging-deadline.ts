@@ -33,7 +33,7 @@ export async function setClaimAgingDeadline(
 ): Promise<SetClaimAgingDeadlineResult> {
   const input = schema.parse(untrusted);
 
-  const { rows } = await client.query<{ opened_at: string }>(
+  const { rows } = await client.query<{ opened_at: Date }>(
     `SELECT opened_at FROM claim WHERE client_id = $1 AND id = $2`,
     [input.clientId, input.claimId],
   );

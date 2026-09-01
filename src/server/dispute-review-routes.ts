@@ -1,9 +1,12 @@
 import type { FastifyInstance } from 'fastify';
+import { randomUUID } from 'node:crypto';
 import { withTenantTx } from '../db/tenant-context.js';
 import { registerTenantAuthPreHandler } from '../modules/findings/tenant-auth.js';
 import { isUuid } from '../shared/request-validation.js';
 import { getDisputeDetail } from '../modules/disputes/get-dispute-detail.js';
 import { approveDispute } from '../modules/disputes/approve-dispute.js';
+import { listDisputeCommunications } from '../modules/disputes/list-dispute-communications.js';
+import { recordDisputeCommunication, RecordDisputeCommunicationError } from '../modules/disputes/record-dispute-communication.js';
 
 /**
  * Dispute review + approval API (P4.C.6): an analyst inspects a draft
@@ -46,5 +49,77 @@ export async function registerDisputeReviewRoutes(routes: FastifyInstance): Prom
       return;
     }
     return { disputeId: id, status: 'sent' };
+  });
+
+  // P4.C.8: the append-only communications log for a dispute. GET lists
+  // both directions (outbound rows are written by
+  // deliver-dispute-command-handler.ts's own workflow step, never via a
+  // route); POST records an inbound one only -- an analyst logging a
+  // carrier's reply, since no automatic inbound channel exists yet (same
+  // "no live caller wired in" boundary DISPUTE_DELIVERY_MESSAGE_TYPE's own
+  // doc comment names). Outbound is deliberately not postable here: that
+  // would let a client bypass the audited workflow_outbox_message path
+  // this task's own Exclusions section draws the line at
+  // ("no unaudited outbound delivery").
+  routes.get('/api/disputes/:id/communications', async (request, reply) => {
+    const { id } = request.params as { id: string };
+    if (!isUuid(id)) {
+      await reply.code(400).send({ error: 'invalid dispute id: must be a well-formed UUID' });
+      return;
+    }
+    const detail = await withTenantTx(request.tenantContext!, (client) => getDisputeDetail(client, id));
+    if (!detail) {
+      await reply.code(404).send({ error: 'dispute not found' });
+      return;
+    }
+    const communications = await withTenantTx(request.tenantContext!, (client) => listDisputeCommunications(client, id));
+    return { communications };
+  });
+
+  routes.post('/api/disputes/:id/communications', async (request, reply) => {
+    const { id } = request.params as { id: string };
+    if (!isUuid(id)) {
+      await reply.code(400).send({ error: 'invalid dispute id: must be a well-formed UUID' });
+      return;
+    }
+    if (!request.actorUserId) {
+      await reply.code(401).send({ error: 'authenticated analyst identity required' });
+      return;
+    }
+
+    const requestBody = request.body as { body?: unknown; idempotencyKey?: unknown };
+    if (typeof requestBody.body !== 'string' || requestBody.body.trim().length === 0) {
+      await reply.code(400).send({ error: 'body is required' });
+      return;
+    }
+    if (requestBody.idempotencyKey !== undefined
+      && (typeof requestBody.idempotencyKey !== 'string' || requestBody.idempotencyKey.trim().length === 0)) {
+      await reply.code(400).send({ error: 'invalid idempotencyKey: must be a non-empty string' });
+      return;
+    }
+    // A caller-supplied idempotencyKey makes a retried request stable
+    // (same dedupe key both times); without one, each POST is its own
+    // distinct communication -- the caller opted out of dedup, not an error.
+    const dedupeKey = typeof requestBody.idempotencyKey === 'string'
+      ? `dispute-comm-inbound:${id}:${requestBody.idempotencyKey}`
+      : `dispute-comm-inbound:${id}:${randomUUID()}`;
+
+    try {
+      const result = await withTenantTx(request.tenantContext!, (client) =>
+        recordDisputeCommunication(client, {
+          disputeId: id,
+          direction: 'inbound',
+          body: requestBody.body as string,
+          dedupeKey,
+        }));
+      await reply.code(result.created ? 201 : 200).send({ disputeCommId: result.disputeCommId, created: result.created });
+      return;
+    } catch (err) {
+      if (err instanceof RecordDisputeCommunicationError && err.code === 'DISPUTE_NOT_FOUND') {
+        await reply.code(404).send({ error: 'dispute not found' });
+        return;
+      }
+      throw err;
+    }
   });
 }

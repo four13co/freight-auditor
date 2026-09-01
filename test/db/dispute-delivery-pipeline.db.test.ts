@@ -84,6 +84,11 @@ describe.skipIf(!DATABASE_URL)('dispute delivery pipeline (database)', () => {
     await pool.query(`DELETE FROM audit_event WHERE client_id = $1`, [clientId]);
     await pool.query(`DELETE FROM workflow_outbox_message WHERE client_id = $1`, [clientId]);
     await pool.query(`DELETE FROM workflow_command WHERE client_id = $1`, [clientId]);
+    // P4.C.8: handleDeliverDisputeCommand now also appends an outbound
+    // dispute_comm row in the same transaction as the outbox intent above --
+    // it has its own FK to dispute(id), so it must clear before dispute_line/
+    // dispute below (86e30txkx's tracked FK-order defect class).
+    await pool.query(`DELETE FROM dispute_comm WHERE client_id = $1`, [clientId]);
     await pool.query(`DELETE FROM dispute_line WHERE client_id = $1`, [clientId]);
     await pool.query(`DELETE FROM dispute WHERE client_id = $1`, [clientId]);
     await pool.query(`DELETE FROM workflow_instance WHERE client_id = $1`, [clientId]);
@@ -167,6 +172,16 @@ describe.skipIf(!DATABASE_URL)('dispute delivery pipeline (database)', () => {
         payload: { disputeId },
       }),
     );
+
+    // P4.C.8: the real command-handler run above also appends the outbound
+    // half of the communications log, in the same transaction as the outbox
+    // intent -- not a hand-seeded fixture, the actual handler's own write.
+    const { rows: commRows } = await getPool().query(
+      `SELECT direction, dedupe_key FROM dispute_comm WHERE client_id = $1 AND dispute_id = $2`,
+      [clientId, disputeId],
+    );
+    expect(commRows).toHaveLength(1);
+    expect(commRows[0]).toMatchObject({ direction: 'outbound' });
 
     const { rows: commandRows } = await getPool().query(
       `SELECT status FROM workflow_command WHERE client_id = $1`,

@@ -14,6 +14,8 @@ export const JOB_NAMES = {
   FOLLOW_UP_CLAIM_V1: 'freight.claims.follow-up.v1',
   SCAN_CLAIM_AGING_V1: 'freight.claims.scan-aging.v1',
   DISCOVER_TRIGGERS_V1: 'freight.discovery.detect-triggers.v1',
+  SCAN_WORKFLOW_COMMANDS_V1: 'freight.workflow.scan-commands.v1',
+  RUN_WORKFLOW_COMMAND_V1: 'freight.workflow.run-command.v1',
 } as const;
 
 export type JobName = (typeof JOB_NAMES)[keyof typeof JOB_NAMES];
@@ -28,6 +30,8 @@ export const JOB_DEAD_LETTER_NAMES: Record<JobName, string> = {
   [JOB_NAMES.FOLLOW_UP_CLAIM_V1]: 'freight.claims.follow-up.dead-letter.v1',
   [JOB_NAMES.SCAN_CLAIM_AGING_V1]: 'freight.claims.scan-aging.dead-letter.v1',
   [JOB_NAMES.DISCOVER_TRIGGERS_V1]: 'freight.discovery.detect-triggers.dead-letter.v1',
+  [JOB_NAMES.SCAN_WORKFLOW_COMMANDS_V1]: 'freight.workflow.scan-commands.dead-letter.v1',
+  [JOB_NAMES.RUN_WORKFLOW_COMMAND_V1]: 'freight.workflow.run-command.dead-letter.v1',
 };
 
 const id = z.string().uuid();
@@ -88,6 +92,26 @@ export const jobPayloadSchemas = {
   [JOB_NAMES.DISCOVER_TRIGGERS_V1]: z.object({
     ...envelope,
     auditRunId: id,
+  }).strict(),
+  // Portfolio-wide scan tick (P4.A.4), same no-tenant shape as
+  // SCAN_CLAIM_AGING_V1: it iterates every active client itself rather than
+  // being dispatched per-tenant.
+  [JOB_NAMES.SCAN_WORKFLOW_COMMANDS_V1]: z.object({
+    schemaVersion: z.literal(1),
+    requestedAt: z.iso.datetime({ offset: true }),
+  }).strict(),
+  // Dispatches one already-claimed workflow_command (P4.A.3) row for
+  // execution. commandType is deliberately open text -- no hardcoded
+  // command graph, mirroring workflow_instance.workflow_type/current_state
+  // (0046) -- so this carries whatever payload the scheduler stored; the
+  // handler registry (run-workflow-command-handler.ts) is what interprets it
+  // per commandType, not this schema.
+  [JOB_NAMES.RUN_WORKFLOW_COMMAND_V1]: z.object({
+    ...envelope,
+    commandId: id,
+    workflowInstanceId: id,
+    commandType: z.string().regex(/^[a-z][a-z0-9_]*$/),
+    payload: z.record(z.string(), z.unknown()),
   }).strict(),
 } satisfies Record<JobName, z.ZodType>;
 

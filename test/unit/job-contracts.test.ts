@@ -15,7 +15,7 @@ const base = {
 
 describe('versioned job contracts', () => {
   it('keeps every registered queue name explicitly versioned and mapped to a schema', () => {
-    expect(Object.values(JOB_NAMES)).toHaveLength(8);
+    expect(Object.values(JOB_NAMES)).toHaveLength(9);
     for (const name of Object.values(JOB_NAMES)) {
       expect(name).toMatch(/\.v1$/);
       expect(jobPayloadSchemas[name]).toBeDefined();
@@ -90,6 +90,22 @@ describe('versioned job contracts', () => {
       schemaVersion: 1,
       requestedAt: base.requestedAt,
       clientId: base.clientId,
+    })).toThrow(JobPayloadValidationError);
+  });
+
+  it('parses a valid discovery-trigger job', () => {
+    const payload = { ...base, auditRunId: '10000000-0000-4000-8000-000000000002' };
+    expect(parseJobPayload(JOB_NAMES.DISCOVER_TRIGGERS_V1, payload)).toEqual(payload);
+  });
+
+  it('fails closed for a discovery-trigger job missing auditRunId', () => {
+    expect(() => parseJobPayload(JOB_NAMES.DISCOVER_TRIGGERS_V1, { ...base }))
+      .toThrow(JobPayloadValidationError);
+  });
+
+  it('fails closed for a discovery-trigger job carrying an unknown field', () => {
+    expect(() => parseJobPayload(JOB_NAMES.DISCOVER_TRIGGERS_V1, {
+      ...base, auditRunId: '10000000-0000-4000-8000-000000000002', sourceDocumentId: '10000000-0000-4000-8000-000000000003',
     })).toThrow(JobPayloadValidationError);
   });
 });

@@ -389,3 +389,23 @@ export async function approveDispute(id: string): Promise<{ disputeId: string; s
   if (!res.ok) throw new Error(`POST dispute approval failed: ${res.status}`);
   return (await res.json()) as { disputeId: string; status: string };
 }
+
+export interface CrossClientPortfolioBucket {
+  clientId: string;
+  clientName: string | null;
+  currency: string | null;
+  claimed: string;
+  recovered: string;
+  outstanding: string;
+  writtenOff: string;
+  denied: string;
+  nullCurrencyRecovered: string;
+  mismatchedCurrencyRecovered: string;
+  reconciles: boolean;
+}
+
+export async function fetchCrossClientPortfolio(): Promise<CrossClientPortfolioBucket[]> {
+  const res = await fetch('/api/portfolio/cross-client-recovery', { headers: authHeaders() });
+  if (!res.ok) throw new Error(`GET cross-client portfolio failed: ${res.status}`);
+  return ((await res.json()) as { buckets: CrossClientPortfolioBucket[] }).buckets;
+}

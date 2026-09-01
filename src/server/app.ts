@@ -11,6 +11,7 @@ import { registerClarificationAnswersRoutes } from './clarification-answers-rout
 import { registerClaimRoutes } from './claim-routes.js';
 import { registerPaymentRoutes } from './payment-routes.js';
 import { registerDisputeReviewRoutes } from './dispute-review-routes.js';
+import { registerPortfolioRoutes } from './portfolio-routes.js';
 
 /**
  * Build the Fastify application instance.
@@ -69,6 +70,12 @@ export function buildApp(): FastifyInstance {
   // Dispute review + approval routes (P4.C.6): same tenant-auth preHandler
   // pattern, its own encapsulated plugin instance.
   void app.register(registerDisputeReviewRoutes);
+
+  // Cross-client portfolio reporting for internal analysts (P5.C.3): its
+  // OWN preHandler (registerInternalAnalystAuthPreHandler), deliberately
+  // NOT the shared registerTenantAuthPreHandler every module above uses --
+  // see portfolio-routes.ts's header comment for why.
+  void app.register(registerPortfolioRoutes);
 
   return app;
 }

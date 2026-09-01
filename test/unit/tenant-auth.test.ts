@@ -31,14 +31,39 @@ describe('resolveAuthorizedTenantContext (DEV_AUTH_HEADERS set)', () => {
     vi.resetModules();
   });
 
-  it('returns null when x-client-id is missing, without querying the DB', async () => {
-    const withTenantTx = vi.fn();
+  it('P5.C.3: returns null when x-client-id is missing and the user is not an internal analyst (checked via app_user.is_internal)', async () => {
+    const query = vi.fn().mockResolvedValue({ rows: [{ is_internal: false }] });
+    const withTenantTx = vi.fn(async (_ctx: unknown, fn: (client: { query: typeof query }) => unknown) => fn({ query }));
     vi.doMock('../../src/db/tenant-context.js', () => ({ withTenantTx }));
     const { resolveAuthorizedTenantContext } = await import('../../src/modules/findings/tenant-auth.js');
 
     const ctx = await resolveAuthorizedTenantContext(mockRequest({ 'x-user-id': 'user-1' }));
     expect(ctx).toBeNull();
-    expect(withTenantTx).not.toHaveBeenCalled();
+    expect(query).toHaveBeenCalledWith(expect.stringContaining('FROM app_user'), ['user-1']);
+  });
+
+  it('P5.C.3: resolves { internal: true } when x-client-id is missing and the user IS an internal analyst', async () => {
+    const query = vi.fn().mockResolvedValue({ rows: [{ is_internal: true }] });
+    const withTenantTx = vi.fn(async (ctx: unknown, fn: (client: { query: typeof query }) => unknown) => {
+      expect(ctx).toEqual({ internal: true });
+      return fn({ query });
+    });
+    vi.doMock('../../src/db/tenant-context.js', () => ({ withTenantTx }));
+    const { resolveAuthorizedTenantContext } = await import('../../src/modules/findings/tenant-auth.js');
+
+    const ctx = await resolveAuthorizedTenantContext(mockRequest({ 'x-user-id': 'analyst-1' }));
+    expect(ctx).toEqual({ internal: true });
+  });
+
+  it('P5.C.3: returns null when x-client-id is missing and no app_user row exists for x-user-id, without touching membership', async () => {
+    const query = vi.fn().mockResolvedValue({ rows: [] });
+    const withTenantTx = vi.fn(async (_ctx: unknown, fn: (client: { query: typeof query }) => unknown) => fn({ query }));
+    vi.doMock('../../src/db/tenant-context.js', () => ({ withTenantTx }));
+    const { resolveAuthorizedTenantContext } = await import('../../src/modules/findings/tenant-auth.js');
+
+    const ctx = await resolveAuthorizedTenantContext(mockRequest({ 'x-user-id': 'ghost-user' }));
+    expect(ctx).toBeNull();
+    expect(query).toHaveBeenCalledTimes(1);
   });
 
   it('returns null when x-user-id is missing, without querying the DB', async () => {
@@ -193,16 +218,31 @@ describe('resolveAuthorizedTenantContext (DEV_AUTH_HEADERS unset -- the prod def
     expect(ctx).toBeNull();
   });
 
-  it('rejects a valid session when x-client-id is absent', async () => {
+  it('rejects a valid session when x-client-id is absent and the session user is not an internal analyst', async () => {
     const getSession = vi.fn().mockResolvedValue({ user: { id: 'session-user-1' }, session: {} });
-    const withTenantTx = vi.fn();
+    const query = vi.fn().mockResolvedValue({ rows: [{ is_internal: false }] });
+    const withTenantTx = vi.fn(async (_ctx: unknown, fn: (client: { query: typeof query }) => unknown) => fn({ query }));
     vi.doMock('../../src/auth/better-auth.js', () => ({ getAuth: () => ({ api: { getSession } }) }));
     vi.doMock('../../src/db/tenant-context.js', () => ({ withTenantTx }));
     const { resolveAuthorizedTenantContext } = await import('../../src/modules/findings/tenant-auth.js');
 
     const ctx = await resolveAuthorizedTenantContext(mockRequest({ cookie: 'better-auth.session_token=valid' }));
     expect(ctx).toBeNull();
-    expect(withTenantTx).not.toHaveBeenCalled();
+  });
+
+  it('P5.C.3: resolves { internal: true } for a verified session belonging to an internal analyst, with x-client-id absent', async () => {
+    const getSession = vi.fn().mockResolvedValue({ user: { id: 'session-analyst-1' }, session: {} });
+    const query = vi.fn().mockResolvedValue({ rows: [{ is_internal: true }] });
+    const withTenantTx = vi.fn(async (ctx: unknown, fn: (client: { query: typeof query }) => unknown) => {
+      expect(ctx).toEqual({ internal: true });
+      return fn({ query });
+    });
+    vi.doMock('../../src/auth/better-auth.js', () => ({ getAuth: () => ({ api: { getSession } }) }));
+    vi.doMock('../../src/db/tenant-context.js', () => ({ withTenantTx }));
+    const { resolveAuthorizedTenantContext } = await import('../../src/modules/findings/tenant-auth.js');
+
+    const ctx = await resolveAuthorizedTenantContext(mockRequest({ cookie: 'better-auth.session_token=valid' }));
+    expect(ctx).toEqual({ internal: true });
   });
 
   it('propagates (does not swallow) a genuine backend error when a cookie IS present -- a DB/session outage is a 500, not a silent 401', async () => {
@@ -353,6 +393,86 @@ describe('registerTenantAuthPreHandler', () => {
     expect(res.statusCode).toBe(401);
     expect(res.json()).toEqual({ error: 'unauthorized' });
     expect(handler).not.toHaveBeenCalled();
+    await app.close();
+  });
+});
+
+/**
+ * P5.C.3: registerInternalAnalystAuthPreHandler composes
+ * registerTenantAuthPreHandler with a second internal-only check. Same
+ * dependency-injection seam (mock withTenantTx, drive through real Fastify
+ * + headers) as the registerTenantAuthPreHandler block above, for the same
+ * same-module-self-reference reason documented there.
+ */
+describe('registerInternalAnalystAuthPreHandler', () => {
+  let originalFlag: string | undefined;
+
+  beforeEach(() => {
+    originalFlag = process.env.DEV_AUTH_HEADERS;
+    process.env.DEV_AUTH_HEADERS = '1';
+  });
+
+  afterEach(() => {
+    if (originalFlag === undefined) delete process.env.DEV_AUTH_HEADERS;
+    else process.env.DEV_AUTH_HEADERS = originalFlag;
+    vi.doUnmock('../../src/db/tenant-context.js');
+    vi.resetModules();
+  });
+
+  it('replies 401 and never reaches the handler when no identity resolves at all', async () => {
+    const withTenantTx = vi.fn();
+    vi.doMock('../../src/db/tenant-context.js', () => ({ withTenantTx }));
+    const { registerInternalAnalystAuthPreHandler } = await import('../../src/modules/findings/tenant-auth.js');
+    const Fastify = (await import('fastify')).default;
+    const app = Fastify();
+    const handler = vi.fn().mockResolvedValue({ ok: true });
+    await registerInternalAnalystAuthPreHandler(app);
+    app.get('/probe', handler);
+
+    const res = await app.inject({ method: 'GET', url: '/probe' });
+
+    expect(res.statusCode).toBe(401);
+    expect(handler).not.toHaveBeenCalled();
+    await app.close();
+  });
+
+  it('replies 403 and never reaches the handler for a resolved, client-scoped (non-internal) identity', async () => {
+    const query = vi.fn().mockResolvedValue({ rowCount: 1 });
+    const withTenantTx = vi.fn(async (_ctx: unknown, fn: (client: { query: typeof query }) => unknown) => fn({ query }));
+    vi.doMock('../../src/db/tenant-context.js', () => ({ withTenantTx }));
+    const { registerInternalAnalystAuthPreHandler } = await import('../../src/modules/findings/tenant-auth.js');
+    const Fastify = (await import('fastify')).default;
+    const app = Fastify();
+    const handler = vi.fn().mockResolvedValue({ ok: true });
+    await registerInternalAnalystAuthPreHandler(app);
+    app.get('/probe', handler);
+
+    const res = await app.inject({
+      method: 'GET', url: '/probe',
+      headers: { 'x-client-id': 'client-1', 'x-user-id': 'user-1' },
+    });
+
+    expect(res.statusCode).toBe(403);
+    expect(res.json()).toEqual({ error: 'internal analyst access required' });
+    expect(handler).not.toHaveBeenCalled();
+    await app.close();
+  });
+
+  it('lets the request through to the handler for a resolved internal-analyst identity', async () => {
+    const query = vi.fn().mockResolvedValue({ rows: [{ is_internal: true }] });
+    const withTenantTx = vi.fn(async (_ctx: unknown, fn: (client: { query: typeof query }) => unknown) => fn({ query }));
+    vi.doMock('../../src/db/tenant-context.js', () => ({ withTenantTx }));
+    const { registerInternalAnalystAuthPreHandler } = await import('../../src/modules/findings/tenant-auth.js');
+    const Fastify = (await import('fastify')).default;
+    const app = Fastify();
+    const handler = vi.fn().mockResolvedValue({ ok: true });
+    await registerInternalAnalystAuthPreHandler(app);
+    app.get('/probe', handler);
+
+    const res = await app.inject({ method: 'GET', url: '/probe', headers: { 'x-user-id': 'analyst-1' } });
+
+    expect(res.statusCode).toBe(200);
+    expect(handler).toHaveBeenCalled();
     await app.close();
   });
 });

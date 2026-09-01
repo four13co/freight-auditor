@@ -389,3 +389,25 @@ export async function approveDispute(id: string): Promise<{ disputeId: string; s
   if (!res.ok) throw new Error(`POST dispute approval failed: ${res.status}`);
   return (await res.json()) as { disputeId: string; status: string };
 }
+
+export interface ClientPortfolioBucketRow {
+  clientId: string;
+  clientName: string;
+  currency: string | null;
+  claimed: string;
+  recovered: string;
+  outstanding: string;
+  writtenOff: string;
+  denied: string;
+  nullCurrencyRecovered: string;
+  mismatchedCurrencyRecovered: string;
+  reconciles: boolean;
+}
+
+/** P5.C.3: internal-analyst-only -- 401/403 on any non-internal caller (portfolio-routes.ts). */
+export async function fetchCrossClientPortfolioReport(): Promise<ClientPortfolioBucketRow[]> {
+  const res = await fetch('/api/portfolio/cross-client-recovery', { headers: authHeaders() });
+  if (!res.ok) throw new Error(`GET cross-client portfolio report failed: ${res.status}`);
+  const body = (await res.json()) as { buckets?: ClientPortfolioBucketRow[] };
+  return body.buckets ?? [];
+}

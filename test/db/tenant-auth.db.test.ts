@@ -19,6 +19,7 @@ describe('resolveAuthorizedTenantContext (DB)', () => {
   let clientId: string;
   let userIdWithMembership: string;
   let userIdWithoutMembership: string;
+  let internalAnalystUserId: string;
   let originalFlag: string | undefined;
   const tag = `ta-${Date.now()}`;
 
@@ -35,6 +36,8 @@ describe('resolveAuthorizedTenantContext (DB)', () => {
       userIdWithMembership = u1.rows[0].id;
       const u2 = await owner.query(`INSERT INTO app_user (email) VALUES ($1) RETURNING id`, [`${tag}-nonmember@example.com`]);
       userIdWithoutMembership = u2.rows[0].id;
+      const u3 = await owner.query(`INSERT INTO app_user (email, is_internal) VALUES ($1, true) RETURNING id`, [`${tag}-analyst@example.com`]);
+      internalAnalystUserId = u3.rows[0].id;
 
       await owner.query(
         `INSERT INTO membership (user_id, client_id, role) VALUES ($1, $2, 'client_viewer')`,
@@ -51,7 +54,7 @@ describe('resolveAuthorizedTenantContext (DB)', () => {
     const owner = await pool.connect();
     try {
       await owner.query(`DELETE FROM membership WHERE client_id = $1`, [clientId]);
-      await owner.query(`DELETE FROM app_user WHERE id = ANY($1)`, [[userIdWithMembership, userIdWithoutMembership]]);
+      await owner.query(`DELETE FROM app_user WHERE id = ANY($1)`, [[userIdWithMembership, userIdWithoutMembership, internalAnalystUserId]]);
       await owner.query(`DELETE FROM client WHERE id = $1`, [clientId]);
     } finally {
       owner.release();
@@ -85,5 +88,19 @@ describe('resolveAuthorizedTenantContext (DB)', () => {
       headers: { 'x-client-id': clientId },
     } as never);
     expect(ctx).toBeNull();
+  });
+
+  it('P5.C.3: returns null when x-client-id is absent and the user is not an internal analyst', async () => {
+    const ctx = await resolveAuthorizedTenantContext({
+      headers: { 'x-user-id': userIdWithMembership },
+    } as never);
+    expect(ctx).toBeNull();
+  });
+
+  it('P5.C.3: resolves { internal: true } when x-client-id is absent and app_user.is_internal is true', async () => {
+    const ctx = await resolveAuthorizedTenantContext({
+      headers: { 'x-user-id': internalAnalystUserId },
+    } as never);
+    expect(ctx).toEqual({ internal: true });
   });
 });

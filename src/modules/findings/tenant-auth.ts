@@ -53,6 +53,27 @@ async function lookupMembership(userId: string, clientId: string): Promise<boole
 }
 
 /**
+ * P5.C.3: is this resolved user an internal analyst (app_user.is_internal,
+ * migration 0003)? `app_user` carries no client_id column and is not in
+ * migration 0009's RLS table list, so this doesn't NEED an internal-scoped
+ * transaction the way lookupMembership's membership read does -- run via
+ * withTenantTx anyway, matching lookupMembership's own shape, so every
+ * DB touch in this module goes through the same seam (the one every test
+ * in this file already mocks). `is_active` is checked alongside
+ * `is_internal` so a deactivated analyst's account can't still grant
+ * cross-client (portfolio) read.
+ */
+async function lookupIsInternal(userId: string): Promise<boolean> {
+  return withTenantTx({ internal: true }, async (client) => {
+    const result = await client.query<{ is_internal: boolean }>(
+      `SELECT is_internal FROM app_user WHERE id = $1 AND is_active = true`,
+      [userId],
+    );
+    return result.rows[0]?.is_internal === true;
+  });
+}
+
+/**
  * 86e2wb92b: a real (non-dev-header) session proves WHO the user is, but not
  * WHICH client they're scoped to -- resolveViaSession still requires an
  * explicit x-client-id, and nothing told the frontend what value to send.
@@ -70,11 +91,27 @@ export async function listMembershipClientIds(userId: string): Promise<string[]>
   });
 }
 
-/** DEV_AUTH_HEADERS path: x-client-id/x-user-id headers, membership-checked. Unchanged behavior. */
+/**
+ * DEV_AUTH_HEADERS path: x-client-id/x-user-id headers, membership-checked.
+ *
+ * P5.C.3: a request carrying x-user-id but NO x-client-id previously always
+ * failed closed (null). That client-id-less shape is now also how an
+ * internal analyst reaches a cross-client (portfolio) endpoint -- there is
+ * no single client to scope to -- so it's resolved via app_user.is_internal
+ * instead of membership. A non-internal user presenting no x-client-id
+ * still gets null, unchanged from before.
+ */
 async function resolveViaDevHeaders(request: FastifyRequest): Promise<TenantContext | null> {
   const clientId = readHeader(request.headers['x-client-id']);
   const userId = readHeader(request.headers['x-user-id']);
-  if (!clientId || !userId) return null;
+  if (!userId) return null;
+
+  if (!clientId) {
+    const isInternal = await lookupIsInternal(userId);
+    if (!isInternal) return null;
+    request.actorUserId = userId;
+    return { internal: true };
+  }
 
   const hasMembership = await lookupMembership(userId, clientId);
   if (!hasMembership) return null;
@@ -121,7 +158,12 @@ async function resolveViaSession(request: FastifyRequest): Promise<TenantContext
   if (!session) return null;
 
   const clientId = readHeader(request.headers['x-client-id']);
-  if (!clientId) return null;
+  if (!clientId) {
+    const isInternal = await lookupIsInternal(session.user.id);
+    if (!isInternal) return null;
+    request.actorUserId = session.user.id;
+    return { internal: true };
+  }
 
   const hasMembership = await lookupMembership(session.user.id, clientId);
   if (!hasMembership) return null;
@@ -169,5 +211,26 @@ export async function registerTenantAuthPreHandler(routes: FastifyInstance): Pro
       return;
     }
     request.tenantContext = ctx;
+  });
+}
+
+/**
+ * P5.C.3: gates a route to internal analysts only (cross-client/portfolio
+ * reporting -- no single client to scope a response to, so a client-scoped
+ * caller must never reach it). Composes registerTenantAuthPreHandler's own
+ * 401 (no valid identity at all) with a second check: a request that DID
+ * resolve to a valid, real tenant context -- just a client-scoped one, not
+ * an internal one -- is rejected 403, not 401, since identity was proven,
+ * only authorization for this route was not. Belt-and-suspenders over the
+ * RLS policy itself (migration 0009): even if this check were ever missing,
+ * a client-scoped transaction can only ever see its own client's rows, so
+ * this is defense-in-depth, not the sole isolation guarantee.
+ */
+export async function registerInternalAnalystAuthPreHandler(routes: FastifyInstance): Promise<void> {
+  await registerTenantAuthPreHandler(routes);
+  routes.addHook('preHandler', async (request: FastifyRequest, reply: FastifyReply) => {
+    if (request.tenantContext?.internal !== true) {
+      await reply.code(403).send({ error: 'internal analyst access required' });
+    }
   });
 }

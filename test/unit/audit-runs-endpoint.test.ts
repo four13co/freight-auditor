@@ -18,6 +18,22 @@ function mockTenantAuth(resolvedContext: unknown) {
         request.tenantContext = resolvedContext as FastifyRequest['tenantContext'];
       });
     },
+    // P5.C.3: buildApp() now also registers portfolio-routes.ts, which imports
+    // this export -- a wholesale mock of this module (as this file already did)
+    // must carry it too, or buildApp() throws on the missing export, unrelated
+    // to what this file actually tests.
+    registerInternalAnalystAuthPreHandler: async (routes: FastifyInstance) => {
+      routes.addHook('preHandler', async (request: FastifyRequest, reply: FastifyReply) => {
+        if (!resolvedContext) {
+          await reply.code(401).send({ error: 'unauthorized' });
+          return;
+        }
+        request.tenantContext = resolvedContext as FastifyRequest['tenantContext'];
+        if (!(resolvedContext as { internal?: boolean }).internal) {
+          await reply.code(403).send({ error: 'internal analyst access required' });
+        }
+      });
+    },
   }));
 }
 

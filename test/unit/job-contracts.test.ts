@@ -15,7 +15,7 @@ const base = {
 
 describe('versioned job contracts', () => {
   it('keeps every registered queue name explicitly versioned and mapped to a schema', () => {
-    expect(Object.values(JOB_NAMES)).toHaveLength(7);
+    expect(Object.values(JOB_NAMES)).toHaveLength(13);
     for (const name of Object.values(JOB_NAMES)) {
       expect(name).toMatch(/\.v1$/);
       expect(jobPayloadSchemas[name]).toBeDefined();
@@ -78,5 +78,119 @@ describe('versioned job contracts', () => {
 
   it('fails closed for a claim follow-up job missing claimId', () => {
     expect(() => parseJobPayload(JOB_NAMES.FOLLOW_UP_CLAIM_V1, { ...base })).toThrow(JobPayloadValidationError);
+  });
+
+  it('parses a valid claim-aging scan tick with no tenant scope', () => {
+    const payload = { schemaVersion: 1 as const, requestedAt: base.requestedAt };
+    expect(parseJobPayload(JOB_NAMES.SCAN_CLAIM_AGING_V1, payload)).toEqual(payload);
+  });
+
+  it('fails closed for a claim-aging scan tick carrying an unexpected clientId', () => {
+    expect(() => parseJobPayload(JOB_NAMES.SCAN_CLAIM_AGING_V1, {
+      schemaVersion: 1,
+      requestedAt: base.requestedAt,
+      clientId: base.clientId,
+    })).toThrow(JobPayloadValidationError);
+  });
+
+  it('parses a valid discovery-trigger job', () => {
+    const payload = { ...base, auditRunId: '10000000-0000-4000-8000-000000000002' };
+    expect(parseJobPayload(JOB_NAMES.DISCOVER_TRIGGERS_V1, payload)).toEqual(payload);
+  });
+
+  it('fails closed for a discovery-trigger job missing auditRunId', () => {
+    expect(() => parseJobPayload(JOB_NAMES.DISCOVER_TRIGGERS_V1, { ...base }))
+      .toThrow(JobPayloadValidationError);
+  });
+
+  it('fails closed for a discovery-trigger job carrying an unknown field', () => {
+    expect(() => parseJobPayload(JOB_NAMES.DISCOVER_TRIGGERS_V1, {
+      ...base, auditRunId: '10000000-0000-4000-8000-000000000002', sourceDocumentId: '10000000-0000-4000-8000-000000000003',
+    })).toThrow(JobPayloadValidationError);
+  });
+
+  it('parses a valid workflow-command scan tick with no tenant scope', () => {
+    const payload = { schemaVersion: 1 as const, requestedAt: base.requestedAt };
+    expect(parseJobPayload(JOB_NAMES.SCAN_WORKFLOW_COMMANDS_V1, payload)).toEqual(payload);
+  });
+
+  it('fails closed for a workflow-command scan tick carrying an unexpected clientId', () => {
+    expect(() => parseJobPayload(JOB_NAMES.SCAN_WORKFLOW_COMMANDS_V1, {
+      schemaVersion: 1,
+      requestedAt: base.requestedAt,
+      clientId: base.clientId,
+    })).toThrow(JobPayloadValidationError);
+  });
+
+  it('parses a valid run-workflow-command job', () => {
+    const payload = {
+      ...base,
+      commandId: '10000000-0000-4000-8000-000000000002',
+      workflowInstanceId: '10000000-0000-4000-8000-000000000003',
+      commandType: 'send_reminder',
+      payload: { to: 'a@example.com' },
+    };
+    expect(parseJobPayload(JOB_NAMES.RUN_WORKFLOW_COMMAND_V1, payload)).toEqual(payload);
+  });
+
+  it.each([
+    ['missing commandId', (p: Record<string, unknown>) => { delete p.commandId; }],
+    ['missing workflowInstanceId', (p: Record<string, unknown>) => { delete p.workflowInstanceId; }],
+    ['invalid commandType', (p: Record<string, unknown>) => { p.commandType = 'Not-Valid!'; }],
+    ['unknown field', (p: Record<string, unknown>) => { p.secret = 'do-not-log'; }],
+  ])('fails closed for a run-workflow-command job with %s', (_label, mutate) => {
+    const payload: Record<string, unknown> = {
+      ...base,
+      commandId: '10000000-0000-4000-8000-000000000002',
+      workflowInstanceId: '10000000-0000-4000-8000-000000000003',
+      commandType: 'send_reminder',
+      payload: {},
+    };
+    mutate(payload);
+    expect(() => parseJobPayload(JOB_NAMES.RUN_WORKFLOW_COMMAND_V1, payload)).toThrow(JobPayloadValidationError);
+  });
+
+  it('parses a valid outbox-message scan tick with no tenant scope', () => {
+    const payload = { schemaVersion: 1 as const, requestedAt: base.requestedAt };
+    expect(parseJobPayload(JOB_NAMES.SCAN_OUTBOX_MESSAGES_V1, payload)).toEqual(payload);
+  });
+
+  it('fails closed for an outbox-message scan tick carrying an unexpected clientId', () => {
+    expect(() => parseJobPayload(JOB_NAMES.SCAN_OUTBOX_MESSAGES_V1, {
+      schemaVersion: 1,
+      requestedAt: base.requestedAt,
+      clientId: base.clientId,
+    })).toThrow(JobPayloadValidationError);
+  });
+
+  it('parses a valid deliver-outbox-message job', () => {
+    const payload = {
+      ...base,
+      outboxMessageId: '10000000-0000-4000-8000-000000000002',
+      workflowInstanceId: '10000000-0000-4000-8000-000000000003',
+      commandId: '10000000-0000-4000-8000-000000000004',
+      messageType: 'carrier_notify',
+      payload: { to: 'carrier@example.com' },
+    };
+    expect(parseJobPayload(JOB_NAMES.DELIVER_OUTBOX_MESSAGE_V1, payload)).toEqual(payload);
+  });
+
+  it.each([
+    ['missing outboxMessageId', (p: Record<string, unknown>) => { delete p.outboxMessageId; }],
+    ['missing workflowInstanceId', (p: Record<string, unknown>) => { delete p.workflowInstanceId; }],
+    ['missing commandId', (p: Record<string, unknown>) => { delete p.commandId; }],
+    ['invalid messageType', (p: Record<string, unknown>) => { p.messageType = 'Not-Valid!'; }],
+    ['unknown field', (p: Record<string, unknown>) => { p.secret = 'do-not-log'; }],
+  ])('fails closed for a deliver-outbox-message job with %s', (_label, mutate) => {
+    const payload: Record<string, unknown> = {
+      ...base,
+      outboxMessageId: '10000000-0000-4000-8000-000000000002',
+      workflowInstanceId: '10000000-0000-4000-8000-000000000003',
+      commandId: '10000000-0000-4000-8000-000000000004',
+      messageType: 'carrier_notify',
+      payload: {},
+    };
+    mutate(payload);
+    expect(() => parseJobPayload(JOB_NAMES.DELIVER_OUTBOX_MESSAGE_V1, payload)).toThrow(JobPayloadValidationError);
   });
 });

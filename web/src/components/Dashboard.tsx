@@ -8,6 +8,7 @@ import { GateFailuresPanel } from './GateFailuresPanel.js';
 import { ReviewQueues } from './ReviewQueues.js';
 import { RubricConflictQueue } from './RubricConflictQueue.js';
 import { RuleProposalQueue } from './RuleProposalQueue.js';
+import { PaymentApprovalQueue } from './PaymentApprovalQueue.js';
 import { ExtractionReview } from './ExtractionReview.js';
 import { ContractRubricPreview } from './ContractRubricPreview.js';
 import {
@@ -18,6 +19,7 @@ import {
   fetchRubricConflicts,
   fetchRuleProposals,
   fetchContractRuleProposalPreviews,
+  fetchPendingPaymentAuthorizations,
   type FindingRow,
   type FindingsSortDir,
   type FindingsSortKey,
@@ -27,6 +29,7 @@ import {
   type RubricConflict,
   type RuleProposal,
   type ContractRuleProposalPreview,
+  type PendingPaymentAuthorizationRow,
 } from '../lib/api.js';
 
 /**
@@ -65,6 +68,7 @@ export function Dashboard() {
   const [rubricConflicts, setRubricConflicts] = useState<RubricConflict[]>([]);
   const [ruleProposals, setRuleProposals] = useState<RuleProposal[]>([]);
   const [contractProposals, setContractProposals] = useState<ContractRuleProposalPreview[]>([]);
+  const [pendingPayments, setPendingPayments] = useState<PendingPaymentAuthorizationRow[]>([]);
 
   const load = useCallback(() => {
     setStatus('loading');
@@ -111,6 +115,7 @@ export function Dashboard() {
     fetchRubricConflicts().then(setRubricConflicts, () => setRubricConflicts([]));
     fetchRuleProposals().then(setRuleProposals, () => setRuleProposals([]));
     fetchContractRuleProposalPreviews().then(setContractProposals, () => setContractProposals([]));
+    fetchPendingPaymentAuthorizations().then(setPendingPayments, () => setPendingPayments([]));
   }, []);
 
   return (
@@ -149,6 +154,8 @@ export function Dashboard() {
               <RubricConflictQueue rows={rubricConflicts} />
               <RuleProposalQueue rows={ruleProposals} onRatified={(id, lifecycle) => setRuleProposals((rows) => lifecycle === 'ACTIVE'
                 ? rows.filter((r) => r.id !== id) : rows.map((r) => r.id === id ? { ...r, lifecycle_state: 'SHADOW' } : r))} />
+              <PaymentApprovalQueue rows={pendingPayments} onDecided={(auditRunId) =>
+                setPendingPayments((rows) => rows.filter((r) => r.auditRunId !== auditRunId))} />
               <ContractRubricPreview rows={contractProposals} onAccepted={(id, shadowRuleVersionId, rationale) =>
                 setContractProposals((items) => items.map((item) => item.id === id ? { ...item, acceptance: {
                   id: `accepted-${id}`, shadowRuleVersionId, acceptedBy: 'current analyst', rationale,

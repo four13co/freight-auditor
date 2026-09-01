@@ -91,6 +91,16 @@ export interface GateFailureRow {
   transportDocumentId?: string | null;
 }
 
+export interface PendingPaymentAuthorizationRow {
+  auditRunId: string;
+  invoiceId: string;
+  invoiceNumber: string | null;
+  carrierName: string | null;
+  currency: string | null;
+  heldAt: string;
+  rationale: string | null;
+}
+
 export type FindingsSortKey = 'variance' | 'age';
 export type FindingsSortDir = 'asc' | 'desc';
 
@@ -242,6 +252,21 @@ export async function activateShadowRule(id: string, rationale: string): Promise
   if (!res.ok) throw new Error('POST activate failed');
 }
 
+export async function fetchPendingPaymentAuthorizations(): Promise<PendingPaymentAuthorizationRow[]> {
+  const res = await fetch('/api/payment-authorizations/pending', { headers: authHeaders() });
+  if (!res.ok) throw new Error(`GET /api/payment-authorizations/pending failed: ${res.status}`);
+  const body = (await res.json()) as { pending?: PendingPaymentAuthorizationRow[] };
+  return body.pending ?? [];
+}
+export async function submitPaymentAuthorization(auditRunId: string, action: 'approve' | 'hold', rationale?: string): Promise<void> {
+  const res = await fetch(`/api/audit-runs/${auditRunId}/payment-authorization`, {
+    method: 'POST',
+    headers: { ...authHeaders(), 'content-type': 'application/json' },
+    body: JSON.stringify({ action, rationale }),
+  });
+  if (!res.ok) throw new Error(`POST payment authorization failed: ${res.status}`);
+}
+
 export async function fetchGateFailures(): Promise<GateFailureRow[]> {
   const res = await fetch('/api/gate-failures', { headers: authHeaders() });
   if (!res.ok) throw new Error(`GET /api/gate-failures failed: ${res.status}`);
@@ -324,4 +349,65 @@ export async function fetchRecoveryReport(): Promise<RecoveryReportBucket[]> {
   const res = await fetch('/api/recovery-report', { headers: authHeaders() });
   if (!res.ok) throw new Error(`GET recovery report failed: ${res.status}`);
   return ((await res.json()) as { buckets: RecoveryReportBucket[] }).buckets;
+}
+
+/**
+ * Mirrors #181's get-claim-detail.ts ClaimDetail shape exactly: camelCase
+ * keys, money fields as strings (pg numeric), Date fields serialize to ISO
+ * strings over the wire. recoveryEvents is the claim's full append-only
+ * history -- the endpoint returns detail + history in one response, so
+ * there is no separate history fetch.
+ */
+export interface RecoveryEventRow {
+  id: string;
+  amountRecovered: string;
+  currency: string | null;
+  varianceFindingId: string | null;
+  recordedAt: string;
+}
+export interface ClaimDetail {
+  id: string;
+  disputeId: string | null;
+  amountClaimed: string;
+  currency: string | null;
+  status: string;
+  openedAt: string;
+  agingDeadlineAt: string | null;
+  recoveryEvents: RecoveryEventRow[];
+  cumulativeRecovered: string;
+}
+
+export async function fetchClaimDetail(id: string): Promise<ClaimDetail> {
+  const res = await fetch(`/api/claims/${id}`, { headers: authHeaders() });
+  if (!res.ok) throw new Error(`GET claim detail failed: ${res.status}`);
+  return (await res.json()) as ClaimDetail;
+}
+
+/** Mirrors get-dispute-detail.ts's DisputeDetail shape exactly: camelCase keys, money fields as strings, createdAt as an ISO string over the wire. */
+export interface DisputeLineRow {
+  id: string;
+  varianceFindingId: string | null;
+  amount: string | null;
+  currency: string | null;
+}
+export interface DisputeDetail {
+  id: string;
+  carrierId: string | null;
+  status: string;
+  amountClaimed: string | null;
+  currency: string | null;
+  createdAt: string;
+  lines: DisputeLineRow[];
+}
+
+export async function fetchDisputeDetail(id: string): Promise<DisputeDetail> {
+  const res = await fetch(`/api/disputes/${id}`, { headers: authHeaders() });
+  if (!res.ok) throw new Error(`GET dispute detail failed: ${res.status}`);
+  return (await res.json()) as DisputeDetail;
+}
+
+export async function approveDispute(id: string): Promise<{ disputeId: string; status: string }> {
+  const res = await fetch(`/api/disputes/${id}/approve`, { method: 'POST', headers: authHeaders() });
+  if (!res.ok) throw new Error(`POST dispute approval failed: ${res.status}`);
+  return (await res.json()) as { disputeId: string; status: string };
 }

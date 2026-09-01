@@ -54,6 +54,20 @@ jobs:
       # production), so CI is allowed to migrate it automatically. Production has no
       # DATABASE_URL secret yet and gets no override — the guard stays live there.
       #
+      # 86e31e6vz: --no-check-order disables node-pg-migrate's pure ordering LINT
+      # (it never affects WHICH migrations run -- getMigrationsToRun applies any
+      # not-yet-recorded file regardless of position, only checkOrder decides
+      # whether an out-of-order one throws before anything runs). This repo's
+      # migrations are additive-only by policy (no renames/drops), and a
+      # same-day-merge race landing a lower number behind an already-applied
+      # higher one has broken three separate deploys (#212, #217, #221), each
+      # requiring a reactive rename-and-re-PR cycle. `--` is load-bearing here,
+      # not stylistic: without it, npm intercepts `--no-check-order` as an
+      # unrecognized npm config flag and silently drops it before the script
+      # ever sees it (confirmed: `npm run migrate up --no-check-order` warns
+      # "Unknown cli config" and invokes the script with plain `up`, no flag).
+      # ci.yml already uses this same `-- up` form for its own migrate step.
+      #
       # 86e2uut65: npm run seed:dev runs in this SAME op run block (not a separate
       # step) so it reuses the DATABASE_URL already resolved here rather than
       # duplicating secret wiring. Gated on Development exactly like
@@ -80,7 +94,7 @@ jobs:
           op run --env-file=.env.migrate -- bash -c '
             set -euo pipefail
             node scripts/guard-protected-db.mjs
-            npm run migrate up
+            npm run migrate -- up --no-check-order
             npm run seed:criteria
             if [ "$SEED_DEV_ON_DEPLOY" = "1" ]; then
               npm run seed:dev

@@ -10,6 +10,8 @@ import { registerContractsRoutes } from './contracts-routes.js';
 import { registerClarificationAnswersRoutes } from './clarification-answers-routes.js';
 import { registerClaimRoutes } from './claim-routes.js';
 import { registerRecoveryReportRoutes } from './recovery-report-routes.js';
+import { registerPaymentRoutes } from './payment-routes.js';
+import { registerDisputeReviewRoutes } from './dispute-review-routes.js';
 
 /**
  * Build the Fastify application instance.
@@ -61,6 +63,14 @@ export function buildApp(): FastifyInstance {
   void app.register(registerClarificationAnswersRoutes);
   void app.register(registerClaimRoutes);
   void app.register(registerRecoveryReportRoutes);
+
+  // Payment authorization routes (P4.B.5): same tenant-auth preHandler
+  // pattern as the modules above, its own encapsulated plugin instance.
+  void app.register(registerPaymentRoutes);
+
+  // Dispute review + approval routes (P4.C.6): same tenant-auth preHandler
+  // pattern, its own encapsulated plugin instance.
+  void app.register(registerDisputeReviewRoutes);
 
   return app;
 }

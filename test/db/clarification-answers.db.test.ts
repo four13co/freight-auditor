@@ -76,13 +76,33 @@ describe('clarification answers (DB)', () => {
   });
 
   it('lists only in-scope questions and fails closed for cross-tenant answers', async () => {
-    expect(await withAppTx(pool, { clientIds: [clientId] }, (client) => listClarifyingQuestions(client, sourceDocumentId)))
+    expect(await withAppTx(pool, { clientIds: [clientId] }, (client) => listClarifyingQuestions(client, sourceDocumentId, clientId)))
       .toHaveLength(1);
-    expect(await withAppTx(pool, { clientIds: [otherClientId] }, (client) => listClarifyingQuestions(client, sourceDocumentId)))
+    expect(await withAppTx(pool, { clientIds: [otherClientId] }, (client) => listClarifyingQuestions(client, sourceDocumentId, otherClientId)))
       .toEqual([]);
     await expect(withAppTx(pool, { clientIds: [otherClientId] }, (client) => answerClarifyingQuestion(client, {
       clientId: otherClientId, questionId, actorUserId: userId,
       answer: { answer: 'CAD', answer_source: 'analyst_knowledge' },
     }))).rejects.toBeInstanceOf(ClarifyingQuestionNotFoundError);
+  });
+
+  // These two exercise the query-level predicate directly, independent of
+  // RLS: app_is_internal() (86e31a9ch's own trigger -- an internal analyst
+  // scope) grants RLS-level visibility across every client, so if the only
+  // thing stopping a cross-tenant read/write were RLS, an `internal: true`
+  // caller passing the WRONG clientId here would still see/mutate this row.
+  // The explicit predicate is what fails these closed regardless of RLS.
+  it('the explicit client_id predicate rejects a mismatched clientId even under an internal (cross-client) RLS scope', async () => {
+    expect(await withAppTx(pool, { internal: true }, (client) => listClarifyingQuestions(client, sourceDocumentId, otherClientId)))
+      .toEqual([]);
+    await expect(withAppTx(pool, { internal: true }, (client) => answerClarifyingQuestion(client, {
+      clientId: otherClientId, questionId, actorUserId: userId,
+      answer: { answer: 'CAD', answer_source: 'analyst_knowledge' },
+    }))).rejects.toBeInstanceOf(ClarifyingQuestionNotFoundError);
+  });
+
+  it('the explicit client_id predicate still finds the row under an internal scope when the clientId matches', async () => {
+    expect(await withAppTx(pool, { internal: true }, (client) => listClarifyingQuestions(client, sourceDocumentId, clientId)))
+      .toHaveLength(1);
   });
 });

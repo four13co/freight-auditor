@@ -126,6 +126,17 @@ describe('contract extraction provenance persistence (DB)', () => {
       `DELETE FROM extraction_field WHERE correction_hash IS NOT NULL`))).rejects.toThrow(/permission denied/i);
   });
 
+  // app_is_internal() (86e31a9ch) grants RLS-level visibility across every
+  // client, so this exercises the query-level client_id predicate directly:
+  // an internal caller passing the WRONG clientId must still not find the
+  // row, regardless of what RLS alone would have allowed through.
+  it('the explicit client_id predicate rejects a mismatched clientId even under an internal (cross-client) RLS scope', async () => {
+    await expect(withAppTx(pool, { internal: true }, (client) => persistExtractionFieldCorrection(client, {
+      clientId: otherClientId, fieldId: originalFieldId, actorUserId: userId,
+      correction: { human_value: 'wrong tenant via internal scope', answer_source: 'analyst_knowledge' },
+    }))).rejects.toBeInstanceOf(ExtractionFieldNotFoundError);
+  });
+
   it('fails closed on source/hash/key mismatch before writing evidence', async () => {
       const value = extraction();
       const key = contractExtractionIdempotencyKey(value);

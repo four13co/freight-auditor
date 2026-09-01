@@ -21,7 +21,8 @@ export async function persistExtractionFieldCorrection(
   const correction = ExtractionFieldCorrectionInputSchema.parse(input.correction);
   const original = (await client.query<OriginalField>(`SELECT id,source_document_id,field_path,ai_value,confidence,page_ref,bbox,
       model_version,prompt_version,extraction_response_hash,extraction_schema_version,extraction_status,citations
-    FROM extraction_field WHERE id=$1 AND extraction_response_hash IS NOT NULL AND correction_hash IS NULL`, [input.fieldId])).rows[0];
+    FROM extraction_field WHERE id=$1 AND client_id=$2 AND extraction_response_hash IS NOT NULL AND correction_hash IS NULL`,
+    [input.fieldId, input.clientId])).rows[0];
   if (!original) throw new ExtractionFieldNotFoundError();
   const correctionHash = createHash('sha256').update(stableStringify({
     fieldId: original.id, humanValue: correction.human_value, answerSource: correction.answer_source,

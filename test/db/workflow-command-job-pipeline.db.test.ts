@@ -156,7 +156,10 @@ describe.skipIf(!DATABASE_URL)('workflow command job pipeline (database)', () =>
     // duplicate guard; the deterministic job id below is defense in depth.
     expect(second.enqueued).toBe(0);
 
-    const expectedJobId = deterministicJobId(JOB_NAMES.RUN_WORKFLOW_COMMAND_V1, clientId, `workflow-command:${commandId}`);
+    // attempts is 1 after this command's single claim above (claimDueWorkflowCommands
+    // increments attempts at claim time) -- the idempotencyKey folds attempts in so a
+    // later reclaim (P4.A.7) gets a fresh job id instead of colliding with this one.
+    const expectedJobId = deterministicJobId(JOB_NAMES.RUN_WORKFLOW_COMMAND_V1, clientId, `workflow-command:${commandId}:1`);
     const jobs = await getPool().query(
       `SELECT count(*)::int AS count FROM pgboss.job WHERE name = $1 AND id = $2`,
       ['freight.workflow.run-command.v1', expectedJobId],

@@ -29,8 +29,19 @@ export interface ScheduleWorkflowCommandJobsResult {
  * primary duplicate guard.
  *
  * What happens if the claimed command's job never completes (worker crash,
- * permanent handler failure) is explicitly out of this task's boundary --
- * recovery is P4.A.7, not built here.
+ * permanent handler failure) is recovered by reclaimStaleWorkflowCommands-
+ * ForActiveClients (P4.A.7), run from the same scan tick immediately before
+ * this function (workflow-command-scan-handler.ts) -- a row it reclaims
+ * back to 'pending' is claimed fresh here on this same tick or the next.
+ *
+ * The idempotencyKey below folds in `attempts` specifically so a reclaimed
+ * command gets a job id distinct from its first (now dead/expired) attempt:
+ * deterministicJobId is keyed only on (name, clientId, idempotencyKey), and
+ * pg-boss's send() with an explicit id no-ops if a job with that id already
+ * exists (retentionDays: 30 in policies.ts keeps the old row around) -- an
+ * unqualified `workflow-command:${commandId}` key would silently swallow
+ * every re-enqueue after a reclaim, leaving the row 'pending' forever with
+ * no job ever actually running it again.
  */
 export async function scheduleWorkflowCommandJobs(
   client: pg.PoolClient,
@@ -49,7 +60,7 @@ export async function scheduleWorkflowCommandJobs(
       await enqueueInTransaction(boss, client, clientId, JOB_NAMES.RUN_WORKFLOW_COMMAND_V1, {
         schemaVersion: 1 as const,
         clientId,
-        idempotencyKey: `workflow-command:${command.commandId}`,
+        idempotencyKey: `workflow-command:${command.commandId}:${command.attempts}`,
         requestedAt: now.toISOString(),
         commandId: command.commandId,
         workflowInstanceId: command.workflowInstanceId,

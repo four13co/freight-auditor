@@ -5,7 +5,7 @@ import { parseJobPayload, JOB_NAMES } from './contracts.js';
 
 export type WorkflowCommandHandler = (
   client: pg.PoolClient,
-  ctx: { clientId: string; workflowInstanceId: string; commandType: string; payload: Record<string, unknown> },
+  ctx: { clientId: string; workflowInstanceId: string; commandId: string; commandType: string; payload: Record<string, unknown> },
 ) => Promise<void>;
 
 export class UnknownWorkflowCommandTypeError extends Error {
@@ -66,6 +66,11 @@ const defaultDeps: RunWorkflowCommandDeps = { handlers, complete: completeWorkfl
  * intent then commits or rolls back exactly with this function's own
  * complete() call, and a separate, later, idempotent step (not built here)
  * performs the actual send against the committed row.
+ *
+ * ctx carries commandId (P4.C.7) so a handler can call recordOutboxMessage,
+ * whose own FK guard (`workflow_command WHERE client_id = $1 AND id = $2`)
+ * requires it -- nothing before this task's first live handler ever needed
+ * it in ctx.
  */
 export async function handleRunWorkflowCommandJob(
   client: pg.PoolClient,
@@ -80,6 +85,7 @@ export async function handleRunWorkflowCommandJob(
   await handler(client, {
     clientId: payload.clientId,
     workflowInstanceId: payload.workflowInstanceId,
+    commandId: payload.commandId,
     commandType: payload.commandType,
     payload: payload.payload,
   });

@@ -13,8 +13,12 @@ import { approveDispute } from '../../src/modules/disputes/approve-dispute.js';
  * with a genuine 23503 FK violation, not a flake). Seeded here the same way
  * as claim-endpoint.db.test.ts.
  *
- * Teardown deepest-child-first: audit_event -> dispute_line -> dispute ->
- * app_user -> client.
+ * Teardown deepest-child-first (86e30txkx's tracked FK-order defect class):
+ * workflow_outbox_message -> workflow_command -> audit_event -> dispute_line
+ * -> dispute -> workflow_instance -> app_user -> client. audit_event's own
+ * entity_id is a plain uuid, not a real FK to workflow_instance/
+ * workflow_command/dispute, so its only hard ordering constraint is
+ * client_id/actor_user_id -- placed early here for clarity, not necessity.
  */
 describe('dispute review (DB)', () => {
   let pool: pg.Pool;
@@ -39,8 +43,11 @@ describe('dispute review (DB)', () => {
     const owner = await pool.connect();
     try {
       await owner.query(`DELETE FROM audit_event WHERE client_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM workflow_outbox_message WHERE client_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM workflow_command WHERE client_id = $1`, [clientId]);
       await owner.query(`DELETE FROM dispute_line WHERE client_id = $1`, [clientId]);
       await owner.query(`DELETE FROM dispute WHERE client_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM workflow_instance WHERE client_id = $1`, [clientId]);
       await owner.query(`DELETE FROM app_user WHERE id = $1`, [actorUserId]);
       await owner.query(`DELETE FROM client WHERE id = $1`, [clientId]);
     } finally {
@@ -93,6 +100,40 @@ describe('dispute review (DB)', () => {
 
       const second = await withTenantTx({ clientIds: [clientId], internal: false }, (client) => approveDispute(client, disputeId, actorUserId));
       expect(second).toEqual({ found: false });
+    } finally {
+      owner.release();
+    }
+  });
+
+  it('P4.C.7: creates exactly one dispute_delivery workflow_instance and one due deliver_dispute command per dispute, not duplicated on the idempotent second approve', async () => {
+    const owner = await pool.connect();
+    try {
+      const disputeId = await seedDraftDispute(owner);
+
+      await withTenantTx({ clientIds: [clientId], internal: false }, (client) => approveDispute(client, disputeId, actorUserId));
+      // Idempotent no-op call: must not create a second instance/command.
+      await withTenantTx({ clientIds: [clientId], internal: false }, (client) => approveDispute(client, disputeId, actorUserId));
+
+      const { rows: instances } = await pool.query(
+        `SELECT id, workflow_type, subject_entity, subject_entity_id, current_state
+         FROM workflow_instance WHERE client_id = $1 AND subject_entity_id = $2`,
+        [clientId, disputeId],
+      );
+      expect(instances).toHaveLength(1);
+      expect(instances[0]).toMatchObject({
+        workflow_type: 'dispute_delivery', subject_entity: 'dispute', subject_entity_id: disputeId, current_state: 'pending_delivery',
+      });
+
+      const { rows: commands } = await pool.query(
+        `SELECT command_type, status, payload, run_after FROM workflow_command
+         WHERE client_id = $1 AND workflow_instance_id = $2`,
+        [clientId, instances[0].id],
+      );
+      expect(commands).toHaveLength(1);
+      expect(commands[0].command_type).toBe('deliver_dispute');
+      expect(commands[0].status).toBe('pending');
+      expect(commands[0].payload).toEqual({ disputeId });
+      expect(commands[0].run_after.getTime()).toBeLessThanOrEqual(Date.now());
     } finally {
       owner.release();
     }

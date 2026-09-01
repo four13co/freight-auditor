@@ -10,6 +10,12 @@ import { handleWorkflowCommandScanJob } from './workflow-command-scan-handler.js
 import { handleRunWorkflowCommandJob } from './run-workflow-command-handler.js';
 import { handleOutboxMessageScanJob } from './outbox-message-scan-handler.js';
 import { handleDeliverOutboxMessageJob } from './deliver-outbox-message-handler.js';
+// Side-effect import: registers the deliver_dispute workflow_command
+// handler (P4.C.7) into run-workflow-command-handler.ts's shared registry
+// at process startup, the same extension point every other concrete
+// command/message type will use. No entry point calls anything from this
+// module directly -- registerWorkflowCommandHandler runs at module load.
+import '../modules/disputes/deliver-dispute-command-handler.js';
 
 type Environment = Record<string, string | undefined>;
 

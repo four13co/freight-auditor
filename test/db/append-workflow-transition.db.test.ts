@@ -107,6 +107,54 @@ describe('appendWorkflowTransition (DB)', () => {
     );
   });
 
+  it('serializes concurrent transitions: the loser re-validates against the post-commit state, never logging an unvalidated from/to pair', async () => {
+    // draft has two legal targets so both calls can pass validation against
+    // the same pre-race snapshot (PR #228's failure scenario) -- 'sent' has
+    // only accepted/rejected, so whichever call loses the row lock and
+    // re-reads 'sent' afterwards must fail validation, not silently log
+    // sent -> archived (or vice versa if 'archived' wins first).
+    const racy = { draft: ['sent', 'archived'], sent: ['accepted', 'rejected'] };
+    const instanceId = await withTenantTx({ clientIds: [clientId] }, (c) => seedInstance(c));
+
+    const [a, b] = await Promise.allSettled([
+      withTenantTx({ clientIds: [clientId] }, (c) =>
+        appendWorkflowTransition(c, { clientId, workflowInstanceId: instanceId, toState: 'sent' }, racy),
+      ),
+      withTenantTx({ clientIds: [clientId] }, (c) =>
+        appendWorkflowTransition(c, { clientId, workflowInstanceId: instanceId, toState: 'archived' }, racy),
+      ),
+    ]);
+
+    const outcomes = [a, b];
+    const winners = outcomes.filter((r) => r.status === 'fulfilled');
+    const losers = outcomes.filter((r) => r.status === 'rejected');
+    expect(winners).toHaveLength(1);
+    expect(losers).toHaveLength(1);
+    expect((losers[0] as PromiseRejectedResult).reason).toBeInstanceOf(WorkflowTransitionError);
+
+    const owner = await pool.connect();
+    let finalState: string;
+    let log: Array<{ from_state: string; to_state: string }>;
+    try {
+      const state = await owner.query(`SELECT current_state FROM workflow_instance WHERE id = $1`, [instanceId]);
+      finalState = state.rows[0].current_state;
+      const rows = await owner.query(
+        `SELECT from_state, to_state FROM workflow_transition WHERE workflow_instance_id = $1`,
+        [instanceId],
+      );
+      log = rows.rows;
+    } finally {
+      owner.release();
+    }
+
+    // Whichever target won, exactly one transition is logged, from the real
+    // pre-race state, to the state the instance actually ended up in -- the
+    // loser never got to append the pair it validated against the stale
+    // snapshot.
+    expect(['sent', 'archived']).toContain(finalState);
+    expect(log).toEqual([{ from_state: 'draft', to_state: finalState }]);
+  });
+
   it('rejects cross-tenant access to a workflow_instance under RLS (fail-safe, not a schema error)', async () => {
     const otherOwner = await pool.connect();
     let otherClientId: string;

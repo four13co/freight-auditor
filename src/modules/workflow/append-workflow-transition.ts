@@ -26,20 +26,27 @@ export class AppendWorkflowTransitionError extends Error {
  * transition record in one statement (P4.A.2), mirroring
  * update-finding-status.ts's CTE shape: the `old` CTE captures the
  * pre-transition state in the same statement as the UPDATE, so the mutable
- * current-state row and its append-only history never diverge and there is
- * no read-then-write TOCTOU gap under concurrent transitions.
+ * current-state row and its append-only history never diverge.
  *
- * Legality is checked against allowedTransitions BEFORE any write --
- * workflow_instance.current_state and workflow_type are open text (0046),
- * so the caller supplies the transition map for its own workflow_type; this
- * function has no hardcoded state graph. A same-state call is always legal
- * (validateWorkflowTransition's own idempotent-retry rule) and still
- * appends a transition row -- the append-only log records that the retry
- * happened, it does not suppress it.
+ * The pre-check below takes `FOR UPDATE` on the workflow_instance row, so it
+ * holds a row-level lock for the rest of this transaction. A second call
+ * racing against the same instance blocks on that lock until this one
+ * commits or rolls back, then re-reads the (now current) state itself --
+ * closing the read-then-write TOCTOU gap a plain SELECT would leave (see PR
+ * #228's review finding: the atomic CTE's own `old` re-read was a second,
+ * unlocked snapshot, so a losing caller could log a from/to pair it never
+ * validated). Legality is still checked against allowedTransitions BEFORE
+ * any write -- workflow_instance.current_state and workflow_type are open
+ * text (0046), so the caller supplies the transition map for its own
+ * workflow_type; this function has no hardcoded state graph. A same-state
+ * call is always legal (validateWorkflowTransition's own idempotent-retry
+ * rule) and still appends a transition row -- the append-only log records
+ * that the retry happened, it does not suppress it.
  *
  * The UPDATE touches ONLY current_state and updated_at, matching
- * workflow_instance's grant (0046: GRANT UPDATE (current_state,
- * updated_at) -- any other column would fail under freight_app).
+ * workflow_instance's actual grant (0046: GRANT SELECT, INSERT, UPDATE,
+ * DELETE -- full-table, not column-restricted, so this is a self-imposed
+ * discipline rather than an enforced one).
  */
 export async function appendWorkflowTransition(
   client: pg.PoolClient,
@@ -49,7 +56,7 @@ export async function appendWorkflowTransition(
   const input = schema.parse(untrusted);
 
   const current = await client.query<{ client_id: string; current_state: string }>(
-    `SELECT client_id, current_state FROM workflow_instance WHERE client_id = $1 AND id = $2`,
+    `SELECT client_id, current_state FROM workflow_instance WHERE client_id = $1 AND id = $2 FOR UPDATE`,
     [input.clientId, input.workflowInstanceId],
   );
   const instance = current.rows[0];

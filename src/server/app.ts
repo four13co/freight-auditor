@@ -13,6 +13,7 @@ import { registerClaimRecoveryRoutes } from './claim-recovery-routes.js';
 import { registerPaymentRoutes } from './payment-routes.js';
 import { registerDisputeReviewRoutes } from './dispute-review-routes.js';
 import { registerPortfolioRoutes } from './portfolio-routes.js';
+import { registerPortalContentRoutes } from './portal-content-routes.js';
 
 /**
  * Build the Fastify application instance.
@@ -82,6 +83,12 @@ export function buildApp(): FastifyInstance {
   // NOT the shared registerTenantAuthPreHandler every module above uses --
   // see portfolio-routes.ts's header comment for why.
   void app.register(registerPortfolioRoutes);
+
+  // Client portal content APIs (P6.B.1): invoice list + scorecard summary,
+  // its OWN preHandler (registerClientViewerAuthPreHandler) -- deliberately
+  // NOT the shared registerTenantAuthPreHandler -- see portal-content-
+  // routes.ts's header comment for why.
+  void app.register(registerPortalContentRoutes);
 
   return app;
 }

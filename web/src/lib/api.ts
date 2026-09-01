@@ -409,3 +409,37 @@ export async function fetchCrossClientPortfolio(): Promise<CrossClientPortfolioB
   if (!res.ok) throw new Error(`GET cross-client portfolio failed: ${res.status}`);
   return ((await res.json()) as { buckets: CrossClientPortfolioBucket[] }).buckets;
 }
+
+export interface ClientPortalInvoiceRow {
+  id: string;
+  invoiceNumber: string | null;
+  carrierId: string | null;
+  carrierName: string | null;
+  currency: string | null;
+  status: string;
+  createdAt: string;
+}
+
+/** Client portal (P6.B.1) -- unwired to nav, same disclosure as PortfolioReport.tsx's own precedent. */
+export async function fetchClientPortalInvoices(): Promise<ClientPortalInvoiceRow[]> {
+  const res = await fetch('/api/portal/invoices', { headers: authHeaders() });
+  if (!res.ok) throw new Error(`GET portal invoices failed: ${res.status}`);
+  return ((await res.json()) as { invoices: ClientPortalInvoiceRow[] }).invoices;
+}
+
+export interface ClientPortalScorecardBucket {
+  currency: string | null;
+  runCount: number;
+  conformedCount: number;
+  varianceCount: number;
+  unassessableCount: number;
+  totalOvercharge: string;
+  totalUndercharge: string;
+}
+
+/** Client portal (P6.B.1) -- unwired to nav, same disclosure as PortfolioReport.tsx's own precedent. */
+export async function fetchClientPortalScorecard(): Promise<ClientPortalScorecardBucket[]> {
+  const res = await fetch('/api/portal/scorecard', { headers: authHeaders() });
+  if (!res.ok) throw new Error(`GET portal scorecard failed: ${res.status}`);
+  return ((await res.json()) as { buckets: ClientPortalScorecardBucket[] }).buckets;
+}

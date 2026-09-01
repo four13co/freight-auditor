@@ -1,5 +1,6 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
+import { encodeCursor } from '../../src/shared/cursor-pagination.js';
 
 /**
  * Request-level unit coverage of GET /api/claims and GET /api/claims/:id
@@ -55,8 +56,13 @@ describe('claim + recovery APIs (unit, mocked withTenantTx + tenant-auth)', () =
     const res = await app.inject({ method: 'GET', url: '/api/claims', headers: { 'x-client-id': CLIENT_ID, 'x-user-id': 'user-1' } });
 
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual({ claims: [{ id: 'c1', status: 'open' }] });
-    expect(listClaims).toHaveBeenCalledWith({}, CLIENT_ID, { status: undefined, limit: undefined, offset: undefined });
+    // P6.C.1: every /api/claims response now also carries nextCursor (null
+    // here since the mocked page is well under the default limit).
+    expect(res.json()).toEqual({ claims: [{ id: 'c1', status: 'open' }], nextCursor: null });
+    // limit is always inflated to effectiveLimit+1 internally (P6.C.1's
+    // fetch-one-extra trick for a correct nextCursor without a heuristic);
+    // status/offset/cursor still thread through unchanged otherwise.
+    expect(listClaims).toHaveBeenCalledWith({}, CLIENT_ID, { status: undefined, limit: 51, offset: undefined, cursor: undefined });
   });
 
   it('rejects an unauthenticated list request with 401', async () => {
@@ -108,6 +114,97 @@ describe('claim + recovery APIs (unit, mocked withTenantTx + tenant-auth)', () =
 
     const res = await app.inject({ method: 'GET', url: '/api/claims?offset=-1', headers: { 'x-client-id': CLIENT_ID, 'x-user-id': 'user-1' } });
     expect(res.statusCode).toBe(400);
+  });
+
+  it('rejects combining cursor with offset, without calling listClaims (P6.C.1)', async () => {
+    mockAuthorized();
+    const listClaims = vi.fn();
+    vi.doMock('../../src/db/tenant-context.js', () => ({
+      withTenantTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
+    }));
+    vi.doMock('../../src/modules/claims/list-claims.js', () => ({ listClaims }));
+    const { buildApp } = await import('../../src/server/app.js');
+    app = buildApp();
+
+    const cursor = encodeCursor({ v: '2026-01-01T00:00:00.000Z', id: '10000000-0000-4000-8000-000000000001' });
+    const res = await app.inject({
+      method: 'GET', url: `/api/claims?cursor=${cursor}&offset=10`,
+      headers: { 'x-client-id': CLIENT_ID, 'x-user-id': 'user-1' },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(listClaims).not.toHaveBeenCalled();
+  });
+
+  it('rejects a malformed cursor with 400, without calling listClaims (P6.C.1)', async () => {
+    mockAuthorized();
+    const listClaims = vi.fn();
+    vi.doMock('../../src/db/tenant-context.js', () => ({
+      withTenantTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
+    }));
+    vi.doMock('../../src/modules/claims/list-claims.js', () => ({ listClaims }));
+    const { buildApp } = await import('../../src/server/app.js');
+    app = buildApp();
+
+    const res = await app.inject({
+      method: 'GET', url: '/api/claims?cursor=not-a-valid-cursor',
+      headers: { 'x-client-id': CLIENT_ID, 'x-user-id': 'user-1' },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(listClaims).not.toHaveBeenCalled();
+  });
+
+  it('decodes a valid cursor and threads it through to listClaims (P6.C.1)', async () => {
+    mockAuthorized();
+    const listClaims = vi.fn().mockResolvedValue([]);
+    vi.doMock('../../src/db/tenant-context.js', () => ({
+      withTenantTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
+    }));
+    vi.doMock('../../src/modules/claims/list-claims.js', () => ({ listClaims }));
+    const { buildApp } = await import('../../src/server/app.js');
+    app = buildApp();
+
+    const cursor = encodeCursor({ v: '2026-01-01T00:00:00.000Z', id: '10000000-0000-4000-8000-000000000001' });
+    const res = await app.inject({
+      method: 'GET', url: `/api/claims?cursor=${cursor}`,
+      headers: { 'x-client-id': CLIENT_ID, 'x-user-id': 'user-1' },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(listClaims).toHaveBeenCalledWith({}, CLIENT_ID, {
+      status: undefined,
+      limit: 51,
+      offset: undefined,
+      cursor: { id: '10000000-0000-4000-8000-000000000001' },
+    });
+  });
+
+  it('trims the overflow row and returns a nextCursor when more rows exist than the page limit (P6.C.1)', async () => {
+    mockAuthorized();
+    const rows = [
+      { id: 'c3', status: 'open', openedAt: new Date('2026-01-03T00:00:00.000Z') },
+      { id: 'c2', status: 'open', openedAt: new Date('2026-01-02T00:00:00.000Z') },
+      { id: 'c1', status: 'open', openedAt: new Date('2026-01-01T00:00:00.000Z') },
+    ];
+    const listClaims = vi.fn().mockResolvedValue(rows);
+    vi.doMock('../../src/db/tenant-context.js', () => ({
+      withTenantTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
+    }));
+    vi.doMock('../../src/modules/claims/list-claims.js', () => ({ listClaims }));
+    const { buildApp } = await import('../../src/server/app.js');
+    app = buildApp();
+
+    const res = await app.inject({
+      method: 'GET', url: '/api/claims?limit=2',
+      headers: { 'x-client-id': CLIENT_ID, 'x-user-id': 'user-1' },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    // Dates round-trip through JSON as ISO strings -- compare against the
+    // serialized shape, not the Date objects the mock returned.
+    expect(body.claims).toEqual([
+      { id: 'c3', status: 'open', openedAt: '2026-01-03T00:00:00.000Z' },
+      { id: 'c2', status: 'open', openedAt: '2026-01-02T00:00:00.000Z' },
+    ]);
+    expect(body.nextCursor).not.toBeNull();
   });
 
   it('returns claim detail for a valid id, threading the resolved clientId through', async () => {

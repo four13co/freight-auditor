@@ -3,7 +3,7 @@ import { collectDiscoveryMetrics, renderDiscoveryMetrics } from '../../src/jobs/
 
 describe('discovery metrics', () => {
   it('collects AI-proposal, abstention, human-touch, and proposal-lifecycle counts', async () => {
-    const executeSql = vi.fn()
+    const query = vi.fn()
       .mockResolvedValueOnce({ rows: [{ model_id: 'claude-sonnet-5', prompt_version: 'v3', count: '7' }] }) // ai proposals
       .mockResolvedValueOnce({ rows: [{ abstention_reason: 'LOW_CONFIDENCE', count: '4' }] }) // abstentions
       .mockResolvedValueOnce({ rows: [{ corrections: '12', ratifications: '2' }] }) // human touch
@@ -13,12 +13,12 @@ describe('discovery metrics', () => {
         { lifecycle_stage: 'RATIFIED', count: '2' },
       ] });
 
-    const metrics = await collectDiscoveryMetrics({ executeSql });
+    const metrics = await collectDiscoveryMetrics({ query } as never);
 
-    expect(executeSql).toHaveBeenCalledTimes(4);
-    expect(executeSql).toHaveBeenCalledWith(expect.stringContaining('FROM contract_rule_proposal'), []);
-    expect(executeSql).toHaveBeenCalledWith(expect.stringContaining('FROM clarifying_question'), []);
-    expect(executeSql).toHaveBeenCalledWith(expect.stringContaining('extraction_field'), []);
+    expect(query).toHaveBeenCalledTimes(4);
+    expect(query).toHaveBeenCalledWith(expect.stringContaining('FROM contract_rule_proposal'), []);
+    expect(query).toHaveBeenCalledWith(expect.stringContaining('FROM clarifying_question'), []);
+    expect(query).toHaveBeenCalledWith(expect.stringContaining('extraction_field'), []);
     expect(metrics).toEqual({
       aiProposalsByModel: [{ modelId: 'claude-sonnet-5', promptVersion: 'v3', count: 7 }],
       abstentionsByReason: [{ abstentionReason: 'LOW_CONFIDENCE', count: 4 }],
@@ -33,13 +33,13 @@ describe('discovery metrics', () => {
   });
 
   it('defaults human-touch counts to zero when the aggregate row is empty', async () => {
-    const executeSql = vi.fn()
+    const query = vi.fn()
       .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [] });
 
-    const metrics = await collectDiscoveryMetrics({ executeSql });
+    const metrics = await collectDiscoveryMetrics({ query } as never);
 
     expect(metrics.humanTouchCorrections).toBe(0);
     expect(metrics.humanTouchRatifications).toBe(0);

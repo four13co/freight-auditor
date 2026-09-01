@@ -1,11 +1,17 @@
-import type PgBoss from 'pg-boss';
+import type pg from 'pg';
 
 /**
  * Aggregate-only observability for the discovery/proposal pipeline (P3.D.9):
  * counts, never tenant-identifying rows -- dimensioned by model/prompt version,
- * abstention reason, and lifecycle stage, never by client_id. Matches
- * jobs/metrics.ts's shape exactly (PgBoss.Db/executeSql, no new connection),
- * so this reads through the same worker DB handle as queue metrics.
+ * abstention reason, and lifecycle stage, never by client_id.
+ *
+ * The four source tables (contract_rule_proposal, clarifying_question,
+ * extraction_field, contract_rule_proposal_ratification) all carry FORCE ROW
+ * LEVEL SECURITY, so this reads through `withTenantTx({ internal: true })`
+ * (portfolio-wide read, still RLS-bound) rather than a raw pool/boss handle --
+ * a query issued outside a tenant transaction runs with an empty GUC scope and
+ * fails closed (zero rows), never open. See src/worker/metrics.ts for the call
+ * site and test/db/discovery-metrics.db.test.ts for the RLS-visibility proof.
  *
  * "AI-call" is counted as freight_ai_proposals_total: a contract_rule_proposal
  * row is durable evidence of one *successful* structured-output call
@@ -53,12 +59,12 @@ const PROPOSALS_BY_LIFECYCLE_SQL = `
   SELECT 'RATIFIED', count(*) FROM contract_rule_proposal_ratification
 `;
 
-export async function collectDiscoveryMetrics(db: PgBoss.Db): Promise<DiscoveryMetrics> {
+export async function collectDiscoveryMetrics(client: pg.PoolClient): Promise<DiscoveryMetrics> {
   const [aiProposals, abstentions, humanTouch, proposalsByLifecycle] = await Promise.all([
-    db.executeSql(AI_PROPOSALS_SQL, []),
-    db.executeSql(ABSTENTIONS_SQL, []),
-    db.executeSql(HUMAN_TOUCH_SQL, []),
-    db.executeSql(PROPOSALS_BY_LIFECYCLE_SQL, []),
+    client.query(AI_PROPOSALS_SQL, []),
+    client.query(ABSTENTIONS_SQL, []),
+    client.query(HUMAN_TOUCH_SQL, []),
+    client.query(PROPOSALS_BY_LIFECYCLE_SQL, []),
   ]);
   const humanTouchRow = (humanTouch.rows as HumanTouchRow[])[0];
   return {

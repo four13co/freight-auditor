@@ -4,12 +4,13 @@ import { getPool, closePool } from '../../src/db/pool.js';
 import { withTenantTx } from '../../src/db/tenant-context.js';
 import { createClaimFromDispute, DisputeNotFoundError } from '../../src/modules/claims/create-claim-from-dispute.js';
 import { ClaimableDisputeError } from '../../src/modules/claims/validate-claimable-dispute.js';
+import { cleanupTenantFixtures } from './helpers/cleanup-tenant-fixtures.js';
 
 /**
- * 86e2zfj3w (P5.A.1). Teardown order is deepest-child-first
- * (audit_event -> claim -> dispute -> client) -- the exact ordering #165's
- * review closure found broken (client deleted before the audit_event rows
- * the test itself wrote).
+ * 86e2zfj3w (P5.A.1). Teardown goes through cleanupTenantFixtures
+ * (86e30txkx), which derives a FK-safe delete order from the live schema --
+ * the exact ordering #165's review closure found broken by hand (client
+ * deleted before the audit_event rows the test itself wrote).
  */
 describe('createClaimFromDispute (DB)', () => {
   let pool: pg.Pool;
@@ -31,15 +32,7 @@ describe('createClaimFromDispute (DB)', () => {
   });
 
   afterAll(async () => {
-    const owner = await pool.connect();
-    try {
-      await owner.query(`DELETE FROM audit_event WHERE client_id IN ($1, $2)`, [clientAId, clientBId]);
-      await owner.query(`DELETE FROM claim WHERE client_id IN ($1, $2)`, [clientAId, clientBId]);
-      await owner.query(`DELETE FROM dispute WHERE client_id IN ($1, $2)`, [clientAId, clientBId]);
-      await owner.query(`DELETE FROM client WHERE id IN ($1, $2)`, [clientAId, clientBId]);
-    } finally {
-      owner.release();
-    }
+    await cleanupTenantFixtures(pool, [clientAId, clientBId]);
     await closePool();
   });
 

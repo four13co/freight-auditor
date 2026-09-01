@@ -113,6 +113,11 @@ export interface ClaimedOutboxMessage {
  * deliverers can never both claim the same message. FOR UPDATE SKIP LOCKED
  * lets concurrent claims proceed over disjoint rows rather than blocking on
  * each other. Ordered by created_at so the oldest message is served first.
+ *
+ * claimed_at records the moment of this flip so reclaimStaleOutboxMessages
+ * (P4.A.8) can later find a row that has sat 'claimed' longer than a
+ * delivery worker crash should plausibly explain -- the identical pattern
+ * claimDueWorkflowCommands uses for reclaimStaleWorkflowCommands (P4.A.7).
  */
 export async function claimDueOutboxMessages(
   client: pg.PoolClient,
@@ -130,7 +135,7 @@ export async function claimDueOutboxMessages(
     attempts: number;
   }>(
     `UPDATE workflow_outbox_message
-     SET status = 'claimed', attempts = attempts + 1
+     SET status = 'claimed', attempts = attempts + 1, claimed_at = $2
      WHERE id IN (
        SELECT id FROM workflow_outbox_message
        WHERE client_id = $1 AND status = 'pending' AND created_at <= $2

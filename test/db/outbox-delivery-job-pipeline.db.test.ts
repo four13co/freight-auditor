@@ -8,6 +8,7 @@ import { registerJobQueues } from '../../src/jobs/policies.js';
 import { scheduleOutboxDeliveryJobs } from '../../src/modules/workflow/schedule-outbox-delivery-jobs.js';
 import { recordOutboxMessage } from '../../src/modules/workflow/workflow-outbox.js';
 import { registerOutboxMessageSender, type OutboxMessageSender } from '../../src/jobs/deliver-outbox-message-handler.js';
+import { reclaimStaleOutboxMessagesForActiveClients } from '../../src/modules/workflow/reclaim-stale-outbox-messages.js';
 import { deterministicJobId } from '../../src/jobs/enqueue.js';
 import { JOB_NAMES } from '../../src/jobs/contracts.js';
 import { requireDatabaseUrl } from './helpers.js';
@@ -160,7 +161,7 @@ describe.skipIf(!DATABASE_URL)('outbox delivery job pipeline (database)', () => 
   it('does not enqueue a duplicate delivery job for a message already claimed by an in-flight scan', async () => {
     const commandId = await seedCommand();
     const dedupeKey = `notify:${commandId}`;
-    await seedDueMessage(commandId, dedupeKey);
+    const outboxMessageId = await seedDueMessage(commandId, dedupeKey);
 
     const first = await withTenantTx({ internal: true }, (client) =>
       scheduleOutboxDeliveryJobs(client, boss, new Date()));
@@ -174,11 +175,84 @@ describe.skipIf(!DATABASE_URL)('outbox delivery job pipeline (database)', () => 
     // duplicate guard; the deterministic job id below is defense in depth.
     expect(second.enqueued).toBe(0);
 
-    const expectedJobId = deterministicJobId(JOB_NAMES.DELIVER_OUTBOX_MESSAGE_V1, clientId, dedupeKey);
+    // attempts is 1 after this message's single claim above (claimDueOutboxMessages
+    // increments attempts at claim time) -- the job id folds attempts in (via
+    // enqueueInTransaction's jobIdKey) so a later reclaim (P4.A.8) gets a fresh
+    // job id instead of colliding with this one, while the payload's own
+    // idempotencyKey stays the stable dedupeKey for the sender (see the
+    // pipeline-level assertion at the top of this suite).
+    const expectedJobId = deterministicJobId(JOB_NAMES.DELIVER_OUTBOX_MESSAGE_V1, clientId, `workflow-outbox-message:${outboxMessageId}:1`);
     const jobs = await getPool().query(
       `SELECT count(*)::int AS count FROM pgboss.job WHERE name = $1 AND id = $2`,
       ['freight.workflow.deliver-outbox-message.v1', expectedJobId],
     );
     expect(jobs.rows[0].count).toBe(1);
   });
+
+  it('recovers a message stranded by a delivery worker crash and the retry succeeds on a distinct job id, sending with the same idempotencyKey', async () => {
+    const commandId = await seedCommand();
+    const dedupeKey = `notify:${commandId}`;
+
+    // Seed the message already 'claimed' with a stale claimed_at (simulating
+    // a delivery worker that claimed it via some earlier scan, dispatched a
+    // job, then crashed before completeOutboxMessage ever ran -- the job
+    // pg-boss originally created for that attempt is irrelevant here, only
+    // the row's own claimed-but-never-completed state matters) rather than
+    // racing this suite's own live worker (registered in beforeAll) against
+    // a real enqueue for attempt 1.
+    const outboxMessageId = (await withTenantTx({ clientIds: [clientId], internal: false }, (client) =>
+      recordOutboxMessage(client, { clientId, workflowInstanceId, commandId, dedupeKey, payload: { note: 'crash-retry' }, messageType: TEST_MESSAGE_TYPE }))).outboxMessageId;
+    await getPool().query(
+      `UPDATE workflow_outbox_message SET status = 'claimed', attempts = 1, claimed_at = now() - interval '45 minutes' WHERE id = $1`,
+      [outboxMessageId],
+    );
+
+    // The scan tick's own reclaim-then-scan composition (outbox-message-scan-
+    // handler.ts) runs both in one transaction; this test drives the two
+    // halves directly to control the stale threshold precisely.
+    const recovery = await withTenantTx({ internal: true }, (client) =>
+      reclaimStaleOutboxMessagesForActiveClients(client));
+    expect(recovery).toEqual({ reclaimed: 1, failed: 0 });
+
+    const { rows: afterReclaim } = await getPool().query(
+      `SELECT status, attempts FROM workflow_outbox_message WHERE id = $1`,
+      [outboxMessageId],
+    );
+    expect(afterReclaim[0].status).toBe('pending');
+    expect(afterReclaim[0].attempts).toBe(1);
+
+    const scan = await withTenantTx({ internal: true }, (client) =>
+      scheduleOutboxDeliveryJobs(client, boss, new Date()));
+    expect(scan.enqueued).toBe(1);
+
+    const retryJobId = deterministicJobId(JOB_NAMES.DELIVER_OUTBOX_MESSAGE_V1, clientId, `workflow-outbox-message:${outboxMessageId}:2`);
+    const staleJobId = deterministicJobId(JOB_NAMES.DELIVER_OUTBOX_MESSAGE_V1, clientId, `workflow-outbox-message:${outboxMessageId}:1`);
+    expect(retryJobId).not.toBe(staleJobId);
+
+    const deadline = Date.now() + 15_000;
+    let found = false;
+    while (Date.now() < deadline && !found) {
+      const { rows } = await getPool().query(
+        `SELECT 1 FROM audit_event WHERE client_id = $1 AND entity = 'workflow_outbox_message' AND entity_id = $2 AND event = 'workflow.outbox_message_sent'`,
+        [clientId, outboxMessageId],
+      );
+      found = rows.length > 0;
+      if (!found) await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+    expect(found).toBe(true);
+
+    // The retry's sender call still carries the message's original, stable
+    // dedupeKey as its idempotencyKey -- this is what lets a real external
+    // provider (a carrier API, a payment processor) recognize the retry as
+    // the same operation rather than a second, duplicate external effect.
+    expect(sentMessages).toContainEqual(
+      expect.objectContaining({ clientId, idempotencyKey: dedupeKey }),
+    );
+
+    const { rows: finalRows } = await getPool().query(
+      `SELECT status FROM workflow_outbox_message WHERE id = $1`,
+      [outboxMessageId],
+    );
+    expect(finalRows[0].status).toBe('delivered');
+  }, 20_000);
 });

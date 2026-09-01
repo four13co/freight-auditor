@@ -86,6 +86,38 @@ describe('scheduleOutboxDeliveryJobs', () => {
     expect(firstId).toBe(secondId);
   });
 
+  it('folds attempts into the job id (not the payload idempotencyKey) so a reclaimed message gets a fresh job id', async () => {
+    const firstAttempt = makeClient({
+      clients: [{ id: CLIENT_A }],
+      claimed: {
+        [CLIENT_A]: [{ id: OUTBOX_1, workflow_instance_id: INSTANCE_1, command_id: COMMAND_1, dedupe_key: 'notify:1', message_type: 'carrier_notify', payload: {}, attempts: 1 }],
+      },
+    });
+    const secondAttempt = makeClient({
+      clients: [{ id: CLIENT_A }],
+      claimed: {
+        // Same row reclaimed after a stranded first claim (P4.A.8): attempts
+        // incremented by the second claimDueOutboxMessages call, dedupeKey unchanged.
+        [CLIENT_A]: [{ id: OUTBOX_1, workflow_instance_id: INSTANCE_1, command_id: COMMAND_1, dedupe_key: 'notify:1', message_type: 'carrier_notify', payload: {}, attempts: 2 }],
+      },
+    });
+    const send = vi.fn().mockResolvedValue('job-id');
+
+    await scheduleOutboxDeliveryJobs(firstAttempt, { send } as never, NOW);
+    const firstJobId = send.mock.calls[0]![2].id;
+    const firstPayload = send.mock.calls[0]![1] as Record<string, unknown>;
+
+    await scheduleOutboxDeliveryJobs(secondAttempt, { send } as never, NOW);
+    const secondJobId = send.mock.calls[1]![2].id;
+    const secondPayload = send.mock.calls[1]![1] as Record<string, unknown>;
+
+    expect(secondJobId).not.toBe(firstJobId);
+    // The sender-facing idempotencyKey stays the stable dedupeKey across attempts --
+    // only the pg-boss job id varies, so a real external provider still dedupes correctly.
+    expect(firstPayload.idempotencyKey).toBe('notify:1');
+    expect(secondPayload.idempotencyKey).toBe('notify:1');
+  });
+
   it('skips clients with nothing due without calling send', async () => {
     const client = makeClient({ clients: [{ id: CLIENT_A }] });
     const send = vi.fn();

@@ -38,6 +38,21 @@ export function deterministicJobId(name: JobName, clientId: string, key: string)
 /**
  * Enqueue through the caller's PoolClient so domain writes and the job commit
  * or roll back together. Call only from an already tenant-scoped transaction.
+ *
+ * `jobIdKey`, when passed, replaces `payload.idempotencyKey` as the input to
+ * the job id (not the payload's own idempotencyKey field, which some callers
+ * -- DELIVER_OUTBOX_MESSAGE_V1 -- forward on to an external sender and so
+ * must keep stable across every attempt). Omit it when the payload's
+ * idempotencyKey is itself already the right job-id input (RUN_WORKFLOW_
+ * COMMAND_V1 folds `attempts` into that field directly since nothing else
+ * reads it downstream). A caller whose claim/reclaim cycle can re-enqueue
+ * the same logical row more than once (P4.A.7, P4.A.8) MUST vary this key by
+ * attempts, or a reclaimed row's re-enqueue collides with its first (now
+ * dead/expired) attempt's job id and silently no-ops -- pg-boss's send()
+ * with an explicit id no-ops if a job with that id already exists
+ * (retentionDays: 30 in policies.ts keeps the old row around) -- leaving the
+ * row claimed-then-reclaimed forever with no job ever actually running it
+ * again.
  */
 export async function enqueueInTransaction<Name extends TenantScopedJobName>(
   boss: Pick<PgBoss, 'send'>,
@@ -45,11 +60,12 @@ export async function enqueueInTransaction<Name extends TenantScopedJobName>(
   transactionClientId: string,
   name: Name,
   untrustedPayload: unknown,
+  jobIdKey?: string,
 ): Promise<EnqueueResult> {
   const payload = parseJobPayload(name, untrustedPayload);
   if (payload.clientId !== transactionClientId) throw new JobTenantMismatchError();
 
-  const jobId = deterministicJobId(name, payload.clientId, payload.idempotencyKey);
+  const jobId = deterministicJobId(name, payload.clientId, jobIdKey ?? payload.idempotencyKey);
   const db: PgBoss.Db = {
     executeSql: async (text, values) => {
       const result = await client.query(text, values);

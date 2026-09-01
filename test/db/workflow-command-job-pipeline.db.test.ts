@@ -7,6 +7,7 @@ import { registerJobConsumers, grantJobSchemaAccessToAppRole } from '../../src/j
 import { registerJobQueues } from '../../src/jobs/policies.js';
 import { scheduleWorkflowCommandJobs } from '../../src/modules/workflow/schedule-workflow-command-jobs.js';
 import { registerWorkflowCommandHandler, type WorkflowCommandHandler } from '../../src/jobs/run-workflow-command-handler.js';
+import { reclaimStaleWorkflowCommandsForActiveClients } from '../../src/modules/workflow/reclaim-stale-workflow-commands.js';
 import { deterministicJobId } from '../../src/jobs/enqueue.js';
 import { JOB_NAMES } from '../../src/jobs/contracts.js';
 import { requireDatabaseUrl } from './helpers.js';
@@ -166,4 +167,61 @@ describe.skipIf(!DATABASE_URL)('workflow command job pipeline (database)', () =>
     );
     expect(jobs.rows[0].count).toBe(1);
   });
+
+  it('recovers a command stranded by a worker crash and the retry succeeds on a distinct job id', async () => {
+    // Seed the command already 'claimed' with a stale claimed_at (simulating
+    // a worker that claimed it via some earlier scan, dispatched a job, then
+    // crashed before completeWorkflowCommand ever ran) rather than racing
+    // this suite's own live worker (registered in beforeAll) against a real
+    // enqueue for attempt 1.
+    const commandId = await seedDueCommand({ note: 'crash-retry' });
+    await getPool().query(
+      `UPDATE workflow_command SET status = 'claimed', attempts = 1, claimed_at = now() - interval '45 minutes' WHERE id = $1`,
+      [commandId],
+    );
+
+    // The scan tick's own reclaim-then-scan composition (workflow-command-
+    // scan-handler.ts) runs both in one transaction; this test drives the
+    // two halves directly to control the stale threshold precisely.
+    const recovery = await withTenantTx({ internal: true }, (client) =>
+      reclaimStaleWorkflowCommandsForActiveClients(client));
+    expect(recovery).toEqual({ reclaimed: 1, failed: 0 });
+
+    const { rows: afterReclaim } = await getPool().query(
+      `SELECT status, attempts FROM workflow_command WHERE id = $1`,
+      [commandId],
+    );
+    expect(afterReclaim[0].status).toBe('pending');
+    expect(afterReclaim[0].attempts).toBe(1);
+
+    const scan = await withTenantTx({ internal: true }, (client) =>
+      scheduleWorkflowCommandJobs(client, boss, new Date()));
+    expect(scan.enqueued).toBe(1);
+
+    const retryJobId = deterministicJobId(JOB_NAMES.RUN_WORKFLOW_COMMAND_V1, clientId, `workflow-command:${commandId}:2`);
+    const staleJobId = deterministicJobId(JOB_NAMES.RUN_WORKFLOW_COMMAND_V1, clientId, `workflow-command:${commandId}:1`);
+    expect(retryJobId).not.toBe(staleJobId);
+
+    const deadline = Date.now() + 15_000;
+    let found = false;
+    while (Date.now() < deadline && !found) {
+      const { rows } = await getPool().query(
+        `SELECT 1 FROM audit_event WHERE client_id = $1 AND entity = 'workflow_command' AND entity_id = $2 AND event = 'workflow.command_run'`,
+        [clientId, commandId],
+      );
+      found = rows.length > 0;
+      if (!found) await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+    expect(found).toBe(true);
+
+    expect(handledPayloads).toContainEqual(
+      expect.objectContaining({ clientId, workflowInstanceId, payload: { note: 'crash-retry' } }),
+    );
+
+    const { rows: finalRows } = await getPool().query(
+      `SELECT status FROM workflow_command WHERE id = $1`,
+      [commandId],
+    );
+    expect(finalRows[0].status).toBe('done');
+  }, 20_000);
 });

@@ -44,6 +44,7 @@ describe('registerJobConsumers', () => {
 
     await registerJobConsumers(boss as never, {
       withTenantTx, handleFollowUp, handleEscalation: vi.fn(), handleScan: vi.fn(),
+      handleWorkflowCommandScan: vi.fn(), handleRunWorkflowCommand: vi.fn(),
     });
 
     expect(followUpWorker).toBeDefined();
@@ -68,6 +69,7 @@ describe('registerJobConsumers', () => {
 
     await registerJobConsumers(boss as never, {
       withTenantTx, handleFollowUp: vi.fn(), handleEscalation, handleScan: vi.fn(),
+      handleWorkflowCommandScan: vi.fn(), handleRunWorkflowCommand: vi.fn(),
     });
 
     expect(escalationWorker).toBeDefined();
@@ -90,6 +92,7 @@ describe('registerJobConsumers', () => {
 
     await registerJobConsumers(boss as never, {
       withTenantTx: vi.fn(), handleFollowUp: vi.fn(), handleEscalation: vi.fn(), handleScan,
+      handleWorkflowCommandScan: vi.fn(), handleRunWorkflowCommand: vi.fn(),
     });
 
     expect(scanWorker).toBeDefined();
@@ -97,5 +100,78 @@ describe('registerJobConsumers', () => {
     await scanWorker!([{ id: 'job-3', data: jobData, expireInSeconds: 900 }]);
 
     expect(handleScan).toHaveBeenCalledWith(boss, jobData);
+  });
+
+  it('registers a work handler for the workflow-command scan tick and the per-command runner', async () => {
+    const work = vi.fn().mockResolvedValue('worker-id');
+    const schedule = vi.fn().mockResolvedValue(undefined);
+    const boss = { work, schedule, send: vi.fn() };
+
+    await registerJobConsumers(boss as never);
+
+    const registeredNames = work.mock.calls.map(([name]) => name);
+    expect(registeredNames).toContain(JOB_NAMES.SCAN_WORKFLOW_COMMANDS_V1);
+    expect(registeredNames).toContain(JOB_NAMES.RUN_WORKFLOW_COMMAND_V1);
+  });
+
+  it('schedules the workflow-command scan tick on a recurring cron', async () => {
+    const work = vi.fn().mockResolvedValue('worker-id');
+    const schedule = vi.fn().mockResolvedValue(undefined);
+    const boss = { work, schedule, send: vi.fn() };
+
+    await registerJobConsumers(boss as never);
+
+    expect(schedule).toHaveBeenCalledWith(
+      JOB_NAMES.SCAN_WORKFLOW_COMMANDS_V1,
+      expect.any(String),
+      expect.objectContaining({ schemaVersion: 1 }),
+    );
+  });
+
+  it('actually invokes handleWorkflowCommandScan with the boss instance and job payload for the scan tick', async () => {
+    let scanWorker: ((jobs: unknown[]) => Promise<void>) | undefined;
+    const work = vi.fn().mockImplementation(async (name: string, handler: (jobs: unknown[]) => Promise<void>) => {
+      if (name === JOB_NAMES.SCAN_WORKFLOW_COMMANDS_V1) scanWorker = handler;
+      return 'worker-id';
+    });
+    const schedule = vi.fn().mockResolvedValue(undefined);
+    const boss = { work, schedule, send: vi.fn() };
+    const handleWorkflowCommandScan = vi.fn().mockResolvedValue({ enqueued: 3 });
+
+    await registerJobConsumers(boss as never, {
+      withTenantTx: vi.fn(), handleFollowUp: vi.fn(), handleEscalation: vi.fn(), handleScan: vi.fn(),
+      handleWorkflowCommandScan, handleRunWorkflowCommand: vi.fn(),
+    });
+
+    expect(scanWorker).toBeDefined();
+    const jobData = { schemaVersion: 1, requestedAt: '2026-09-01T00:00:00.000Z' };
+    await scanWorker!([{ id: 'job-4', data: jobData, expireInSeconds: 900 }]);
+
+    expect(handleWorkflowCommandScan).toHaveBeenCalledWith(boss, jobData);
+  });
+
+  it('actually invokes handleRunWorkflowCommand with the job payload inside a tenant-scoped transaction for the correct clientId', async () => {
+    let runWorker: ((jobs: unknown[]) => Promise<void>) | undefined;
+    const work = vi.fn().mockImplementation(async (name: string, handler: (jobs: unknown[]) => Promise<void>) => {
+      if (name === JOB_NAMES.RUN_WORKFLOW_COMMAND_V1) runWorker = handler;
+      return 'worker-id';
+    });
+    const schedule = vi.fn().mockResolvedValue(undefined);
+    const boss = { work, schedule, send: vi.fn() };
+    const fakeClient = { marker: 'tenant-scoped-client' };
+    const withTenantTx = vi.fn().mockImplementation(async (ctx, fn) => fn(fakeClient));
+    const handleRunWorkflowCommand = vi.fn().mockResolvedValue(undefined);
+
+    await registerJobConsumers(boss as never, {
+      withTenantTx, handleFollowUp: vi.fn(), handleEscalation: vi.fn(), handleScan: vi.fn(),
+      handleWorkflowCommandScan: vi.fn(), handleRunWorkflowCommand,
+    });
+
+    expect(runWorker).toBeDefined();
+    const jobData = { clientId: 'client-3', commandId: 'command-1' };
+    await runWorker!([{ id: 'job-5', data: jobData, expireInSeconds: 900 }]);
+
+    expect(withTenantTx).toHaveBeenCalledWith({ clientIds: ['client-3'] }, expect.any(Function));
+    expect(handleRunWorkflowCommand).toHaveBeenCalledWith(fakeClient, jobData);
   });
 });

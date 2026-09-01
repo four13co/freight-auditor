@@ -6,6 +6,8 @@ import { APP_ROLE } from '../db/pool.js';
 import { handleClaimFollowUpJob } from './claim-follow-up-handler.js';
 import { handleClaimEscalationJob } from './claim-escalation-handler.js';
 import { handleClaimAgingScanJob } from './claim-aging-scan-handler.js';
+import { handleWorkflowCommandScanJob } from './workflow-command-scan-handler.js';
+import { handleRunWorkflowCommandJob } from './run-workflow-command-handler.js';
 
 type Environment = Record<string, string | undefined>;
 
@@ -33,6 +35,8 @@ export interface StartWorkerOptions {
 
 /** Every 15 minutes: frequent enough that a missed deadline is caught promptly, cheap enough to run as a no-op scan when nothing is due. */
 const CLAIM_AGING_SCAN_CRON = '*/15 * * * *';
+/** Every minute: workflow_command deadlines (run_after) are meant to fire promptly, and the scan is cheap SKIP LOCKED work when nothing is due. */
+const WORKFLOW_COMMAND_SCAN_CRON = '* * * * *';
 
 /**
  * pg-boss creates its own schema and tables at boss.start() -- there is no
@@ -59,6 +63,8 @@ export interface JobConsumerDeps {
   handleFollowUp: typeof handleClaimFollowUpJob;
   handleEscalation: typeof handleClaimEscalationJob;
   handleScan: typeof handleClaimAgingScanJob;
+  handleWorkflowCommandScan: typeof handleWorkflowCommandScanJob;
+  handleRunWorkflowCommand: typeof handleRunWorkflowCommandJob;
 }
 
 const defaultConsumerDeps: JobConsumerDeps = {
@@ -66,12 +72,15 @@ const defaultConsumerDeps: JobConsumerDeps = {
   handleFollowUp: handleClaimFollowUpJob,
   handleEscalation: handleClaimEscalationJob,
   handleScan: handleClaimAgingScanJob,
+  handleWorkflowCommandScan: handleWorkflowCommandScanJob,
+  handleRunWorkflowCommand: handleRunWorkflowCommandJob,
 };
 
 /**
  * Registers the `.work()` consumers this repo actually has handlers for
- * today (the two claim jobs plus the aging scan tick that enqueues them)
- * and schedules the recurring scan. Ingestion/audit/reference-data/SFTP
+ * today (the two claim jobs plus the aging scan tick that enqueues them,
+ * and the workflow-command scan tick plus its per-command runner, P4.A.4)
+ * and schedules both recurring scans. Ingestion/audit/reference-data/SFTP
  * job types are registered as queues (registerJobQueues) but have no
  * consumer wired here yet -- their handlers need object-store/SFTP-client
  * construction that doesn't exist at worker-bootstrap scope, a separate
@@ -104,6 +113,24 @@ export async function registerJobConsumers(
   await boss.schedule(JOB_NAMES.SCAN_CLAIM_AGING_V1, CLAIM_AGING_SCAN_CRON, {
     schemaVersion: 1,
     requestedAt: new Date().toISOString(),
+  });
+
+  await boss.work(JOB_NAMES.SCAN_WORKFLOW_COMMANDS_V1, async (jobs) => {
+    for (const job of jobs) {
+      await deps.handleWorkflowCommandScan(boss, job.data);
+    }
+  });
+
+  await boss.schedule(JOB_NAMES.SCAN_WORKFLOW_COMMANDS_V1, WORKFLOW_COMMAND_SCAN_CRON, {
+    schemaVersion: 1,
+    requestedAt: new Date().toISOString(),
+  });
+
+  await boss.work<{ clientId: string }>(JOB_NAMES.RUN_WORKFLOW_COMMAND_V1, async (jobs) => {
+    for (const job of jobs) {
+      await deps.withTenantTx({ clientIds: [job.data.clientId] }, (client) =>
+        deps.handleRunWorkflowCommand(client, job.data));
+    }
   });
 }
 

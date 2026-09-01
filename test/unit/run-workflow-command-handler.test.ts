@@ -43,6 +43,7 @@ describe('handleRunWorkflowCommandJob', () => {
     expect(handler).toHaveBeenCalledWith(client, {
       clientId: CLIENT_ID,
       workflowInstanceId: INSTANCE_ID,
+      commandId: COMMAND_ID,
       commandType: 'send_reminder',
       payload: { to: 'a@example.com' },
     });
@@ -114,6 +115,17 @@ describe('handleRunWorkflowCommandJob', () => {
     await handleRunWorkflowCommandJob(client, { ...basePayload, commandType: 'unit_test_only_type' });
 
     expect(handler).toHaveBeenCalledWith(client, expect.objectContaining({ commandType: 'unit_test_only_type' }));
+  });
+
+  it('passes commandId through to the handler (P4.C.7: needed for recordOutboxMessage\'s FK guard)', async () => {
+    const client = fakeClient();
+    const handler: WorkflowCommandHandler = vi.fn().mockResolvedValue(undefined);
+    const handlers = new Map([['send_reminder', handler]]);
+    const complete = vi.fn().mockResolvedValue({ found: true });
+
+    await handleRunWorkflowCommandJob(client, basePayload, { handlers, complete });
+
+    expect(handler).toHaveBeenCalledWith(client, expect.objectContaining({ commandId: COMMAND_ID }));
   });
 
   it('registers under RUN_WORKFLOW_COMMAND_V1', () => {

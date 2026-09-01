@@ -8,6 +8,11 @@ const recordSchema = z.object({
   commandId: z.uuid(),
   dedupeKey: z.string().trim().min(1).max(255),
   payload: z.record(z.string(), z.unknown()).default({}),
+  // Dispatch discriminator for the future deliverer (P4.A.6), mirroring
+  // workflow_command's own command_type (0053). Defaults to 'unspecified'
+  // so every existing call site (none of which pass this yet -- "no live
+  // caller wired in" per P4.A.5) keeps working unchanged.
+  messageType: z.string().trim().regex(/^[a-z][a-z0-9_]*$/).default('unspecified'),
 }).strict();
 
 export interface RecordOutboxMessageResult {
@@ -57,11 +62,11 @@ export async function recordOutboxMessage(
   if (!command.rowCount) throw new RecordOutboxMessageError('COMMAND_NOT_FOUND');
 
   const inserted = await client.query<{ id: string }>(
-    `INSERT INTO workflow_outbox_message (client_id, workflow_instance_id, command_id, dedupe_key, payload)
-     VALUES ($1, $2, $3, $4, $5::jsonb)
+    `INSERT INTO workflow_outbox_message (client_id, workflow_instance_id, command_id, dedupe_key, payload, message_type)
+     VALUES ($1, $2, $3, $4, $5::jsonb, $6)
      ON CONFLICT (client_id, dedupe_key) DO NOTHING
      RETURNING id`,
-    [input.clientId, input.workflowInstanceId, input.commandId, input.dedupeKey, JSON.stringify(input.payload)],
+    [input.clientId, input.workflowInstanceId, input.commandId, input.dedupeKey, JSON.stringify(input.payload), input.messageType],
   );
 
   if (inserted.rows[0]) {
@@ -96,6 +101,7 @@ export interface ClaimedOutboxMessage {
   workflowInstanceId: string;
   commandId: string;
   dedupeKey: string;
+  messageType: string;
   payload: Record<string, unknown>;
   attempts: number;
 }
@@ -119,6 +125,7 @@ export async function claimDueOutboxMessages(
     workflow_instance_id: string;
     command_id: string;
     dedupe_key: string;
+    message_type: string;
     payload: Record<string, unknown>;
     attempts: number;
   }>(
@@ -131,7 +138,7 @@ export async function claimDueOutboxMessages(
        LIMIT $3
        FOR UPDATE SKIP LOCKED
      )
-     RETURNING id, workflow_instance_id, command_id, dedupe_key, payload, attempts`,
+     RETURNING id, workflow_instance_id, command_id, dedupe_key, message_type, payload, attempts`,
     [input.clientId, input.now.toISOString(), input.limit],
   );
 
@@ -140,6 +147,7 @@ export async function claimDueOutboxMessages(
     workflowInstanceId: row.workflow_instance_id,
     commandId: row.command_id,
     dedupeKey: row.dedupe_key,
+    messageType: row.message_type,
     payload: row.payload,
     attempts: row.attempts,
   }));

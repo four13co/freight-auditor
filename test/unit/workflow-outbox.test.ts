@@ -69,11 +69,38 @@ describe('recordOutboxMessage', () => {
       commandId: COMMAND_ID,
       dedupeKey: 'carrier-notify:abc',
       payload: { to: 'carrier@example.com' },
+      messageType: 'carrier_notify',
     });
     expect(result).toEqual({ outboxMessageId: OUTBOX_ID, created: true });
 
     const [, values] = findCall(query, 'INSERT INTO workflow_outbox_message');
-    expect(values).toEqual([CLIENT_ID, INSTANCE_ID, COMMAND_ID, 'carrier-notify:abc', '{"to":"carrier@example.com"}']);
+    expect(values).toEqual([CLIENT_ID, INSTANCE_ID, COMMAND_ID, 'carrier-notify:abc', '{"to":"carrier@example.com"}', 'carrier_notify']);
+  });
+
+  it('defaults messageType to unspecified when the caller does not pass one', async () => {
+    const { client, query } = mockClient();
+    await recordOutboxMessage(client, {
+      clientId: CLIENT_ID,
+      workflowInstanceId: INSTANCE_ID,
+      commandId: COMMAND_ID,
+      dedupeKey: 'carrier-notify:abc',
+    });
+
+    const [, values] = findCall(query, 'INSERT INTO workflow_outbox_message');
+    expect(values).toEqual([CLIENT_ID, INSTANCE_ID, COMMAND_ID, 'carrier-notify:abc', '{}', 'unspecified']);
+  });
+
+  it('rejects a messageType that does not match the command_type-style pattern', async () => {
+    const { client } = mockClient();
+    await expect(
+      recordOutboxMessage(client, {
+        clientId: CLIENT_ID,
+        workflowInstanceId: INSTANCE_ID,
+        commandId: COMMAND_ID,
+        dedupeKey: 'carrier-notify:abc',
+        messageType: 'Not Valid!',
+      }),
+    ).rejects.toThrow();
   });
 
   it('is idempotent: a conflicting dedupeKey returns the existing row instead of a duplicate', async () => {
@@ -131,6 +158,7 @@ describe('claimDueOutboxMessages', () => {
           workflow_instance_id: INSTANCE_ID,
           command_id: COMMAND_ID,
           dedupe_key: 'carrier-notify:abc',
+          message_type: 'carrier_notify',
           payload: { to: 'carrier@example.com' },
           attempts: 1,
         },
@@ -146,6 +174,7 @@ describe('claimDueOutboxMessages', () => {
         workflowInstanceId: INSTANCE_ID,
         commandId: COMMAND_ID,
         dedupeKey: 'carrier-notify:abc',
+        messageType: 'carrier_notify',
         payload: { to: 'carrier@example.com' },
         attempts: 1,
       },
@@ -153,6 +182,7 @@ describe('claimDueOutboxMessages', () => {
     const [sql, values] = query.mock.calls[0] as [string, unknown[]];
     expect(sql).toContain('FOR UPDATE SKIP LOCKED');
     expect(sql).toContain("status = 'claimed'");
+    expect(sql).toContain('message_type');
     expect(values).toEqual([CLIENT_ID, NOW.toISOString(), 20]);
   });
 

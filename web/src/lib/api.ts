@@ -384,6 +384,17 @@ export async function fetchDisputeDetail(id: string): Promise<DisputeDetail> {
   return (await res.json()) as DisputeDetail;
 }
 
+/** Mirrors the backend's GET /api/portal/overview response shape exactly (get-portal-overview.ts). */
+export interface PortalOverview {
+  clientName: string;
+}
+
+export async function fetchPortalOverview(): Promise<PortalOverview> {
+  const res = await fetch('/api/portal/overview', { headers: authHeaders() });
+  if (!res.ok) throw new Error(`GET /api/portal/overview failed: ${res.status}`);
+  return (await res.json()) as PortalOverview;
+}
+
 export async function approveDispute(id: string): Promise<{ disputeId: string; status: string }> {
   const res = await fetch(`/api/disputes/${id}/approve`, { method: 'POST', headers: authHeaders() });
   if (!res.ok) throw new Error(`POST dispute approval failed: ${res.status}`);

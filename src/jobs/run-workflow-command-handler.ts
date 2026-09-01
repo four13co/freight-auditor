@@ -56,10 +56,16 @@ const defaultDeps: RunWorkflowCommandDeps = { handlers, complete: completeWorkfl
  * claimed, not completed, retried.
  *
  * At-least-once semantics only: a crash between a successful handler call
- * and the completeWorkflowCommand write means a retry re-runs the handler.
- * Exactly-once/transactional outbox delivery is P4.A.5, out of this task's
- * boundary (the same exclusion claim-due-workflow-commands.ts's own header
- * comment already documents for this file).
+ * and the completeWorkflowCommand write means a retry re-runs the handler --
+ * safe for a handler whose only effects are DB writes made with this same
+ * `client` (the whole attempt rolls back together), but NOT safe for a
+ * handler that calls out to an external system directly, since that call
+ * isn't rolled back by a DB rollback. A handler needing an external effect
+ * should call recordOutboxMessage (workflow-outbox.ts, P4.A.5) with this
+ * same `client` instead of calling out inline -- the durable delivery
+ * intent then commits or rolls back exactly with this function's own
+ * complete() call, and a separate, later, idempotent step (not built here)
+ * performs the actual send against the committed row.
  */
 export async function handleRunWorkflowCommandJob(
   client: pg.PoolClient,

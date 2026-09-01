@@ -22,15 +22,21 @@ export interface ScheduleOutboxDeliveryJobsResult {
  * `withTenantTx({ internal: true }, ...)`.
  *
  * The enqueued idempotencyKey is the message's own dedupeKey -- unchanged
- * across every attempt (unlike a job id derived from attempts, which would
- * need attempts folded in to avoid a stale reclaim silently no-opping, see
- * PR #232). Nothing here reclaims a stranded 'claimed' row yet (that gap is
- * the identical one P4.A.7 closed for workflow_command, explicitly flagged
- * as a future sibling task for the outbox side), so this schedule function
- * only ever enqueues a message once per its single pending->claimed
- * transition -- the deterministic-job-id collision PR #232 fixed can't yet
- * arise here for the same reason it doesn't need fixing pre-#232 on the
- * command side: no re-enqueue path exists without a reclaimer.
+ * across every attempt, since deliver-outbox-message-handler.ts forwards it
+ * straight through to the sender as that provider's own idempotency-key
+ * mechanism (P4.A.6), so it can never fold in `attempts` the way
+ * scheduleWorkflowCommandJobs's idempotencyKey does. The *job id* still has
+ * to vary by attempts, though -- reclaimStaleOutboxMessages
+ * (reclaim-stale-outbox-messages.ts, P4.A.8) closes the identical gap
+ * P4.A.7 closed for workflow_command, so a message reclaimed back to
+ * 'pending' after a stranded claim IS re-enqueued here on a later tick, and
+ * without a distinct job id per attempt that re-enqueue would collide with
+ * the first (now dead/expired) attempt's job id and silently no-op -- the
+ * exact deterministic-job-id collision PR #232 fixed on the command side.
+ * enqueueInTransaction's `jobIdKey` parameter carries this: derived from
+ * (outboxMessageId, attempts) rather than the payload's own idempotencyKey,
+ * so it can vary per attempt independently of the sender-facing dedupeKey
+ * staying fixed.
  */
 export async function scheduleOutboxDeliveryJobs(
   client: pg.PoolClient,
@@ -46,17 +52,24 @@ export async function scheduleOutboxDeliveryJobs(
   for (const { id: clientId } of clients.rows) {
     const due = await claimDueOutboxMessages(client, { clientId, now });
     for (const message of due) {
-      await enqueueInTransaction(boss, client, clientId, JOB_NAMES.DELIVER_OUTBOX_MESSAGE_V1, {
-        schemaVersion: 1 as const,
+      await enqueueInTransaction(
+        boss,
+        client,
         clientId,
-        idempotencyKey: message.dedupeKey,
-        requestedAt: now.toISOString(),
-        outboxMessageId: message.outboxMessageId,
-        workflowInstanceId: message.workflowInstanceId,
-        commandId: message.commandId,
-        messageType: message.messageType,
-        payload: message.payload,
-      });
+        JOB_NAMES.DELIVER_OUTBOX_MESSAGE_V1,
+        {
+          schemaVersion: 1 as const,
+          clientId,
+          idempotencyKey: message.dedupeKey,
+          requestedAt: now.toISOString(),
+          outboxMessageId: message.outboxMessageId,
+          workflowInstanceId: message.workflowInstanceId,
+          commandId: message.commandId,
+          messageType: message.messageType,
+          payload: message.payload,
+        },
+        `workflow-outbox-message:${message.outboxMessageId}:${message.attempts}`,
+      );
       enqueued += 1;
     }
   }

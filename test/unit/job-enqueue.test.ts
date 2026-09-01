@@ -61,6 +61,27 @@ describe('transactional enqueue', () => {
     expect(send).not.toHaveBeenCalled();
   });
 
+  it('derives the job id from an explicit jobIdKey instead of payload.idempotencyKey when one is passed', async () => {
+    const send = vi.fn().mockResolvedValue('job-id');
+    const client = { query: vi.fn() } as unknown as PoolClient;
+
+    const result = await enqueueInTransaction(
+      { send } as never,
+      client,
+      clientId,
+      JOB_NAMES.EVALUATE_AUDIT_V1,
+      payload,
+      'outbox:some-row:2',
+    );
+
+    expect(result.jobId).toBe(deterministicJobId(JOB_NAMES.EVALUATE_AUDIT_V1, clientId, 'outbox:some-row:2'));
+    expect(result.jobId).not.toBe(deterministicJobId(JOB_NAMES.EVALUATE_AUDIT_V1, clientId, payload.idempotencyKey));
+    expect(send.mock.calls[0]?.[2]).toMatchObject({ id: result.jobId });
+    // The payload itself still carries the original idempotencyKey unchanged --
+    // jobIdKey only steers job-id derivation, never the payload sent to the queue.
+    expect(send.mock.calls[0]?.[1]).toMatchObject({ idempotencyKey: payload.idempotencyKey });
+  });
+
   it('gives different job families and tenants different idempotency domains', () => {
     const key = 'same-key';
     expect(deterministicJobId(JOB_NAMES.EVALUATE_AUDIT_V1, clientId, key)).not.toBe(

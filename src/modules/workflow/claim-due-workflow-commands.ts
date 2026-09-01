@@ -26,6 +26,10 @@ export interface ClaimedWorkflowCommand {
  * claimed rows for a caller to act on and later mark done (see
  * completeWorkflowCommand); the actual runner loop invoking this on a
  * schedule is P4.A.4, not built here.
+ *
+ * claimed_at records the moment of this flip so reclaimStaleWorkflowCommands
+ * (P4.A.7) can later find a row that has sat 'claimed' longer than a worker
+ * crash should plausibly explain.
  */
 export async function claimDueWorkflowCommands(
   client: pg.PoolClient,
@@ -41,7 +45,7 @@ export async function claimDueWorkflowCommands(
     attempts: number;
   }>(
     `UPDATE workflow_command
-     SET status = 'claimed', attempts = attempts + 1
+     SET status = 'claimed', attempts = attempts + 1, claimed_at = $2
      WHERE id IN (
        SELECT id FROM workflow_command
        WHERE client_id = $1 AND status = 'pending' AND run_after <= $2

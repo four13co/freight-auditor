@@ -91,6 +91,16 @@ export interface GateFailureRow {
   transportDocumentId?: string | null;
 }
 
+export interface PendingPaymentAuthorizationRow {
+  auditRunId: string;
+  invoiceId: string;
+  invoiceNumber: string | null;
+  carrierName: string | null;
+  currency: string | null;
+  heldAt: string;
+  rationale: string | null;
+}
+
 export type FindingsSortKey = 'variance' | 'age';
 export type FindingsSortDir = 'asc' | 'desc';
 
@@ -240,6 +250,21 @@ export async function ratifyRuleProposal(id: string, rationale: string): Promise
 export async function activateShadowRule(id: string, rationale: string): Promise<void> {
   const res = await fetch(`/api/rules/${id}/activate`, { method: 'POST', headers: { ...authHeaders(), 'content-type': 'application/json' }, body: JSON.stringify({ rationale }) });
   if (!res.ok) throw new Error('POST activate failed');
+}
+
+export async function fetchPendingPaymentAuthorizations(): Promise<PendingPaymentAuthorizationRow[]> {
+  const res = await fetch('/api/payment-authorizations/pending', { headers: authHeaders() });
+  if (!res.ok) throw new Error(`GET /api/payment-authorizations/pending failed: ${res.status}`);
+  const body = (await res.json()) as { pending?: PendingPaymentAuthorizationRow[] };
+  return body.pending ?? [];
+}
+export async function submitPaymentAuthorization(auditRunId: string, action: 'approve' | 'hold', rationale?: string): Promise<void> {
+  const res = await fetch(`/api/audit-runs/${auditRunId}/payment-authorization`, {
+    method: 'POST',
+    headers: { ...authHeaders(), 'content-type': 'application/json' },
+    body: JSON.stringify({ action, rationale }),
+  });
+  if (!res.ok) throw new Error(`POST payment authorization failed: ${res.status}`);
 }
 
 export async function fetchGateFailures(): Promise<GateFailureRow[]> {

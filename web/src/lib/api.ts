@@ -389,3 +389,38 @@ export async function approveDispute(id: string): Promise<{ disputeId: string; s
   if (!res.ok) throw new Error(`POST dispute approval failed: ${res.status}`);
   return (await res.json()) as { disputeId: string; status: string };
 }
+
+/** Mirrors reconciliation-export.ts's ReconciliationExportRow shape exactly, plus reconcile-portfolio-totals.ts's PortfolioReconciliationBucket for `result`. */
+export interface PortfolioReconciliationBucket {
+  currency: string;
+  claimed: string;
+  recovered: string;
+  outstanding: string;
+  writtenOff: string;
+  denied: string;
+  reconciles: boolean;
+}
+export interface ReconciliationExportStatus {
+  id: string;
+  status: 'pending' | 'claimed' | 'completed' | 'failed';
+  result: PortfolioReconciliationBucket[] | null;
+  error: string | null;
+  requestedAt: string;
+  completedAt: string | null;
+}
+
+export async function requestReconciliationExport(): Promise<{ exportId: string; status: string }> {
+  const res = await fetch('/api/reconciliation-exports', {
+    method: 'POST',
+    headers: { ...authHeaders(), 'content-type': 'application/json' },
+    body: JSON.stringify({}),
+  });
+  if (!res.ok) throw new Error(`POST reconciliation export request failed: ${res.status}`);
+  return (await res.json()) as { exportId: string; status: string };
+}
+
+export async function fetchReconciliationExportStatus(exportId: string): Promise<ReconciliationExportStatus> {
+  const res = await fetch(`/api/reconciliation-exports/${exportId}`, { headers: authHeaders() });
+  if (!res.ok) throw new Error(`GET reconciliation export status failed: ${res.status}`);
+  return (await res.json()) as ReconciliationExportStatus;
+}

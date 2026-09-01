@@ -10,6 +10,8 @@ import { handleWorkflowCommandScanJob } from './workflow-command-scan-handler.js
 import { handleRunWorkflowCommandJob } from './run-workflow-command-handler.js';
 import { handleOutboxMessageScanJob } from './outbox-message-scan-handler.js';
 import { handleDeliverOutboxMessageJob } from './deliver-outbox-message-handler.js';
+import { handleReconciliationExportScanJob } from './reconciliation-export-scan-handler.js';
+import { handleExportReconciliationJob } from './export-reconciliation-handler.js';
 
 type Environment = Record<string, string | undefined>;
 
@@ -41,6 +43,8 @@ const CLAIM_AGING_SCAN_CRON = '*/15 * * * *';
 const WORKFLOW_COMMAND_SCAN_CRON = '* * * * *';
 /** Every minute, same cadence rationale as WORKFLOW_COMMAND_SCAN_CRON: an outbox message becoming due is meant to be delivered promptly. */
 const OUTBOX_MESSAGE_SCAN_CRON = '* * * * *';
+/** Every minute, same cadence rationale as OUTBOX_MESSAGE_SCAN_CRON: an analyst polling a reconciliation export expects it to start processing promptly. */
+const RECONCILIATION_EXPORT_SCAN_CRON = '* * * * *';
 
 /**
  * pg-boss creates its own schema and tables at boss.start() -- there is no
@@ -71,6 +75,8 @@ export interface JobConsumerDeps {
   handleRunWorkflowCommand: typeof handleRunWorkflowCommandJob;
   handleOutboxMessageScan: typeof handleOutboxMessageScanJob;
   handleDeliverOutboxMessage: typeof handleDeliverOutboxMessageJob;
+  handleReconciliationExportScan: typeof handleReconciliationExportScanJob;
+  handleExportReconciliation: typeof handleExportReconciliationJob;
 }
 
 const defaultConsumerDeps: JobConsumerDeps = {
@@ -82,6 +88,8 @@ const defaultConsumerDeps: JobConsumerDeps = {
   handleRunWorkflowCommand: handleRunWorkflowCommandJob,
   handleOutboxMessageScan: handleOutboxMessageScanJob,
   handleDeliverOutboxMessage: handleDeliverOutboxMessageJob,
+  handleReconciliationExportScan: handleReconciliationExportScanJob,
+  handleExportReconciliation: handleExportReconciliationJob,
 };
 
 /**
@@ -157,6 +165,24 @@ export async function registerJobConsumers(
     for (const job of jobs) {
       await deps.withTenantTx({ clientIds: [job.data.clientId] }, (client) =>
         deps.handleDeliverOutboxMessage(client, job.data));
+    }
+  });
+
+  await boss.work(JOB_NAMES.SCAN_RECONCILIATION_EXPORTS_V1, async (jobs) => {
+    for (const job of jobs) {
+      await deps.handleReconciliationExportScan(boss, job.data);
+    }
+  });
+
+  await boss.schedule(JOB_NAMES.SCAN_RECONCILIATION_EXPORTS_V1, RECONCILIATION_EXPORT_SCAN_CRON, {
+    schemaVersion: 1,
+    requestedAt: new Date().toISOString(),
+  });
+
+  await boss.work<{ clientId: string }>(JOB_NAMES.EXPORT_RECONCILIATION_V1, async (jobs) => {
+    for (const job of jobs) {
+      await deps.withTenantTx({ clientIds: [job.data.clientId] }, (client) =>
+        deps.handleExportReconciliation(client, job.data));
     }
   });
 }

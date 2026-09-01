@@ -15,7 +15,7 @@ const base = {
 
 describe('versioned job contracts', () => {
   it('keeps every registered queue name explicitly versioned and mapped to a schema', () => {
-    expect(Object.values(JOB_NAMES)).toHaveLength(13);
+    expect(Object.values(JOB_NAMES)).toHaveLength(15);
     for (const name of Object.values(JOB_NAMES)) {
       expect(name).toMatch(/\.v1$/);
       expect(jobPayloadSchemas[name]).toBeDefined();
@@ -192,5 +192,33 @@ describe('versioned job contracts', () => {
     };
     mutate(payload);
     expect(() => parseJobPayload(JOB_NAMES.DELIVER_OUTBOX_MESSAGE_V1, payload)).toThrow(JobPayloadValidationError);
+  });
+
+  it('parses a valid reconciliation-export scan tick with no tenant scope', () => {
+    const payload = { schemaVersion: 1 as const, requestedAt: base.requestedAt };
+    expect(parseJobPayload(JOB_NAMES.SCAN_RECONCILIATION_EXPORTS_V1, payload)).toEqual(payload);
+  });
+
+  it('fails closed for a reconciliation-export scan tick carrying an unexpected clientId', () => {
+    expect(() => parseJobPayload(JOB_NAMES.SCAN_RECONCILIATION_EXPORTS_V1, {
+      schemaVersion: 1,
+      requestedAt: base.requestedAt,
+      clientId: base.clientId,
+    })).toThrow(JobPayloadValidationError);
+  });
+
+  it('parses a valid export-reconciliation job', () => {
+    const payload = { ...base, exportId: '10000000-0000-4000-8000-000000000003' };
+    expect(parseJobPayload(JOB_NAMES.EXPORT_RECONCILIATION_V1, payload)).toEqual(payload);
+  });
+
+  it('fails closed for an export-reconciliation job missing exportId', () => {
+    expect(() => parseJobPayload(JOB_NAMES.EXPORT_RECONCILIATION_V1, { ...base })).toThrow(JobPayloadValidationError);
+  });
+
+  it('fails closed for an export-reconciliation job carrying an unknown field', () => {
+    expect(() => parseJobPayload(JOB_NAMES.EXPORT_RECONCILIATION_V1, {
+      ...base, exportId: '10000000-0000-4000-8000-000000000003', secret: 'do-not-log',
+    })).toThrow(JobPayloadValidationError);
   });
 });

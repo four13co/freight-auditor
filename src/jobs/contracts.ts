@@ -18,6 +18,8 @@ export const JOB_NAMES = {
   RUN_WORKFLOW_COMMAND_V1: 'freight.workflow.run-command.v1',
   SCAN_OUTBOX_MESSAGES_V1: 'freight.workflow.scan-outbox.v1',
   DELIVER_OUTBOX_MESSAGE_V1: 'freight.workflow.deliver-outbox-message.v1',
+  SCAN_RECONCILIATION_EXPORTS_V1: 'freight.claims.scan-reconciliation-exports.v1',
+  EXPORT_RECONCILIATION_V1: 'freight.claims.export-reconciliation.v1',
 } as const;
 
 export type JobName = (typeof JOB_NAMES)[keyof typeof JOB_NAMES];
@@ -36,6 +38,8 @@ export const JOB_DEAD_LETTER_NAMES: Record<JobName, string> = {
   [JOB_NAMES.RUN_WORKFLOW_COMMAND_V1]: 'freight.workflow.run-command.dead-letter.v1',
   [JOB_NAMES.SCAN_OUTBOX_MESSAGES_V1]: 'freight.workflow.scan-outbox.dead-letter.v1',
   [JOB_NAMES.DELIVER_OUTBOX_MESSAGE_V1]: 'freight.workflow.deliver-outbox-message.dead-letter.v1',
+  [JOB_NAMES.SCAN_RECONCILIATION_EXPORTS_V1]: 'freight.claims.scan-reconciliation-exports.dead-letter.v1',
+  [JOB_NAMES.EXPORT_RECONCILIATION_V1]: 'freight.claims.export-reconciliation.dead-letter.v1',
 };
 
 const id = z.string().uuid();
@@ -139,6 +143,22 @@ export const jobPayloadSchemas = {
     commandId: id,
     messageType: z.string().regex(/^[a-z][a-z0-9_]*$/),
     payload: z.record(z.string(), z.unknown()),
+  }).strict(),
+  // Portfolio-wide scan tick (P5.C.5), same no-tenant shape as
+  // SCAN_OUTBOX_MESSAGES_V1: iterates every active client itself, claiming
+  // due reconciliation_export rows and dispatching one EXPORT_RECONCILIATION_V1
+  // job per claimed row.
+  [JOB_NAMES.SCAN_RECONCILIATION_EXPORTS_V1]: z.object({
+    schemaVersion: z.literal(1),
+    requestedAt: z.iso.datetime({ offset: true }),
+  }).strict(),
+  // Dispatches one already-claimed reconciliation_export (P5.C.5) row for
+  // computation. idempotencyKey here IS the export row's own idempotency_key
+  // -- the same value on every attempt, mirroring DELIVER_OUTBOX_MESSAGE_V1's
+  // dedupeKey pass-through.
+  [JOB_NAMES.EXPORT_RECONCILIATION_V1]: z.object({
+    ...envelope,
+    exportId: id,
   }).strict(),
 } satisfies Record<JobName, z.ZodType>;
 

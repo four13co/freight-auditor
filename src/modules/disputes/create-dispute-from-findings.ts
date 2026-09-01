@@ -43,9 +43,24 @@ export interface CreateDisputeResult {
  * filtered to status = 'accepted', so a byte-identical retry after success
  * (every finding already moved to queued_for_dispute) resolves to an empty
  * claimable set and fails closed (EMPTY_SET) rather than creating a second,
- * empty dispute. Preventing the SAME finding from being included in two
- * DIFFERENT dispute-creation calls across time is P4.C.2's boundary
- * ("prevent duplicate finding inclusion"), not solved here.
+ * empty dispute.
+ *
+ * Preventing the SAME finding from being included in two DIFFERENT
+ * dispute-creation calls across time (P4.C.2, 86e2zfhj6, "prevent duplicate
+ * finding inclusion") IS solved here: `FOR UPDATE OF vf` locks the candidate
+ * variance_finding rows (ordered by id to avoid a multi-row deadlock between
+ * two overlapping candidate sets) before validation runs. A second call
+ * racing on any of the same findings blocks on that lock until the first
+ * commits (transitioning them to queued_for_dispute), then re-reads the real
+ * post-commit status and correctly fails NOT_ACCEPTED -- closing the
+ * plain-SELECT TOCTOU gap where both calls could see status='accepted'
+ * before either committed (same race shape as #230's appendWorkflowTransition
+ * fix). This is unrelated to P5.A.2's guard (86e2zfj4w,
+ * detect-duplicate-claimed-finding.ts): that module's own docstring
+ * establishes a finding CAN legitimately sit on more than one dispute_line
+ * before either dispute is claimed, so no dispute_line-level uniqueness
+ * constraint belongs here -- this lock only ever protects the
+ * variance_finding.status transition each finding makes exactly once.
  */
 export async function createDisputeFromFindings(
   client: pg.PoolClient,
@@ -58,7 +73,9 @@ export async function createDisputeFromFindings(
        FROM variance_finding vf
        JOIN audit_run ar ON ar.id = vf.audit_run_id AND ar.client_id = vf.client_id
        JOIN invoice i ON i.id = ar.invoice_id AND i.client_id = vf.client_id
-      WHERE vf.client_id = $1 AND vf.id = ANY($2::uuid[])`,
+      WHERE vf.client_id = $1 AND vf.id = ANY($2::uuid[])
+      ORDER BY vf.id
+        FOR UPDATE OF vf`,
     [input.clientId, input.findingIds],
   );
 

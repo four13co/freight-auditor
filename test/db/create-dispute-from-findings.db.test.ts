@@ -144,4 +144,68 @@ describe('createDisputeFromFindings (DB)', () => {
     expect(result.findingIds).toHaveLength(1);
     expect(result.amountClaimed).toBe('100.0000');
   });
+
+  it('serializes concurrent dispute-creation calls racing on the same finding: the loser re-validates against the post-commit status, never claiming it twice (P4.C.2, 86e2zfhj6)', async () => {
+    // Both calls target the SAME accepted finding from two fully separate
+    // transactions (separate withTenantTx, mirroring #230's
+    // appendWorkflowTransition concurrency test) -- a plain SELECT would let
+    // both see status='accepted' before either commits; FOR UPDATE OF vf
+    // must serialize them so only one ever transitions and claims it.
+    const f1 = await withTenantTx({ clientIds: [clientId], internal: true }, (c) =>
+      seedFinding(c, { carrierId: carrierAId, variance: '200.0000' }),
+    );
+
+    const [a, b] = await Promise.allSettled([
+      withTenantTx({ clientIds: [clientId], internal: true }, (c) =>
+        createDisputeFromFindings(c, { clientId, findingIds: [f1] }),
+      ),
+      withTenantTx({ clientIds: [clientId], internal: true }, (c) =>
+        createDisputeFromFindings(c, { clientId, findingIds: [f1] }),
+      ),
+    ]);
+
+    const outcomes = [a, b];
+    const winners = outcomes.filter((r) => r.status === 'fulfilled');
+    const losers = outcomes.filter((r) => r.status === 'rejected');
+    expect(winners).toHaveLength(1);
+    expect(losers).toHaveLength(1);
+    expect((losers[0] as PromiseRejectedResult).reason).toBeInstanceOf(DisputableFindingsError);
+    expect((losers[0] as PromiseRejectedResult).reason).toMatchObject({ code: 'NOT_ACCEPTED' });
+
+    const owner = await pool.connect();
+    try {
+      const lines = await owner.query(`SELECT dispute_id FROM dispute_line WHERE variance_finding_id = $1`, [f1]);
+      expect(lines.rows).toHaveLength(1);
+      const finding = await owner.query(`SELECT status FROM variance_finding WHERE id = $1`, [f1]);
+      expect(finding.rows[0].status).toBe('queued_for_dispute');
+    } finally {
+      owner.release();
+    }
+  });
+
+  it('locks the candidate set in id order to avoid a multi-row deadlock between two overlapping, differently-ordered sets', async () => {
+    // The fix's ORDER BY vf.id before FOR UPDATE is what prevents a classic
+    // A-locks-1-then-2 / B-locks-2-then-1 deadlock regardless of which order
+    // each caller passes its ids in -- exercised here by reversing the id
+    // order between the two concurrent calls.
+    const [f1, f2] = await withTenantTx({ clientIds: [clientId], internal: true }, async (c) => [
+      await seedFinding(c, { carrierId: carrierAId, variance: '10.0000' }),
+      await seedFinding(c, { carrierId: carrierAId, variance: '20.0000' }),
+    ]);
+
+    const [a, b] = await Promise.allSettled([
+      withTenantTx({ clientIds: [clientId], internal: true }, (c) =>
+        createDisputeFromFindings(c, { clientId, findingIds: [f1, f2] }),
+      ),
+      withTenantTx({ clientIds: [clientId], internal: true }, (c) =>
+        createDisputeFromFindings(c, { clientId, findingIds: [f2, f1] }),
+      ),
+    ]);
+
+    const winners = [a, b].filter((r) => r.status === 'fulfilled');
+    const losers = [a, b].filter((r) => r.status === 'rejected');
+    expect(winners).toHaveLength(1);
+    expect(losers).toHaveLength(1);
+    expect((losers[0] as PromiseRejectedResult).reason).toBeInstanceOf(DisputableFindingsError);
+  });
 });

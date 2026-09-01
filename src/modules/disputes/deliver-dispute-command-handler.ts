@@ -1,5 +1,6 @@
 import { registerWorkflowCommandHandler, type WorkflowCommandHandler } from '../../jobs/run-workflow-command-handler.js';
 import { recordOutboxMessage } from '../workflow/workflow-outbox.js';
+import { recordDisputeCommunication } from './record-dispute-communication.js';
 
 export const DELIVER_DISPUTE_COMMAND_TYPE = 'deliver_dispute';
 
@@ -25,6 +26,18 @@ export function disputeDeliveryDedupeKey(disputeId: string): string {
 }
 
 /**
+ * P4.C.8: the outbound half of the dispute communications log. Deliberately
+ * a *separate* dedupe key from disputeDeliveryDedupeKey -- that key
+ * identifies the workflow_outbox_message (the delivery *decision*, P4.A.5);
+ * this one identifies the dispute_comm row (the communications *record*,
+ * P4.C.8). They happen to be recorded by the same handler call today, but
+ * are two distinct append-only facts with two distinct idempotency scopes.
+ */
+export function disputeCommOutboundDedupeKey(disputeId: string): string {
+  return `dispute-comm-outbound:${disputeId}`;
+}
+
+/**
  * Handles the deliver_dispute workflow_command (P4.C.7) that approveDispute
  * schedules on draft -> sent. Records an outbound-delivery intent via
  * recordOutboxMessage (P4.A.5) inside this same transaction rather than
@@ -33,6 +46,16 @@ export function disputeDeliveryDedupeKey(disputeId: string): string {
  * Actually sending is a separate, later, idempotent step
  * (deliver-outbox-message-handler.ts) against DISPUTE_DELIVERY_MESSAGE_TYPE's
  * sender -- not registered yet, see that constant's own doc comment.
+ *
+ * Also appends the outbound half of the communications log (P4.C.8,
+ * recordDisputeCommunication) in the same transaction, so the log entry
+ * commits or rolls back atomically with the delivery decision itself --
+ * a handler re-run after a crash before commit derives the same dedupe key
+ * both times and gets the existing row back on the retry, not a duplicate.
+ * The inbound half has no automatic trigger yet (no inbound carrier channel
+ * exists, same "no live caller wired in" boundary DISPUTE_DELIVERY_MESSAGE_TYPE
+ * itself documents) -- recordDisputeCommunication's own direction parameter
+ * is what a future analyst-facing "log a reply" action calls directly.
  */
 export const handleDeliverDisputeCommand: WorkflowCommandHandler = async (client, ctx) => {
   const disputeId = ctx.payload.disputeId;
@@ -47,6 +70,13 @@ export const handleDeliverDisputeCommand: WorkflowCommandHandler = async (client
     dedupeKey: disputeDeliveryDedupeKey(disputeId),
     payload: { disputeId },
     messageType: DISPUTE_DELIVERY_MESSAGE_TYPE,
+  });
+
+  await recordDisputeCommunication(client, {
+    disputeId,
+    direction: 'outbound',
+    body: `Delivery to carrier initiated for dispute ${disputeId}.`,
+    dedupeKey: disputeCommOutboundDedupeKey(disputeId),
   });
 };
 

@@ -9,6 +9,7 @@ import { registerRuleGovernanceRoutes } from './rule-governance-routes.js';
 import { registerContractsRoutes } from './contracts-routes.js';
 import { registerClarificationAnswersRoutes } from './clarification-answers-routes.js';
 import { registerClaimRoutes } from './claim-routes.js';
+import { registerClaimRecoveryRoutes } from './claim-recovery-routes.js';
 import { registerPaymentRoutes } from './payment-routes.js';
 import { registerDisputeReviewRoutes } from './dispute-review-routes.js';
 
@@ -61,6 +62,11 @@ export function buildApp(): FastifyInstance {
   void app.register(registerContractsRoutes);
   void app.register(registerClarificationAnswersRoutes);
   void app.register(registerClaimRoutes);
+
+  // Claim + recovery read APIs (P5.B.4): list + detail, same tenant-auth
+  // preHandler pattern as the modules above, its own encapsulated plugin
+  // instance.
+  void app.register(registerClaimRecoveryRoutes);
 
   // Payment authorization routes (P4.B.5): same tenant-auth preHandler
   // pattern as the modules above, its own encapsulated plugin instance.

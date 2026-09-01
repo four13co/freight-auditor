@@ -17,8 +17,8 @@ export async function retireAmendedRules(client: pg.PoolClient, input: {
           (rule_id, hardness, lifecycle_state, ast, ast_hash, expected_inputs, emits, provenance, clause_id,
            valid_from, valid_to, predecessor_rule_version_id)
         SELECT rule_id, hardness, 'PROPOSED', ast, ast_hash, expected_inputs, emits,
-          provenance || jsonb_build_object('contractAmendmentId',$3::text,'replacementFor',$1::text), $2,
-          valid_from, valid_to, id FROM rule_version WHERE id=$1
+          provenance || jsonb_build_object('contractAmendmentId',$3::text,'replacementFor',$1::text), $2::uuid,
+          valid_from, valid_to, id FROM rule_version WHERE id=$1::uuid
         ON CONFLICT (predecessor_rule_version_id, lifecycle_state) WHERE predecessor_rule_version_id IS NOT NULL
         DO NOTHING RETURNING id`, [deprecated.ruleVersionId, impact.newClauseId, input.amendmentId]);
       replacementRuleVersionId = inserted.rows[0]?.id ?? (await client.query<{ id: string }>(

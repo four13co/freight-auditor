@@ -10,6 +10,7 @@ import {
   generateDoNotPayDecision,
   GenerateDoNotPayError,
 } from '../../src/modules/payments/generate-do-not-pay-decision.js';
+import { cleanupTenantFixtures } from './helpers/cleanup-tenant-fixtures.js';
 
 /**
  * P4.B.4: generates a do_not_pay payment_gate_decision from an audit run's
@@ -17,11 +18,11 @@ import {
  * against MALFORMED_210_NOFOOT) rather than hand-inserting gate_failure rows,
  * so the seed matches production shape exactly.
  *
- * persistAuditRun writes variance_finding rows whenever result.findings is
- * non-empty (not gated by outcome) and scorecard when result.scorecard is
- * set -- both happen for the GOLDEN_210/SCORED case below, so both must be
- * deleted (in that order, before audit_run) in teardown; omitting them was
- * this item's prior review-closure defect (23503 on audit_run's FK).
+ * Teardown goes through cleanupTenantFixtures (86e30txkx), which derives a
+ * FK-safe delete order from the live schema instead of a hand-maintained
+ * list -- this file's own hand-ordered list was this item's prior
+ * review-closure defect (23503 on audit_run's FK, from a missing
+ * variance_finding delete).
  */
 describe('generateDoNotPayDecision (DB)', () => {
   let pool: pg.Pool;
@@ -40,23 +41,7 @@ describe('generateDoNotPayDecision (DB)', () => {
   });
 
   afterAll(async () => {
-    const owner = await pool.connect();
-    try {
-      await owner.query(`DELETE FROM audit_event WHERE client_id = $1`, [clientId]);
-      await owner.query(`DELETE FROM payment_gate_decision WHERE client_id = $1`, [clientId]);
-      await owner.query(`DELETE FROM audit_replay_manifest WHERE client_id = $1`, [clientId]);
-      await owner.query(`DELETE FROM finding_status_event WHERE client_id = $1`, [clientId]);
-      await owner.query(`DELETE FROM variance_finding WHERE client_id = $1`, [clientId]);
-      await owner.query(`DELETE FROM scorecard WHERE client_id = $1`, [clientId]);
-      await owner.query(`DELETE FROM gate_failure WHERE client_id = $1`, [clientId]);
-      await owner.query(`DELETE FROM charge_finding WHERE client_id = $1`, [clientId]);
-      await owner.query(`DELETE FROM audit_run WHERE client_id = $1`, [clientId]);
-      await owner.query(`DELETE FROM charge_fact WHERE client_id = $1`, [clientId]);
-      await owner.query(`DELETE FROM invoice WHERE client_id = $1`, [clientId]);
-      await owner.query(`DELETE FROM client WHERE id = $1`, [clientId]);
-    } finally {
-      owner.release();
-    }
+    await cleanupTenantFixtures(pool, [clientId]);
     await closePool();
   });
 

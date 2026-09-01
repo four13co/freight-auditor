@@ -45,6 +45,7 @@ describe('registerJobConsumers', () => {
     await registerJobConsumers(boss as never, {
       withTenantTx, handleFollowUp, handleEscalation: vi.fn(), handleScan: vi.fn(),
       handleWorkflowCommandScan: vi.fn(), handleRunWorkflowCommand: vi.fn(),
+      handleOutboxMessageScan: vi.fn(), handleDeliverOutboxMessage: vi.fn(),
     });
 
     expect(followUpWorker).toBeDefined();
@@ -70,6 +71,7 @@ describe('registerJobConsumers', () => {
     await registerJobConsumers(boss as never, {
       withTenantTx, handleFollowUp: vi.fn(), handleEscalation, handleScan: vi.fn(),
       handleWorkflowCommandScan: vi.fn(), handleRunWorkflowCommand: vi.fn(),
+      handleOutboxMessageScan: vi.fn(), handleDeliverOutboxMessage: vi.fn(),
     });
 
     expect(escalationWorker).toBeDefined();
@@ -93,6 +95,7 @@ describe('registerJobConsumers', () => {
     await registerJobConsumers(boss as never, {
       withTenantTx: vi.fn(), handleFollowUp: vi.fn(), handleEscalation: vi.fn(), handleScan,
       handleWorkflowCommandScan: vi.fn(), handleRunWorkflowCommand: vi.fn(),
+      handleOutboxMessageScan: vi.fn(), handleDeliverOutboxMessage: vi.fn(),
     });
 
     expect(scanWorker).toBeDefined();
@@ -141,6 +144,7 @@ describe('registerJobConsumers', () => {
     await registerJobConsumers(boss as never, {
       withTenantTx: vi.fn(), handleFollowUp: vi.fn(), handleEscalation: vi.fn(), handleScan: vi.fn(),
       handleWorkflowCommandScan, handleRunWorkflowCommand: vi.fn(),
+      handleOutboxMessageScan: vi.fn(), handleDeliverOutboxMessage: vi.fn(),
     });
 
     expect(scanWorker).toBeDefined();
@@ -165,6 +169,7 @@ describe('registerJobConsumers', () => {
     await registerJobConsumers(boss as never, {
       withTenantTx, handleFollowUp: vi.fn(), handleEscalation: vi.fn(), handleScan: vi.fn(),
       handleWorkflowCommandScan: vi.fn(), handleRunWorkflowCommand,
+      handleOutboxMessageScan: vi.fn(), handleDeliverOutboxMessage: vi.fn(),
     });
 
     expect(runWorker).toBeDefined();
@@ -173,5 +178,80 @@ describe('registerJobConsumers', () => {
 
     expect(withTenantTx).toHaveBeenCalledWith({ clientIds: ['client-3'] }, expect.any(Function));
     expect(handleRunWorkflowCommand).toHaveBeenCalledWith(fakeClient, jobData);
+  });
+
+  it('registers a work handler for the outbox-message scan tick and the per-message deliverer', async () => {
+    const work = vi.fn().mockResolvedValue('worker-id');
+    const schedule = vi.fn().mockResolvedValue(undefined);
+    const boss = { work, schedule, send: vi.fn() };
+
+    await registerJobConsumers(boss as never);
+
+    const registeredNames = work.mock.calls.map(([name]) => name);
+    expect(registeredNames).toContain(JOB_NAMES.SCAN_OUTBOX_MESSAGES_V1);
+    expect(registeredNames).toContain(JOB_NAMES.DELIVER_OUTBOX_MESSAGE_V1);
+  });
+
+  it('schedules the outbox-message scan tick on a recurring cron', async () => {
+    const work = vi.fn().mockResolvedValue('worker-id');
+    const schedule = vi.fn().mockResolvedValue(undefined);
+    const boss = { work, schedule, send: vi.fn() };
+
+    await registerJobConsumers(boss as never);
+
+    expect(schedule).toHaveBeenCalledWith(
+      JOB_NAMES.SCAN_OUTBOX_MESSAGES_V1,
+      expect.any(String),
+      expect.objectContaining({ schemaVersion: 1 }),
+    );
+  });
+
+  it('actually invokes handleOutboxMessageScan with the boss instance and job payload for the scan tick', async () => {
+    let scanWorker: ((jobs: unknown[]) => Promise<void>) | undefined;
+    const work = vi.fn().mockImplementation(async (name: string, handler: (jobs: unknown[]) => Promise<void>) => {
+      if (name === JOB_NAMES.SCAN_OUTBOX_MESSAGES_V1) scanWorker = handler;
+      return 'worker-id';
+    });
+    const schedule = vi.fn().mockResolvedValue(undefined);
+    const boss = { work, schedule, send: vi.fn() };
+    const handleOutboxMessageScan = vi.fn().mockResolvedValue({ enqueued: 2 });
+
+    await registerJobConsumers(boss as never, {
+      withTenantTx: vi.fn(), handleFollowUp: vi.fn(), handleEscalation: vi.fn(), handleScan: vi.fn(),
+      handleWorkflowCommandScan: vi.fn(), handleRunWorkflowCommand: vi.fn(),
+      handleOutboxMessageScan, handleDeliverOutboxMessage: vi.fn(),
+    });
+
+    expect(scanWorker).toBeDefined();
+    const jobData = { schemaVersion: 1, requestedAt: '2026-09-01T00:00:00.000Z' };
+    await scanWorker!([{ id: 'job-6', data: jobData, expireInSeconds: 900 }]);
+
+    expect(handleOutboxMessageScan).toHaveBeenCalledWith(boss, jobData);
+  });
+
+  it('actually invokes handleDeliverOutboxMessage with the job payload inside a tenant-scoped transaction for the correct clientId', async () => {
+    let deliverWorker: ((jobs: unknown[]) => Promise<void>) | undefined;
+    const work = vi.fn().mockImplementation(async (name: string, handler: (jobs: unknown[]) => Promise<void>) => {
+      if (name === JOB_NAMES.DELIVER_OUTBOX_MESSAGE_V1) deliverWorker = handler;
+      return 'worker-id';
+    });
+    const schedule = vi.fn().mockResolvedValue(undefined);
+    const boss = { work, schedule, send: vi.fn() };
+    const fakeClient = { marker: 'tenant-scoped-client' };
+    const withTenantTx = vi.fn().mockImplementation(async (ctx, fn) => fn(fakeClient));
+    const handleDeliverOutboxMessage = vi.fn().mockResolvedValue(undefined);
+
+    await registerJobConsumers(boss as never, {
+      withTenantTx, handleFollowUp: vi.fn(), handleEscalation: vi.fn(), handleScan: vi.fn(),
+      handleWorkflowCommandScan: vi.fn(), handleRunWorkflowCommand: vi.fn(),
+      handleOutboxMessageScan: vi.fn(), handleDeliverOutboxMessage,
+    });
+
+    expect(deliverWorker).toBeDefined();
+    const jobData = { clientId: 'client-4', outboxMessageId: 'outbox-1' };
+    await deliverWorker!([{ id: 'job-7', data: jobData, expireInSeconds: 900 }]);
+
+    expect(withTenantTx).toHaveBeenCalledWith({ clientIds: ['client-4'] }, expect.any(Function));
+    expect(handleDeliverOutboxMessage).toHaveBeenCalledWith(fakeClient, jobData);
   });
 });

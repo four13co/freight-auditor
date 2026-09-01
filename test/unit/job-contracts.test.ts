@@ -15,7 +15,7 @@ const base = {
 
 describe('versioned job contracts', () => {
   it('keeps every registered queue name explicitly versioned and mapped to a schema', () => {
-    expect(Object.values(JOB_NAMES)).toHaveLength(11);
+    expect(Object.values(JOB_NAMES)).toHaveLength(13);
     for (const name of Object.values(JOB_NAMES)) {
       expect(name).toMatch(/\.v1$/);
       expect(jobPayloadSchemas[name]).toBeDefined();
@@ -148,5 +148,49 @@ describe('versioned job contracts', () => {
     };
     mutate(payload);
     expect(() => parseJobPayload(JOB_NAMES.RUN_WORKFLOW_COMMAND_V1, payload)).toThrow(JobPayloadValidationError);
+  });
+
+  it('parses a valid outbox-message scan tick with no tenant scope', () => {
+    const payload = { schemaVersion: 1 as const, requestedAt: base.requestedAt };
+    expect(parseJobPayload(JOB_NAMES.SCAN_OUTBOX_MESSAGES_V1, payload)).toEqual(payload);
+  });
+
+  it('fails closed for an outbox-message scan tick carrying an unexpected clientId', () => {
+    expect(() => parseJobPayload(JOB_NAMES.SCAN_OUTBOX_MESSAGES_V1, {
+      schemaVersion: 1,
+      requestedAt: base.requestedAt,
+      clientId: base.clientId,
+    })).toThrow(JobPayloadValidationError);
+  });
+
+  it('parses a valid deliver-outbox-message job', () => {
+    const payload = {
+      ...base,
+      outboxMessageId: '10000000-0000-4000-8000-000000000002',
+      workflowInstanceId: '10000000-0000-4000-8000-000000000003',
+      commandId: '10000000-0000-4000-8000-000000000004',
+      messageType: 'carrier_notify',
+      payload: { to: 'carrier@example.com' },
+    };
+    expect(parseJobPayload(JOB_NAMES.DELIVER_OUTBOX_MESSAGE_V1, payload)).toEqual(payload);
+  });
+
+  it.each([
+    ['missing outboxMessageId', (p: Record<string, unknown>) => { delete p.outboxMessageId; }],
+    ['missing workflowInstanceId', (p: Record<string, unknown>) => { delete p.workflowInstanceId; }],
+    ['missing commandId', (p: Record<string, unknown>) => { delete p.commandId; }],
+    ['invalid messageType', (p: Record<string, unknown>) => { p.messageType = 'Not-Valid!'; }],
+    ['unknown field', (p: Record<string, unknown>) => { p.secret = 'do-not-log'; }],
+  ])('fails closed for a deliver-outbox-message job with %s', (_label, mutate) => {
+    const payload: Record<string, unknown> = {
+      ...base,
+      outboxMessageId: '10000000-0000-4000-8000-000000000002',
+      workflowInstanceId: '10000000-0000-4000-8000-000000000003',
+      commandId: '10000000-0000-4000-8000-000000000004',
+      messageType: 'carrier_notify',
+      payload: {},
+    };
+    mutate(payload);
+    expect(() => parseJobPayload(JOB_NAMES.DELIVER_OUTBOX_MESSAGE_V1, payload)).toThrow(JobPayloadValidationError);
   });
 });

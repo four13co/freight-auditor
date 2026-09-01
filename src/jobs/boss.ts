@@ -8,6 +8,8 @@ import { handleClaimEscalationJob } from './claim-escalation-handler.js';
 import { handleClaimAgingScanJob } from './claim-aging-scan-handler.js';
 import { handleWorkflowCommandScanJob } from './workflow-command-scan-handler.js';
 import { handleRunWorkflowCommandJob } from './run-workflow-command-handler.js';
+import { handleOutboxMessageScanJob } from './outbox-message-scan-handler.js';
+import { handleDeliverOutboxMessageJob } from './deliver-outbox-message-handler.js';
 
 type Environment = Record<string, string | undefined>;
 
@@ -37,6 +39,8 @@ export interface StartWorkerOptions {
 const CLAIM_AGING_SCAN_CRON = '*/15 * * * *';
 /** Every minute: workflow_command deadlines (run_after) are meant to fire promptly, and the scan is cheap SKIP LOCKED work when nothing is due. */
 const WORKFLOW_COMMAND_SCAN_CRON = '* * * * *';
+/** Every minute, same cadence rationale as WORKFLOW_COMMAND_SCAN_CRON: an outbox message becoming due is meant to be delivered promptly. */
+const OUTBOX_MESSAGE_SCAN_CRON = '* * * * *';
 
 /**
  * pg-boss creates its own schema and tables at boss.start() -- there is no
@@ -65,6 +69,8 @@ export interface JobConsumerDeps {
   handleScan: typeof handleClaimAgingScanJob;
   handleWorkflowCommandScan: typeof handleWorkflowCommandScanJob;
   handleRunWorkflowCommand: typeof handleRunWorkflowCommandJob;
+  handleOutboxMessageScan: typeof handleOutboxMessageScanJob;
+  handleDeliverOutboxMessage: typeof handleDeliverOutboxMessageJob;
 }
 
 const defaultConsumerDeps: JobConsumerDeps = {
@@ -74,13 +80,16 @@ const defaultConsumerDeps: JobConsumerDeps = {
   handleScan: handleClaimAgingScanJob,
   handleWorkflowCommandScan: handleWorkflowCommandScanJob,
   handleRunWorkflowCommand: handleRunWorkflowCommandJob,
+  handleOutboxMessageScan: handleOutboxMessageScanJob,
+  handleDeliverOutboxMessage: handleDeliverOutboxMessageJob,
 };
 
 /**
  * Registers the `.work()` consumers this repo actually has handlers for
  * today (the two claim jobs plus the aging scan tick that enqueues them,
- * and the workflow-command scan tick plus its per-command runner, P4.A.4)
- * and schedules both recurring scans. Ingestion/audit/reference-data/SFTP
+ * the workflow-command scan tick plus its per-command runner (P4.A.4), and
+ * the outbox-message scan tick plus its per-message deliverer (P4.A.6)) and
+ * schedules all three recurring scans. Ingestion/audit/reference-data/SFTP
  * job types are registered as queues (registerJobQueues) but have no
  * consumer wired here yet -- their handlers need object-store/SFTP-client
  * construction that doesn't exist at worker-bootstrap scope, a separate
@@ -130,6 +139,24 @@ export async function registerJobConsumers(
     for (const job of jobs) {
       await deps.withTenantTx({ clientIds: [job.data.clientId] }, (client) =>
         deps.handleRunWorkflowCommand(client, job.data));
+    }
+  });
+
+  await boss.work(JOB_NAMES.SCAN_OUTBOX_MESSAGES_V1, async (jobs) => {
+    for (const job of jobs) {
+      await deps.handleOutboxMessageScan(boss, job.data);
+    }
+  });
+
+  await boss.schedule(JOB_NAMES.SCAN_OUTBOX_MESSAGES_V1, OUTBOX_MESSAGE_SCAN_CRON, {
+    schemaVersion: 1,
+    requestedAt: new Date().toISOString(),
+  });
+
+  await boss.work<{ clientId: string }>(JOB_NAMES.DELIVER_OUTBOX_MESSAGE_V1, async (jobs) => {
+    for (const job of jobs) {
+      await deps.withTenantTx({ clientIds: [job.data.clientId] }, (client) =>
+        deps.handleDeliverOutboxMessage(client, job.data));
     }
   });
 }

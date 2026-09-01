@@ -13,6 +13,7 @@ export const JOB_NAMES = {
   ESCALATE_CLAIM_V1: 'freight.claims.escalate.v1',
   FOLLOW_UP_CLAIM_V1: 'freight.claims.follow-up.v1',
   SCAN_CLAIM_AGING_V1: 'freight.claims.scan-aging.v1',
+  DISCOVER_TRIGGERS_V1: 'freight.discovery.detect-triggers.v1',
 } as const;
 
 export type JobName = (typeof JOB_NAMES)[keyof typeof JOB_NAMES];
@@ -26,6 +27,7 @@ export const JOB_DEAD_LETTER_NAMES: Record<JobName, string> = {
   [JOB_NAMES.ESCALATE_CLAIM_V1]: 'freight.claims.escalate.dead-letter.v1',
   [JOB_NAMES.FOLLOW_UP_CLAIM_V1]: 'freight.claims.follow-up.dead-letter.v1',
   [JOB_NAMES.SCAN_CLAIM_AGING_V1]: 'freight.claims.scan-aging.dead-letter.v1',
+  [JOB_NAMES.DISCOVER_TRIGGERS_V1]: 'freight.discovery.detect-triggers.dead-letter.v1',
 };
 
 const id = z.string().uuid();
@@ -74,6 +76,18 @@ export const jobPayloadSchemas = {
   [JOB_NAMES.SCAN_CLAIM_AGING_V1]: z.object({
     schemaVersion: z.literal(1),
     requestedAt: z.iso.datetime({ offset: true }),
+  }).strict(),
+  // Audit-run-scoped only for now (wraps P3.D.1/D.2/D.4). P3.D.3's
+  // extraction-quality detector is source-document-scoped -- extraction runs
+  // independent of any audit run -- and lives on an unmerged PR (#225) as of
+  // this task; wiring a second, differently-scoped variant in now would
+  // couple this independently-buildable job to that PR landing first (the
+  // same coupling PR #158 explicitly avoided for the same reason). Follow-up
+  // once #225 merges: widen this to a discriminated union (scope: AUDIT_RUN |
+  // EXTRACTION), matching detect-extraction-quality-triggers.ts's shape.
+  [JOB_NAMES.DISCOVER_TRIGGERS_V1]: z.object({
+    ...envelope,
+    auditRunId: id,
   }).strict(),
 } satisfies Record<JobName, z.ZodType>;
 

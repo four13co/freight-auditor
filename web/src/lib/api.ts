@@ -446,3 +446,21 @@ export async function fetchCrossClientPortfolio(): Promise<CrossClientPortfolioB
   if (!res.ok) throw new Error(`GET cross-client portfolio failed: ${res.status}`);
   return ((await res.json()) as { buckets: CrossClientPortfolioBucket[] }).buckets;
 }
+
+export interface ClientRecoveryReportBucket {
+  currency: string | null;
+  claimed: string;
+  recovered: string;
+  outstanding: string;
+  writtenOff: string;
+  denied: string;
+  nullCurrencyRecovered: string;
+  mismatchedCurrencyRecovered: string;
+  reconciles: boolean;
+}
+
+export async function fetchClientRecoveryReport(): Promise<ClientRecoveryReportBucket[]> {
+  const res = await fetch('/api/portfolio/recovery-report', { headers: authHeaders() });
+  if (!res.ok) throw new Error(`GET recovery report failed: ${res.status}`);
+  return ((await res.json()) as { buckets: ClientRecoveryReportBucket[] }).buckets;
+}

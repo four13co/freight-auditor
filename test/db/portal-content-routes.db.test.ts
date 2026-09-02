@@ -7,6 +7,8 @@ import { buildApp } from '../../src/server/app.js';
 import { listClientInvoices } from '../../src/modules/portal/list-client-invoices.js';
 import { getClientAuditRunScorecard } from '../../src/modules/portal/get-client-audit-run-scorecard.js';
 import { listClientFindings } from '../../src/modules/portal/list-client-findings.js';
+import { getClientDisputeDetail } from '../../src/modules/portal/get-client-dispute-detail.js';
+import { listClientDisputeCommunications } from '../../src/modules/portal/list-client-dispute-communications.js';
 
 /**
  * P6.B.1: GET /api/portal/invoices and GET /api/portal/scorecard/:auditRunId,
@@ -14,12 +16,15 @@ import { listClientFindings } from '../../src/modules/portal/list-client-finding
  * the dev-header identity source (DEV_AUTH_HEADERS=1), same pattern as
  * claim-recovery-endpoint.db.test.ts / client-viewer-auth.db.test.ts.
  *
- * P6.B.2 (findings list + evidence) is seeded into this SAME describe
- * block/fixture rather than a separate one -- it reuses the same
- * clientId/viewerUserId/adminUserId/otherClientId tenancy setup, following
- * a real variance_finding's own FK chain (criterion -> rule -> rule_version,
- * charge_fact, expected_charge), same seeding pattern as
- * build-evidence-packet.db.test.ts's seedDisputeWithFinding helper.
+ * P6.B.2 (findings list + evidence) and P6.B.3 (dispute detail +
+ * communications) are seeded into this SAME describe block/fixture rather
+ * than a separate one -- both reuse the same
+ * clientId/viewerUserId/adminUserId/otherClientId tenancy setup.
+ * P6.B.2's variance_finding follows a real FK chain (criterion -> rule ->
+ * rule_version, charge_fact, expected_charge), same seeding pattern as
+ * build-evidence-packet.db.test.ts's seedDisputeWithFinding helper. P6.B.3's
+ * dispute/dispute_comm rows follow dispute-review.db.test.ts's/
+ * dispute-comm.db.test.ts's own seeding patterns.
  */
 describe('client portal content APIs (DB, e2e)', () => {
   let pool: pg.Pool;
@@ -36,6 +41,8 @@ describe('client portal content APIs (DB, e2e)', () => {
   let otherInvoiceId: string;
   let findingId: string;
   let otherFindingId: string;
+  let disputeId: string;
+  let otherDisputeId: string;
   let originalFlag: string | undefined;
   const tag = `pcr-${Date.now()}`;
 
@@ -146,6 +153,33 @@ describe('client portal content APIs (DB, e2e)', () => {
           [otherClientId, otherAuditRunId, otherCf.rows[0].id],
         );
         otherFindingId = otherVf.rows[0]!.id;
+
+        // P6.B.3: one real dispute + communication per client.
+        const dispute = await c2.query<{ id: string }>(
+          `INSERT INTO dispute (client_id, carrier_id, status, amount_claimed, currency)
+           VALUES ($1, $2, 'draft', '500.0000', 'USD') RETURNING id`,
+          [clientId, carrierId],
+        );
+        disputeId = dispute.rows[0]!.id;
+        await c2.query(
+          `INSERT INTO dispute_line (client_id, dispute_id, amount, currency) VALUES ($1, $2, '500.0000', 'USD')`,
+          [clientId, disputeId],
+        );
+        await c2.query(
+          `INSERT INTO dispute_comm (client_id, dispute_id, direction, body, dedupe_key) VALUES ($1, $2, 'outbound', 'Delivery initiated.', $3)`,
+          [clientId, disputeId, `${tag}-comm-1`],
+        );
+
+        const otherDispute = await c2.query<{ id: string }>(
+          `INSERT INTO dispute (client_id, carrier_id, status, amount_claimed, currency)
+           VALUES ($1, $2, 'draft', '250.0000', 'USD') RETURNING id`,
+          [otherClientId, carrierId],
+        );
+        otherDisputeId = otherDispute.rows[0]!.id;
+        await c2.query(
+          `INSERT INTO dispute_comm (client_id, dispute_id, direction, body, dedupe_key) VALUES ($1, $2, 'outbound', 'Other client delivery.', $3)`,
+          [otherClientId, otherDisputeId, `${tag}-comm-other`],
+        );
       });
     } finally {
       owner.release();
@@ -158,6 +192,9 @@ describe('client portal content APIs (DB, e2e)', () => {
     await app.close();
     const owner = await pool.connect();
     try {
+      await owner.query(`DELETE FROM dispute_comm WHERE client_id = ANY($1)`, [[clientId, otherClientId]]);
+      await owner.query(`DELETE FROM dispute_line WHERE client_id = ANY($1)`, [[clientId, otherClientId]]);
+      await owner.query(`DELETE FROM dispute WHERE client_id = ANY($1)`, [[clientId, otherClientId]]);
       await owner.query(`DELETE FROM variance_finding WHERE client_id = ANY($1)`, [[clientId, otherClientId]]);
       await owner.query(`DELETE FROM expected_charge WHERE client_id = ANY($1)`, [[clientId, otherClientId]]);
       await owner.query(`DELETE FROM charge_fact WHERE client_id = ANY($1)`, [[clientId, otherClientId]]);
@@ -380,6 +417,106 @@ describe('client portal content APIs (DB, e2e)', () => {
     });
     expect(res.statusCode).toBe(401);
   });
+
+  // AC1 (dispute detail): only the caller's own dispute is returned, RLS-scoped.
+  it('returns the dispute detail with its lines for the caller tenant', async () => {
+    const res = await app.inject({
+      method: 'GET', url: `/api/portal/disputes/${disputeId}`, headers: { 'x-client-id': clientId, 'x-user-id': viewerUserId },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.id).toBe(disputeId);
+    expect(body.status).toBe('draft');
+    expect(body.amountClaimed).toBe('500.0000');
+    expect(body.lines).toHaveLength(1);
+  });
+
+  it('rejects an unauthenticated dispute request', async () => {
+    const res = await app.inject({ method: 'GET', url: `/api/portal/disputes/${disputeId}` });
+    expect(res.statusCode).toBe(401);
+  });
+
+  it('rejects a client_admin caller on the dispute detail route -- sibling capability, out of this task\'s scope', async () => {
+    const res = await app.inject({
+      method: 'GET', url: `/api/portal/disputes/${disputeId}`, headers: { 'x-client-id': clientId, 'x-user-id': adminUserId },
+    });
+    expect(res.statusCode).toBe(401);
+  });
+
+  // AC3 (dispute half): a dispute belonging to a DIFFERENT client is rejected/not-found.
+  it('returns 404 for a dispute that belongs to a different client', async () => {
+    const res = await app.inject({
+      method: 'GET', url: `/api/portal/disputes/${otherDisputeId}`, headers: { 'x-client-id': clientId, 'x-user-id': viewerUserId },
+    });
+    expect(res.statusCode).toBe(404);
+  });
+
+  it('returns 404 for a well-formed but nonexistent dispute id', async () => {
+    const res = await app.inject({
+      method: 'GET', url: '/api/portal/disputes/00000000-0000-4000-8000-000000000099',
+      headers: { 'x-client-id': clientId, 'x-user-id': viewerUserId },
+    });
+    expect(res.statusCode).toBe(404);
+  });
+
+  it('rejects a malformed dispute id with 400', async () => {
+    const res = await app.inject({
+      method: 'GET', url: '/api/portal/disputes/not-a-uuid', headers: { 'x-client-id': clientId, 'x-user-id': viewerUserId },
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
+  // AC2 (communications): newest-first log for one of the caller's own disputes.
+  it('returns the communication log for the caller tenant, newest first', async () => {
+    const res = await app.inject({
+      method: 'GET', url: `/api/portal/disputes/${disputeId}/communications`, headers: { 'x-client-id': clientId, 'x-user-id': viewerUserId },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.communications).toHaveLength(1);
+    expect(body.communications[0].body).toBe('Delivery initiated.');
+  });
+
+  // AC3 (communications half): communications for a dispute belonging to a
+  // DIFFERENT client are rejected/not-found.
+  it('returns 404 for communications of a dispute that belongs to a different client', async () => {
+    const res = await app.inject({
+      method: 'GET', url: `/api/portal/disputes/${otherDisputeId}/communications`, headers: { 'x-client-id': clientId, 'x-user-id': viewerUserId },
+    });
+    expect(res.statusCode).toBe(404);
+  });
+
+  it('rejects a malformed dispute id on the communications route with 400', async () => {
+    const res = await app.inject({
+      method: 'GET', url: '/api/portal/disputes/not-a-uuid/communications', headers: { 'x-client-id': clientId, 'x-user-id': viewerUserId },
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it('rejects an unauthenticated communications request', async () => {
+    const res = await app.inject({ method: 'GET', url: `/api/portal/disputes/${disputeId}/communications` });
+    expect(res.statusCode).toBe(401);
+  });
+
+  it('rejects a client_admin caller on the communications route -- sibling capability, out of this task\'s scope', async () => {
+    const res = await app.inject({
+      method: 'GET', url: `/api/portal/disputes/${disputeId}/communications`, headers: { 'x-client-id': clientId, 'x-user-id': adminUserId },
+    });
+    expect(res.statusCode).toBe(401);
+  });
+
+  it('has no POST/PUT/PATCH/DELETE route registered on the dispute detail or communications paths -- no write surface exists to protect (No-gos: read-only)', async () => {
+    for (const method of ['POST', 'PUT', 'PATCH', 'DELETE'] as const) {
+      const detailRes = await app.inject({
+        method, url: `/api/portal/disputes/${disputeId}`, headers: { 'x-client-id': clientId, 'x-user-id': viewerUserId },
+      });
+      expect(detailRes.statusCode).toBe(404);
+      const commsRes = await app.inject({
+        method, url: `/api/portal/disputes/${disputeId}/communications`, headers: { 'x-client-id': clientId, 'x-user-id': viewerUserId },
+      });
+      expect(commsRes.statusCode).toBe(404);
+    }
+  });
 });
 
 /**
@@ -399,6 +536,7 @@ describe('portal content query modules: explicit client_id predicate (DB)', () =
   let auditRunId: string;
   let chargeFactId: string;
   let findingId: string;
+  let disputeId: string;
   const tag = `pcp-${Date.now()}`;
 
   beforeAll(async () => {
@@ -445,6 +583,17 @@ describe('portal content query modules: explicit client_id predicate (DB)', () =
           [clientAId, auditRunId, chargeFactId],
         );
         findingId = vf.rows[0]!.id;
+
+        const dispute = await c.query<{ id: string }>(
+          `INSERT INTO dispute (client_id, carrier_id, status, amount_claimed, currency)
+           VALUES ($1, $2, 'draft', '75.0000', 'USD') RETURNING id`,
+          [clientAId, carrierId],
+        );
+        disputeId = dispute.rows[0]!.id;
+        await c.query(
+          `INSERT INTO dispute_comm (client_id, dispute_id, direction, body, dedupe_key) VALUES ($1, $2, 'outbound', 'PCP comm.', $3)`,
+          [clientAId, disputeId, `${tag}-comm`],
+        );
       });
     } finally {
       owner.release();
@@ -454,6 +603,8 @@ describe('portal content query modules: explicit client_id predicate (DB)', () =
   afterAll(async () => {
     const owner = await pool.connect();
     try {
+      await owner.query(`DELETE FROM dispute_comm WHERE client_id = $1`, [clientAId]);
+      await owner.query(`DELETE FROM dispute WHERE client_id = $1`, [clientAId]);
       await owner.query(`DELETE FROM variance_finding WHERE client_id = $1`, [clientAId]);
       await owner.query(`DELETE FROM charge_fact WHERE client_id = $1`, [clientAId]);
       await owner.query(`DELETE FROM scorecard WHERE client_id = $1`, [clientAId]);
@@ -484,6 +635,16 @@ describe('portal content query modules: explicit client_id predicate (DB)', () =
     expect(rows.some((r) => r.id === findingId)).toBe(false);
   });
 
+  it('the explicit predicate rejects a mismatched clientId on getClientDisputeDetail, even under an internal (cross-client) RLS scope', async () => {
+    const detail = await withTenantTx({ internal: true }, (c) => getClientDisputeDetail(c, otherClientId, disputeId));
+    expect(detail).toBeNull();
+  });
+
+  it('the explicit predicate rejects a mismatched clientId on listClientDisputeCommunications, even under an internal (cross-client) RLS scope', async () => {
+    const comms = await withTenantTx({ internal: true }, (c) => listClientDisputeCommunications(c, otherClientId, disputeId));
+    expect(comms).toEqual([]);
+  });
+
   it('the explicit predicate still finds the rows under an internal scope when the clientId matches', async () => {
     const rows = await withTenantTx({ internal: true }, (c) => listClientInvoices(c, clientAId));
     expect(rows.some((r) => r.id === invoiceId)).toBe(true);
@@ -495,5 +656,12 @@ describe('portal content query modules: explicit client_id predicate (DB)', () =
 
     const findings = await withTenantTx({ internal: true }, (c) => listClientFindings(c, clientAId));
     expect(findings.some((f) => f.id === findingId)).toBe(true);
+
+    const detail = await withTenantTx({ internal: true }, (c) => getClientDisputeDetail(c, clientAId, disputeId));
+    expect(detail).not.toBeNull();
+    expect(detail!.status).toBe('draft');
+
+    const comms = await withTenantTx({ internal: true }, (c) => listClientDisputeCommunications(c, clientAId, disputeId));
+    expect(comms).toHaveLength(1);
   });
 });

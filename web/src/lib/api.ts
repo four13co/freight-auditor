@@ -543,6 +543,39 @@ export async function fetchClientPortalFindingEvidence(findingId: string): Promi
   return (await res.json()) as ClientPortalFindingEvidence;
 }
 
+/** Mirrors get-client-dispute-detail.ts's ClientDisputeDetail shape exactly (P6.B.3). */
+export interface ClientPortalDisputeDetail {
+  id: string;
+  carrierId: string | null;
+  status: string;
+  amountClaimed: string | null;
+  currency: string | null;
+  createdAt: string;
+  lines: { id: string; varianceFindingId: string | null; amount: string | null; currency: string | null }[];
+}
+
+/** Client portal (P6.B.3) -- unwired to nav, same disclosure as the P6.B.1/P6.B.2 precedent. */
+export async function fetchClientPortalDispute(disputeId: string): Promise<ClientPortalDisputeDetail> {
+  const res = await fetch(`/api/portal/disputes/${disputeId}`, { headers: authHeaders() });
+  if (!res.ok) throw new Error(`GET portal dispute failed: ${res.status}`);
+  return (await res.json()) as ClientPortalDisputeDetail;
+}
+
+/** Mirrors list-client-dispute-communications.ts's ClientDisputeCommRow shape exactly (P6.B.3). */
+export interface ClientPortalDisputeCommRow {
+  id: string;
+  direction: string;
+  body: string | null;
+  recordedAt: string;
+}
+
+/** Client portal (P6.B.3) -- unwired to nav, same disclosure as the P6.B.1/P6.B.2 precedent. */
+export async function fetchClientPortalDisputeCommunications(disputeId: string): Promise<ClientPortalDisputeCommRow[]> {
+  const res = await fetch(`/api/portal/disputes/${disputeId}/communications`, { headers: authHeaders() });
+  if (!res.ok) throw new Error(`GET portal dispute communications failed: ${res.status}`);
+  return ((await res.json()) as { communications: ClientPortalDisputeCommRow[] }).communications;
+}
+
 export interface ClientRecoveryReportBucket {
   currency: string | null;
   claimed: string;

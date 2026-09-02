@@ -16,6 +16,13 @@ import { encodeCursor } from '../../src/shared/cursor-pagination.js';
  * composite read preHandler, and that a real write route sits under the
  * admin-only preHandler (round-39's own lesson: a 403/401 proof is only
  * meaningful when a route actually exists to be rejected from).
+ *
+ * client-viewer-auth.js's mock also stubs registerClientViewerAuthPreHandler
+ * (unused by this file's own routes) because buildApp() registers
+ * portal-content-routes.ts (P6.B.1) alongside portal-admin-routes.ts in the
+ * same app, and that module's registration-time import needs the export to
+ * exist on the mocked module -- same no-op-when-unreached shape
+ * portal-content-routes.test.ts uses for its own mock.
  */
 function mockAuth(admin: unknown, viewer: unknown) {
   vi.doMock('../../src/modules/identity/client-admin-auth.js', () => ({
@@ -34,6 +41,15 @@ function mockAuth(admin: unknown, viewer: unknown) {
   }));
   vi.doMock('../../src/modules/identity/client-viewer-auth.js', () => ({
     resolveClientViewerContext: vi.fn().mockResolvedValue(viewer),
+    registerClientViewerAuthPreHandler: async (routes: FastifyInstance) => {
+      routes.addHook('preHandler', async (request, reply) => {
+        if (!viewer) {
+          await reply.code(401).send({ error: 'unauthorized' });
+          return;
+        }
+        request.tenantContext = viewer as never;
+      });
+    },
   }));
 }
 

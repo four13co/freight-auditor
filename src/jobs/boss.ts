@@ -106,13 +106,17 @@ const defaultConsumerDeps: JobConsumerDeps = {
  * three recurring scans. No scan tick enqueues EXPORT_RECORD_V1 or
  * DISCOVER_TRIGGERS_V1 yet -- naming a concrete enqueue call site is
  * deferred, same rollout P4.A.5's outbox dispatcher used; handleDiscover-
- * TriggersJob only needs a tenant-scoped pg.PoolClient (no object-store/
- * SFTP-client construction), so it's wired the same way as the other
- * withTenantTx-shaped consumers above rather than deferred with the group
- * below. Ingestion/audit/reference-data/SFTP job types are registered as
- * queues (registerJobQueues) but have no consumer wired here yet -- their
- * handlers need object-store/SFTP-client construction that doesn't exist at
- * worker-bootstrap scope, a separate gap from the one this closes.
+ * TriggersJob only needs a tenant-scoped pg.PoolClient (no object-store
+ * construction), so it's wired the same way as the other withTenantTx-
+ * shaped consumers above rather than deferred with the group below.
+ * Ingestion/audit/reference-data job types are registered as queues
+ * (registerJobQueues) but have no consumer wired here yet -- their handlers
+ * need object-store construction that doesn't exist at worker-bootstrap
+ * scope, a separate gap from the one this closes. (POLL_SFTP_V1 was
+ * previously in this deferred group; removed entirely -- 86e32tfxj --
+ * rather than wired, since its handler needs a per-connection SftpClient
+ * built from sftp_connection.private_key_secret_ref, and no secret-
+ * resolution mechanism for that reference exists anywhere in this repo.)
  */
 export async function registerJobConsumers(
   boss: Pick<BossLifecycle, 'work' | 'schedule' | 'send'>,

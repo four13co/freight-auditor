@@ -6,9 +6,9 @@ import { detectSuspiciousPassTriggers } from '../modules/discovery/detect-suspic
 
 /**
  * P3.D.5: an idempotent job wrapping the audit-run-scoped P3.D discovery
- * detectors, matching `handleSftpPollJob`'s shape (parse the untrusted
- * payload, dispatch to the already-audited domain function(s), let them fail
- * closed). Registers no new idempotency logic -- `deterministicJobId` gives
+ * detectors (parse the untrusted payload, dispatch to the already-audited
+ * domain function(s), let them fail closed). Registers no new idempotency
+ * logic -- `deterministicJobId` gives
  * this job name its own domain automatically (existing `job-enqueue.test.ts`
  * coverage).
  *

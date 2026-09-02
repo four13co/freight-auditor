@@ -42,7 +42,7 @@ describe('portfolio routes', () => {
 
   it('returns the cross-client portfolio buckets on success', async () => {
     mockAuth();
-    vi.doMock('../../src/db/tenant-context.js', () => ({ withTenantTx: vi.fn(async (_ctx, fn) => fn({})) }));
+    vi.doMock('../../src/db/tenant-context.js', () => ({ withTenantReadTx: vi.fn(async (_ctx, fn) => fn({})) }));
     const buckets = [
       { clientId: 'c1', clientName: 'Client A', currency: 'USD', claimed: '500.0000', recovered: '200.0000', outstanding: '300.0000', writtenOff: '0.0000', denied: '0.0000', nullCurrencyRecovered: '0.0000', mismatchedCurrencyRecovered: '0.0000', reconciles: true },
     ];
@@ -62,7 +62,7 @@ describe('portfolio routes', () => {
 
   it('returns an empty buckets array when there are no claims anywhere', async () => {
     mockAuth();
-    vi.doMock('../../src/db/tenant-context.js', () => ({ withTenantTx: vi.fn(async (_ctx, fn) => fn({})) }));
+    vi.doMock('../../src/db/tenant-context.js', () => ({ withTenantReadTx: vi.fn(async (_ctx, fn) => fn({})) }));
     const getCrossClientPortfolio = vi.fn().mockResolvedValue([]);
     vi.doMock('../../src/modules/claims/get-cross-client-portfolio.js', () => ({ getCrossClientPortfolio }));
     const { registerPortfolioRoutes } = await import('../../src/server/portfolio-routes.js');

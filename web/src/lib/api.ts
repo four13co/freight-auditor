@@ -447,6 +447,56 @@ export async function fetchCrossClientPortfolio(): Promise<CrossClientPortfolioB
   return ((await res.json()) as { buckets: CrossClientPortfolioBucket[] }).buckets;
 }
 
+export interface ClientPortalInvoiceRow {
+  id: string;
+  invoiceNumber: string | null;
+  carrierId: string | null;
+  carrierName: string | null;
+  currency: string | null;
+  status: string;
+  createdAt: string;
+  /** The invoice's most recent audit_run id, or null if no audit has run yet. */
+  auditRunId: string | null;
+}
+
+/** Client portal (P6.B.1) -- unwired to nav, same disclosure as PortfolioReport.tsx's own precedent. */
+export async function fetchClientPortalInvoices(): Promise<ClientPortalInvoiceRow[]> {
+  const res = await fetch('/api/portal/invoices', { headers: authHeaders() });
+  if (!res.ok) throw new Error(`GET portal invoices failed: ${res.status}`);
+  return ((await res.json()) as { invoices: ClientPortalInvoiceRow[] }).invoices;
+}
+
+/**
+ * Mirrors get-client-audit-run-scorecard.ts's ClientAuditRunScorecard shape
+ * exactly: one specific audit_run, not a client-wide rollup (see that
+ * module's own header comment for why -- scorecard.audit_run_id is UNIQUE,
+ * so this is always a single row or none).
+ */
+export interface ClientPortalAuditRunScorecard {
+  auditRunId: string;
+  invoiceId: string;
+  invoiceNumber: string | null;
+  outcome: string;
+  conformedCount: number | null;
+  varianceCount: number | null;
+  unassessableCount: number | null;
+  totalOvercharge: string | null;
+  totalUndercharge: string | null;
+  currency: string | null;
+}
+
+/**
+ * Client portal (P6.B.1) -- unwired to nav, same disclosure as
+ * PortfolioReport.tsx's own precedent. Throws on any non-ok response
+ * (404 included), same convention as the internal fetchInvoiceScorecard
+ * above -- the caller treats any failure as a single error state.
+ */
+export async function fetchClientPortalAuditRunScorecard(auditRunId: string): Promise<ClientPortalAuditRunScorecard> {
+  const res = await fetch(`/api/portal/scorecard/${auditRunId}`, { headers: authHeaders() });
+  if (!res.ok) throw new Error(`GET portal scorecard failed: ${res.status}`);
+  return (await res.json()) as ClientPortalAuditRunScorecard;
+}
+
 export interface ClientRecoveryReportBucket {
   currency: string | null;
   claimed: string;

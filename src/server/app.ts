@@ -2,6 +2,8 @@ import Fastify, { type FastifyInstance } from 'fastify';
 import { registerFindingsRoutes } from './findings-routes.js';
 import { registerAuthRoutes } from './auth-routes.js';
 import { registerStaticRoutes } from './static-routes.js';
+import { registerMetricsRoutes } from './metrics-routes.js';
+import { registerBrandingRoutes } from './branding-routes.js';
 import { registerAuditRunsRoutes } from './audit-runs-routes.js';
 import { registerInvoiceDraftsRoutes } from './invoice-drafts-routes.js';
 import { registerEvidenceRoutes } from './evidence-routes.js';
@@ -14,6 +16,8 @@ import { registerPaymentRoutes } from './payment-routes.js';
 import { registerDisputeReviewRoutes } from './dispute-review-routes.js';
 import { registerPortfolioRoutes } from './portfolio-routes.js';
 import { registerPortalContentRoutes } from './portal-content-routes.js';
+import { registerPortalAdminRoutes } from './portal-admin-routes.js';
+import { registerRecoveryReportRoutes } from './recovery-report-routes.js';
 
 /**
  * Build the Fastify application instance.
@@ -37,6 +41,16 @@ export function buildApp(): FastifyInstance {
   // Static/health routes registered at top level -- must NOT opt into the
   // shared registerTenantAuthPreHandler used by tenant-scoped route modules.
   void app.register(registerStaticRoutes);
+
+  // Worker-throughput/queue-backlog + discovery metrics (P6.C.4): also
+  // top-level and unauthenticated, same posture as /health -- a Prometheus
+  // scraper carries no session.
+  void app.register(registerMetricsRoutes);
+
+  // Per-Customer white-labeling (86e320pkc): top-level and unauthenticated,
+  // same posture as /health -- must be reachable before any session exists
+  // (branding renders on the login page itself, not only after sign-in).
+  void app.register(registerBrandingRoutes);
 
   // Auth routes registered at top level -- must be reachable with only a
   // session cookie (or no session at all), before any tenant scope exists
@@ -89,6 +103,17 @@ export function buildApp(): FastifyInstance {
   // NOT the shared registerTenantAuthPreHandler -- see portal-content-
   // routes.ts's header comment for why.
   void app.register(registerPortalContentRoutes);
+
+  // Portal-specific tenant-scoped APIs (P6.A.4): client_admin/client_viewer
+  // membership roster + role management, the first consumers of
+  // client-admin-auth.ts's/client-viewer-auth.ts's preHandlers.
+  void app.register(registerPortalAdminRoutes);
+
+  // Client-level recovery reporting (P5.C.2): the single-tenant analog of
+  // registerPortfolioRoutes above, gated by the shared registerTenantAuthPreHandler
+  // (unlike portfolio-routes.ts's internal-analyst-only gate) and reusing
+  // getPortfolioReconciliation (P5.C.4) as-is.
+  void app.register(registerRecoveryReportRoutes);
 
   return app;
 }

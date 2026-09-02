@@ -2,6 +2,7 @@ import type pg from 'pg';
 import { z } from 'zod';
 import { deterministicAuditEventId, writeAuditEvent } from '../audit-ledger/write-audit-event.js';
 import { validateClaimResolution, type ClaimRow, type ClaimResolutionKind } from './validate-claim-resolution.js';
+import { updateFindingStatus } from '../findings/update-finding-status.js';
 
 const schema = z.object({
   clientId: z.uuid(),
@@ -77,6 +78,17 @@ export async function resolveClaim(
   }
 
   await client.query(`UPDATE claim SET status = $3 WHERE client_id = $1 AND id = $2`, [input.clientId, input.claimId, validated.newStatus]);
+
+  // claim has no FK to variance_finding (the link is the caller-supplied
+  // varianceFindingId, same as recovery_event's own soft link above) --
+  // recovered/written_off are the only two terminal claim outcomes that are
+  // also valid variance_status values, so mirror the finding's status only
+  // for those, and only when a finding was actually named. Deriving this
+  // from a claim's full dispute_line fan-out is P5.A.5's boundary, not this
+  // one (see the module doc comment above).
+  if (input.varianceFindingId && (validated.newStatus === 'recovered' || validated.newStatus === 'written_off')) {
+    await updateFindingStatus(client, input.varianceFindingId, validated.newStatus, `Claim resolved: ${validated.kind}`);
+  }
 
   await writeAuditEvent(client, {
     id: deterministicAuditEventId(input.clientId, input.claimId, `claim.${validated.newStatus}`),

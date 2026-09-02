@@ -79,6 +79,28 @@ describe.skipIf(!DATABASE_URL)('workflow_command (database)', () => {
     expect(completed).toEqual({ found: true });
   });
 
+  it('two concurrent calls with an identical dedupe key produce exactly one row (86e32tfwq)', async () => {
+    const runAfter = new Date(Date.now() - 1000);
+    const call = () => withTenantTx({ clientIds: [clientId], internal: false }, (client) =>
+      scheduleWorkflowCommand(client, {
+        clientId,
+        workflowInstanceId,
+        commandType: 'concurrent_probe',
+        payload: {},
+        runAfter,
+      }));
+
+    const [a, b] = await Promise.all([call(), call()]);
+    expect(a.commandId).toBe(b.commandId);
+    expect([a.created, b.created].filter(Boolean)).toHaveLength(1);
+
+    const rows = await getPool().query(
+      `SELECT id FROM workflow_command WHERE client_id = $1 AND command_type = 'concurrent_probe'`,
+      [clientId],
+    );
+    expect(rows.rowCount).toBe(1);
+  });
+
   it('does not claim a command whose run_after is in the future', async () => {
     const future = new Date(Date.now() + 60 * 60 * 1000);
     await withTenantTx({ clientIds: [clientId], internal: false }, (client) =>

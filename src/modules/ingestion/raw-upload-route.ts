@@ -1,10 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import type { TenantContext } from '../../db/tenant-context.js';
 
-export function objectStoreRoot(): string {
-  return process.env.OBJECT_STORE_ROOT ?? './.data/object-store';
-}
-
 export function registerBufferContentTypeParser(routes: FastifyInstance, contentTypes: string[]): void {
   routes.addContentTypeParser(contentTypes, { parseAs: 'buffer' }, (_request, body, done) => done(null, body));
 }

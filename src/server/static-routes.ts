@@ -4,6 +4,50 @@ import { readFileSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { join, dirname } from 'node:path';
 import { getPool } from '../db/pool.js';
+import { runtimeObjectStore } from '../modules/reference-data/object-store-config.js';
+import type { ObjectStore } from '../modules/reference-data/object-store.js';
+
+type DependencyStatus = 'ok' | 'unreachable';
+type ObjectStoreStatus = DependencyStatus | 'misconfigured';
+
+const READINESS_OBJECT_SHA256 = '0'.repeat(64);
+
+export async function checkObjectStoreReadiness(
+  storeFactory: () => ObjectStore = runtimeObjectStore,
+): Promise<ObjectStoreStatus> {
+  let store: ObjectStore;
+  try {
+    store = storeFactory();
+  } catch {
+    return 'misconfigured';
+  }
+  try {
+    // A missing sentinel is healthy: the HEAD request reached the configured
+    // bucket and S3ObjectStore maps only a genuine 404 to false. Auth, bucket,
+    // endpoint, and provider failures throw and therefore fail readiness.
+    await store.has(READINESS_OBJECT_SHA256);
+    return 'ok';
+  } catch {
+    return 'unreachable';
+  }
+}
+
+async function dependencyStatuses(): Promise<{ database: DependencyStatus; object_store: ObjectStoreStatus }> {
+  const [database, objectStore] = await Promise.all([
+    checkDatabaseReadiness(),
+    checkObjectStoreReadiness(),
+  ]);
+  return { database, object_store: objectStore };
+}
+
+async function checkDatabaseReadiness(): Promise<DependencyStatus> {
+  try {
+    await getPool().query('SELECT 1');
+    return 'ok';
+  } catch {
+    return 'unreachable';
+  }
+}
 
 /**
  * The running revision's build SHA, for a rolling-deploy health check to tell
@@ -62,14 +106,18 @@ export async function registerStaticRoutes(app: FastifyInstance): Promise<void> 
   // wired into the running container and every data endpoint 500'd while /health
   // stayed green because it never touched Postgres.
   app.get('/health', async () => {
-    let database: 'ok' | 'unreachable';
-    try {
-      await getPool().query('SELECT 1');
-      database = 'ok';
-    } catch {
-      database = 'unreachable';
-    }
-    return { status: 'ok', build: buildSha, database };
+    const dependencies = await dependencyStatuses();
+    return { status: 'ok', build: buildSha, ...dependencies };
+  });
+
+  app.get('/ready', async (_request, reply) => {
+    const dependencies = await dependencyStatuses();
+    const ready = dependencies.database === 'ok' && dependencies.object_store === 'ok';
+    return reply.code(ready ? 200 : 503).send({
+      status: ready ? 'ready' : 'not_ready',
+      build: buildSha,
+      ...dependencies,
+    });
   });
 
   const webDist = resolveWebDist();

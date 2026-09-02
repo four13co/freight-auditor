@@ -64,6 +64,9 @@ describe('handleRunWorkflowCommandJob', () => {
       (call: unknown[]) => typeof call[0] === 'string' && call[0].includes('audit_event'),
     );
     expect(auditInsert).toBeDefined();
+    const [, params] = auditInsert as [string, unknown[]];
+    expect(params[4]).toBe('workflow.command_run');
+    expect(params[9]).toEqual({ workflowInstanceId: INSTANCE_ID, commandType: 'send_reminder' });
   });
 
   it('fails closed for an unregistered command type: no handler call, no completion, no audit event', async () => {

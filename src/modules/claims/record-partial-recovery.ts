@@ -1,7 +1,12 @@
 import type pg from 'pg';
+import type PgBoss from 'pg-boss';
 import { z } from 'zod';
 import { deterministicAuditEventId, writeAuditEvent } from '../audit-ledger/write-audit-event.js';
 import { validatePartialRecovery, type ClaimRow } from './validate-partial-recovery.js';
+import { enqueueReconciliationExport } from './enqueue-reconciliation-export.js';
+
+/** Unquoted lowercase identifier -- valid as a Postgres SAVEPOINT name with no escaping needed. */
+const EXPORT_ENQUEUE_SAVEPOINT = 'record_partial_recovery_export_enqueue';
 
 const schema = z.object({
   clientId: z.uuid(),
@@ -40,9 +45,22 @@ export interface RecordPartialRecoveryResult {
  * recovery_event rows, computed fresh inside this transaction (never
  * cached), so concurrent partial recoveries against the same claim are
  * each checked against the true prior total as of their own transaction.
+ *
+ * Also enqueues an EXPORT_RECORD_V1 job (P5.C.5) carrying the recovery
+ * event's reconciliation data. The enqueue runs through enqueueInTransaction
+ * on this same client (so a SUCCESSFUL enqueue commits atomically with the
+ * recovery_event write, giving it the outbox property), but is wrapped in
+ * its own SAVEPOINT: if the enqueue itself throws, only the savepoint rolls
+ * back, never the outer transaction, so the recovery_event write still
+ * commits. This is required, not incidental -- the export ATTEMPT (the job
+ * actually running later, off this request path, via the worker) was
+ * always out of scope for blocking anything, but a prior implementation
+ * also let the ENQUEUE call block/roll back the write by running it inline
+ * with no fault isolation, which the No-gos explicitly forbid.
  */
 export async function recordPartialRecovery(
   client: pg.PoolClient,
+  boss: Pick<PgBoss, 'send'>,
   untrusted: z.input<typeof schema>,
 ): Promise<RecordPartialRecoveryResult> {
   const input = schema.parse(untrusted);
@@ -84,6 +102,23 @@ export async function recordPartialRecovery(
       isFinal: validated.isFinal,
     },
   });
+
+  try {
+    await client.query(`SAVEPOINT ${EXPORT_ENQUEUE_SAVEPOINT}`);
+    await enqueueReconciliationExport(client, boss, {
+      clientId: input.clientId,
+      claimId: input.claimId,
+      recoveryEventId,
+      amountRecovered: validated.amountRecovered,
+      currency: validated.currency,
+      varianceFindingId: input.varianceFindingId ?? null,
+    });
+    await client.query(`RELEASE SAVEPOINT ${EXPORT_ENQUEUE_SAVEPOINT}`);
+  } catch {
+    // Enqueue failure must never roll back or block the recovery_event
+    // write (No-gos) -- roll back only to the savepoint and continue.
+    await client.query(`ROLLBACK TO SAVEPOINT ${EXPORT_ENQUEUE_SAVEPOINT}`);
+  }
 
   return { recoveryEventId, cumulativeRecovered: validated.cumulativeRecovered, isFinal: validated.isFinal };
 }

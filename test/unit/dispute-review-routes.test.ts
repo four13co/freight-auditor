@@ -103,6 +103,222 @@ describe('dispute review routes', () => {
     expect(response.statusCode).toBe(409);
   });
 
+  describe('P4.C.9: response transitions', () => {
+    it('accepts a dispute and returns its new status', async () => {
+      mockAuth();
+      vi.doMock('../../src/db/tenant-context.js', () => ({ withTenantTx: vi.fn(async (_ctx, fn) => fn({})) }));
+      const acceptDispute = vi.fn().mockResolvedValue({ found: true });
+      vi.doMock('../../src/modules/disputes/resolve-dispute.js', () => ({
+        acceptDispute, rejectDispute: vi.fn(), partiallyAcceptDispute: vi.fn(), closeDispute: vi.fn(),
+        DisputeTransitionError: class extends Error { code = 'ACCEPTED_AMOUNT_EXCEEDS_CLAIMED'; },
+      }));
+      const { registerDisputeReviewRoutes } = await import('../../src/server/dispute-review-routes.js');
+      app = Fastify();
+      await app.register(registerDisputeReviewRoutes);
+      await app.ready();
+
+      const response = await app.inject({ method: 'POST', url: `/api/disputes/${DISPUTE_ID}/accept` });
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toEqual({ disputeId: DISPUTE_ID, status: 'accepted' });
+      expect(acceptDispute).toHaveBeenCalledWith({}, DISPUTE_ID, ACTOR_USER_ID);
+    });
+
+    it('returns 409 accepting a dispute that is not found or not awaiting response', async () => {
+      mockAuth();
+      vi.doMock('../../src/db/tenant-context.js', () => ({ withTenantTx: vi.fn(async (_ctx, fn) => fn({})) }));
+      vi.doMock('../../src/modules/disputes/resolve-dispute.js', () => ({
+        acceptDispute: vi.fn().mockResolvedValue({ found: false }),
+        rejectDispute: vi.fn(), partiallyAcceptDispute: vi.fn(), closeDispute: vi.fn(),
+        DisputeTransitionError: class extends Error { code = 'ACCEPTED_AMOUNT_EXCEEDS_CLAIMED'; },
+      }));
+      const { registerDisputeReviewRoutes } = await import('../../src/server/dispute-review-routes.js');
+      app = Fastify();
+      await app.register(registerDisputeReviewRoutes);
+      await app.ready();
+
+      const response = await app.inject({ method: 'POST', url: `/api/disputes/${DISPUTE_ID}/accept` });
+      expect(response.statusCode).toBe(409);
+    });
+
+    it('rejects an accept request with a malformed dispute id', async () => {
+      mockAuth();
+      vi.doMock('../../src/db/tenant-context.js', () => ({ withTenantTx: vi.fn(async (_ctx, fn) => fn({})) }));
+      const { registerDisputeReviewRoutes } = await import('../../src/server/dispute-review-routes.js');
+      app = Fastify();
+      await app.register(registerDisputeReviewRoutes);
+      await app.ready();
+
+      const response = await app.inject({ method: 'POST', url: '/api/disputes/not-a-uuid/accept' });
+      expect(response.statusCode).toBe(400);
+    });
+
+    it('rejects a dispute and returns its new status', async () => {
+      mockAuth();
+      vi.doMock('../../src/db/tenant-context.js', () => ({ withTenantTx: vi.fn(async (_ctx, fn) => fn({})) }));
+      const rejectDispute = vi.fn().mockResolvedValue({ found: true });
+      vi.doMock('../../src/modules/disputes/resolve-dispute.js', () => ({
+        rejectDispute, acceptDispute: vi.fn(), partiallyAcceptDispute: vi.fn(), closeDispute: vi.fn(),
+        DisputeTransitionError: class extends Error { code = 'ACCEPTED_AMOUNT_EXCEEDS_CLAIMED'; },
+      }));
+      const { registerDisputeReviewRoutes } = await import('../../src/server/dispute-review-routes.js');
+      app = Fastify();
+      await app.register(registerDisputeReviewRoutes);
+      await app.ready();
+
+      const response = await app.inject({ method: 'POST', url: `/api/disputes/${DISPUTE_ID}/reject` });
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toEqual({ disputeId: DISPUTE_ID, status: 'rejected' });
+      expect(rejectDispute).toHaveBeenCalledWith({}, DISPUTE_ID, ACTOR_USER_ID);
+    });
+
+    it('returns 409 rejecting a dispute that is not found or not awaiting response', async () => {
+      mockAuth();
+      vi.doMock('../../src/db/tenant-context.js', () => ({ withTenantTx: vi.fn(async (_ctx, fn) => fn({})) }));
+      vi.doMock('../../src/modules/disputes/resolve-dispute.js', () => ({
+        rejectDispute: vi.fn().mockResolvedValue({ found: false }),
+        acceptDispute: vi.fn(), partiallyAcceptDispute: vi.fn(), closeDispute: vi.fn(),
+        DisputeTransitionError: class extends Error { code = 'ACCEPTED_AMOUNT_EXCEEDS_CLAIMED'; },
+      }));
+      const { registerDisputeReviewRoutes } = await import('../../src/server/dispute-review-routes.js');
+      app = Fastify();
+      await app.register(registerDisputeReviewRoutes);
+      await app.ready();
+
+      const response = await app.inject({ method: 'POST', url: `/api/disputes/${DISPUTE_ID}/reject` });
+      expect(response.statusCode).toBe(409);
+    });
+
+    it('partially accepts a dispute and returns its new status', async () => {
+      mockAuth();
+      vi.doMock('../../src/db/tenant-context.js', () => ({ withTenantTx: vi.fn(async (_ctx, fn) => fn({})) }));
+      const partiallyAcceptDispute = vi.fn().mockResolvedValue({ found: true });
+      vi.doMock('../../src/modules/disputes/resolve-dispute.js', () => ({
+        partiallyAcceptDispute, acceptDispute: vi.fn(), rejectDispute: vi.fn(), closeDispute: vi.fn(),
+        DisputeTransitionError: class extends Error { code = 'ACCEPTED_AMOUNT_EXCEEDS_CLAIMED'; },
+      }));
+      const { registerDisputeReviewRoutes } = await import('../../src/server/dispute-review-routes.js');
+      app = Fastify();
+      await app.register(registerDisputeReviewRoutes);
+      await app.ready();
+
+      const response = await app.inject({
+        method: 'POST', url: `/api/disputes/${DISPUTE_ID}/partial-accept`, payload: { acceptedAmount: '300.0000' },
+      });
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toEqual({ disputeId: DISPUTE_ID, status: 'partial' });
+      expect(partiallyAcceptDispute).toHaveBeenCalledWith({}, DISPUTE_ID, ACTOR_USER_ID, '300.0000');
+    });
+
+    it('rejects a partial-accept request missing acceptedAmount with 400', async () => {
+      mockAuth();
+      vi.doMock('../../src/db/tenant-context.js', () => ({ withTenantTx: vi.fn(async (_ctx, fn) => fn({})) }));
+      const { registerDisputeReviewRoutes } = await import('../../src/server/dispute-review-routes.js');
+      app = Fastify();
+      await app.register(registerDisputeReviewRoutes);
+      await app.ready();
+
+      const response = await app.inject({ method: 'POST', url: `/api/disputes/${DISPUTE_ID}/partial-accept`, payload: {} });
+      expect(response.statusCode).toBe(400);
+    });
+
+    it('rejects a partial-accept request with a malformed acceptedAmount with 400', async () => {
+      mockAuth();
+      vi.doMock('../../src/db/tenant-context.js', () => ({ withTenantTx: vi.fn(async (_ctx, fn) => fn({})) }));
+      const { registerDisputeReviewRoutes } = await import('../../src/server/dispute-review-routes.js');
+      app = Fastify();
+      await app.register(registerDisputeReviewRoutes);
+      await app.ready();
+
+      const response = await app.inject({
+        method: 'POST', url: `/api/disputes/${DISPUTE_ID}/partial-accept`, payload: { acceptedAmount: 'not-a-number' },
+      });
+      expect(response.statusCode).toBe(400);
+    });
+
+    it('returns 422 when acceptedAmount exceeds the dispute\'s amount_claimed', async () => {
+      mockAuth();
+      vi.doMock('../../src/db/tenant-context.js', () => ({ withTenantTx: vi.fn(async (_ctx, fn) => fn({})) }));
+      class MockDisputeTransitionError extends Error {
+        code = 'ACCEPTED_AMOUNT_EXCEEDS_CLAIMED' as const;
+      }
+      const partiallyAcceptDispute = vi.fn().mockRejectedValue(new MockDisputeTransitionError('exceeds'));
+      vi.doMock('../../src/modules/disputes/resolve-dispute.js', () => ({
+        partiallyAcceptDispute, acceptDispute: vi.fn(), rejectDispute: vi.fn(), closeDispute: vi.fn(),
+        DisputeTransitionError: MockDisputeTransitionError,
+      }));
+      const { registerDisputeReviewRoutes } = await import('../../src/server/dispute-review-routes.js');
+      app = Fastify();
+      await app.register(registerDisputeReviewRoutes);
+      await app.ready();
+
+      const response = await app.inject({
+        method: 'POST', url: `/api/disputes/${DISPUTE_ID}/partial-accept`, payload: { acceptedAmount: '999999.0000' },
+      });
+      expect(response.statusCode).toBe(422);
+    });
+
+    it('returns 409 partially accepting a dispute that is not found or not awaiting response', async () => {
+      mockAuth();
+      vi.doMock('../../src/db/tenant-context.js', () => ({ withTenantTx: vi.fn(async (_ctx, fn) => fn({})) }));
+      vi.doMock('../../src/modules/disputes/resolve-dispute.js', () => ({
+        partiallyAcceptDispute: vi.fn().mockResolvedValue({ found: false }),
+        acceptDispute: vi.fn(), rejectDispute: vi.fn(), closeDispute: vi.fn(),
+        DisputeTransitionError: class extends Error { code = 'ACCEPTED_AMOUNT_EXCEEDS_CLAIMED'; },
+      }));
+      const { registerDisputeReviewRoutes } = await import('../../src/server/dispute-review-routes.js');
+      app = Fastify();
+      await app.register(registerDisputeReviewRoutes);
+      await app.ready();
+
+      const response = await app.inject({
+        method: 'POST', url: `/api/disputes/${DISPUTE_ID}/partial-accept`, payload: { acceptedAmount: '100.0000' },
+      });
+      expect(response.statusCode).toBe(409);
+    });
+
+    it('closes a resolved dispute and returns its new status', async () => {
+      mockAuth();
+      vi.doMock('../../src/db/tenant-context.js', () => ({ withTenantTx: vi.fn(async (_ctx, fn) => fn({})) }));
+      const closeDispute = vi.fn().mockResolvedValue({ found: true });
+      vi.doMock('../../src/modules/disputes/resolve-dispute.js', () => ({
+        closeDispute, acceptDispute: vi.fn(), rejectDispute: vi.fn(), partiallyAcceptDispute: vi.fn(),
+        DisputeTransitionError: class extends Error { code = 'ACCEPTED_AMOUNT_EXCEEDS_CLAIMED'; },
+      }));
+      const { registerDisputeReviewRoutes } = await import('../../src/server/dispute-review-routes.js');
+      app = Fastify();
+      await app.register(registerDisputeReviewRoutes);
+      await app.ready();
+
+      const response = await app.inject({ method: 'POST', url: `/api/disputes/${DISPUTE_ID}/close` });
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toEqual({ disputeId: DISPUTE_ID, status: 'closed' });
+      expect(closeDispute).toHaveBeenCalledWith({}, DISPUTE_ID, ACTOR_USER_ID);
+    });
+
+    it('returns 409 closing a dispute that is not found or not yet resolved', async () => {
+      mockAuth();
+      vi.doMock('../../src/db/tenant-context.js', () => ({ withTenantTx: vi.fn(async (_ctx, fn) => fn({})) }));
+      vi.doMock('../../src/modules/disputes/resolve-dispute.js', () => ({
+        closeDispute: vi.fn().mockResolvedValue({ found: false }),
+        acceptDispute: vi.fn(), rejectDispute: vi.fn(), partiallyAcceptDispute: vi.fn(),
+        DisputeTransitionError: class extends Error { code = 'ACCEPTED_AMOUNT_EXCEEDS_CLAIMED'; },
+      }));
+      const { registerDisputeReviewRoutes } = await import('../../src/server/dispute-review-routes.js');
+      app = Fastify();
+      await app.register(registerDisputeReviewRoutes);
+      await app.ready();
+
+      const response = await app.inject({ method: 'POST', url: `/api/disputes/${DISPUTE_ID}/close` });
+      expect(response.statusCode).toBe(409);
+    });
+
+    it('requires authentication before accepting a dispute', async () => {
+      app = buildApp();
+      const response = await app.inject({ method: 'POST', url: `/api/disputes/${DISPUTE_ID}/accept` });
+      expect(response.statusCode).toBe(401);
+    });
+  });
+
   describe('P4.C.8: communications log', () => {
     it('lists communications for an existing dispute', async () => {
       mockAuth();

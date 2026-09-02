@@ -67,4 +67,23 @@ describe('central audit-event writer', () => {
     const [, values] = query.mock.calls[0]!;
     expect((values as unknown[])[9]).toEqual({ events: [{ at: '2026-08-28T12:00:00.000Z' }] });
   });
+
+  // P6.A.4 (86e2zfjp9): 'client' added alongside analyst/ai/system so a
+  // client-portal user's own auditable actions (e.g. a membership role
+  // change) aren't misattributed to one of the pre-existing actor kinds.
+  it("accepts actorKind 'client' (added for P6.A.4's portal-facing audit events)", async () => {
+    const query = vi.fn().mockResolvedValue({ rows: [{ id: event.id, created: true }] });
+    await expect(writeAuditEvent({ query } as unknown as PoolClient, {
+      ...event, actorKind: 'client',
+    })).resolves.toMatchObject({ created: true });
+    expect(query).toHaveBeenCalledWith(expect.any(String), expect.arrayContaining(['client']));
+  });
+
+  it('still rejects an actorKind outside the known set', async () => {
+    const query = vi.fn();
+    await expect(writeAuditEvent({ query } as unknown as PoolClient, {
+      ...event, actorKind: 'not-a-real-kind' as unknown as 'system',
+    })).rejects.toBeInstanceOf(AuditEventValidationError);
+    expect(query).not.toHaveBeenCalled();
+  });
 });

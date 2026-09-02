@@ -1,7 +1,7 @@
 import type pg from 'pg';
 import { completeWorkflowCommand } from '../modules/workflow/claim-due-workflow-commands.js';
-import { deterministicAuditEventId, writeAuditEvent } from '../modules/audit-ledger/write-audit-event.js';
-import { parseJobPayload, JOB_NAMES } from './contracts.js';
+import { parseJobPayload, JOB_NAMES, type JobPayloads } from './contracts.js';
+import { createJobDispatcher } from './job-dispatcher.js';
 
 export type WorkflowCommandHandler = (
   client: pg.PoolClient,
@@ -15,19 +15,45 @@ export class UnknownWorkflowCommandTypeError extends Error {
   }
 }
 
+type RunWorkflowCommandPayload = JobPayloads[typeof JOB_NAMES.RUN_WORKFLOW_COMMAND_V1];
+
 /**
- * commandType -> handler registry. Empty by default: no concrete
- * workflow_command types exist yet (0053/P4.A.3's own header comment --
- * command_type is open text, concrete types land with their owning phase,
- * same design as workflow_instance.workflow_type/current_state in 0046). A
- * future phase that introduces a command type calls
- * registerWorkflowCommandHandler once at its own module's load time; this
- * file owns dispatch and completion, never any specific command's effect.
+ * commandType -> handler registry, owned by the shared job-dispatcher
+ * factory (job-dispatcher.ts) rather than reimplemented here. Empty by
+ * default: no concrete workflow_command types exist yet (0053/P4.A.3's own
+ * header comment -- command_type is open text, concrete types land with
+ * their owning phase, same design as
+ * workflow_instance.workflow_type/current_state in 0046). A future phase
+ * that introduces a command type calls registerWorkflowCommandHandler once
+ * at its own module's load time; this file owns commandType -> handler
+ * wiring, never any specific command's effect.
  */
-const handlers = new Map<string, WorkflowCommandHandler>();
+const { registry: handlers, register, dispatch } = createJobDispatcher<
+  RunWorkflowCommandPayload,
+  Parameters<WorkflowCommandHandler>[1],
+  RunWorkflowCommandDeps
+>({
+  getTypeKey: (payload) => payload.commandType,
+  getRegistry: (deps) => deps.handlers,
+  buildCtx: (payload) => ({
+    clientId: payload.clientId,
+    workflowInstanceId: payload.workflowInstanceId,
+    commandId: payload.commandId,
+    commandType: payload.commandType,
+    payload: payload.payload,
+  }),
+  complete: (deps, client, payload) => deps.complete(client, { clientId: payload.clientId, commandId: payload.commandId }),
+  buildAuditEvent: (payload) => ({
+    entity: 'workflow_command',
+    entityId: payload.commandId,
+    event: 'workflow.command_run',
+    detail: { workflowInstanceId: payload.workflowInstanceId, commandType: payload.commandType },
+  }),
+  createError: (typeKey) => new UnknownWorkflowCommandTypeError(typeKey),
+});
 
 export function registerWorkflowCommandHandler(commandType: string, handler: WorkflowCommandHandler): void {
-  handlers.set(commandType, handler);
+  register(commandType, handler);
 }
 
 export interface RunWorkflowCommandDeps {
@@ -78,27 +104,5 @@ export async function handleRunWorkflowCommandJob(
   deps: RunWorkflowCommandDeps = defaultDeps,
 ): Promise<void> {
   const payload = parseJobPayload(JOB_NAMES.RUN_WORKFLOW_COMMAND_V1, untrustedPayload);
-
-  const handler = deps.handlers.get(payload.commandType);
-  if (!handler) throw new UnknownWorkflowCommandTypeError(payload.commandType);
-
-  await handler(client, {
-    clientId: payload.clientId,
-    workflowInstanceId: payload.workflowInstanceId,
-    commandId: payload.commandId,
-    commandType: payload.commandType,
-    payload: payload.payload,
-  });
-
-  await deps.complete(client, { clientId: payload.clientId, commandId: payload.commandId });
-
-  await writeAuditEvent(client, {
-    id: deterministicAuditEventId(payload.clientId, payload.commandId, 'workflow.command_run'),
-    clientId: payload.clientId,
-    entity: 'workflow_command',
-    entityId: payload.commandId,
-    event: 'workflow.command_run',
-    actorKind: 'system',
-    detail: { workflowInstanceId: payload.workflowInstanceId, commandType: payload.commandType },
-  });
+  await dispatch(client, payload, deps);
 }

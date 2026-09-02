@@ -9,7 +9,6 @@ export const JOB_NAMES = {
   EVALUATE_AUDIT_V1: 'freight.audit.evaluate.v1',
   REPLAY_AUDIT_V1: 'freight.audit.replay.v1',
   SYNC_REFERENCE_DATA_V1: 'freight.reference-data.sync.v1',
-  POLL_SFTP_V1: 'freight.ingestion.sftp.poll.v1',
   ESCALATE_CLAIM_V1: 'freight.claims.escalate.v1',
   FOLLOW_UP_CLAIM_V1: 'freight.claims.follow-up.v1',
   SCAN_CLAIM_AGING_V1: 'freight.claims.scan-aging.v1',
@@ -18,6 +17,7 @@ export const JOB_NAMES = {
   RUN_WORKFLOW_COMMAND_V1: 'freight.workflow.run-command.v1',
   SCAN_OUTBOX_MESSAGES_V1: 'freight.workflow.scan-outbox.v1',
   DELIVER_OUTBOX_MESSAGE_V1: 'freight.workflow.deliver-outbox-message.v1',
+  EXPORT_RECORD_V1: 'freight.exports.export-record.v1',
 } as const;
 
 export type JobName = (typeof JOB_NAMES)[keyof typeof JOB_NAMES];
@@ -27,7 +27,6 @@ export const JOB_DEAD_LETTER_NAMES: Record<JobName, string> = {
   [JOB_NAMES.EVALUATE_AUDIT_V1]: 'freight.audit.evaluate.dead-letter.v1',
   [JOB_NAMES.REPLAY_AUDIT_V1]: 'freight.audit.replay.dead-letter.v1',
   [JOB_NAMES.SYNC_REFERENCE_DATA_V1]: 'freight.reference-data.sync.dead-letter.v1',
-  [JOB_NAMES.POLL_SFTP_V1]: 'freight.ingestion.sftp.poll.dead-letter.v1',
   [JOB_NAMES.ESCALATE_CLAIM_V1]: 'freight.claims.escalate.dead-letter.v1',
   [JOB_NAMES.FOLLOW_UP_CLAIM_V1]: 'freight.claims.follow-up.dead-letter.v1',
   [JOB_NAMES.SCAN_CLAIM_AGING_V1]: 'freight.claims.scan-aging.dead-letter.v1',
@@ -36,6 +35,7 @@ export const JOB_DEAD_LETTER_NAMES: Record<JobName, string> = {
   [JOB_NAMES.RUN_WORKFLOW_COMMAND_V1]: 'freight.workflow.run-command.dead-letter.v1',
   [JOB_NAMES.SCAN_OUTBOX_MESSAGES_V1]: 'freight.workflow.scan-outbox.dead-letter.v1',
   [JOB_NAMES.DELIVER_OUTBOX_MESSAGE_V1]: 'freight.workflow.deliver-outbox-message.dead-letter.v1',
+  [JOB_NAMES.EXPORT_RECORD_V1]: 'freight.exports.export-record.dead-letter.v1',
 };
 
 const id = z.string().uuid();
@@ -66,10 +66,6 @@ export const jobPayloadSchemas = {
     ...envelope,
     source: z.enum(['eia_diesel', 'mileage', 'ocean_tariff', 'nmfc']),
     publicationVersion: z.string().trim().min(1).max(255),
-  }).strict(),
-  [JOB_NAMES.POLL_SFTP_V1]: z.object({
-    ...envelope,
-    connectionId: id,
   }).strict(),
   [JOB_NAMES.ESCALATE_CLAIM_V1]: z.object({
     ...envelope,
@@ -138,6 +134,23 @@ export const jobPayloadSchemas = {
     workflowInstanceId: id,
     commandId: id,
     messageType: z.string().regex(/^[a-z][a-z0-9_]*$/),
+    payload: z.record(z.string(), z.unknown()),
+  }).strict(),
+  // Dispatches one AP/ERP export attempt through ExportAdapterRegistry
+  // (P4.B.8, export-adapter.ts) and persists the outcome via
+  // recordExportAcknowledgement (P4.B.9). `idempotencyKey` here IS the
+  // export's own dedupeKey, same convention as DELIVER_OUTBOX_MESSAGE_V1's
+  // messageType envelope field -- stable across retries, passed straight
+  // through to the adapter and to recordExportAcknowledgement's own
+  // idempotency check. Exactly one of claimId/paymentGateDecisionId must be
+  // set for a settled (ACKNOWLEDGED/FAILED) result to persist -- enforced by
+  // recordExportAcknowledgement itself (MISSING_ORIGIN), not this schema,
+  // since a NOT_CONFIGURED result never reaches that call.
+  [JOB_NAMES.EXPORT_RECORD_V1]: z.object({
+    ...envelope,
+    claimId: id.nullable().default(null),
+    paymentGateDecisionId: id.nullable().default(null),
+    systemCode: z.string().trim().min(1).max(255),
     payload: z.record(z.string(), z.unknown()),
   }).strict(),
 } satisfies Record<JobName, z.ZodType>;

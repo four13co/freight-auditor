@@ -10,9 +10,9 @@ export const DELIVER_DISPUTE_COMMAND_TYPE = 'deliver_dispute';
  * the named, injected seam this task's own Exclusions section draws the
  * line at ("No direct AI activation, unaudited outbound delivery"). No
  * such sender is registered anywhere in this repo yet: no email/EDI/SFTP
- * channel to an actual carrier exists (the SFTP job queues registered
- * elsewhere have no consumer), and inventing a default that silently marks
- * a dispute "delivered" would misrepresent that an external effect
+ * channel to an actual carrier exists, and inventing a default that
+ * silently marks a dispute "delivered" would misrepresent that an external
+ * effect
  * happened when it didn't. Until a future phase registers a real sender,
  * a claimed message of this type dead-letters after retries rather than
  * silently vanishing or false-completing -- the same fail-safe shape

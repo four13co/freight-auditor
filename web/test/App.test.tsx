@@ -16,6 +16,13 @@ import { render, screen, waitFor } from '@testing-library/react';
  * path now fires fetchAndStoreClientId() (GET /api/auth/memberships) before
  * rendering Dashboard, so any test exercising that path needs a resolvable
  * fetch or the effect's promise never settles.
+ *
+ * 86e2zfjmb: the default mock response now also carries isInternal: true --
+ * every pre-existing test in this file exercises the "real session resolves
+ * to the internal Dashboard" path (that guarantee is unchanged, see the
+ * AC4 test below), so the shared fixture reflects an internal analyst by
+ * default. Portal-member routing gets its own dedicated tests further down,
+ * with their own explicit isInternal: false mock.
  */
 const useSessionMock = vi.fn();
 vi.mock('../src/lib/auth-client.js', () => ({
@@ -26,6 +33,10 @@ vi.mock('../src/components/Dashboard.js', () => ({
   Dashboard: () => <div data-testid="dashboard-stub">dashboard</div>,
 }));
 
+vi.mock('../src/components/PortalApp.js', () => ({
+  PortalApp: () => <div data-testid="portal-app-stub">portal</div>,
+}));
+
 describe('App (session gate)', () => {
   const originalDev = import.meta.env.DEV;
   const originalFetch = global.fetch;
@@ -34,7 +45,7 @@ describe('App (session gate)', () => {
     useSessionMock.mockReset();
     global.fetch = vi.fn().mockResolvedValue({
       ok: true,
-      json: async () => ({ clientIds: ['c1'] }),
+      json: async () => ({ clientIds: ['c1'], isInternal: true, role: null }),
     }) as unknown as typeof fetch;
   });
 
@@ -81,8 +92,41 @@ describe('App (session gate)', () => {
     expect(screen.queryByTestId('dashboard-stub')).not.toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: /sign in/i })).not.toBeInTheDocument();
 
-    resolveFetch({ ok: true, json: async () => ({ clientIds: ['c1'] }) });
+    resolveFetch({ ok: true, json: async () => ({ clientIds: ['c1'], isInternal: true, role: null }) });
     await waitFor(() => expect(screen.getByTestId('dashboard-stub')).toBeInTheDocument());
+  });
+
+  it('86e2zfjmb AC2: shows the client portal shell (not the dashboard) for a real session belonging to a portal member', async () => {
+    vi.stubEnv('DEV', false);
+    useSessionMock.mockReturnValue({
+      data: { user: { id: 'u2', email: 'b@example.com' } },
+      isPending: false,
+    });
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ clientIds: ['c1'], isInternal: false, role: 'client_viewer' }),
+    }) as unknown as typeof fetch;
+    const { default: App } = await import('../src/App.js');
+    render(<App />);
+    await waitFor(() => expect(screen.getByTestId('portal-app-stub')).toBeInTheDocument());
+    expect(screen.queryByTestId('dashboard-stub')).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: /sign in/i })).not.toBeInTheDocument();
+  });
+
+  it('86e2zfjmb AC1: still shows the dashboard (not the portal shell) for a real session belonging to an internal analyst', async () => {
+    vi.stubEnv('DEV', false);
+    useSessionMock.mockReturnValue({
+      data: { user: { id: 'u3', email: 'c@example.com' } },
+      isPending: false,
+    });
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ clientIds: [], isInternal: true, role: null }),
+    }) as unknown as typeof fetch;
+    const { default: App } = await import('../src/App.js');
+    render(<App />);
+    await waitFor(() => expect(screen.getByTestId('dashboard-stub')).toBeInTheDocument());
+    expect(screen.queryByTestId('portal-app-stub')).not.toBeInTheDocument();
   });
 
   it('does not gate the dashboard behind a session in dev mode (DEV_AUTH_HEADERS e2e path, 86e2uv4p0 must keep passing)', async () => {
@@ -111,5 +155,51 @@ describe('App (session gate)', () => {
     render(<App />);
     expect(screen.queryByTestId('dashboard-stub')).not.toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: /sign in/i })).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * 86e320pkc: App.tsx's own branding wiring -- the single GET /api/branding
+ * fetch and the --brand-primary/--brand-secondary CSS custom properties it
+ * sets on the document root. Runs unconditionally (even in dev mode, even
+ * before any session resolves), so it needs its own fetch mock distinct
+ * from the beforeEach's memberships-shaped default.
+ */
+describe('App (branding)', () => {
+  const originalFetch = global.fetch;
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+    document.documentElement.style.removeProperty('--brand-primary');
+    document.documentElement.style.removeProperty('--brand-secondary');
+  });
+
+  it("86e320pkc AC1: sets --brand-primary/--brand-secondary on the document root from a branded response", async () => {
+    vi.stubEnv('DEV', true);
+    useSessionMock.mockReturnValue({ data: null, isPending: false });
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ branded: true, logoUrl: 'https://cdn.example.com/logo.png', primaryColor: '#111111', secondaryColor: '#222222' }),
+    }) as unknown as typeof fetch;
+    const { default: App } = await import('../src/App.js');
+    render(<App />);
+
+    await waitFor(() => expect(document.documentElement.style.getPropertyValue('--brand-primary')).toBe('#111111'));
+    expect(document.documentElement.style.getPropertyValue('--brand-secondary')).toBe('#222222');
+  });
+
+  it('86e320pkc AC2: leaves no --brand-primary/--brand-secondary set for an unbranded (default-domain) response', async () => {
+    vi.stubEnv('DEV', true);
+    useSessionMock.mockReturnValue({ data: null, isPending: false });
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ branded: false }),
+    }) as unknown as typeof fetch;
+    const { default: App } = await import('../src/App.js');
+    render(<App />);
+
+    await waitFor(() => expect(global.fetch).toHaveBeenCalledWith('/api/branding'));
+    expect(document.documentElement.style.getPropertyValue('--brand-primary')).toBe('');
+    expect(document.documentElement.style.getPropertyValue('--brand-secondary')).toBe('');
   });
 });

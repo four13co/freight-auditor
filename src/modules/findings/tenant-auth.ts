@@ -70,6 +70,39 @@ export async function listMembershipClientIds(userId: string): Promise<string[]>
   });
 }
 
+/**
+ * 86e2zfjmb: the actor-type half of GET /api/auth/memberships' response --
+ * whether the caller is an internal analyst (app_user.is_internal) or, if
+ * not, their portal membership role (client_viewer/client_admin). A pure
+ * read, alongside listMembershipClientIds above (same internal-scoped-
+ * transaction shape, same reason: app_user carries no RLS but membership
+ * does, keyed on client_id, migration 0009). Does not touch
+ * resolveViaSession/resolveViaDevHeaders or grant any access -- App.tsx uses
+ * this only to pick which UI shell to render, never as an authorization
+ * decision (every tenant-scoped route still enforces its own boundary via
+ * TenantContext/RLS, independent of what this returns).
+ *
+ * LIMIT 1 on the membership lookup mirrors this codebase's existing
+ * single-membership-per-user assumption (see api.ts's fetchAndStoreClientId
+ * comment) -- a portal user with more than one membership row gets an
+ * arbitrary one of their roles back, not a list.
+ */
+export async function lookupActorType(userId: string): Promise<{ isInternal: boolean; role: string | null }> {
+  return withTenantTx({ internal: true }, async (client) => {
+    const userResult = await client.query<{ is_internal: boolean }>(
+      `SELECT is_internal FROM app_user WHERE id = $1`,
+      [userId],
+    );
+    if (userResult.rows[0]?.is_internal === true) return { isInternal: true, role: null };
+
+    const membershipResult = await client.query<{ role: string }>(
+      `SELECT role FROM membership WHERE user_id = $1 LIMIT 1`,
+      [userId],
+    );
+    return { isInternal: false, role: membershipResult.rows[0]?.role ?? null };
+  });
+}
+
 /** DEV_AUTH_HEADERS path: x-client-id/x-user-id headers, membership-checked. Unchanged behavior. */
 async function resolveViaDevHeaders(request: FastifyRequest): Promise<TenantContext | null> {
   const clientId = readHeader(request.headers['x-client-id']);

@@ -10,6 +10,8 @@ import { handleWorkflowCommandScanJob } from './workflow-command-scan-handler.js
 import { handleRunWorkflowCommandJob } from './run-workflow-command-handler.js';
 import { handleOutboxMessageScanJob } from './outbox-message-scan-handler.js';
 import { handleDeliverOutboxMessageJob } from './deliver-outbox-message-handler.js';
+import { handleExportRecordJob } from './export-record-handler.js';
+import { handleDiscoverTriggersJob } from './discover-triggers-handler.js';
 // Side-effect import: registers the deliver_dispute workflow_command
 // handler (P4.C.7) into run-workflow-command-handler.ts's shared registry
 // at process startup, the same extension point every other concrete
@@ -77,6 +79,8 @@ export interface JobConsumerDeps {
   handleRunWorkflowCommand: typeof handleRunWorkflowCommandJob;
   handleOutboxMessageScan: typeof handleOutboxMessageScanJob;
   handleDeliverOutboxMessage: typeof handleDeliverOutboxMessageJob;
+  handleExportRecord: typeof handleExportRecordJob;
+  handleDiscoverTriggers: typeof handleDiscoverTriggersJob;
 }
 
 const defaultConsumerDeps: JobConsumerDeps = {
@@ -88,18 +92,31 @@ const defaultConsumerDeps: JobConsumerDeps = {
   handleRunWorkflowCommand: handleRunWorkflowCommandJob,
   handleOutboxMessageScan: handleOutboxMessageScanJob,
   handleDeliverOutboxMessage: handleDeliverOutboxMessageJob,
+  handleExportRecord: handleExportRecordJob,
+  handleDiscoverTriggers: handleDiscoverTriggersJob,
 };
 
 /**
  * Registers the `.work()` consumers this repo actually has handlers for
  * today (the two claim jobs plus the aging scan tick that enqueues them,
- * the workflow-command scan tick plus its per-command runner (P4.A.4), and
- * the outbox-message scan tick plus its per-message deliverer (P4.A.6)) and
- * schedules all three recurring scans. Ingestion/audit/reference-data/SFTP
- * job types are registered as queues (registerJobQueues) but have no
- * consumer wired here yet -- their handlers need object-store/SFTP-client
- * construction that doesn't exist at worker-bootstrap scope, a separate
- * gap from the one this closes.
+ * the workflow-command scan tick plus its per-command runner (P4.A.4), the
+ * outbox-message scan tick plus its per-message deliverer (P4.A.6), the
+ * EXPORT_RECORD_V1 AP/ERP export job (P6.C.2), and the DISCOVER_TRIGGERS_V1
+ * audit-run-scoped discovery job (P3.D.5, 86e32tfx6)) and schedules all
+ * three recurring scans. No scan tick enqueues EXPORT_RECORD_V1 or
+ * DISCOVER_TRIGGERS_V1 yet -- naming a concrete enqueue call site is
+ * deferred, same rollout P4.A.5's outbox dispatcher used; handleDiscover-
+ * TriggersJob only needs a tenant-scoped pg.PoolClient (no object-store
+ * construction), so it's wired the same way as the other withTenantTx-
+ * shaped consumers above rather than deferred with the group below.
+ * Ingestion/audit/reference-data job types are registered as queues
+ * (registerJobQueues) but have no consumer wired here yet -- their handlers
+ * need object-store construction that doesn't exist at worker-bootstrap
+ * scope, a separate gap from the one this closes. (POLL_SFTP_V1 was
+ * previously in this deferred group; removed entirely -- 86e32tfxj --
+ * rather than wired, since its handler needs a per-connection SftpClient
+ * built from sftp_connection.private_key_secret_ref, and no secret-
+ * resolution mechanism for that reference exists anywhere in this repo.)
  */
 export async function registerJobConsumers(
   boss: Pick<BossLifecycle, 'work' | 'schedule' | 'send'>,
@@ -163,6 +180,20 @@ export async function registerJobConsumers(
     for (const job of jobs) {
       await deps.withTenantTx({ clientIds: [job.data.clientId] }, (client) =>
         deps.handleDeliverOutboxMessage(client, job.data));
+    }
+  });
+
+  await boss.work<{ clientId: string }>(JOB_NAMES.EXPORT_RECORD_V1, async (jobs) => {
+    for (const job of jobs) {
+      await deps.withTenantTx({ clientIds: [job.data.clientId] }, (client) =>
+        deps.handleExportRecord(client, job.data));
+    }
+  });
+
+  await boss.work<{ clientId: string }>(JOB_NAMES.DISCOVER_TRIGGERS_V1, async (jobs) => {
+    for (const job of jobs) {
+      await deps.withTenantTx({ clientIds: [job.data.clientId] }, (client) =>
+        deps.handleDiscoverTriggers(client, job.data));
     }
   });
 }

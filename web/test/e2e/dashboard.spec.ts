@@ -7,7 +7,29 @@ import { DASHBOARD_ROWS as ROWS, DASHBOARD_SUMMARY as SUMMARY } from '../fixture
  * -- deterministic, no live backend needed. This surface is in-design (not
  * blessed), so this is a perceptual-only capture: no toHaveScreenshot
  * baseline committed.
+ *
+ * 86e2zfjmb: this config's webServer is `vite preview` -- static files only,
+ * no real Fastify/better-auth backend behind it, and this file never mocked
+ * /api/auth/* -- every request to it previously fell through to vite
+ * preview's own SPA fallback (a 200 with index.html's body). App.tsx's old,
+ * pre-actor-type-routing code happened to reach the Dashboard anyway despite
+ * that (a stray unhandled rejection from parsing that HTML as JSON, masked
+ * by a .finally() that ran regardless). Now that a resolved session also
+ * needs a real isInternal/role answer to route correctly, that incidental
+ * path lands on the client portal shell instead of the Dashboard this suite
+ * actually exercises -- so /api/auth/get-session and /api/auth/memberships
+ * are mocked explicitly here, same as every other endpoint this file already
+ * intercepts, rather than continuing to rely on undefined fallback behavior.
  */
+test.beforeEach(async ({ page }) => {
+  await page.route('**/api/auth/get-session', (route) => route.fulfill({
+    json: { user: { id: 'dana-1', email: 'dana@example.com', name: 'Dana Mercer' }, session: { id: 'session-1' } },
+  }));
+  await page.route('**/api/auth/memberships', (route) => route.fulfill({
+    json: { clientIds: ['11111111-1111-1111-1111-111111111111'], isInternal: true, role: null },
+  }));
+});
+
 test('dashboard renders the 1B Console layout with real (mocked) API data', async ({ page }) => {
   // Playwright matches the most-recently-registered route first, and
   // '**/api/findings**' also matches '/api/findings/summary' -- register the

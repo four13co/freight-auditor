@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { getAuth } from '../auth/better-auth.js';
-import { listMembershipClientIds, toFetchHeaders } from '../modules/findings/tenant-auth.js';
+import { listMembershipClientIds, lookupActorType, toFetchHeaders } from '../modules/findings/tenant-auth.js';
 import { authenticationAction, writeSecurityEvent } from '../modules/audit-ledger/security-events.js';
 
 /**
@@ -92,6 +92,12 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
   // client_id to send. This is that lookup: verify the session, then return
   // the client_id(s) the user has a membership row for, so login can store
   // one and start sending it as x-client-id on subsequent requests.
+  //
+  // 86e2zfjmb: also returns the actor's type -- isInternal (app_user.is_internal)
+  // and, if not internal, their portal role (client_viewer/client_admin) --
+  // so App.tsx can pick which shell (internal Dashboard vs. the client
+  // portal) to route a real session to. Purely additive to this response;
+  // does not change resolveViaSession or any RLS/tenant-auth logic (No-gos).
   app.get('/api/auth/memberships', async (request: FastifyRequest, reply: FastifyReply) => {
     const session = await getAuth().api.getSession({ headers: toFetchHeaders(request) });
     if (!session) {
@@ -103,13 +109,16 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
       await reply.code(401).send({ error: 'unauthorized' });
       return;
     }
-    const clientIds = await listMembershipClientIds(session.user.id);
+    const [clientIds, actorType] = await Promise.all([
+      listMembershipClientIds(session.user.id),
+      lookupActorType(session.user.id),
+    ]);
     await writeSecurityEvent({
       request,
       event: 'authorization.memberships.granted',
       actorUserId: session.user.id,
       detail: { membershipCount: clientIds.length },
     });
-    return { clientIds };
+    return { clientIds, isInternal: actorType.isInternal, role: actorType.role };
   });
 }

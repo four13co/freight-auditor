@@ -37,18 +37,17 @@
     "bounce_due_hours": 24
   },
   "db": {
-    "method": "apple-container-postgres",
-    "runtime": "container",
-    "image": "docker.io/library/postgres:17-alpine",
+    "method": "homebrew-postgres",
+    "runtime": "homebrew",
     "protected_db_hosts": ["neon.tech", "supabase.co", "rds.amazonaws.com"],
     "ephemeral_recipe": {
-      "up": "container run -d --name <name> -e POSTGRES_PASSWORD=<pw> -e POSTGRES_USER=<user> -e POSTGRES_DB=<db> -p <hostport>:5432 docker.io/library/postgres:17-alpine",
-      "ready": "container exec <name> pg_isready -U <user> -d <db>  (loops until ready; ~1-2s)",
-      "url": "postgresql://<user>:<pw>@127.0.0.1:<hostport>/<db>",
-      "down": "container stop <name> && container rm <name>",
-      "hostport_strategy": "pick a free high port per item (e.g. 5+random) to avoid collisions across concurrent units"
+      "up": "createdb -h 127.0.0.1 -p 5432 <db>  (against the always-running `postgresql@17` Homebrew service, brew services list)",
+      "ready": "pg_isready -h 127.0.0.1 -p 5432 -d <db>",
+      "url": "postgresql://<user>@127.0.0.1:5432/<db>  (explicit user segment required — helpers.ts's local-host regex won't match a bare postgresql://127.0.0.1:5432/<db>; auth is `trust` locally, no password)",
+      "down": "dropdb -h 127.0.0.1 -p 5432 <db>",
+      "hostport_strategy": "single shared Postgres@17 instance on port 5432; per-item isolation via a uniquely-named DB (createdb/dropdb per round, e.g. fa_build_<ts>), not per-item port allocation"
     },
-    "note": "Ephemeral local Postgres via Apple's `container` runtime (container v1.0.0), NOT Docker — the Docker daemon is not used on this machine. `-p <hostport>:5432` publishes to 127.0.0.1 so DATABASE_URL points at localhost. Verified end-to-end 2026-07-02: host psql -> 127.0.0.1 -> conn-ok, PostgreSQL 17.10. Spun up per-item and torn down. `container system status` must be running; DB-touching items park only if it is not. The container also has a routable IP (192.168.64.x) if localhost publish ever fails."
+    "note": "Updated 2026-09-02 (Bridge) after 3 consecutive Build rounds (52-54) found the `container` binary entirely absent from PATH (not just unreachable — `brew info container` reports \"Not installed\"), despite the prior apple-container-postgres recipe having been verified working here on 2026-07-02. Cause of the disappearance wasn't chased down; rather than reinstall+reverify an unexplained-missing system dependency, this documents what Build has already been doing successfully for 3+ rounds: local Homebrew postgresql@17 (already running as a background service), createdb/migrate/dropdb per round, genuinely ephemeral, never touches a protected host. If Apple's `container` runtime is reinstalled and confirmed working again on this machine, this block can revert — see git history for the prior apple-container-postgres recipe."
   },
   "owner": {
     "clickup_handle": "greg@four13.co"

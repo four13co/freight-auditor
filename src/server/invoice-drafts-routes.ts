@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { withTenantTx } from '../db/tenant-context.js';
 import { registerTenantAuthPreHandler } from '../modules/findings/tenant-auth.js';
-import { LocalDiskObjectStore } from '../modules/reference-data/object-store.js';
+import { runtimeObjectStore } from '../modules/reference-data/object-store-config.js';
 import {
   createInvoiceDraft,
   confirmInvoiceDraft,
@@ -13,7 +13,7 @@ import {
   rejectInvoiceDraft,
   UnextractablePdfError,
 } from '../modules/ingestion/invoice-draft.js';
-import { objectStoreRoot, registerBufferContentTypeParser, requireNonEmptyBuffer, requireSingleClientId } from '../modules/ingestion/raw-upload-route.js';
+import { registerBufferContentTypeParser, requireNonEmptyBuffer, requireSingleClientId } from '../modules/ingestion/raw-upload-route.js';
 import { isUuid } from '../shared/request-validation.js';
 import type { ParsedInvoice } from '../modules/ingestion/charge-fact.js';
 
@@ -46,7 +46,7 @@ export async function registerInvoiceDraftsRoutes(routes: FastifyInstance): Prom
 
     try {
       const draft = await withTenantTx(ctx, async (client) => {
-        const store = new LocalDiskObjectStore(objectStoreRoot());
+        const store = runtimeObjectStore();
         return createInvoiceDraft(client, store, {
           clientId,
           pdfBytes,

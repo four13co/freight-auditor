@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { withTenantTx } from '../db/tenant-context.js';
+import { withTenantTx, withTenantReadTx } from '../db/tenant-context.js';
 import { listFindings, type FindingsSortKey } from '../modules/findings/list-findings.js';
 import { getFindingsSummary } from '../modules/findings/findings-summary.js';
 import { listGateFailures } from '../modules/findings/list-gate-failures.js';
@@ -7,6 +7,7 @@ import { updateFindingStatus } from '../modules/findings/update-finding-status.j
 import { registerTenantAuthPreHandler } from '../modules/findings/tenant-auth.js';
 import { ALL_VARIANCE_STATUSES, WRITABLE_VARIANCE_STATUSES } from '../shared/variance-status.js';
 import { isUuid } from '../shared/request-validation.js';
+import { decodeCursor, paginateKeyset } from '../shared/cursor-pagination.js';
 import { listReviewQueues } from '../modules/findings/list-review-queues.js';
 import { applyFindingAction, FINDING_ACTION_STATUS, type FindingAction } from '../modules/findings/apply-finding-action.js';
 
@@ -29,6 +30,11 @@ const WRITABLE_STATUS_VALUES = new Set<string>(WRITABLE_VARIANCE_STATUSES);
 // 0, Number('0x10') is 16, and Number('Infinity') is finite per isNaN, all of
 // which would wrongly pass a naive check and still reach Postgres unvalidated.
 const NUMERIC_STRING = /^-?\d+(\.\d+)?$/;
+
+// P6.C.1: /api/gate-failures had no limit/offset wiring at all before this --
+// mirrors claim-recovery-routes.ts's own MAX_LIMIT/DEFAULT_LIMIT convention.
+const MAX_LIMIT = 200;
+const DEFAULT_LIMIT = 50;
 
 // 86e2v251e: must match list-findings.ts's ORDER_COLUMNS keys exactly --
 // this is the query-param-facing half of the same allowlist boundary.
@@ -93,8 +99,10 @@ export async function registerFindingsRoutes(findingsRoutes: FastifyInstance): P
       return;
     }
 
+    // 86e2zfjym: read-only, so routed through withTenantReadTx (replica pool
+    // when configured, else the primary — identical to today when unconfigured).
     const ctx = request.tenantContext!;
-    const findings = await withTenantTx(ctx, (client) =>
+    const findings = await withTenantReadTx(ctx, (client) =>
       listFindings(client, {
         carrier: query.carrier,
         status: query.status,
@@ -118,13 +126,49 @@ export async function registerFindingsRoutes(findingsRoutes: FastifyInstance): P
   // a variance finding (no billed/expected/variance amounts), so it's a
   // separate route returning a separate row shape, not a filter/field on
   // /api/findings.
-  findingsRoutes.get('/api/gate-failures', async (request) => {
-    const query = request.query as { carrier?: string };
+  findingsRoutes.get('/api/gate-failures', async (request, reply) => {
+    const query = request.query as { carrier?: string; limit?: string; offset?: string; cursor?: string };
+
+    let limit: number | undefined;
+    if (query.limit !== undefined) {
+      limit = Number(query.limit);
+      if (!Number.isInteger(limit) || limit < 1 || limit > MAX_LIMIT) {
+        await reply.code(400).send({ error: `invalid limit: must be an integer between 1 and ${MAX_LIMIT}` });
+        return;
+      }
+    }
+
+    let offset: number | undefined;
+    if (query.offset !== undefined) {
+      offset = Number(query.offset);
+      if (!Number.isInteger(offset) || offset < 0) {
+        await reply.code(400).send({ error: 'invalid offset: must be a non-negative integer' });
+        return;
+      }
+    }
+
+    if (query.cursor !== undefined && query.offset !== undefined) {
+      await reply.code(400).send({ error: 'cannot combine cursor with offset' });
+      return;
+    }
+
+    let cursor: { id: string } | undefined;
+    if (query.cursor !== undefined) {
+      const decoded = decodeCursor(query.cursor);
+      if (!decoded) {
+        await reply.code(400).send({ error: 'invalid cursor' });
+        return;
+      }
+      cursor = { id: decoded.id };
+    }
+
+    const effectiveLimit = limit ?? DEFAULT_LIMIT;
     const ctx = request.tenantContext!;
-    const gateFailures = await withTenantTx(ctx, (client) =>
-      listGateFailures(client, { carrier: query.carrier }),
+    const rows = await withTenantTx(ctx, (client) =>
+      listGateFailures(client, { carrier: query.carrier, limit: effectiveLimit + 1, offset: cursor ? undefined : offset, cursor }),
     );
-    return { gateFailures };
+    const { page, nextCursor } = paginateKeyset(rows, effectiveLimit, (r) => ({ v: r.recordedAt.toISOString(), id: r.id }));
+    return { gateFailures: page, nextCursor };
   });
 
   // 86e2v1xyr: the first mutating route in the app -- a single-finding

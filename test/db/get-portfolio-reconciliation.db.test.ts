@@ -61,4 +61,45 @@ describe.skipIf(!DATABASE_URL)('getPortfolioReconciliation (database)', () => {
       await getPool().query(`DELETE FROM client WHERE id = $1`, [otherClientId]);
     }
   });
+
+  it('CRITICAL: a second tenant\'s claims never leak into this tenant\'s report (RLS-scoped, regular tenant transaction)', async () => {
+    const otherClientId = randomUUID();
+    const otherClaimId = randomUUID();
+    await getPool().query(`INSERT INTO client (id, name, slug) VALUES ($1, 'Other Portfolio Reconciliation Co', $2)`, [otherClientId, `other-portfolio-reconciliation-${otherClientId}`]);
+    await getPool().query(
+      `INSERT INTO claim (id, client_id, amount_claimed, currency, status) VALUES ($1, $2, '9999.0000', 'CAD', 'open')`,
+      [otherClaimId, otherClientId],
+    );
+    try {
+      const result = await withTenantTx({ clientIds: [clientId], internal: false }, (client) =>
+        getPortfolioReconciliation(client, { clientId }));
+
+      expect(result.some((b) => b.currency === 'CAD')).toBe(false);
+      expect(result.every((b) => b.claimed !== '9999.0000')).toBe(true);
+    } finally {
+      await getPool().query(`DELETE FROM claim WHERE id = $1`, [otherClaimId]);
+      await getPool().query(`DELETE FROM client WHERE id = $1`, [otherClientId]);
+    }
+  });
+
+  it('CRITICAL: RLS still blocks the read even if a caller passes another tenant\'s clientId while scoped to this tenant\'s transaction', async () => {
+    const otherClientId = randomUUID();
+    const otherClaimId = randomUUID();
+    await getPool().query(`INSERT INTO client (id, name, slug) VALUES ($1, 'Mismatched Param Co', $2)`, [otherClientId, `mismatched-param-${otherClientId}`]);
+    await getPool().query(
+      `INSERT INTO claim (id, client_id, amount_claimed, currency, status) VALUES ($1, $2, '7777.0000', 'EUR', 'open')`,
+      [otherClaimId, otherClientId],
+    );
+    try {
+      // Scoped to `clientId`'s transaction (RLS restricts to app_current_client_ids()),
+      // but the `clientId` query param names the OTHER tenant -- the intersection is
+      // empty, proving RLS is the actual safety mechanism, not the query param.
+      const result = await withTenantTx({ clientIds: [clientId], internal: false }, (client) =>
+        getPortfolioReconciliation(client, { clientId: otherClientId }));
+      expect(result).toEqual([]);
+    } finally {
+      await getPool().query(`DELETE FROM claim WHERE id = $1`, [otherClaimId]);
+      await getPool().query(`DELETE FROM client WHERE id = $1`, [otherClientId]);
+    }
+  });
 });

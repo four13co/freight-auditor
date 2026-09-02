@@ -1,5 +1,6 @@
 import type PgBoss from 'pg-boss';
 import { JOB_NAMES, type JobName } from './contracts.js';
+import { escapeLabelValue } from './format-metrics.js';
 
 export interface QueueMetrics {
   queue: JobName;
@@ -46,7 +47,7 @@ export async function collectQueueMetrics(db: PgBoss.Db): Promise<QueueMetrics[]
 }
 
 function label(queue: string): string {
-  return `queue="${queue.replaceAll('\\', '\\\\').replaceAll('"', '\\"')}"`;
+  return `queue="${escapeLabelValue(queue)}"`;
 }
 
 export function renderQueueMetrics(metrics: QueueMetrics[]): string {

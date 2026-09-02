@@ -56,6 +56,15 @@ export async function seedE2eAuthUser({ pool } = {}) {
        ON CONFLICT (user_id, client_id) DO NOTHING`,
       [userId, DEV_CLIENT_ID],
     );
+    // 86e2zfjmb: this suite's real-session.fullstack.spec.ts logs in as this
+    // user and expects the internal Dashboard (the same content it rendered
+    // before actor-type routing existed) -- mark it internal so App.tsx's new
+    // isInternal branch keeps routing it there. A real membership row is
+    // still seeded above: an internal analyst's membership is incidental
+    // (resolveViaSession doesn't require one for the internal-analyst-only
+    // portfolio route), but harmless to keep and avoids touching the
+    // membership-seeding shape this script already established.
+    await client.query(`UPDATE app_user SET is_internal = true WHERE id = $1`, [userId]);
   } finally {
     if (ownedPool) await client.end();
   }

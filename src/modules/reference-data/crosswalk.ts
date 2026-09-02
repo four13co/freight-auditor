@@ -17,7 +17,8 @@ import type pg from 'pg';
  * to expose the caller's client rows + global rows, and to hide other tenants'.
  */
 export interface CrosswalkQuery {
-  carrierId: string;
+  /** null when the invoice's carrier couldn't be resolved -- falls back to global (carrier_id IS NULL) rows only. */
+  carrierId: string | null;
   sourceCode: string;
 }
 

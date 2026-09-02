@@ -1,7 +1,7 @@
 import type pg from 'pg';
 import { completeOutboxMessage } from '../modules/workflow/workflow-outbox.js';
-import { deterministicAuditEventId, writeAuditEvent } from '../modules/audit-ledger/write-audit-event.js';
-import { parseJobPayload, JOB_NAMES } from './contracts.js';
+import { parseJobPayload, JOB_NAMES, type JobPayloads } from './contracts.js';
+import { createJobDispatcher } from './job-dispatcher.js';
 
 export type OutboxMessageSender = (
   client: pg.PoolClient,
@@ -22,20 +22,50 @@ export class UnregisteredOutboxMessageTypeError extends Error {
   }
 }
 
+type DeliverOutboxMessagePayload = JobPayloads[typeof JOB_NAMES.DELIVER_OUTBOX_MESSAGE_V1];
+
 /**
- * messageType -> sender registry, mirroring run-workflow-command-handler.ts's
- * commandType -> handler registry. Empty by default: no concrete outbox
- * message type exists yet (message_type is open text, same "no live caller
- * wired in" state 0063/P4.A.5 shipped with -- concrete types land with
- * whatever future phase first needs a real external effect). A future
- * sender calls registerOutboxMessageSender once at its own module's load
- * time; this file owns dispatch and completion, never any specific
- * message's send.
+ * messageType -> sender registry, owned by the shared job-dispatcher factory
+ * (job-dispatcher.ts) rather than reimplemented here -- the same factory
+ * run-workflow-command-handler.ts's commandType -> handler registry
+ * configures. Empty by default: no concrete outbox message type exists yet
+ * (message_type is open text, same "no live caller wired in" state
+ * 0063/P4.A.5 shipped with -- concrete types land with whatever future phase
+ * first needs a real external effect). A future sender calls
+ * registerOutboxMessageSender once at its own module's load time; this file
+ * owns messageType -> sender wiring, never any specific message's send.
  */
-const senders = new Map<string, OutboxMessageSender>();
+const { registry: senders, register, dispatch } = createJobDispatcher<
+  DeliverOutboxMessagePayload,
+  Parameters<OutboxMessageSender>[1],
+  DeliverOutboxMessageDeps
+>({
+  getTypeKey: (payload) => payload.messageType,
+  getRegistry: (deps) => deps.senders,
+  buildCtx: (payload) => ({
+    clientId: payload.clientId,
+    workflowInstanceId: payload.workflowInstanceId,
+    commandId: payload.commandId,
+    outboxMessageId: payload.outboxMessageId,
+    idempotencyKey: payload.idempotencyKey,
+    payload: payload.payload,
+  }),
+  complete: (deps, client, payload) => deps.complete(client, { clientId: payload.clientId, outboxMessageId: payload.outboxMessageId }),
+  buildAuditEvent: (payload) => ({
+    entity: 'workflow_outbox_message',
+    entityId: payload.outboxMessageId,
+    event: 'workflow.outbox_message_sent',
+    detail: {
+      workflowInstanceId: payload.workflowInstanceId,
+      commandId: payload.commandId,
+      messageType: payload.messageType,
+    },
+  }),
+  createError: (typeKey) => new UnregisteredOutboxMessageTypeError(typeKey),
+});
 
 export function registerOutboxMessageSender(messageType: string, sender: OutboxMessageSender): void {
-  senders.set(messageType, sender);
+  register(messageType, sender);
 }
 
 export interface DeliverOutboxMessageDeps {
@@ -81,32 +111,5 @@ export async function handleDeliverOutboxMessageJob(
   deps: DeliverOutboxMessageDeps = defaultDeps,
 ): Promise<void> {
   const payload = parseJobPayload(JOB_NAMES.DELIVER_OUTBOX_MESSAGE_V1, untrustedPayload);
-
-  const sender = deps.senders.get(payload.messageType);
-  if (!sender) throw new UnregisteredOutboxMessageTypeError(payload.messageType);
-
-  await sender(client, {
-    clientId: payload.clientId,
-    workflowInstanceId: payload.workflowInstanceId,
-    commandId: payload.commandId,
-    outboxMessageId: payload.outboxMessageId,
-    idempotencyKey: payload.idempotencyKey,
-    payload: payload.payload,
-  });
-
-  await deps.complete(client, { clientId: payload.clientId, outboxMessageId: payload.outboxMessageId });
-
-  await writeAuditEvent(client, {
-    id: deterministicAuditEventId(payload.clientId, payload.outboxMessageId, 'workflow.outbox_message_sent'),
-    clientId: payload.clientId,
-    entity: 'workflow_outbox_message',
-    entityId: payload.outboxMessageId,
-    event: 'workflow.outbox_message_sent',
-    actorKind: 'system',
-    detail: {
-      workflowInstanceId: payload.workflowInstanceId,
-      commandId: payload.commandId,
-      messageType: payload.messageType,
-    },
-  });
+  await dispatch(client, payload, deps);
 }

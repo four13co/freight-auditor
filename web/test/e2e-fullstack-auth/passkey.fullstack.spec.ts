@@ -64,6 +64,11 @@ test.beforeAll(async ({ request }) => {
        ON CONFLICT (user_id, client_id) DO NOTHING`,
       [PASSKEY_TEST_EMAIL, DEV_CLIENT_ID],
     );
+    // 86e2zfjmb: this suite's own assertions (kpi-row, finding-row) expect
+    // the internal Dashboard, same as seed-e2e-auth-user.mjs's shared user --
+    // mark this fresh account internal too, or App.tsx's new actor-type
+    // routing would send it to the client portal shell instead.
+    await client.query(`UPDATE app_user SET is_internal = true WHERE email = $1`, [PASSKEY_TEST_EMAIL]);
   });
 });
 

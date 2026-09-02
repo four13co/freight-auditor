@@ -283,6 +283,60 @@ describe('listMembershipClientIds', () => {
 });
 
 /**
+ * 86e2zfjmb: unit coverage of lookupActorType itself, with withTenantTx
+ * mocked -- no live DB. The real query against real app_user/membership rows
+ * is covered by test/db/auth-memberships.db.test.ts.
+ */
+describe('lookupActorType', () => {
+  afterEach(() => {
+    vi.doUnmock('../../src/db/tenant-context.js');
+    vi.resetModules();
+  });
+
+  it('returns isInternal:true and role:null without querying membership, for an internal analyst', async () => {
+    const query = vi.fn().mockResolvedValue({ rows: [{ is_internal: true }] });
+    const withTenantTx = vi.fn(async (ctx: unknown, fn: (client: { query: typeof query }) => unknown) => {
+      expect(ctx).toEqual({ internal: true });
+      return fn({ query });
+    });
+    vi.doMock('../../src/db/tenant-context.js', () => ({ withTenantTx }));
+    const { lookupActorType } = await import('../../src/modules/findings/tenant-auth.js');
+
+    const result = await lookupActorType('user-1');
+
+    expect(result).toEqual({ isInternal: true, role: null });
+    expect(query).toHaveBeenCalledTimes(1);
+    expect(query).toHaveBeenCalledWith(expect.stringContaining('app_user'), ['user-1']);
+  });
+
+  it('returns isInternal:false and the membership role for a portal member', async () => {
+    const query = vi.fn()
+      .mockResolvedValueOnce({ rows: [{ is_internal: false }] })
+      .mockResolvedValueOnce({ rows: [{ role: 'client_admin' }] });
+    const withTenantTx = vi.fn(async (_ctx: unknown, fn: (client: { query: typeof query }) => unknown) => fn({ query }));
+    vi.doMock('../../src/db/tenant-context.js', () => ({ withTenantTx }));
+    const { lookupActorType } = await import('../../src/modules/findings/tenant-auth.js');
+
+    const result = await lookupActorType('user-2');
+
+    expect(result).toEqual({ isInternal: false, role: 'client_admin' });
+    expect(query).toHaveBeenCalledTimes(2);
+    expect(query).toHaveBeenNthCalledWith(2, expect.stringContaining('membership'), ['user-2']);
+  });
+
+  it('returns isInternal:false and role:null for a user with no app_user row and no membership row', async () => {
+    const query = vi.fn().mockResolvedValue({ rows: [] });
+    const withTenantTx = vi.fn(async (_ctx: unknown, fn: (client: { query: typeof query }) => unknown) => fn({ query }));
+    vi.doMock('../../src/db/tenant-context.js', () => ({ withTenantTx }));
+    const { lookupActorType } = await import('../../src/modules/findings/tenant-auth.js');
+
+    const result = await lookupActorType('user-3');
+
+    expect(result).toEqual({ isInternal: false, role: null });
+  });
+});
+
+/**
  * 86e2xcna3: registerTenantAuthPreHandler is a genuinely new export -- every
  * other unit test file that touches it (findings-endpoint.test.ts,
  * audit-runs-endpoint.test.ts) mocks it wholesale for their own route-level

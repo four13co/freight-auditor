@@ -105,7 +105,7 @@ describe('GET /api/auth/memberships (DB, e2e)', () => {
 
     const res = await app.inject({ method: 'GET', url: '/api/auth/memberships', headers: { cookie: cookieHeader } });
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual({ clientIds: [clientAId] });
+    expect(res.json()).toEqual({ clientIds: [clientAId], isInternal: false, role: 'client_viewer' });
     const ledger = await pool.query(
       `SELECT actor_user_id, detail FROM audit_event WHERE event = 'authorization.memberships.granted' ORDER BY recorded_at DESC LIMIT 1`,
     );
@@ -121,7 +121,43 @@ describe('GET /api/auth/memberships (DB, e2e)', () => {
 
     const res = await app.inject({ method: 'GET', url: '/api/auth/memberships', headers: { cookie: cookieHeader } });
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual({ clientIds: [] });
+    expect(res.json()).toEqual({ clientIds: [], isInternal: false, role: null });
+  });
+
+  it('86e2zfjmb AC4: returns isInternal:true and role:null for an internal analyst (no membership rows)', async () => {
+    const email = `${tag}-internal@example.com`;
+    const cookieHeader = await signUpAndSignIn(email);
+
+    const owner = await pool.connect();
+    try {
+      await owner.query(`UPDATE app_user SET is_internal = true WHERE email = $1`, [email]);
+    } finally {
+      owner.release();
+    }
+
+    const res = await app.inject({ method: 'GET', url: '/api/auth/memberships', headers: { cookie: cookieHeader } });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ clientIds: [], isInternal: true, role: null });
+  });
+
+  it('86e2zfjmb AC4: returns isInternal:false and the membership role for a portal member', async () => {
+    const email = `${tag}-portal@example.com`;
+    const cookieHeader = await signUpAndSignIn(email);
+
+    const owner = await pool.connect();
+    try {
+      const u = await owner.query(`SELECT id FROM app_user WHERE email = $1`, [email]);
+      await owner.query(`INSERT INTO membership (user_id, client_id, role) VALUES ($1, $2, 'client_admin')`, [
+        u.rows[0].id,
+        clientAId,
+      ]);
+    } finally {
+      owner.release();
+    }
+
+    const res = await app.inject({ method: 'GET', url: '/api/auth/memberships', headers: { cookie: cookieHeader } });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ clientIds: [clientAId], isInternal: false, role: 'client_admin' });
   });
 
   it('returns every client_id for a user with more than one membership row', async () => {

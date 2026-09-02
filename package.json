@@ -30,6 +30,7 @@
     "seed:criteria": "tsx scripts/seed-criteria.mjs",
     "seed:e2e-fullstack-fixture": "tsx scripts/seed-fullstack-e2e-fixture.mjs",
     "seed:e2e-auth-user": "tsx scripts/seed-e2e-auth-user.mjs",
+    "seed:e2e-portal-user": "tsx scripts/seed-e2e-portal-user.mjs",
     "seed:admin": "tsx scripts/seed-admin-user.mjs",
     "r2:bucket:list": "wrangler r2 bucket list",
     "dev:fullstack-server": "PORT=4180 DEV_AUTH_HEADERS=1 tsx src/server/index.ts",

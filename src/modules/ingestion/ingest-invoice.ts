@@ -1,10 +1,11 @@
 import type pg from 'pg';
 import type { ObjectStore } from '../reference-data/object-store.js';
 import { storeSourceDocument } from '../reference-data/source-document.js';
-import { parseX12, firstSegment, el, X12ParseError } from './x12.js';
+import { parseX12, segmentsByTag, firstSegment, el, X12ParseError } from './x12.js';
 import { parse210 } from './parse-210.js';
 import { parse310 } from './parse-310.js';
-import { stubCategorize } from './stub-crosswalk.js';
+import { resolveChargeCode } from '../reference-data/crosswalk.js';
+import type { Categorize } from './charge-fact.js';
 import { evaluateInvoice, type AuditResult } from '../evaluator/evaluate-invoice.js';
 import { CONTRACT_RUBRIC } from '../rubric-resolver/contract-rubric.js';
 import { STANDARD_RUBRIC } from '../rubric-resolver/standard-rubric.js';
@@ -44,15 +45,61 @@ export interface IngestInvoiceResult {
 
 export class UnparseableEdiError extends Error {}
 
-// 86e2xcnja: the stub categorize map (mirrors test/fixtures/edi-golden.ts's
-// testCategorize and scripts/seed-fullstack-e2e-fixture.mjs's own
-// documented tradeoff on this exact question -- resolveChargeCode's
-// DB-backed crosswalk has never been wired to any parser call anywhere in
-// this codebase; building that bridge for the first time is separate,
-// unscoped work this item's No-gos don't ask for) is now the ONE shared
-// definition (stub-crosswalk.ts), imported here rather than redefined a
-// third time.
-const categorize = stubCategorize;
+/**
+ * 86e32tg6n: build the real, DB-backed categorize callback for this raw EDI
+ * document -- replaces the stub 4-code map (stub-crosswalk.ts), which is now
+ * test-fixture-only.
+ *
+ * `categorize` (charge-fact.ts's `Categorize`) is a synchronous callback --
+ * parse210/parse310 invoke it inline while walking the L1 loop, so it can't
+ * itself go async without rippling that change through every parser test
+ * (all ~20 call sites pass a plain sync function). Instead we resolve
+ * everything the parse will need up front, synchronously from that point on:
+ *
+ *   1. The carrier, if the EDI declares one (B3-11 SCAC, 210 only -- 310 has
+ *      no per-invoice carrier field in this scheme). Unmatched/absent SCAC
+ *      resolves to carrierId: null, which resolveChargeCode's own query
+ *      already treats as "global rows only", never a guess.
+ *   2. Every distinct raw charge code the L1 loop will see (a second,
+ *      trivial read of the same segments buildCharges will iterate --
+ *      cheap, and keeps parse210/parse310's signatures untouched).
+ *   3. One resolveChargeCode call per distinct code (client/carrier
+ *      precedence, §6.2), collapsed into a plain code -> category map so the
+ *      callback itself stays synchronous.
+ */
+async function resolveCategorizer(
+  client: pg.PoolClient,
+  raw: string,
+  transactionSet: '210' | '310',
+): Promise<Categorize> {
+  const ix = parseX12(raw);
+
+  const carrierCode = transactionSet === '210' ? el(firstSegment(ix, 'B3'), 11) : undefined;
+  let carrierId: string | null = null;
+  if (carrierCode) {
+    const { rows } = await client.query<{ id: string }>(
+      `SELECT id FROM carrier WHERE scac_code = $1`,
+      [carrierCode.trim()],
+    );
+    carrierId = rows[0]?.id ?? null;
+  }
+
+  const codes = new Set<string>();
+  for (const l1 of segmentsByTag(ix, 'L1')) {
+    const code = el(l1, 8); // L1-08 = special charge code, same element buildCharges reads
+    if (code !== undefined) codes.add(code);
+  }
+
+  const categoryByCode = new Map<string, string | undefined>();
+  await Promise.all(
+    [...codes].map(async (code) => {
+      const match = await resolveChargeCode(client, { carrierId, sourceCode: code });
+      categoryByCode.set(code, match?.canonicalCategory);
+    }),
+  );
+
+  return (code) => (code === undefined ? undefined : categoryByCode.get(code));
+}
 
 /**
  * ST01-based transaction-set detection (the item's own rabbit-hole guard:
@@ -116,6 +163,7 @@ export async function ingestInvoice(
   // other `throw` site in either file or their shared edi-envelope.ts
   // helpers besides X12ParseError's own throws and this one), so catching
   // Error broadly here doesn't also swallow a genuine backend fault.
+  const categorize = await resolveCategorizer(client, raw, transactionSet);
   let invoice;
   try {
     invoice = transactionSet === '210' ? parse210(raw, categorize) : parse310(raw, categorize);

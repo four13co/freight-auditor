@@ -2,6 +2,7 @@ import Fastify, { type FastifyInstance } from 'fastify';
 import { registerFindingsRoutes } from './findings-routes.js';
 import { registerAuthRoutes } from './auth-routes.js';
 import { registerStaticRoutes } from './static-routes.js';
+import { registerMetricsRoutes } from './metrics-routes.js';
 import { registerAuditRunsRoutes } from './audit-runs-routes.js';
 import { registerInvoiceDraftsRoutes } from './invoice-drafts-routes.js';
 import { registerEvidenceRoutes } from './evidence-routes.js';
@@ -38,6 +39,11 @@ export function buildApp(): FastifyInstance {
   // Static/health routes registered at top level -- must NOT opt into the
   // shared registerTenantAuthPreHandler used by tenant-scoped route modules.
   void app.register(registerStaticRoutes);
+
+  // Worker-throughput/queue-backlog + discovery metrics (P6.C.4): also
+  // top-level and unauthenticated, same posture as /health -- a Prometheus
+  // scraper carries no session.
+  void app.register(registerMetricsRoutes);
 
   // Auth routes registered at top level -- must be reachable with only a
   // session cookie (or no session at all), before any tenant scope exists

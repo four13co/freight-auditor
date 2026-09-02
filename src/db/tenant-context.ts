@@ -1,5 +1,5 @@
 import type pg from 'pg';
-import { getPool, APP_ROLE } from './pool.js';
+import { getPool, getReplicaPool, APP_ROLE } from './pool.js';
 
 /**
  * The tenant scope for a unit of work.
@@ -49,17 +49,12 @@ export async function setTenantTxScope(client: pg.PoolClient, ctx: TenantContext
   await client.query(`SET LOCAL ROLE ${APP_ROLE}`);
 }
 
-/**
- * Run `fn` inside a single transaction scoped to a tenant context.
- *
- * The transaction commits on success and rolls back on any throw. A dedicated
- * client is checked out for the transaction and always released.
- */
-export async function withTenantTx<T>(
+async function runTenantTx<T>(
+  pool: pg.Pool,
   ctx: TenantContext,
   fn: (client: pg.PoolClient) => Promise<T>,
 ): Promise<T> {
-  const client = await getPool().connect();
+  const client = await pool.connect();
   try {
     await client.query('BEGIN');
     await setTenantTxScope(client, ctx);
@@ -76,4 +71,33 @@ export async function withTenantTx<T>(
   } finally {
     client.release();
   }
+}
+
+/**
+ * Run `fn` inside a single transaction scoped to a tenant context.
+ *
+ * The transaction commits on success and rolls back on any throw. A dedicated
+ * client is checked out for the transaction and always released.
+ */
+export async function withTenantTx<T>(
+  ctx: TenantContext,
+  fn: (client: pg.PoolClient) => Promise<T>,
+): Promise<T> {
+  return runTenantTx(getPool(), ctx, fn);
+}
+
+/**
+ * Read-only variant of `withTenantTx` (86e2zfjym): routes through the
+ * optional read-replica pool when `DATABASE_READ_REPLICA_URL` is configured,
+ * else falls back to the primary pool — identical behavior to `withTenantTx`
+ * when unconfigured. Runs the exact same `setTenantTxScope` GUC + `SET LOCAL
+ * ROLE` sequence on whichever connection it checks out, so RLS still binds on
+ * the replica. Writes must never use this — only `withTenantTx` acquires a
+ * connection guaranteed to be the primary.
+ */
+export async function withTenantReadTx<T>(
+  ctx: TenantContext,
+  fn: (client: pg.PoolClient) => Promise<T>,
+): Promise<T> {
+  return runTenantTx(getReplicaPool() ?? getPool(), ctx, fn);
 }

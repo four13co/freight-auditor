@@ -59,6 +59,14 @@ Key invariants baked into the schema:
   policy keyed on the `app.current_client_ids` / `app.is_internal` GUCs (set per request via
   `SET LOCAL` in Phase 0). The app connects as the non-superuser `freight_app` role so the
   policy binds. Shared catalog rows (tenant column `NULL`) read across tenants.
+- **Optional read-replica routing** (`src/db/pool.ts`, 86e2zfjym) — set `DATABASE_READ_REPLICA_URL`
+  to route 1-2 high-volume read-only endpoints (`GET /api/findings`, `GET
+  /api/portfolio/cross-client-recovery`) through a second pool instead of the primary; unset (the
+  default, and every deployed environment today — no vault entry exists yet) behaves identically
+  to before this landed. `withTenantReadTx` runs the same tenant-scope GUC + `SET LOCAL ROLE`
+  sequence on that connection, so RLS still binds. Activating it in a real deployment is a config
+  flip once a replica exists and a `Database/replica_connection_string` vault item is added — not
+  something this item does.
 - **Append-only at the financial boundary** — the §11 ledger tables (`audit_event`,
   `rule_version`, `contract_version`, `variance_finding`'s status events, `recovery_event`, …)
   grant `freight_app` only `INSERT`/`SELECT`. No UPDATE/DELETE grant exists to revoke.

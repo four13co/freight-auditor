@@ -56,6 +56,7 @@ describe('GET /api/findings (unit, mocked withTenantTx + tenant-auth)', () => {
     mockAuthorized();
     vi.doMock('../../src/db/tenant-context.js', () => ({
       withTenantTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
+      withTenantReadTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
     }));
     vi.doMock('../../src/modules/findings/list-findings.js', () => ({
       listFindings: vi.fn().mockResolvedValue([{ id: 'f1', status: 'open' }]),
@@ -78,6 +79,7 @@ describe('GET /api/findings (unit, mocked withTenantTx + tenant-auth)', () => {
     const listFindings = vi.fn().mockResolvedValue([]);
     vi.doMock('../../src/db/tenant-context.js', () => ({
       withTenantTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
+      withTenantReadTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
     }));
     vi.doMock('../../src/modules/findings/list-findings.js', () => ({ listFindings }));
     const { buildApp } = await import('../../src/server/app.js');
@@ -99,6 +101,7 @@ describe('GET /api/findings (unit, mocked withTenantTx + tenant-auth)', () => {
     mockAuthorized();
     vi.doMock('../../src/db/tenant-context.js', () => ({
       withTenantTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
+      withTenantReadTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
     }));
     vi.doMock('../../src/modules/findings/list-findings.js', () => ({
       listFindings: vi.fn().mockResolvedValue([]),
@@ -119,6 +122,7 @@ describe('GET /api/findings (unit, mocked withTenantTx + tenant-auth)', () => {
     mockTenantAuth(null);
     vi.doMock('../../src/db/tenant-context.js', () => ({
       withTenantTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
+      withTenantReadTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
     }));
     const { buildApp } = await import('../../src/server/app.js');
     app = buildApp();
@@ -138,6 +142,7 @@ describe('GET /api/findings (unit, mocked withTenantTx + tenant-auth)', () => {
       const listFindings = vi.fn();
       vi.doMock('../../src/db/tenant-context.js', () => ({
         withTenantTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
+      withTenantReadTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
       }));
       vi.doMock('../../src/modules/findings/list-findings.js', () => ({ listFindings }));
       const { buildApp } = await import('../../src/server/app.js');
@@ -159,6 +164,7 @@ describe('GET /api/findings (unit, mocked withTenantTx + tenant-auth)', () => {
       const listFindings = vi.fn().mockResolvedValue([]);
       vi.doMock('../../src/db/tenant-context.js', () => ({
         withTenantTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
+      withTenantReadTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
       }));
       vi.doMock('../../src/modules/findings/list-findings.js', () => ({ listFindings }));
       const { buildApp } = await import('../../src/server/app.js');
@@ -184,6 +190,7 @@ describe('GET /api/findings (unit, mocked withTenantTx + tenant-auth)', () => {
       const listFindings = vi.fn();
       vi.doMock('../../src/db/tenant-context.js', () => ({
         withTenantTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
+      withTenantReadTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
       }));
       vi.doMock('../../src/modules/findings/list-findings.js', () => ({ listFindings }));
       const { buildApp } = await import('../../src/server/app.js');
@@ -205,6 +212,7 @@ describe('GET /api/findings (unit, mocked withTenantTx + tenant-auth)', () => {
       const listFindings = vi.fn().mockResolvedValue([]);
       vi.doMock('../../src/db/tenant-context.js', () => ({
         withTenantTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
+      withTenantReadTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
       }));
       vi.doMock('../../src/modules/findings/list-findings.js', () => ({ listFindings }));
       const { buildApp } = await import('../../src/server/app.js');
@@ -226,6 +234,7 @@ describe('GET /api/findings (unit, mocked withTenantTx + tenant-auth)', () => {
       mockAuthorized();
       vi.doMock('../../src/db/tenant-context.js', () => ({
         withTenantTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
+      withTenantReadTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
       }));
       vi.doMock('../../src/modules/findings/list-gate-failures.js', () => ({
         listGateFailures: vi.fn().mockResolvedValue([{ id: 'gf1', defect: 'x' }]),
@@ -249,6 +258,7 @@ describe('GET /api/findings (unit, mocked withTenantTx + tenant-auth)', () => {
       const listGateFailures = vi.fn().mockResolvedValue([]);
       vi.doMock('../../src/db/tenant-context.js', () => ({
         withTenantTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
+      withTenantReadTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
       }));
       vi.doMock('../../src/modules/findings/list-gate-failures.js', () => ({ listGateFailures }));
       const { buildApp } = await import('../../src/server/app.js');
@@ -269,6 +279,7 @@ describe('GET /api/findings (unit, mocked withTenantTx + tenant-auth)', () => {
       const listGateFailures = vi.fn();
       vi.doMock('../../src/db/tenant-context.js', () => ({
         withTenantTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
+      withTenantReadTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
       }));
       vi.doMock('../../src/modules/findings/list-gate-failures.js', () => ({ listGateFailures }));
       const { buildApp } = await import('../../src/server/app.js');
@@ -284,6 +295,7 @@ describe('GET /api/findings (unit, mocked withTenantTx + tenant-auth)', () => {
       const listGateFailures = vi.fn();
       vi.doMock('../../src/db/tenant-context.js', () => ({
         withTenantTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
+      withTenantReadTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
       }));
       vi.doMock('../../src/modules/findings/list-gate-failures.js', () => ({ listGateFailures }));
       const { buildApp } = await import('../../src/server/app.js');
@@ -303,6 +315,7 @@ describe('GET /api/findings (unit, mocked withTenantTx + tenant-auth)', () => {
       const listGateFailures = vi.fn();
       vi.doMock('../../src/db/tenant-context.js', () => ({
         withTenantTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
+      withTenantReadTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
       }));
       vi.doMock('../../src/modules/findings/list-gate-failures.js', () => ({ listGateFailures }));
       const { buildApp } = await import('../../src/server/app.js');
@@ -321,6 +334,7 @@ describe('GET /api/findings (unit, mocked withTenantTx + tenant-auth)', () => {
       const listGateFailures = vi.fn().mockResolvedValue([]);
       vi.doMock('../../src/db/tenant-context.js', () => ({
         withTenantTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
+      withTenantReadTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
       }));
       vi.doMock('../../src/modules/findings/list-gate-failures.js', () => ({ listGateFailures }));
       const { buildApp } = await import('../../src/server/app.js');
@@ -345,6 +359,7 @@ describe('GET /api/findings (unit, mocked withTenantTx + tenant-auth)', () => {
       const listGateFailures = vi.fn();
       vi.doMock('../../src/db/tenant-context.js', () => ({
         withTenantTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
+      withTenantReadTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
       }));
       vi.doMock('../../src/modules/findings/list-gate-failures.js', () => ({ listGateFailures }));
       const { buildApp } = await import('../../src/server/app.js');
@@ -368,6 +383,7 @@ describe('GET /api/findings (unit, mocked withTenantTx + tenant-auth)', () => {
       const listGateFailures = vi.fn().mockResolvedValue(rows);
       vi.doMock('../../src/db/tenant-context.js', () => ({
         withTenantTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
+      withTenantReadTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
       }));
       vi.doMock('../../src/modules/findings/list-gate-failures.js', () => ({ listGateFailures }));
       const { buildApp } = await import('../../src/server/app.js');
@@ -393,6 +409,7 @@ describe('GET /api/findings (unit, mocked withTenantTx + tenant-auth)', () => {
       const updateFindingStatus = vi.fn().mockResolvedValue({ found: true });
       vi.doMock('../../src/db/tenant-context.js', () => ({
         withTenantTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
+      withTenantReadTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
       }));
       vi.doMock('../../src/modules/findings/update-finding-status.js', () => ({ updateFindingStatus }));
       const { buildApp } = await import('../../src/server/app.js');
@@ -415,6 +432,7 @@ describe('GET /api/findings (unit, mocked withTenantTx + tenant-auth)', () => {
       const updateFindingStatus = vi.fn().mockResolvedValue({ found: false });
       vi.doMock('../../src/db/tenant-context.js', () => ({
         withTenantTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
+      withTenantReadTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
       }));
       vi.doMock('../../src/modules/findings/update-finding-status.js', () => ({ updateFindingStatus }));
       const { buildApp } = await import('../../src/server/app.js');
@@ -434,6 +452,7 @@ describe('GET /api/findings (unit, mocked withTenantTx + tenant-auth)', () => {
       const updateFindingStatus = vi.fn();
       vi.doMock('../../src/db/tenant-context.js', () => ({
         withTenantTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
+      withTenantReadTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
       }));
       vi.doMock('../../src/modules/findings/update-finding-status.js', () => ({ updateFindingStatus }));
       const { buildApp } = await import('../../src/server/app.js');
@@ -460,6 +479,7 @@ describe('GET /api/findings (unit, mocked withTenantTx + tenant-auth)', () => {
         const updateFindingStatus = vi.fn();
         vi.doMock('../../src/db/tenant-context.js', () => ({
           withTenantTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
+      withTenantReadTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
         }));
         vi.doMock('../../src/modules/findings/update-finding-status.js', () => ({ updateFindingStatus }));
         const { buildApp } = await import('../../src/server/app.js');
@@ -481,6 +501,7 @@ describe('GET /api/findings (unit, mocked withTenantTx + tenant-auth)', () => {
       const updateFindingStatus = vi.fn();
       vi.doMock('../../src/db/tenant-context.js', () => ({
         withTenantTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
+      withTenantReadTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
       }));
       vi.doMock('../../src/modules/findings/update-finding-status.js', () => ({ updateFindingStatus }));
       const { buildApp } = await import('../../src/server/app.js');
@@ -501,6 +522,7 @@ describe('GET /api/findings (unit, mocked withTenantTx + tenant-auth)', () => {
       const updateFindingStatus = vi.fn();
       vi.doMock('../../src/db/tenant-context.js', () => ({
         withTenantTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
+      withTenantReadTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
       }));
       vi.doMock('../../src/modules/findings/update-finding-status.js', () => ({ updateFindingStatus }));
       const { buildApp } = await import('../../src/server/app.js');
@@ -521,6 +543,7 @@ describe('GET /api/findings (unit, mocked withTenantTx + tenant-auth)', () => {
       const updateFindingStatus = vi.fn().mockResolvedValue({ found: true });
       vi.doMock('../../src/db/tenant-context.js', () => ({
         withTenantTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
+      withTenantReadTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
       }));
       vi.doMock('../../src/modules/findings/update-finding-status.js', () => ({ updateFindingStatus }));
       const { buildApp } = await import('../../src/server/app.js');
@@ -545,6 +568,7 @@ describe('GET /api/findings (unit, mocked withTenantTx + tenant-auth)', () => {
       const listFindings = vi.fn();
       vi.doMock('../../src/db/tenant-context.js', () => ({
         withTenantTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
+      withTenantReadTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
       }));
       vi.doMock('../../src/modules/findings/list-findings.js', () => ({ listFindings }));
       const { buildApp } = await import('../../src/server/app.js');
@@ -566,6 +590,7 @@ describe('GET /api/findings (unit, mocked withTenantTx + tenant-auth)', () => {
       const listFindings = vi.fn();
       vi.doMock('../../src/db/tenant-context.js', () => ({
         withTenantTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
+      withTenantReadTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
       }));
       vi.doMock('../../src/modules/findings/list-findings.js', () => ({ listFindings }));
       const { buildApp } = await import('../../src/server/app.js');
@@ -587,6 +612,7 @@ describe('GET /api/findings (unit, mocked withTenantTx + tenant-auth)', () => {
       const listFindings = vi.fn().mockResolvedValue([]);
       vi.doMock('../../src/db/tenant-context.js', () => ({
         withTenantTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
+      withTenantReadTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
       }));
       vi.doMock('../../src/modules/findings/list-findings.js', () => ({ listFindings }));
       const { buildApp } = await import('../../src/server/app.js');
@@ -607,6 +633,7 @@ describe('GET /api/findings (unit, mocked withTenantTx + tenant-auth)', () => {
       const listFindings = vi.fn().mockResolvedValue([]);
       vi.doMock('../../src/db/tenant-context.js', () => ({
         withTenantTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
+      withTenantReadTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
       }));
       vi.doMock('../../src/modules/findings/list-findings.js', () => ({ listFindings }));
       const { buildApp } = await import('../../src/server/app.js');

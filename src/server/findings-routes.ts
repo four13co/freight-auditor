@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { withTenantTx } from '../db/tenant-context.js';
+import { withTenantTx, withTenantReadTx } from '../db/tenant-context.js';
 import { listFindings, type FindingsSortKey } from '../modules/findings/list-findings.js';
 import { getFindingsSummary } from '../modules/findings/findings-summary.js';
 import { listGateFailures } from '../modules/findings/list-gate-failures.js';
@@ -99,8 +99,10 @@ export async function registerFindingsRoutes(findingsRoutes: FastifyInstance): P
       return;
     }
 
+    // 86e2zfjym: read-only, so routed through withTenantReadTx (replica pool
+    // when configured, else the primary — identical to today when unconfigured).
     const ctx = request.tenantContext!;
-    const findings = await withTenantTx(ctx, (client) =>
+    const findings = await withTenantReadTx(ctx, (client) =>
       listFindings(client, {
         carrier: query.carrier,
         status: query.status,

@@ -15,7 +15,7 @@ const base = {
 
 describe('versioned job contracts', () => {
   it('keeps every registered queue name explicitly versioned and mapped to a schema', () => {
-    expect(Object.values(JOB_NAMES)).toHaveLength(13);
+    expect(Object.values(JOB_NAMES)).toHaveLength(14);
     for (const name of Object.values(JOB_NAMES)) {
       expect(name).toMatch(/\.v1$/);
       expect(jobPayloadSchemas[name]).toBeDefined();
@@ -192,5 +192,35 @@ describe('versioned job contracts', () => {
     };
     mutate(payload);
     expect(() => parseJobPayload(JOB_NAMES.DELIVER_OUTBOX_MESSAGE_V1, payload)).toThrow(JobPayloadValidationError);
+  });
+
+  it('parses a valid export-record job, defaulting a missing claimId/paymentGateDecisionId to null', () => {
+    const payload = { ...base, systemCode: 'QUICKBOOKS', payload: { amount: 100 } };
+    expect(parseJobPayload(JOB_NAMES.EXPORT_RECORD_V1, payload)).toEqual({
+      ...payload,
+      claimId: null,
+      paymentGateDecisionId: null,
+    });
+  });
+
+  it('parses a valid export-record job with an explicit claimId', () => {
+    const payload = {
+      ...base,
+      claimId: '10000000-0000-4000-8000-000000000002',
+      paymentGateDecisionId: null,
+      systemCode: 'QUICKBOOKS',
+      payload: {},
+    };
+    expect(parseJobPayload(JOB_NAMES.EXPORT_RECORD_V1, payload)).toEqual(payload);
+  });
+
+  it.each([
+    ['missing systemCode', (p: Record<string, unknown>) => { delete p.systemCode; }],
+    ['empty systemCode', (p: Record<string, unknown>) => { p.systemCode = ''; }],
+    ['unknown field', (p: Record<string, unknown>) => { p.secret = 'do-not-log'; }],
+  ])('fails closed for an export-record job with %s', (_label, mutate) => {
+    const payload: Record<string, unknown> = { ...base, systemCode: 'QUICKBOOKS', payload: {} };
+    mutate(payload);
+    expect(() => parseJobPayload(JOB_NAMES.EXPORT_RECORD_V1, payload)).toThrow(JobPayloadValidationError);
   });
 });

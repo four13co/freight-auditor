@@ -10,6 +10,7 @@ import { isUuid } from '../shared/request-validation.js';
 import { decodeCursor, paginateKeyset } from '../shared/cursor-pagination.js';
 import { listReviewQueues } from '../modules/findings/list-review-queues.js';
 import { applyFindingAction, FINDING_ACTION_STATUS, type FindingAction } from '../modules/findings/apply-finding-action.js';
+import { recordHumanOverrideReversal, InvalidReversalRequestError } from '../modules/rule-engine/record-human-override-reversal.js';
 
 // 86e2v892h: derived from the shared source (mirrors migrations/0002_enums.sql's
 // variance_status enum exactly) rather than a separate hand-maintained literal.
@@ -217,5 +218,49 @@ export async function registerFindingsRoutes(findingsRoutes: FastifyInstance): P
       findingId: id, action: body.action as FindingAction, note: body.note as string | undefined, actorUserId: request.actorUserId }));
     if (!result.found) return reply.code(404).send({ error: 'finding not found' });
     return { id, action: body.action, status: result.status };
+  });
+
+  // P6.C.8: reversing a FIRM_RULE finding's verdict -- new surface, no
+  // existing action hooks onto human_override (apply-finding-action.ts's
+  // accept/waive/escalate never reference rule_hardness). Kept as its own
+  // route rather than a fourth FINDING_ACTION_STATUS entry so the existing
+  // action route's tested shape (action/note only) is untouched.
+  findingsRoutes.post('/api/findings/:id/reverse', async (request, reply) => {
+    const { id } = request.params as { id: string };
+    if (!isUuid(id)) return reply.code(400).send({ error: 'invalid finding id: must be a well-formed UUID' });
+    const body = request.body as { caseFingerprint?: unknown; assertedValue?: unknown };
+    if (typeof body.caseFingerprint !== 'string' || !body.caseFingerprint.trim())
+      return reply.code(400).send({ error: 'invalid caseFingerprint: must be a non-empty string' });
+    if (body.assertedValue === undefined) return reply.code(400).send({ error: 'assertedValue is required' });
+
+    try {
+      const result = await withTenantTx(request.tenantContext!, async (client) => {
+        const clientId = request.tenantContext!.clientIds![0]!;
+        const finding = (await client.query<{ criterion_id: string | null; rule_version_id: string | null }>(
+          `SELECT criterion_id, rule_version_id FROM variance_finding WHERE id = $1`, [id],
+        )).rows[0];
+        if (!finding) return { status: 'not_found' as const };
+        if (!finding.criterion_id || !finding.rule_version_id) return { status: 'no_attribution' as const };
+
+        const rule = (await client.query<{ hardness: string }>(
+          `SELECT hardness FROM rule_version WHERE id = $1`, [finding.rule_version_id],
+        )).rows[0];
+        if (!rule || rule.hardness !== 'FIRM_RULE') return { status: 'not_firm_rule' as const };
+
+        const reversal = await recordHumanOverrideReversal(client, {
+          clientId, criterionId: finding.criterion_id, ruleVersionId: finding.rule_version_id,
+          caseFingerprint: body.caseFingerprint as string, assertedValue: body.assertedValue,
+        });
+        return { status: 'ok' as const, reversal };
+      });
+
+      if (result.status === 'not_found') return reply.code(404).send({ error: 'finding not found' });
+      if (result.status === 'no_attribution') return reply.code(422).send({ error: 'finding has no criterion/rule_version attribution to reverse' });
+      if (result.status === 'not_firm_rule') return reply.code(409).send({ error: 'NOT_A_FIRM_RULE' });
+      return reply.code(201).send({ id, ...result.reversal });
+    } catch (error) {
+      if (error instanceof InvalidReversalRequestError) return reply.code(400).send({ error: error.code });
+      throw error;
+    }
   });
 }

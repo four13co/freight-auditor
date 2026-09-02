@@ -14,6 +14,7 @@ import { registerPaymentRoutes } from './payment-routes.js';
 import { registerDisputeReviewRoutes } from './dispute-review-routes.js';
 import { registerPortfolioRoutes } from './portfolio-routes.js';
 import { registerPortalAdminRoutes } from './portal-admin-routes.js';
+import { registerRecoveryReportRoutes } from './recovery-report-routes.js';
 
 /**
  * Build the Fastify application instance.
@@ -88,6 +89,12 @@ export function buildApp(): FastifyInstance {
   // membership roster + role management, the first consumers of
   // client-admin-auth.ts's/client-viewer-auth.ts's preHandlers.
   void app.register(registerPortalAdminRoutes);
+
+  // Client-level recovery reporting (P5.C.2): the single-tenant analog of
+  // registerPortfolioRoutes above, gated by the shared registerTenantAuthPreHandler
+  // (unlike portfolio-routes.ts's internal-analyst-only gate) and reusing
+  // getPortfolioReconciliation (P5.C.4) as-is.
+  void app.register(registerRecoveryReportRoutes);
 
   return app;
 }

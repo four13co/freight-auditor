@@ -6,12 +6,20 @@ import { withTenantTx } from '../../src/db/tenant-context.js';
 import { buildApp } from '../../src/server/app.js';
 import { listClientInvoices } from '../../src/modules/portal/list-client-invoices.js';
 import { getClientAuditRunScorecard } from '../../src/modules/portal/get-client-audit-run-scorecard.js';
+import { listClientFindings } from '../../src/modules/portal/list-client-findings.js';
 
 /**
  * P6.B.1: GET /api/portal/invoices and GET /api/portal/scorecard/:auditRunId,
  * exercised at the HTTP layer under a real client_viewer membership. Uses
  * the dev-header identity source (DEV_AUTH_HEADERS=1), same pattern as
  * claim-recovery-endpoint.db.test.ts / client-viewer-auth.db.test.ts.
+ *
+ * P6.B.2 (findings list + evidence) is seeded into this SAME describe
+ * block/fixture rather than a separate one -- it reuses the same
+ * clientId/viewerUserId/adminUserId/otherClientId tenancy setup, following
+ * a real variance_finding's own FK chain (criterion -> rule -> rule_version,
+ * charge_fact, expected_charge), same seeding pattern as
+ * build-evidence-packet.db.test.ts's seedDisputeWithFinding helper.
  */
 describe('client portal content APIs (DB, e2e)', () => {
   let pool: pg.Pool;
@@ -25,6 +33,9 @@ describe('client portal content APIs (DB, e2e)', () => {
   let unscoredAuditRunId: string;
   let otherClientId: string;
   let otherAuditRunId: string;
+  let otherInvoiceId: string;
+  let findingId: string;
+  let otherFindingId: string;
   let originalFlag: string | undefined;
   const tag = `pcr-${Date.now()}`;
 
@@ -88,11 +99,53 @@ describe('client portal content APIs (DB, e2e)', () => {
            VALUES ($1, $2, '210', 'INV-OTHER', 'USD', 'v1', 'ingested') RETURNING id`,
           [otherClientId, carrierId],
         );
+        otherInvoiceId = otherInvoice.rows[0].id;
         const otherRun = await c2.query(
           `INSERT INTO audit_run (client_id, invoice_id, engine_spec_version, outcome) VALUES ($1, $2, 'v1', 'SCORED') RETURNING id`,
-          [otherClientId, otherInvoice.rows[0].id],
+          [otherClientId, otherInvoiceId],
         );
         otherAuditRunId = otherRun.rows[0].id;
+
+        // P6.B.2: one real variance_finding per client, following the same
+        // criterion -> rule -> rule_version FK chain as
+        // build-evidence-packet.db.test.ts's seedDisputeWithFinding helper.
+        const cf = await c2.query(
+          `INSERT INTO charge_fact (client_id, invoice_id, code, category, amount, currency)
+           VALUES ($1, $2, '400', 'LINEHAUL', '1000.0000', 'USD') RETURNING id`,
+          [clientId, invoiceId],
+        );
+        const chargeFactId = cf.rows[0].id;
+        await c2.query(
+          `INSERT INTO expected_charge (client_id, audit_run_id, charge_fact_id, category, expected_amount, currency)
+           VALUES ($1, $2, $3, 'LINEHAUL', '900.0000', 'USD')`,
+          [clientId, auditRunId, chargeFactId],
+        );
+        const vf = await c2.query<{ id: string }>(
+          `INSERT INTO variance_finding
+             (client_id, audit_run_id, charge_fact_id, criterion_id, rule_version_id, direction, variance_amount, currency, status, evaluated_expr)
+           SELECT $1, $2, $3, c.id, rv.id, 'OVERCHARGE', '100.0000', 'USD', 'open', '{}'::jsonb
+           FROM criterion c JOIN rule r ON r.slug = 'contract-rate_variance'
+           JOIN rule_version rv ON rv.rule_id = r.id
+           WHERE c.criterion_key = 'CONTRACT.RATE_VARIANCE' ORDER BY rv.recorded_at DESC LIMIT 1 RETURNING id`,
+          [clientId, auditRunId, chargeFactId],
+        );
+        findingId = vf.rows[0]!.id;
+
+        const otherCf = await c2.query(
+          `INSERT INTO charge_fact (client_id, invoice_id, code, category, amount, currency)
+           VALUES ($1, $2, '400', 'LINEHAUL', '500.0000', 'USD') RETURNING id`,
+          [otherClientId, otherInvoiceId],
+        );
+        const otherVf = await c2.query<{ id: string }>(
+          `INSERT INTO variance_finding
+             (client_id, audit_run_id, charge_fact_id, criterion_id, rule_version_id, direction, variance_amount, currency, status, evaluated_expr)
+           SELECT $1, $2, $3, c.id, rv.id, 'OVERCHARGE', '50.0000', 'USD', 'open', '{}'::jsonb
+           FROM criterion c JOIN rule r ON r.slug = 'contract-rate_variance'
+           JOIN rule_version rv ON rv.rule_id = r.id
+           WHERE c.criterion_key = 'CONTRACT.RATE_VARIANCE' ORDER BY rv.recorded_at DESC LIMIT 1 RETURNING id`,
+          [otherClientId, otherAuditRunId, otherCf.rows[0].id],
+        );
+        otherFindingId = otherVf.rows[0]!.id;
       });
     } finally {
       owner.release();
@@ -105,6 +158,9 @@ describe('client portal content APIs (DB, e2e)', () => {
     await app.close();
     const owner = await pool.connect();
     try {
+      await owner.query(`DELETE FROM variance_finding WHERE client_id = ANY($1)`, [[clientId, otherClientId]]);
+      await owner.query(`DELETE FROM expected_charge WHERE client_id = ANY($1)`, [[clientId, otherClientId]]);
+      await owner.query(`DELETE FROM charge_fact WHERE client_id = ANY($1)`, [[clientId, otherClientId]]);
       await owner.query(`DELETE FROM scorecard WHERE client_id = ANY($1)`, [[clientId, otherClientId]]);
       await owner.query(`DELETE FROM audit_run WHERE client_id = ANY($1)`, [[clientId, otherClientId]]);
       await owner.query(`DELETE FROM invoice WHERE client_id = ANY($1)`, [[clientId, otherClientId]]);
@@ -215,6 +271,115 @@ describe('client portal content APIs (DB, e2e)', () => {
     const res = await app.inject({ method: 'GET', url: `/api/portal/scorecard/${auditRunId}` });
     expect(res.statusCode).toBe(401);
   });
+
+  // AC1 (findings list): only the caller's own findings are returned, RLS-scoped.
+  it('lists findings for the caller tenant only, with invoice/carrier/rule detail joined in -- proving cross-tenant isolation', async () => {
+    const res = await app.inject({
+      method: 'GET', url: '/api/portal/findings', headers: { 'x-client-id': clientId, 'x-user-id': viewerUserId },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    const row = body.findings.find((f: { id: string }) => f.id === findingId);
+    expect(row).toBeDefined();
+    expect(row.carrierName).toBe('Acme Freight');
+    expect(row.billed).toBe('1000.0000');
+    expect(row.expected).toBe('900.0000');
+    expect(row.varianceAmount).toBe('100.0000');
+    expect(row.ruleDescription).toBeDefined();
+    // The other client's finding must never appear in this caller's list.
+    expect(body.findings.some((f: { id: string }) => f.id === otherFindingId)).toBe(false);
+  });
+
+  it('rejects an unauthenticated findings list request', async () => {
+    const res = await app.inject({ method: 'GET', url: '/api/portal/findings' });
+    expect(res.statusCode).toBe(401);
+  });
+
+  it('rejects a client_admin caller on the findings list route -- sibling capability, out of this task\'s scope', async () => {
+    const res = await app.inject({
+      method: 'GET', url: '/api/portal/findings', headers: { 'x-client-id': clientId, 'x-user-id': adminUserId },
+    });
+    expect(res.statusCode).toBe(401);
+  });
+
+  it('has no POST/PUT/PATCH/DELETE route registered on the findings list or evidence paths -- no write surface exists to protect (No-gos: read-only)', async () => {
+    for (const method of ['POST', 'PUT', 'PATCH', 'DELETE'] as const) {
+      const listRes = await app.inject({
+        method, url: '/api/portal/findings', headers: { 'x-client-id': clientId, 'x-user-id': viewerUserId },
+      });
+      expect(listRes.statusCode).toBe(404);
+      const evidenceRes = await app.inject({
+        method, url: `/api/portal/findings/${findingId}/evidence`, headers: { 'x-client-id': clientId, 'x-user-id': viewerUserId },
+      });
+      expect(evidenceRes.statusCode).toBe(404);
+    }
+  });
+
+  it('rejects an out-of-range limit on the findings list route', async () => {
+    const res = await app.inject({
+      method: 'GET', url: '/api/portal/findings?limit=9999', headers: { 'x-client-id': clientId, 'x-user-id': viewerUserId },
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it('filters the findings list by status', async () => {
+    const res = await app.inject({
+      method: 'GET', url: '/api/portal/findings?status=open', headers: { 'x-client-id': clientId, 'x-user-id': viewerUserId },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().findings.some((f: { id: string }) => f.id === findingId)).toBe(true);
+  });
+
+  // AC2: the full defensibility chain (criterion, rule version, clause, rate
+  // cell, source document, transport document) for one of the caller's own
+  // findings.
+  it('returns the full evidence/defensibility chain for a finding belonging to the caller tenant', async () => {
+    const res = await app.inject({
+      method: 'GET', url: `/api/portal/findings/${findingId}/evidence`, headers: { 'x-client-id': clientId, 'x-user-id': viewerUserId },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.finding.id).toBe(findingId);
+    expect(body.criterion.key).toBe('CONTRACT.RATE_VARIANCE');
+    expect(body.ruleVersion.id).toBeDefined();
+    expect(body.contributors.billedChargeFactIds).toEqual([]);
+  });
+
+  // AC3: the evidence chain for a finding belonging to a DIFFERENT client is
+  // rejected/not-found.
+  it('returns 404 for evidence of a finding that belongs to a different client', async () => {
+    const res = await app.inject({
+      method: 'GET', url: `/api/portal/findings/${otherFindingId}/evidence`, headers: { 'x-client-id': clientId, 'x-user-id': viewerUserId },
+    });
+    expect(res.statusCode).toBe(404);
+  });
+
+  it('returns 404 for a well-formed but nonexistent finding id', async () => {
+    const res = await app.inject({
+      method: 'GET', url: '/api/portal/findings/00000000-0000-4000-8000-000000000099/evidence',
+      headers: { 'x-client-id': clientId, 'x-user-id': viewerUserId },
+    });
+    expect(res.statusCode).toBe(404);
+  });
+
+  it('rejects a malformed finding id with 400', async () => {
+    const res = await app.inject({
+      method: 'GET', url: '/api/portal/findings/not-a-uuid/evidence', headers: { 'x-client-id': clientId, 'x-user-id': viewerUserId },
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it('rejects an unauthenticated evidence request', async () => {
+    const res = await app.inject({ method: 'GET', url: `/api/portal/findings/${findingId}/evidence` });
+    expect(res.statusCode).toBe(401);
+  });
+
+  it('rejects a client_admin caller on the evidence route -- sibling capability, out of this task\'s scope', async () => {
+    const res = await app.inject({
+      method: 'GET', url: `/api/portal/findings/${findingId}/evidence`, headers: { 'x-client-id': clientId, 'x-user-id': adminUserId },
+    });
+    expect(res.statusCode).toBe(401);
+  });
 });
 
 /**
@@ -232,6 +397,8 @@ describe('portal content query modules: explicit client_id predicate (DB)', () =
   let carrierId: string;
   let invoiceId: string;
   let auditRunId: string;
+  let chargeFactId: string;
+  let findingId: string;
   const tag = `pcp-${Date.now()}`;
 
   beforeAll(async () => {
@@ -261,6 +428,23 @@ describe('portal content query modules: explicit client_id predicate (DB)', () =
            VALUES ($1, $2, 4, 1, 0, '50.0000', '5.0000', 'USD')`,
           [clientAId, auditRunId],
         );
+
+        const cf = await c.query(
+          `INSERT INTO charge_fact (client_id, invoice_id, code, category, amount, currency)
+           VALUES ($1, $2, '400', 'LINEHAUL', '200.0000', 'USD') RETURNING id`,
+          [clientAId, invoiceId],
+        );
+        chargeFactId = cf.rows[0].id;
+        const vf = await c.query<{ id: string }>(
+          `INSERT INTO variance_finding
+             (client_id, audit_run_id, charge_fact_id, criterion_id, rule_version_id, direction, variance_amount, currency, status, evaluated_expr)
+           SELECT $1, $2, $3, crit.id, rv.id, 'OVERCHARGE', '20.0000', 'USD', 'open', '{}'::jsonb
+           FROM criterion crit JOIN rule r ON r.slug = 'contract-rate_variance'
+           JOIN rule_version rv ON rv.rule_id = r.id
+           WHERE crit.criterion_key = 'CONTRACT.RATE_VARIANCE' ORDER BY rv.recorded_at DESC LIMIT 1 RETURNING id`,
+          [clientAId, auditRunId, chargeFactId],
+        );
+        findingId = vf.rows[0]!.id;
       });
     } finally {
       owner.release();
@@ -270,6 +454,8 @@ describe('portal content query modules: explicit client_id predicate (DB)', () =
   afterAll(async () => {
     const owner = await pool.connect();
     try {
+      await owner.query(`DELETE FROM variance_finding WHERE client_id = $1`, [clientAId]);
+      await owner.query(`DELETE FROM charge_fact WHERE client_id = $1`, [clientAId]);
       await owner.query(`DELETE FROM scorecard WHERE client_id = $1`, [clientAId]);
       await owner.query(`DELETE FROM audit_run WHERE client_id = $1`, [clientAId]);
       await owner.query(`DELETE FROM invoice WHERE client_id = $1`, [clientAId]);
@@ -293,6 +479,11 @@ describe('portal content query modules: explicit client_id predicate (DB)', () =
     expect(scorecard).toBeNull();
   });
 
+  it('the explicit predicate rejects a mismatched clientId on listClientFindings, even under an internal (cross-client) RLS scope', async () => {
+    const rows = await withTenantTx({ internal: true }, (c) => listClientFindings(c, otherClientId));
+    expect(rows.some((r) => r.id === findingId)).toBe(false);
+  });
+
   it('the explicit predicate still finds the rows under an internal scope when the clientId matches', async () => {
     const rows = await withTenantTx({ internal: true }, (c) => listClientInvoices(c, clientAId));
     expect(rows.some((r) => r.id === invoiceId)).toBe(true);
@@ -301,5 +492,8 @@ describe('portal content query modules: explicit client_id predicate (DB)', () =
     expect(scorecard).not.toBeNull();
     expect(scorecard!.currency).toBe('USD');
     expect(scorecard!.conformedCount).toBe(4);
+
+    const findings = await withTenantTx({ internal: true }, (c) => listClientFindings(c, clientAId));
+    expect(findings.some((f) => f.id === findingId)).toBe(true);
   });
 });

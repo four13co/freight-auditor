@@ -497,6 +497,52 @@ export async function fetchClientPortalAuditRunScorecard(auditRunId: string): Pr
   return (await res.json()) as ClientPortalAuditRunScorecard;
 }
 
+/** Mirrors list-client-findings.ts's ClientFindingRow shape exactly (P6.B.2). */
+export interface ClientPortalFindingRow {
+  id: string;
+  auditRunId: string;
+  invoiceId: string;
+  invoiceNumber: string | null;
+  carrierName: string | null;
+  billed: string | null;
+  expected: string | null;
+  varianceAmount: string | null;
+  direction: string | null;
+  status: string;
+  createdAt: string;
+  ruleDescription: string | null;
+}
+
+/** Client portal (P6.B.2) -- unwired to nav, same disclosure as the P6.B.1 precedent. */
+export async function fetchClientPortalFindings(): Promise<ClientPortalFindingRow[]> {
+  const res = await fetch('/api/portal/findings', { headers: authHeaders() });
+  if (!res.ok) throw new Error(`GET portal findings failed: ${res.status}`);
+  return ((await res.json()) as { findings: ClientPortalFindingRow[] }).findings;
+}
+
+/** Mirrors get-defensibility-chain.ts's DefensibilityChain shape exactly (P6.B.2). */
+export interface ClientPortalFindingEvidence {
+  finding: { id: string; auditRunId: string; classification: string | null; varianceAmount: string | null; currency: string | null; evaluatedExpr: unknown };
+  criterion: { id: string; key: string };
+  ruleVersion: { id: string; astHash: string };
+  clause: { id: string; reference: string; page: string | null } | null;
+  rateCell: { id: string; reference: string } | null;
+  sourceDocument: { id: string; sha256: string; storageUri: string } | null;
+  transportDocument: { id: string; number: string; type: string; sourceDocumentId: string | null } | null;
+  contributors: { billedChargeFactIds: string[]; expectedChargeIds: string[] };
+}
+
+/**
+ * Client portal (P6.B.2) -- unwired to nav, same disclosure as the P6.B.1
+ * precedent. Throws on any non-ok response (404 included), same convention
+ * as fetchClientPortalAuditRunScorecard above.
+ */
+export async function fetchClientPortalFindingEvidence(findingId: string): Promise<ClientPortalFindingEvidence> {
+  const res = await fetch(`/api/portal/findings/${findingId}/evidence`, { headers: authHeaders() });
+  if (!res.ok) throw new Error(`GET portal finding evidence failed: ${res.status}`);
+  return (await res.json()) as ClientPortalFindingEvidence;
+}
+
 export interface ClientRecoveryReportBucket {
   currency: string | null;
   claimed: string;

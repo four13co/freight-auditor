@@ -255,9 +255,9 @@ describe('deploy.yml (unit, job-dependency + guard wiring)', () => {
       return step.run!;
     }
 
-    it('checks whether the Cloudflare R2 item exists before op inject ever runs', () => {
+    it('checks whether the CloudflareR2 item exists before op inject ever runs', () => {
       const runBlock = getEnvResolveRunBlock();
-      const checkIndex = runBlock.indexOf('op item get "Cloudflare R2"');
+      const checkIndex = runBlock.indexOf('op item get "CloudflareR2"');
       const injectIndex = runBlock.indexOf('op inject');
       expect(checkIndex).toBeGreaterThan(-1);
       expect(injectIndex).toBeGreaterThan(-1);
@@ -266,9 +266,25 @@ describe('deploy.yml (unit, job-dependency + guard wiring)', () => {
 
     it('discards the existence check\'s own output -- it must never print item field values', () => {
       const runBlock = getEnvResolveRunBlock();
-      const checkLine = runBlock.split('\n').find((line) => line.includes('op item get "Cloudflare R2"'));
+      const checkLine = runBlock.split('\n').find((line) => line.includes('op item get "CloudflareR2"'));
       expect(checkLine).toBeDefined();
       expect(checkLine).toContain('>/dev/null 2>&1');
+    });
+
+    it('checks for "CloudflareR2" (no space), matching the item name .env.template\'s R2 op:// references now use (86e331t1n)', () => {
+      // AC3: the existence-check name and its warning text must track whatever
+      // item name .env.template's R2_* lines actually reference, so the
+      // graceful-fallback path never silently triggers against a real,
+      // provisioned item sitting under a different name.
+      const template = readFileSync(new URL('../../.env.template', import.meta.url), 'utf8');
+      const referencedItemName = template.match(/^R2_ACCOUNT_ID="op:\/\/\$\{OP_VAULT\}\/([^/]+)\/account_id"$/m)?.[1];
+      expect(referencedItemName).toBe('CloudflareR2');
+
+      const runBlock = getEnvResolveRunBlock();
+      const checkLine = runBlock.split('\n').find((line) => line.includes('op item get'));
+      const warningLine = runBlock.split('\n').find((line) => line.includes('::warning::'));
+      expect(checkLine).toContain(`"${referencedItemName}"`);
+      expect(warningLine).toContain(`'${referencedItemName}'`);
     });
 
     /**
@@ -327,12 +343,12 @@ describe('deploy.yml (unit, job-dependency + guard wiring)', () => {
       }
     }
 
-    it('when the item is missing: strips every R2_* line and overrides the backend to local disk', () => {
+    it('when the item is missing: strips every R2_* line (including R2_ENDPOINT) and overrides the backend to local disk', () => {
       const { env, exitCode } = runEnvResolveStep(1);
       expect(exitCode).toBe(0);
       expect(env).toContain('OBJECT_STORE_BACKEND="local"');
       expect(env).toContain('OBJECT_STORE_ROOT="./.data/object-store"');
-      for (const key of ['R2_ACCOUNT_ID', 'R2_ACCESS_KEY_ID', 'R2_SECRET_ACCESS_KEY', 'R2_BUCKET']) {
+      for (const key of ['R2_ACCOUNT_ID', 'R2_ACCESS_KEY_ID', 'R2_SECRET_ACCESS_KEY', 'R2_BUCKET', 'R2_ENDPOINT']) {
         expect(env).not.toMatch(new RegExp(`^${key}=`, 'm'));
       }
     });
@@ -350,7 +366,45 @@ describe('deploy.yml (unit, job-dependency + guard wiring)', () => {
       expect(env).toMatch(/^OBJECT_STORE_BACKEND="r2"$/m);
       expect(env).not.toContain('op://');
       expect(env).toMatch(/^R2_ACCOUNT_ID="resolved-value"$/m);
+      expect(env).toMatch(/^R2_ENDPOINT="resolved-value"$/m);
       expect(env).not.toContain('OBJECT_STORE_ROOT=');
+    });
+  });
+
+  describe('R2 1Password item reference (86e331t1n)', () => {
+    // 86e331t1n: the "Cloudflare R2" (with a space) item was never actually
+    // provisioned in the deploy vault -- the human has now supplied real
+    // op:// reference paths for a "CloudflareR2" (no space) item, and wants
+    // the repo's references updated to match.
+    function loadEnvTemplate(): string {
+      return readFileSync(new URL('../../.env.template', import.meta.url), 'utf8');
+    }
+
+    it('AC1: R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, and R2_BUCKET each reference the CloudflareR2 item', () => {
+      const template = loadEnvTemplate();
+      const expectations: Record<string, string> = {
+        R2_ACCOUNT_ID: 'account_id',
+        R2_ACCESS_KEY_ID: 'access_key_id',
+        R2_SECRET_ACCESS_KEY: 'secret_access_key',
+        R2_BUCKET: 'bucket_name',
+      };
+      for (const [key, field] of Object.entries(expectations)) {
+        const line = template.match(new RegExp(`^${key}=.*$`, 'm'))?.[0];
+        expect(line).toBeDefined();
+        expect(line).toBe(`${key}="op://\${OP_VAULT}/CloudflareR2/${field}"`);
+      }
+    });
+
+    it('AC2: declares R2_ENDPOINT referencing CloudflareR2/s2_api_endpoint', () => {
+      const template = loadEnvTemplate();
+      const line = template.match(/^R2_ENDPOINT=.*$/m)?.[0];
+      expect(line).toBeDefined();
+      expect(line).toBe('R2_ENDPOINT="op://${OP_VAULT}/CloudflareR2/s2_api_endpoint"');
+    });
+
+    it('does not wire api_token into any R2/S3 credential -- no env var references it', () => {
+      const template = loadEnvTemplate();
+      expect(template).not.toContain('/CloudflareR2/api_token');
     });
   });
 

@@ -11,6 +11,7 @@ import { getClientDisputeDetail } from '../modules/portal/get-client-dispute-det
 import { listClientDisputeCommunications } from '../modules/portal/list-client-dispute-communications.js';
 import { getClaimDetail } from '../modules/claims/get-claim-detail.js';
 import { listClientClaimDocuments } from '../modules/portal/list-client-claim-documents.js';
+import { listClientAuditEvents } from '../modules/portal/list-client-audit-events.js';
 
 const MAX_LIMIT = 200;
 const VARIANCE_STATUS_VALUES = new Set<string>(ALL_VARIANCE_STATUSES);
@@ -18,6 +19,8 @@ const VARIANCE_STATUS_VALUES = new Set<string>(ALL_VARIANCE_STATUSES);
 const SORT_KEYS = new Set<ClientFindingsSortKey>(['variance', 'age']);
 const SORT_DIRS = new Set(['asc', 'desc']);
 const NUMERIC_STRING = /^-?\d+(\.\d+)?$/;
+// Same allowlist write-audit-event.ts's AuditEventInputSchema enforces on entity/event at write time.
+const AUDIT_ENTITY_OR_EVENT = /^[a-z][a-z0-9_.-]*$/;
 
 /**
  * Client portal content read APIs: invoice list + per-audit-run scorecard
@@ -76,6 +79,15 @@ const NUMERIC_STRING = /^-?\d+(\.\d+)?$/;
  * client_admin's equivalent access (P6.A.3, sibling capability) and the
  * portal UI shell/nav that will mount these views (P6.A.1) are explicitly
  * out of this task's boundary -- see this task's own Exclusions.
+ *
+ * GET /api/portal/audit-log (P6.B.6) is the one route on this surface where
+ * the explicit client_id predicate in list-client-audit-events.ts is NOT
+ * defense-in-depth -- audit_event.client_id is nullable ("NULL for
+ * system-global events", migration 0008), and the tenant_isolation RLS
+ * policy's USING clause admits NULL-client rows unconditionally. Without
+ * the module's own predicate, every system-global audit event across every
+ * tenant would leak into this response. `detail` (jsonb) is deliberately
+ * omitted from the response shape -- see the module's own header comment.
  */
 export async function registerPortalContentRoutes(routes: FastifyInstance): Promise<void> {
   await registerClientViewerAuthPreHandler(routes);
@@ -287,5 +299,75 @@ export async function registerPortalContentRoutes(routes: FastifyInstance): Prom
       return;
     }
     return { documents };
+  });
+
+  routes.get('/api/portal/audit-log', async (request, reply) => {
+    const clientId = request.tenantContext!.clientIds![0]!;
+
+    const query = request.query as {
+      entity?: string;
+      event?: string;
+      from?: string;
+      to?: string;
+      limit?: string;
+      offset?: string;
+    };
+
+    if (query.entity !== undefined && !AUDIT_ENTITY_OR_EVENT.test(query.entity)) {
+      await reply.code(400).send({ error: 'invalid entity: must match ^[a-z][a-z0-9_.-]*$' });
+      return;
+    }
+    if (query.event !== undefined && !AUDIT_ENTITY_OR_EVENT.test(query.event)) {
+      await reply.code(400).send({ error: 'invalid event: must match ^[a-z][a-z0-9_.-]*$' });
+      return;
+    }
+
+    let from: Date | undefined;
+    if (query.from !== undefined) {
+      from = new Date(query.from);
+      if (Number.isNaN(from.getTime())) {
+        await reply.code(400).send({ error: 'invalid from: must be a parseable date' });
+        return;
+      }
+    }
+
+    let to: Date | undefined;
+    if (query.to !== undefined) {
+      to = new Date(query.to);
+      if (Number.isNaN(to.getTime())) {
+        await reply.code(400).send({ error: 'invalid to: must be a parseable date' });
+        return;
+      }
+    }
+
+    let limit: number | undefined;
+    if (query.limit !== undefined) {
+      limit = Number(query.limit);
+      if (!Number.isInteger(limit) || limit < 1 || limit > MAX_LIMIT) {
+        await reply.code(400).send({ error: `invalid limit: must be an integer between 1 and ${MAX_LIMIT}` });
+        return;
+      }
+    }
+
+    let offset: number | undefined;
+    if (query.offset !== undefined) {
+      offset = Number(query.offset);
+      if (!Number.isInteger(offset) || offset < 0) {
+        await reply.code(400).send({ error: 'invalid offset: must be a non-negative integer' });
+        return;
+      }
+    }
+
+    const events = await withTenantTx(request.tenantContext!, (client) =>
+      listClientAuditEvents(client, clientId, {
+        entity: query.entity,
+        event: query.event,
+        from,
+        to,
+        limit,
+        offset,
+      }),
+    );
+    return { events };
   });
 }

@@ -610,6 +610,27 @@ export async function fetchClientPortalClaimDocuments(claimId: string): Promise<
   return ((await res.json()) as { documents: ClientPortalClaimDocumentRef[] }).documents;
 }
 
+/** Mirrors list-client-audit-events.ts's ClientAuditEventRow shape exactly (P6.B.6). `detail` is deliberately omitted -- see that module's own header comment. */
+export interface ClientPortalAuditEventRow {
+  id: string;
+  entity: string;
+  entityId: string | null;
+  event: string;
+  actorKind: string;
+  recordedAt: string;
+}
+
+export interface ClientPortalAuditLogPage {
+  events: ClientPortalAuditEventRow[];
+}
+
+/** Client portal (P6.B.6) -- unwired to nav, same disclosure as the P6.B.1..4 precedent. */
+export async function fetchClientPortalAuditLog(limit: number, offset: number): Promise<ClientPortalAuditLogPage> {
+  const res = await fetch(`/api/portal/audit-log?limit=${limit}&offset=${offset}`, { headers: authHeaders() });
+  if (!res.ok) throw new Error(`GET portal audit log failed: ${res.status}`);
+  return (await res.json()) as ClientPortalAuditLogPage;
+}
+
 export interface ClientRecoveryReportBucket {
   currency: string | null;
   claimed: string;

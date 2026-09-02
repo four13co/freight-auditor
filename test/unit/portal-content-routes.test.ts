@@ -632,4 +632,172 @@ describe('portal content APIs (unit, mocked withTenantTx + client-viewer-auth)',
       expect(docsRes.statusCode).toBe(404);
     }
   });
+
+  it('returns { events } for an authorized audit-log request, threading the resolved clientId through', async () => {
+    mockAuthorized();
+    vi.doMock('../../src/db/tenant-context.js', () => ({
+      withTenantTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
+    }));
+    const events = [{ id: 'e1', entity: 'dispute', entityId: 'd1', event: 'created', actorKind: 'analyst', recordedAt: '2026-01-01T00:00:00.000Z' }];
+    const listClientAuditEvents = vi.fn().mockResolvedValue(events);
+    vi.doMock('../../src/modules/portal/list-client-audit-events.js', () => ({ listClientAuditEvents }));
+    const { buildApp } = await import('../../src/server/app.js');
+    app = buildApp();
+
+    const res = await app.inject({ method: 'GET', url: '/api/portal/audit-log' });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ events });
+    expect(listClientAuditEvents).toHaveBeenCalledWith({}, CLIENT_ID, {
+      entity: undefined, event: undefined, from: undefined, to: undefined, limit: undefined, offset: undefined,
+    });
+  });
+
+  it('returns 200 with an empty events array when no audit events exist yet', async () => {
+    mockAuthorized();
+    vi.doMock('../../src/db/tenant-context.js', () => ({
+      withTenantTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
+    }));
+    vi.doMock('../../src/modules/portal/list-client-audit-events.js', () => ({
+      listClientAuditEvents: vi.fn().mockResolvedValue([]),
+    }));
+    const { buildApp } = await import('../../src/server/app.js');
+    app = buildApp();
+
+    const res = await app.inject({ method: 'GET', url: '/api/portal/audit-log' });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ events: [] });
+  });
+
+  it('threads entity/event/from/to/limit/offset query params through to listClientAuditEvents', async () => {
+    mockAuthorized();
+    vi.doMock('../../src/db/tenant-context.js', () => ({
+      withTenantTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
+    }));
+    const listClientAuditEvents = vi.fn().mockResolvedValue([]);
+    vi.doMock('../../src/modules/portal/list-client-audit-events.js', () => ({ listClientAuditEvents }));
+    const { buildApp } = await import('../../src/server/app.js');
+    app = buildApp();
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/portal/audit-log?entity=dispute&event=created&from=2026-01-01T00%3A00%3A00Z&to=2026-02-01T00%3A00%3A00Z&limit=10&offset=20',
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(listClientAuditEvents).toHaveBeenCalledWith({}, CLIENT_ID, {
+      entity: 'dispute',
+      event: 'created',
+      from: new Date('2026-01-01T00:00:00Z'),
+      to: new Date('2026-02-01T00:00:00Z'),
+      limit: 10,
+      offset: 20,
+    });
+  });
+
+  it('rejects an invalid entity query param with 400, without calling listClientAuditEvents', async () => {
+    mockAuthorized();
+    vi.doMock('../../src/db/tenant-context.js', () => ({ withTenantTx: vi.fn() }));
+    const listClientAuditEvents = vi.fn();
+    vi.doMock('../../src/modules/portal/list-client-audit-events.js', () => ({ listClientAuditEvents }));
+    const { buildApp } = await import('../../src/server/app.js');
+    app = buildApp();
+
+    const res = await app.inject({ method: 'GET', url: '/api/portal/audit-log?entity=NotValid!' });
+    expect(res.statusCode).toBe(400);
+    expect(listClientAuditEvents).not.toHaveBeenCalled();
+  });
+
+  it('rejects an invalid event query param with 400, without calling listClientAuditEvents', async () => {
+    mockAuthorized();
+    vi.doMock('../../src/db/tenant-context.js', () => ({ withTenantTx: vi.fn() }));
+    const listClientAuditEvents = vi.fn();
+    vi.doMock('../../src/modules/portal/list-client-audit-events.js', () => ({ listClientAuditEvents }));
+    const { buildApp } = await import('../../src/server/app.js');
+    app = buildApp();
+
+    const res = await app.inject({ method: 'GET', url: '/api/portal/audit-log?event=NotValid!' });
+    expect(res.statusCode).toBe(400);
+    expect(listClientAuditEvents).not.toHaveBeenCalled();
+  });
+
+  it('rejects an unparseable from date with 400, without calling listClientAuditEvents', async () => {
+    mockAuthorized();
+    vi.doMock('../../src/db/tenant-context.js', () => ({ withTenantTx: vi.fn() }));
+    const listClientAuditEvents = vi.fn();
+    vi.doMock('../../src/modules/portal/list-client-audit-events.js', () => ({ listClientAuditEvents }));
+    const { buildApp } = await import('../../src/server/app.js');
+    app = buildApp();
+
+    const res = await app.inject({ method: 'GET', url: '/api/portal/audit-log?from=not-a-date' });
+    expect(res.statusCode).toBe(400);
+    expect(listClientAuditEvents).not.toHaveBeenCalled();
+  });
+
+  it('rejects an unparseable to date with 400, without calling listClientAuditEvents', async () => {
+    mockAuthorized();
+    vi.doMock('../../src/db/tenant-context.js', () => ({ withTenantTx: vi.fn() }));
+    const listClientAuditEvents = vi.fn();
+    vi.doMock('../../src/modules/portal/list-client-audit-events.js', () => ({ listClientAuditEvents }));
+    const { buildApp } = await import('../../src/server/app.js');
+    app = buildApp();
+
+    const res = await app.inject({ method: 'GET', url: '/api/portal/audit-log?to=not-a-date' });
+    expect(res.statusCode).toBe(400);
+    expect(listClientAuditEvents).not.toHaveBeenCalled();
+  });
+
+  it('rejects an out-of-range limit on the audit-log route with 400', async () => {
+    mockAuthorized();
+    vi.doMock('../../src/db/tenant-context.js', () => ({ withTenantTx: vi.fn() }));
+    const listClientAuditEvents = vi.fn();
+    vi.doMock('../../src/modules/portal/list-client-audit-events.js', () => ({ listClientAuditEvents }));
+    const { buildApp } = await import('../../src/server/app.js');
+    app = buildApp();
+
+    const res = await app.inject({ method: 'GET', url: '/api/portal/audit-log?limit=0' });
+    expect(res.statusCode).toBe(400);
+    expect(listClientAuditEvents).not.toHaveBeenCalled();
+  });
+
+  it('rejects a negative offset on the audit-log route with 400', async () => {
+    mockAuthorized();
+    vi.doMock('../../src/db/tenant-context.js', () => ({ withTenantTx: vi.fn() }));
+    const listClientAuditEvents = vi.fn();
+    vi.doMock('../../src/modules/portal/list-client-audit-events.js', () => ({ listClientAuditEvents }));
+    const { buildApp } = await import('../../src/server/app.js');
+    app = buildApp();
+
+    const res = await app.inject({ method: 'GET', url: '/api/portal/audit-log?offset=-1' });
+    expect(res.statusCode).toBe(400);
+    expect(listClientAuditEvents).not.toHaveBeenCalled();
+  });
+
+  it('rejects an unauthenticated audit-log request with 401, without calling listClientAuditEvents', async () => {
+    mockClientViewerAuth(null);
+    vi.doMock('../../src/db/tenant-context.js', () => ({ withTenantTx: vi.fn() }));
+    const listClientAuditEvents = vi.fn();
+    vi.doMock('../../src/modules/portal/list-client-audit-events.js', () => ({ listClientAuditEvents }));
+    const { buildApp } = await import('../../src/server/app.js');
+    app = buildApp();
+
+    const res = await app.inject({ method: 'GET', url: '/api/portal/audit-log' });
+    expect(res.statusCode).toBe(401);
+    expect(listClientAuditEvents).not.toHaveBeenCalled();
+  });
+
+  it('has no POST/PUT/PATCH/DELETE route registered on the audit-log path -- no write surface exists to protect (No-gos: read-only)', async () => {
+    mockAuthorized();
+    vi.doMock('../../src/db/tenant-context.js', () => ({
+      withTenantTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
+    }));
+    vi.doMock('../../src/modules/portal/list-client-audit-events.js', () => ({ listClientAuditEvents: vi.fn() }));
+    const { buildApp } = await import('../../src/server/app.js');
+    app = buildApp();
+
+    for (const method of ['POST', 'PUT', 'PATCH', 'DELETE'] as const) {
+      const res = await app.inject({ method, url: '/api/portal/audit-log' });
+      expect(res.statusCode).toBe(404);
+    }
+  });
 });

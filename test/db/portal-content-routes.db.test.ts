@@ -11,6 +11,7 @@ import { getClientDisputeDetail } from '../../src/modules/portal/get-client-disp
 import { listClientDisputeCommunications } from '../../src/modules/portal/list-client-dispute-communications.js';
 import { getClaimDetail } from '../../src/modules/claims/get-claim-detail.js';
 import { listClientClaimDocuments } from '../../src/modules/portal/list-client-claim-documents.js';
+import { listClientAuditEvents } from '../../src/modules/portal/list-client-audit-events.js';
 
 /**
  * P6.B.1: GET /api/portal/invoices and GET /api/portal/scorecard/:auditRunId,
@@ -990,5 +991,267 @@ describe('client portal claim + document APIs (P6.B.4, DB, e2e)', () => {
       });
       expect(docsRes.statusCode).toBe(404);
     }
+  });
+});
+
+/**
+ * P6.B.6: GET /api/portal/audit-log, in its own describe block/fixture
+ * (not folded into the first block) because it needs a client_id IS NULL
+ * ("system-global") audit_event row -- a shape no other portal-content
+ * fixture seeds, and the one this route's explicit client_id predicate
+ * exists to exclude (see list-client-audit-events.ts's own header comment:
+ * RLS alone admits NULL-client rows, so this predicate is load-bearing
+ * here, not defense-in-depth).
+ */
+describe('client portal audit-log API (P6.B.6, DB, e2e)', () => {
+  let pool: pg.Pool;
+  let app: FastifyInstance;
+  let clientId: string;
+  let viewerUserId: string;
+  let adminUserId: string;
+  let otherClientId: string;
+  let eventAnalystId: string;
+  let eventAiId: string;
+  let eventSystemId: string;
+  let eventClientId: string;
+  let otherClientEventId: string;
+  let originalFlag: string | undefined;
+  const tag = `pca-${Date.now()}`;
+
+  beforeAll(async () => {
+    originalFlag = process.env.DEV_AUTH_HEADERS;
+    process.env.DEV_AUTH_HEADERS = '1';
+    pool = getPool();
+    const owner = await pool.connect();
+    try {
+      const c = await owner.query(`INSERT INTO client (name, slug) VALUES ('PCA', $1) RETURNING id`, [tag]);
+      clientId = c.rows[0].id;
+      const uViewer = await owner.query(`INSERT INTO app_user (email) VALUES ($1) RETURNING id`, [`${tag}-viewer@example.com`]);
+      viewerUserId = uViewer.rows[0].id;
+      const uAdmin = await owner.query(`INSERT INTO app_user (email) VALUES ($1) RETURNING id`, [`${tag}-admin@example.com`]);
+      adminUserId = uAdmin.rows[0].id;
+      await owner.query(`INSERT INTO membership (user_id, client_id, role) VALUES ($1, $2, 'client_viewer')`, [viewerUserId, clientId]);
+      await owner.query(`INSERT INTO membership (user_id, client_id, role) VALUES ($1, $2, 'client_admin')`, [adminUserId, clientId]);
+
+      const other = await owner.query(`INSERT INTO client (name, slug) VALUES ('PCA-Other', $1) RETURNING id`, [`${tag}-other`]);
+      otherClientId = other.rows[0].id;
+
+      // Staggered recorded_at (explicit, not the column default -- now() is
+      // transaction-stable across these sequential owner.query calls too,
+      // same trap documented in the P6.B.3/P6.B.4 fixtures above) so the
+      // newest-first ORDER BY assertion is deterministic. All four actor_kind
+      // values are represented (AC2).
+      const eAnalyst = await owner.query<{ id: string }>(
+        `INSERT INTO audit_event (client_id, entity, event, actor_kind, recorded_at)
+         VALUES ($1, 'dispute', 'created', 'analyst', now() - interval '4 hours') RETURNING id`,
+        [clientId],
+      );
+      eventAnalystId = eAnalyst.rows[0]!.id;
+      const eAi = await owner.query<{ id: string }>(
+        `INSERT INTO audit_event (client_id, entity, event, actor_kind, recorded_at)
+         VALUES ($1, 'invoice', 'scored', 'ai', now() - interval '3 hours') RETURNING id`,
+        [clientId],
+      );
+      eventAiId = eAi.rows[0]!.id;
+      const eSystem = await owner.query<{ id: string }>(
+        `INSERT INTO audit_event (client_id, entity, event, actor_kind, recorded_at)
+         VALUES ($1, 'claim', 'opened', 'system', now() - interval '2 hours') RETURNING id`,
+        [clientId],
+      );
+      eventSystemId = eSystem.rows[0]!.id;
+      const eClient = await owner.query<{ id: string }>(
+        `INSERT INTO audit_event (client_id, entity, event, actor_kind, recorded_at)
+         VALUES ($1, 'dispute', 'commented', 'client', now() - interval '1 hour') RETURNING id`,
+        [clientId],
+      );
+      eventClientId = eClient.rows[0]!.id;
+
+      const eOther = await owner.query<{ id: string }>(
+        `INSERT INTO audit_event (client_id, entity, event, actor_kind, recorded_at)
+         VALUES ($1, 'dispute', 'created', 'analyst', now()) RETURNING id`,
+        [otherClientId],
+      );
+      otherClientEventId = eOther.rows[0]!.id;
+
+      // System-global event: client_id IS NULL. RLS's own USING clause
+      // admits this row unconditionally (client_id IS NULL OR ...) -- only
+      // this route's explicit client_id = $N predicate keeps it out of a
+      // client_viewer's result set. This is the discriminating case the
+      // rest of this task's cross-tenant test can't exercise (a NULL client
+      // is not "a different tenant", it's no tenant).
+      await owner.query(
+        `INSERT INTO audit_event (client_id, entity, event, actor_kind, recorded_at)
+         VALUES (NULL, 'system', 'migration_run', 'system', now())`,
+      );
+    } finally {
+      owner.release();
+    }
+    app = buildApp();
+  });
+
+  afterAll(async () => {
+    process.env.DEV_AUTH_HEADERS = originalFlag;
+    await app.close();
+    const owner = await pool.connect();
+    try {
+      await owner.query(`DELETE FROM audit_event WHERE client_id = ANY($1) OR client_id IS NULL`, [[clientId, otherClientId]]);
+      await owner.query(`DELETE FROM membership WHERE client_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM app_user WHERE id = ANY($1)`, [[viewerUserId, adminUserId]]);
+      await owner.query(`DELETE FROM client WHERE id = ANY($1)`, [[clientId, otherClientId]]);
+    } finally {
+      owner.release();
+    }
+    await closePool();
+  });
+
+  // AC1: client-scoped, newest-first. Also proves the NULL-client
+  // system-global event and the other tenant's event are both excluded.
+  it('lists only the caller\'s own audit events, newest recorded_at first', async () => {
+    const res = await app.inject({
+      method: 'GET', url: '/api/portal/audit-log', headers: { 'x-client-id': clientId, 'x-user-id': viewerUserId },
+    });
+    expect(res.statusCode).toBe(200);
+    const ids = res.json().events.map((e: { id: string }) => e.id);
+    expect(ids).toEqual([eventClientId, eventSystemId, eventAiId, eventAnalystId]);
+    expect(ids).not.toContain(otherClientEventId);
+  });
+
+  // AC2: each event's actorKind is present and distinguishable per row.
+  it('surfaces a distinct actorKind for each of analyst/ai/system/client events', async () => {
+    const res = await app.inject({
+      method: 'GET', url: '/api/portal/audit-log', headers: { 'x-client-id': clientId, 'x-user-id': viewerUserId },
+    });
+    const byId = new Map(res.json().events.map((e: { id: string; actorKind: string }) => [e.id, e.actorKind]));
+    expect(byId.get(eventAnalystId)).toBe('analyst');
+    expect(byId.get(eventAiId)).toBe('ai');
+    expect(byId.get(eventSystemId)).toBe('system');
+    expect(byId.get(eventClientId)).toBe('client');
+  });
+
+  // AC3: pagination bounds are enforced at the HTTP layer too (unit test on
+  // list-client-audit-events.ts itself already covers the module's own
+  // default-limit/explicit-limit/offset query-building in isolation).
+  it('honors limit/offset for pagination, in newest-first order', async () => {
+    const page1 = await app.inject({
+      method: 'GET', url: '/api/portal/audit-log?limit=2&offset=0', headers: { 'x-client-id': clientId, 'x-user-id': viewerUserId },
+    });
+    expect(page1.json().events.map((e: { id: string }) => e.id)).toEqual([eventClientId, eventSystemId]);
+
+    const page2 = await app.inject({
+      method: 'GET', url: '/api/portal/audit-log?limit=2&offset=2', headers: { 'x-client-id': clientId, 'x-user-id': viewerUserId },
+    });
+    expect(page2.json().events.map((e: { id: string }) => e.id)).toEqual([eventAiId, eventAnalystId]);
+  });
+
+  it('filters by entity', async () => {
+    const res = await app.inject({
+      method: 'GET', url: '/api/portal/audit-log?entity=claim', headers: { 'x-client-id': clientId, 'x-user-id': viewerUserId },
+    });
+    expect(res.json().events.map((e: { id: string }) => e.id)).toEqual([eventSystemId]);
+  });
+
+  it('filters by event', async () => {
+    const res = await app.inject({
+      method: 'GET', url: '/api/portal/audit-log?event=scored', headers: { 'x-client-id': clientId, 'x-user-id': viewerUserId },
+    });
+    expect(res.json().events.map((e: { id: string }) => e.id)).toEqual([eventAiId]);
+  });
+
+  it('filters by date range (from/to)', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: `/api/portal/audit-log?from=${encodeURIComponent(new Date(Date.now() - 3.5 * 3600_000).toISOString())}&to=${encodeURIComponent(new Date(Date.now() - 1.5 * 3600_000).toISOString())}`,
+      headers: { 'x-client-id': clientId, 'x-user-id': viewerUserId },
+    });
+    // Window covers the 'ai' (-3h) and 'system' (-2h) events only.
+    expect(res.json().events.map((e: { id: string }) => e.id).sort()).toEqual([eventAiId, eventSystemId].sort());
+  });
+
+  // AC4: explicit empty state -- no error, an empty array, when filters
+  // match nothing.
+  it('returns an empty events array, not an error, when filters match nothing', async () => {
+    const res = await app.inject({
+      method: 'GET', url: '/api/portal/audit-log?entity=nonexistent-entity', headers: { 'x-client-id': clientId, 'x-user-id': viewerUserId },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ events: [] });
+  });
+
+  it('rejects an unauthenticated audit-log request', async () => {
+    const res = await app.inject({ method: 'GET', url: '/api/portal/audit-log' });
+    expect(res.statusCode).toBe(401);
+  });
+
+  it('rejects a client_admin caller on the audit-log route -- sibling capability, out of this task\'s scope', async () => {
+    const res = await app.inject({
+      method: 'GET', url: '/api/portal/audit-log', headers: { 'x-client-id': clientId, 'x-user-id': adminUserId },
+    });
+    expect(res.statusCode).toBe(401);
+  });
+
+  it('rejects a malformed entity query param with 400', async () => {
+    const res = await app.inject({
+      method: 'GET', url: '/api/portal/audit-log?entity=Not_Valid!', headers: { 'x-client-id': clientId, 'x-user-id': viewerUserId },
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it('has no POST/PUT/PATCH/DELETE route registered on the audit-log path -- no write surface exists to protect (No-gos: read-only)', async () => {
+    for (const method of ['POST', 'PUT', 'PATCH', 'DELETE'] as const) {
+      const res = await app.inject({
+        method, url: '/api/portal/audit-log', headers: { 'x-client-id': clientId, 'x-user-id': viewerUserId },
+      });
+      expect(res.statusCode).toBe(404);
+    }
+  });
+});
+
+/**
+ * Module-level proof that listClientAuditEvents' explicit client_id
+ * predicate is load-bearing (not defense-in-depth) against a NULL-client
+ * "system-global" row -- exercised directly against the module (not just
+ * through the route) since this is the one predicate on this whole surface
+ * where RLS alone would NOT have caught the leak.
+ */
+describe('listClientAuditEvents: explicit client_id predicate excludes NULL-client rows (DB)', () => {
+  let pool: pg.Pool;
+  let clientId: string;
+  const tag = `pcan-${Date.now()}`;
+
+  beforeAll(async () => {
+    pool = getPool();
+    const owner = await pool.connect();
+    try {
+      const c = await owner.query(`INSERT INTO client (name, slug) VALUES ('PCAN', $1) RETURNING id`, [tag]);
+      clientId = c.rows[0].id;
+      await owner.query(
+        `INSERT INTO audit_event (client_id, entity, event, actor_kind) VALUES ($1, 'dispute', 'created', 'analyst')`,
+        [clientId],
+      );
+      await owner.query(
+        `INSERT INTO audit_event (client_id, entity, event, actor_kind) VALUES (NULL, 'system', 'migration_run', 'system')`,
+      );
+    } finally {
+      owner.release();
+    }
+  });
+
+  afterAll(async () => {
+    const owner = await pool.connect();
+    try {
+      await owner.query(`DELETE FROM audit_event WHERE client_id = $1 OR client_id IS NULL`, [clientId]);
+      await owner.query(`DELETE FROM client WHERE id = $1`, [clientId]);
+    } finally {
+      owner.release();
+    }
+    await closePool();
+  });
+
+  it('never returns the NULL-client system-global row for a real clientId, even with RLS scoped to that client only', async () => {
+    const rows = await withTenantTx({ clientIds: [clientId], internal: false }, (client) =>
+      listClientAuditEvents(client, clientId),
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.entity).toBe('dispute');
   });
 });

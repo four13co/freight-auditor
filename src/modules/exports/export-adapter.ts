@@ -44,6 +44,6 @@ export class ExportAdapterRegistry {
   }
 }
 
-function normalizeSystemCode(systemCode: string): string {
+export function normalizeSystemCode(systemCode: string): string {
   return systemCode.trim().toUpperCase();
 }

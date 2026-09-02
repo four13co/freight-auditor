@@ -95,6 +95,21 @@ describe('GET /metrics (unit, mocked withTenantReadTx + collectors)', () => {
     expect(res.body.indexOf('freight_job_queue_depth')).toBeLessThan(res.body.indexOf('freight_ai_proposals_total'));
   });
 
+  it('P6.C.5: includes the replay-integrity-failure counter alongside queue/discovery metrics', async () => {
+    const { recordReplayIntegrityFailure, resetReplayAlertMetricsForTest } = await import('../../src/jobs/replay-alert-metrics.js');
+    resetReplayAlertMetricsForTest();
+    recordReplayIntegrityFailure();
+    mockCollectors();
+    const { buildApp } = await import('../../src/server/app.js');
+    app = buildApp();
+
+    const res = await app.inject({ method: 'GET', url: '/metrics' });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body).toContain('freight_replay_integrity_failures_total 1');
+    resetReplayAlertMetricsForTest();
+  });
+
   it('AC4: returns a 5xx (not a misleadingly-empty 200) when the underlying queue-metrics query fails', async () => {
     mockCollectors({ queueError: true });
     const { buildApp } = await import('../../src/server/app.js');

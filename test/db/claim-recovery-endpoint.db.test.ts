@@ -177,3 +177,93 @@ describe('claim + recovery query modules: explicit client_id predicate (DB)', ()
     expect(detail?.cumulativeRecovered).toBe('200.0000');
   });
 });
+
+/**
+ * P6.C.1: listClaims' keyset-cursor pagination against real Postgres --
+ * total ordering under a same-opened_at tie (the exact case the id
+ * tiebreaker was added to fix), and that a cursor never overrides the
+ * explicit clientId predicate to cross a tenant boundary.
+ */
+describe('listClaims: keyset cursor pagination (DB, P6.C.1)', () => {
+  let pool: pg.Pool;
+  let clientAId: string;
+  let clientBId: string;
+  let claimIds: string[];
+  const tag = `lcp-${Date.now()}`;
+
+  beforeAll(async () => {
+    pool = getPool();
+    const owner = await pool.connect();
+    try {
+      const a = await owner.query(`INSERT INTO client (name, slug) VALUES ('LCP-A', $1) RETURNING id`, [`${tag}-a`]);
+      clientAId = a.rows[0].id;
+      const b = await owner.query(`INSERT INTO client (name, slug) VALUES ('LCP-B', $1) RETURNING id`, [`${tag}-b`]);
+      clientBId = b.rows[0].id;
+
+      await withTenantTx({ clientIds: [clientAId], internal: true }, async (c) => {
+        // r1/r2 share the exact same opened_at -- the tie the id tiebreaker
+        // (ORDER BY opened_at DESC, id ASC) exists to resolve; without it,
+        // keyset pagination could drop or duplicate one of these two across
+        // a page boundary.
+        const tie = '2026-01-01T00:00:00Z';
+        const r1 = await c.query(
+          `INSERT INTO claim (client_id, amount_claimed, currency, status, opened_at) VALUES ($1, '100.0000', 'USD', 'open', $2) RETURNING id`,
+          [clientAId, tie],
+        );
+        const r2 = await c.query(
+          `INSERT INTO claim (client_id, amount_claimed, currency, status, opened_at) VALUES ($1, '200.0000', 'USD', 'open', $2) RETURNING id`,
+          [clientAId, tie],
+        );
+        const r3 = await c.query(
+          `INSERT INTO claim (client_id, amount_claimed, currency, status, opened_at) VALUES ($1, '300.0000', 'USD', 'open', '2026-01-02T00:00:00Z') RETURNING id`,
+          [clientAId],
+        );
+        claimIds = [r1.rows[0].id, r2.rows[0].id, r3.rows[0].id];
+      });
+
+      await withTenantTx({ clientIds: [clientBId], internal: true }, (c) =>
+        c.query(`INSERT INTO claim (client_id, amount_claimed, currency, status) VALUES ($1, '999.0000', 'USD', 'open')`, [clientBId]),
+      );
+    } finally {
+      owner.release();
+    }
+  });
+
+  afterAll(async () => {
+    const owner = await pool.connect();
+    try {
+      await owner.query(`DELETE FROM claim WHERE client_id IN ($1, $2)`, [clientAId, clientBId]);
+      await owner.query(`DELETE FROM client WHERE id IN ($1, $2)`, [clientAId, clientBId]);
+    } finally {
+      owner.release();
+    }
+    await closePool();
+  });
+
+  it('pages through all rows with limit=1, one row at a time, with no drops or duplicates across a same-opened_at tie', async () => {
+    const seen: string[] = [];
+    let cursor: { id: string } | undefined;
+    for (let i = 0; i < claimIds.length + 1; i++) {
+      const rows = await withTenantTx({ clientIds: [clientAId], internal: true }, (c) =>
+        listClaims(c, clientAId, { limit: 1, cursor }),
+      );
+      if (rows.length === 0) break;
+      seen.push(rows[0]!.id);
+      cursor = { id: rows[0]!.id };
+    }
+    expect(seen.sort()).toEqual([...claimIds].sort());
+  });
+
+  it('a cursor minted from client A rows never lets a client B query see a client A row', async () => {
+    const aRows = await withTenantTx({ clientIds: [clientAId], internal: true }, (c) => listClaims(c, clientAId, { limit: 10 }));
+    const lastA = aRows[aRows.length - 1]!;
+
+    // The cursor's anchor lookup is itself gated by the explicit client_id
+    // predicate (client_id = clientBId), so a client-A id can never resolve
+    // as an anchor here -- the whole query comes back empty, not a leak.
+    const bRows = await withTenantTx({ clientIds: [clientBId], internal: false }, (c) =>
+      listClaims(c, clientBId, { limit: 10, cursor: { id: lastA.id } }),
+    );
+    expect(bRows.some((r) => claimIds.includes(r.id))).toBe(false);
+  });
+});

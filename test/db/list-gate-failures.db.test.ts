@@ -133,4 +133,61 @@ describe('listGateFailures (DB)', () => {
     );
     expect(bRows).toHaveLength(0);
   });
+
+  it('P6.C.1: keyset-cursor pagination with limit=1 recovers every gate_failure row from a multi-failure run, no drops or duplicates', async () => {
+    // Isolated by auditRunId, not invoiceNumber -- every fixture in this
+    // suite reuses the same invoice-number text (INV210003), so earlier its
+    // in this describe block (AC1-AC3) leave their own gate_failure rows
+    // under that same label. auditRunId is unique per pipeline run and is
+    // the only reliable way to scope to exactly this test's own rows.
+    const { auditRunId, ownIds } = await withTenantTx({ clientIds: [clientAId], internal: true }, async (c) => {
+      const { auditRunId: runId, outcome } = await runPipeline(c, clientAId, MALFORMED_210_BADAMOUNT);
+      expect(outcome).toBe('REJECTED_REWORK');
+      const rows = await listGateFailures(c, { clientIds: [clientAId] });
+      return { auditRunId: runId, ownIds: rows.filter((r) => r.auditRunId === runId).map((r) => r.id) };
+    });
+    expect(ownIds.length).toBeGreaterThanOrEqual(2);
+
+    // Total accumulated client-A rows across the whole describe block bound
+    // how many limit=1 pages could possibly exist to page through.
+    const allRows = await withTenantTx({ clientIds: [clientAId], internal: true }, (c) => listGateFailures(c, { clientIds: [clientAId] }));
+
+    const seen: string[] = [];
+    let cursor: { id: string } | undefined;
+    for (let i = 0; i < allRows.length + 1; i++) {
+      const page = await withTenantTx({ clientIds: [clientAId], internal: true }, (c) =>
+        listGateFailures(c, { clientIds: [clientAId], limit: 1, cursor }),
+      );
+      if (page.length === 0) break;
+      const row = page[0]!;
+      if (row.auditRunId === auditRunId) seen.push(row.id);
+      cursor = { id: row.id };
+    }
+    expect(new Set(seen)).toEqual(new Set(ownIds));
+    expect(seen.length).toBe(ownIds.length);
+  });
+
+  it('P6.C.1: a cursor combined with a carrier filter still executes correctly (the cursor_anchor comma-join sits after every carrier/invoice JOIN, not between them)', async () => {
+    const { carrier } = await withTenantTx({ clientIds: [clientAId], internal: true }, async (c) => {
+      const { auditRunId: runId, outcome } = await runPipeline(c, clientAId, MALFORMED_210_NOFOOT);
+      expect(outcome).toBe('REJECTED_REWORK');
+      const rows = await listGateFailures(c, { clientIds: [clientAId] });
+      const own = rows.find((r) => r.auditRunId === runId)!;
+      return { carrier: own.carrierName! };
+    });
+
+    const page1 = await withTenantTx({ clientIds: [clientAId], internal: true }, (c) =>
+      listGateFailures(c, { clientIds: [clientAId], carrier, limit: 1 }),
+    );
+    expect(page1).toHaveLength(1);
+    expect(page1[0]!.carrierName).toBe(carrier);
+
+    const page2 = await withTenantTx({ clientIds: [clientAId], internal: true }, (c) =>
+      listGateFailures(c, { clientIds: [clientAId], carrier, limit: 1, cursor: { id: page1[0]!.id } }),
+    );
+    // Only proving the carrier+cursor combination runs without a SQL error
+    // and stays scoped to `carrier` -- not that a second matching row exists.
+    expect(page2.every((r) => r.carrierName === carrier)).toBe(true);
+    expect(page2.every((r) => r.id !== page1[0]!.id)).toBe(true);
+  });
 });

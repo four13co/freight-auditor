@@ -38,6 +38,15 @@ export interface ListGateFailuresOptions {
   carrier?: string;
   limit?: number;
   offset?: number;
+  /**
+   * Keyset position (P6.C.1): resume after this row. Only `id` is used --
+   * see ListClaimsOptions.cursor's comment (list-claims.ts) for why a
+   * client-round-tripped timestamp can't be trusted for the tie-break
+   * (node-pg's timestamptz parser truncates to millisecond precision while
+   * the column holds microseconds). The query re-reads this row's own
+   * recorded_at fresh from the DB instead.
+   */
+  cursor?: { id: string };
 }
 
 const DEFAULT_LIMIT = 50;
@@ -65,10 +74,33 @@ export async function listGateFailures(
     conditions.push(`carrier.name = $${params.length}`);
   }
 
+  let cursorAnchorFrom = '';
+  if (options.cursor) {
+    params.push(options.cursor.id);
+    const cursorIdIdx = params.length;
+    // cursor_anchor re-reads the anchor row's OWN recorded_at from the DB
+    // (see ListGateFailuresOptions.cursor's comment for why); RLS alone
+    // scopes it, matching this function's existing convention (no explicit
+    // client_id predicate elsewhere in this query either).
+    cursorAnchorFrom = `, (
+      SELECT recorded_at AS anchor_recorded_at, id AS anchor_id
+        FROM gate_failure AS cursor_row
+       WHERE cursor_row.id = $${cursorIdIdx}
+    ) cursor_anchor`;
+    conditions.push('(gate_failure.recorded_at < cursor_anchor.anchor_recorded_at OR (gate_failure.recorded_at = cursor_anchor.anchor_recorded_at AND gate_failure.id > cursor_anchor.anchor_id))');
+  }
+
   const where = `WHERE ${conditions.join(' AND ')}`;
   const limit = options.limit ?? DEFAULT_LIMIT;
-  const offset = options.offset ?? 0;
-  params.push(limit, offset);
+  let limitOffsetClause: string;
+  if (options.cursor) {
+    params.push(limit);
+    limitOffsetClause = `LIMIT $${params.length}`;
+  } else {
+    const offset = options.offset ?? 0;
+    params.push(limit, offset);
+    limitOffsetClause = `LIMIT $${params.length - 1} OFFSET $${params.length}`;
+  }
 
   const result = await client.query<{
     id: string;
@@ -99,10 +131,10 @@ export async function listGateFailures(
      JOIN invoice ON invoice.id = audit_run.invoice_id
      LEFT JOIN carrier ON carrier.id = invoice.carrier_id
      JOIN criterion ON criterion.id = gate_failure.criterion_id
-     LEFT JOIN contract_clause ON contract_clause.id = gate_failure.clause_id
+     LEFT JOIN contract_clause ON contract_clause.id = gate_failure.clause_id${cursorAnchorFrom}
      ${where}
      ORDER BY gate_failure.recorded_at DESC, gate_failure.id
-     LIMIT $${params.length - 1} OFFSET $${params.length}`,
+     ${limitOffsetClause}`,
     params,
   );
 

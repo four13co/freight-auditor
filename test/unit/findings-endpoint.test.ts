@@ -1,5 +1,6 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
+import { encodeCursor } from '../../src/shared/cursor-pagination.js';
 
 // 86e2xcna3: registerFindingsRoutes now calls the shared
 // registerTenantAuthPreHandler (tenant-auth.ts) instead of registering its
@@ -239,7 +240,8 @@ describe('GET /api/findings (unit, mocked withTenantTx + tenant-auth)', () => {
       });
 
       expect(res.statusCode).toBe(200);
-      expect(res.json()).toEqual({ gateFailures: [{ id: 'gf1', defect: 'x' }] });
+      // P6.C.1: every /api/gate-failures response now also carries nextCursor.
+      expect(res.json()).toEqual({ gateFailures: [{ id: 'gf1', defect: 'x' }], nextCursor: null });
     });
 
     it('passes the carrier query param through to listGateFailures', async () => {
@@ -258,7 +260,8 @@ describe('GET /api/findings (unit, mocked withTenantTx + tenant-auth)', () => {
         headers: { 'x-client-id': 'client-abc', 'x-user-id': 'user-1' },
       });
 
-      expect(listGateFailures).toHaveBeenCalledWith({}, { carrier: 'ACME' });
+      // P6.C.1: limit is always inflated to effectiveLimit+1 internally.
+      expect(listGateFailures).toHaveBeenCalledWith({}, { carrier: 'ACME', limit: 51, offset: undefined, cursor: undefined });
     });
 
     it('returns 401 when the request is not authorized', async () => {
@@ -274,6 +277,113 @@ describe('GET /api/findings (unit, mocked withTenantTx + tenant-auth)', () => {
       const res = await app.inject({ method: 'GET', url: '/api/gate-failures' });
       expect(res.statusCode).toBe(401);
       expect(listGateFailures).not.toHaveBeenCalled();
+    });
+
+    it('rejects combining cursor with offset, without calling listGateFailures (P6.C.1)', async () => {
+      mockAuthorized();
+      const listGateFailures = vi.fn();
+      vi.doMock('../../src/db/tenant-context.js', () => ({
+        withTenantTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
+      }));
+      vi.doMock('../../src/modules/findings/list-gate-failures.js', () => ({ listGateFailures }));
+      const { buildApp } = await import('../../src/server/app.js');
+      app = buildApp();
+
+      const cursor = encodeCursor({ v: '2026-01-01T00:00:00.000Z', id: '10000000-0000-4000-8000-000000000001' });
+      const res = await app.inject({
+        method: 'GET', url: `/api/gate-failures?cursor=${cursor}&offset=10`,
+        headers: { 'x-client-id': 'client-abc', 'x-user-id': 'user-1' },
+      });
+      expect(res.statusCode).toBe(400);
+      expect(listGateFailures).not.toHaveBeenCalled();
+    });
+
+    it('rejects a malformed cursor with 400, without calling listGateFailures (P6.C.1)', async () => {
+      mockAuthorized();
+      const listGateFailures = vi.fn();
+      vi.doMock('../../src/db/tenant-context.js', () => ({
+        withTenantTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
+      }));
+      vi.doMock('../../src/modules/findings/list-gate-failures.js', () => ({ listGateFailures }));
+      const { buildApp } = await import('../../src/server/app.js');
+      app = buildApp();
+
+      const res = await app.inject({
+        method: 'GET', url: '/api/gate-failures?cursor=not-a-valid-cursor',
+        headers: { 'x-client-id': 'client-abc', 'x-user-id': 'user-1' },
+      });
+      expect(res.statusCode).toBe(400);
+      expect(listGateFailures).not.toHaveBeenCalled();
+    });
+
+    it('decodes a valid cursor and threads it through to listGateFailures (P6.C.1)', async () => {
+      mockAuthorized();
+      const listGateFailures = vi.fn().mockResolvedValue([]);
+      vi.doMock('../../src/db/tenant-context.js', () => ({
+        withTenantTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
+      }));
+      vi.doMock('../../src/modules/findings/list-gate-failures.js', () => ({ listGateFailures }));
+      const { buildApp } = await import('../../src/server/app.js');
+      app = buildApp();
+
+      const cursor = encodeCursor({ v: '2026-01-01T00:00:00.000Z', id: '10000000-0000-4000-8000-000000000001' });
+      const res = await app.inject({
+        method: 'GET', url: `/api/gate-failures?cursor=${cursor}`,
+        headers: { 'x-client-id': 'client-abc', 'x-user-id': 'user-1' },
+      });
+      expect(res.statusCode).toBe(200);
+      expect(listGateFailures).toHaveBeenCalledWith({}, {
+        carrier: undefined,
+        limit: 51,
+        offset: undefined,
+        cursor: { id: '10000000-0000-4000-8000-000000000001' },
+      });
+    });
+
+    it('rejects an out-of-range limit with 400 without calling listGateFailures (P6.C.1)', async () => {
+      mockAuthorized();
+      const listGateFailures = vi.fn();
+      vi.doMock('../../src/db/tenant-context.js', () => ({
+        withTenantTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
+      }));
+      vi.doMock('../../src/modules/findings/list-gate-failures.js', () => ({ listGateFailures }));
+      const { buildApp } = await import('../../src/server/app.js');
+      app = buildApp();
+
+      const res = await app.inject({
+        method: 'GET', url: '/api/gate-failures?limit=9999',
+        headers: { 'x-client-id': 'client-abc', 'x-user-id': 'user-1' },
+      });
+      expect(res.statusCode).toBe(400);
+      expect(listGateFailures).not.toHaveBeenCalled();
+    });
+
+    it('trims the overflow row and returns a nextCursor when more rows exist than the page limit (P6.C.1)', async () => {
+      mockAuthorized();
+      const rows = [
+        { id: 'gf3', defect: 'x', recordedAt: new Date('2026-01-03T00:00:00.000Z') },
+        { id: 'gf2', defect: 'x', recordedAt: new Date('2026-01-02T00:00:00.000Z') },
+        { id: 'gf1', defect: 'x', recordedAt: new Date('2026-01-01T00:00:00.000Z') },
+      ];
+      const listGateFailures = vi.fn().mockResolvedValue(rows);
+      vi.doMock('../../src/db/tenant-context.js', () => ({
+        withTenantTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
+      }));
+      vi.doMock('../../src/modules/findings/list-gate-failures.js', () => ({ listGateFailures }));
+      const { buildApp } = await import('../../src/server/app.js');
+      app = buildApp();
+
+      const res = await app.inject({
+        method: 'GET', url: '/api/gate-failures?limit=2',
+        headers: { 'x-client-id': 'client-abc', 'x-user-id': 'user-1' },
+      });
+      expect(res.statusCode).toBe(200);
+      const body = res.json();
+      expect(body.gateFailures).toEqual([
+        { id: 'gf3', defect: 'x', recordedAt: '2026-01-03T00:00:00.000Z' },
+        { id: 'gf2', defect: 'x', recordedAt: '2026-01-02T00:00:00.000Z' },
+      ]);
+      expect(body.nextCursor).not.toBeNull();
     });
   });
 

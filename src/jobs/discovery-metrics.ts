@@ -1,4 +1,5 @@
 import type pg from 'pg';
+import { escapeLabelValue } from './format-metrics.js';
 
 /**
  * Aggregate-only observability for the discovery/proposal pipeline (P3.D.9):
@@ -83,8 +84,7 @@ export async function collectDiscoveryMetrics(client: pg.PoolClient): Promise<Di
 }
 
 function label(pairs: Record<string, string>): string {
-  const escape = (v: string) => v.replaceAll('\\', '\\\\').replaceAll('"', '\\"');
-  return Object.entries(pairs).map(([k, v]) => `${k}="${escape(v)}"`).join(',');
+  return Object.entries(pairs).map(([k, v]) => `${k}="${escapeLabelValue(v)}"`).join(',');
 }
 
 export function renderDiscoveryMetrics(metrics: DiscoveryMetrics): string {

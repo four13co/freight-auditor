@@ -107,6 +107,69 @@ describe('claim + recovery APIs (DB, e2e)', () => {
     });
     expect(res.statusCode).toBe(400);
   });
+
+  /**
+   * P6.A.6 (86e2zfjrj): adversarial cross-tenant probe at the real HTTP
+   * layer -- a genuine second tenant, membership, and claim, then a request
+   * authenticated as tenant A's own real user attempting to read tenant B's
+   * resource. Distinct from the "explicit client_id predicate" describe
+   * block below: that block calls listClaims/getClaimDetail directly under
+   * an internal:true scope, which bypasses both RLS and the tenant-auth
+   * preHandler entirely -- it proves the query-level predicate, not that
+   * composing preHandler -> RLS -> route handler denies a real attacker.
+   * This is the read half of the read/mutate AC; claims/recovery has no
+   * mutating route (list + detail only), so there is no mutate branch to
+   * probe for this family -- see portal-admin-routes.db.test.ts:199-204 for
+   * the mutate-branch precedent on a route family that has a write route.
+   */
+  it('cross-tenant: an authenticated tenant-A user cannot list or read a tenant-B claim via the real routes', async () => {
+    const owner = await pool.connect();
+    let otherClientId: string;
+    let otherUserId: string;
+    try {
+      const c = await owner.query(`INSERT INTO client (name, slug) VALUES ('CRA-other', $1) RETURNING id`, [`${tag}-other`]);
+      otherClientId = c.rows[0].id;
+      const u = await owner.query(`INSERT INTO app_user (email) VALUES ($1) RETURNING id`, [`${tag}-other@example.com`]);
+      otherUserId = u.rows[0].id;
+      await owner.query(`INSERT INTO membership (user_id, client_id, role) VALUES ($1, $2, 'analyst')`, [otherUserId, otherClientId]);
+    } finally {
+      owner.release();
+    }
+    const otherClaimId: string = await withTenantTx({ clientIds: [otherClientId], internal: true }, async (c2) => {
+      const claim = await c2.query(
+        `INSERT INTO claim (client_id, amount_claimed, currency, status) VALUES ($1, '900.0000', 'USD', 'open') RETURNING id`,
+        [otherClientId],
+      );
+      return claim.rows[0].id;
+    });
+
+    // clientId/userId (this describe block's own tenant A) request tenant
+    // B's real claim id -- with tenant A's own valid header pair, not
+    // otherClientId's.
+    const listRes = await app.inject({
+      method: 'GET', url: '/api/claims', headers: { 'x-client-id': clientId, 'x-user-id': userId },
+    });
+    expect(listRes.statusCode).toBe(200);
+    expect(listRes.json().claims.some((c: { id: string }) => c.id === otherClaimId)).toBe(false);
+
+    const detailRes = await app.inject({
+      method: 'GET', url: `/api/claims/${otherClaimId}`, headers: { 'x-client-id': clientId, 'x-user-id': userId },
+    });
+    // 404, not 403: the route must not confirm the resource exists under a
+    // clientId the caller cannot see -- same non-leaking shape as
+    // portal-admin-routes.db.test.ts's own cross-tenant PATCH probe.
+    expect(detailRes.statusCode).toBe(404);
+
+    const cleanup = await pool.connect();
+    try {
+      await cleanup.query(`DELETE FROM claim WHERE id = $1`, [otherClaimId]);
+      await cleanup.query(`DELETE FROM membership WHERE user_id = $1`, [otherUserId]);
+      await cleanup.query(`DELETE FROM app_user WHERE id = $1`, [otherUserId]);
+      await cleanup.query(`DELETE FROM client WHERE id = $1`, [otherClientId]);
+    } finally {
+      cleanup.release();
+    }
+  });
 });
 
 /**

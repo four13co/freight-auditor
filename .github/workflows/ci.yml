@@ -351,6 +351,9 @@ jobs:
       - name: Seed e2e real-session auth user
         run: npm run seed:e2e-auth-user
 
+      - name: Seed e2e real-session portal-member user
+        run: npm run seed:e2e-portal-user
+
       # No VITE_DEV_AUTH_HEADERS here (unlike web-fullstack's identical step)
       # -- this is the entire point of this job: App.tsx's
       # devHeaderPathActive() must be false so the real login form renders

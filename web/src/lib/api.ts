@@ -203,6 +203,43 @@ export async function fetchAndStoreClientId(): Promise<void> {
   if (body.clientIds[0]) sessionStorage.setItem(CLIENT_ID_STORAGE_KEY, body.clientIds[0]);
 }
 
+/**
+ * 86e2zfjmb: the actor-type half of GET /api/auth/memberships' response --
+ * App.tsx calls this (alongside fetchAndStoreClientId, in parallel) once a
+ * real session exists, to decide whether to route to the internal Dashboard
+ * or the client portal shell. A separate fetch rather than widening
+ * fetchAndStoreClientId's own contract: that function's existing tests
+ * assert it resolves void on both success and failure, a guarantee this
+ * function doesn't need to share since it serves a different caller need
+ * (routing, not storage). Two lightweight GETs to the same cheap,
+ * single-row-lookup endpoint, run in parallel -- not sequential -- so this
+ * doesn't add latency to session establishment.
+ *
+ * Fails closed on error the same way fetchAndStoreClientId does: an
+ * unresolved lookup never claims isInternal, so a failure degrades to the
+ * client-portal-shell branch (which itself has no data to show without a
+ * successful lookup) rather than ever granting the internal Dashboard by
+ * accident. Unlike a rejected/non-ok response, a 200 with a non-JSON body
+ * (e.g. an intermediary's HTML error page) would otherwise throw out of
+ * res.json() -- caught here so App.tsx's Promise.all never has to guard
+ * against this function rejecting.
+ */
+export interface ActorContext {
+  isInternal: boolean;
+  role: string | null;
+}
+
+export async function fetchActorContext(): Promise<ActorContext> {
+  const res = await fetch('/api/auth/memberships');
+  if (!res.ok) return { isInternal: false, role: null };
+  try {
+    const body = (await res.json()) as { isInternal?: boolean; role?: string | null };
+    return { isInternal: body.isInternal === true, role: body.role ?? null };
+  } catch {
+    return { isInternal: false, role: null };
+  }
+}
+
 export async function fetchFindings(params: FindingsListParams = {}): Promise<FindingRow[]> {
   const res = await fetch(`/api/findings${buildQuery(params)}`, { headers: authHeaders() });
   if (!res.ok) throw new Error(`GET /api/findings failed: ${res.status}`);

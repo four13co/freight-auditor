@@ -32,11 +32,22 @@ export async function seedDevTenant({ pool } = {}) {
        ON CONFLICT (id) DO NOTHING`,
       [DEV_CLIENT_ID],
     );
+    // 86e2zfjmb: is_internal=true -- this is the dashboard's own dev-mode
+    // identity (Sidebar.tsx's static footer names it "Dana Mercer, Ops
+    // analyst"), i.e. an internal analyst, not a bank/client portal member.
+    // Before actor-type routing existed this column was irrelevant to the
+    // dev-header path (resolveViaDevHeaders never read it), so it was left
+    // at its default. Now that App.tsx branches Dashboard vs. the client
+    // portal shell on it, this row must say what it has always represented.
     await client.query(
-      `INSERT INTO app_user (id, email, full_name) VALUES ($1, 'dev-dashboard@example.com', 'Dev Dashboard User')
+      `INSERT INTO app_user (id, email, full_name, is_internal) VALUES ($1, 'dev-dashboard@example.com', 'Dev Dashboard User', true)
        ON CONFLICT (id) DO NOTHING`,
       [DEV_USER_ID],
     );
+    // Retained even though an internal analyst doesn't strictly need a
+    // client-scoped membership row -- the dev-header path
+    // (resolveViaDevHeaders, tenant-auth.ts) still requires one to satisfy
+    // its own membership check, unchanged by this item's No-gos.
     await client.query(
       `INSERT INTO membership (user_id, client_id, role) VALUES ($1, $2, 'client_admin')
        ON CONFLICT (user_id, client_id) DO NOTHING`,

@@ -9,6 +9,8 @@ import { getClientAuditRunScorecard } from '../../src/modules/portal/get-client-
 import { listClientFindings } from '../../src/modules/portal/list-client-findings.js';
 import { getClientDisputeDetail } from '../../src/modules/portal/get-client-dispute-detail.js';
 import { listClientDisputeCommunications } from '../../src/modules/portal/list-client-dispute-communications.js';
+import { getClaimDetail } from '../../src/modules/claims/get-claim-detail.js';
+import { listClientClaimDocuments } from '../../src/modules/portal/list-client-claim-documents.js';
 
 /**
  * P6.B.1: GET /api/portal/invoices and GET /api/portal/scorecard/:auditRunId,
@@ -537,6 +539,7 @@ describe('portal content query modules: explicit client_id predicate (DB)', () =
   let chargeFactId: string;
   let findingId: string;
   let disputeId: string;
+  let claimId: string;
   const tag = `pcp-${Date.now()}`;
 
   beforeAll(async () => {
@@ -594,6 +597,16 @@ describe('portal content query modules: explicit client_id predicate (DB)', () =
           `INSERT INTO dispute_comm (client_id, dispute_id, direction, body, dedupe_key) VALUES ($1, $2, 'outbound', 'PCP comm.', $3)`,
           [clientAId, disputeId, `${tag}-comm`],
         );
+        await c.query(
+          `INSERT INTO dispute_line (client_id, dispute_id, variance_finding_id, amount, currency) VALUES ($1, $2, $3, '20.0000', 'USD')`,
+          [clientAId, disputeId, findingId],
+        );
+
+        const claim = await c.query<{ id: string }>(
+          `INSERT INTO claim (client_id, dispute_id, amount_claimed, currency, status) VALUES ($1, $2, '20.0000', 'USD', 'open') RETURNING id`,
+          [clientAId, disputeId],
+        );
+        claimId = claim.rows[0]!.id;
       });
     } finally {
       owner.release();
@@ -603,6 +616,8 @@ describe('portal content query modules: explicit client_id predicate (DB)', () =
   afterAll(async () => {
     const owner = await pool.connect();
     try {
+      await owner.query(`DELETE FROM claim WHERE client_id = $1`, [clientAId]);
+      await owner.query(`DELETE FROM dispute_line WHERE client_id = $1`, [clientAId]);
       await owner.query(`DELETE FROM dispute_comm WHERE client_id = $1`, [clientAId]);
       await owner.query(`DELETE FROM dispute WHERE client_id = $1`, [clientAId]);
       await owner.query(`DELETE FROM variance_finding WHERE client_id = $1`, [clientAId]);
@@ -645,6 +660,16 @@ describe('portal content query modules: explicit client_id predicate (DB)', () =
     expect(comms).toEqual([]);
   });
 
+  it('the explicit predicate rejects a mismatched clientId on listClientClaimDocuments, even under an internal (cross-client) RLS scope', async () => {
+    const documents = await withTenantTx({ internal: true }, (c) => listClientClaimDocuments(c, otherClientId, claimId));
+    expect(documents).toBeNull();
+  });
+
+  it('getClaimDetail (reused as-is, P6.B.4) already rejects a mismatched clientId, even under an internal (cross-client) RLS scope', async () => {
+    const detail = await withTenantTx({ internal: true }, (c) => getClaimDetail(c, otherClientId, claimId));
+    expect(detail).toBeNull();
+  });
+
   it('the explicit predicate still finds the rows under an internal scope when the clientId matches', async () => {
     const rows = await withTenantTx({ internal: true }, (c) => listClientInvoices(c, clientAId));
     expect(rows.some((r) => r.id === invoiceId)).toBe(true);
@@ -663,5 +688,307 @@ describe('portal content query modules: explicit client_id predicate (DB)', () =
 
     const comms = await withTenantTx({ internal: true }, (c) => listClientDisputeCommunications(c, clientAId, disputeId));
     expect(comms).toHaveLength(1);
+
+    const claim = await withTenantTx({ internal: true }, (c) => getClaimDetail(c, clientAId, claimId));
+    expect(claim).not.toBeNull();
+    expect(claim!.status).toBe('open');
+
+    const documents = await withTenantTx({ internal: true }, (c) => listClientClaimDocuments(c, clientAId, claimId));
+    expect(documents).not.toBeNull();
+    expect(documents).toEqual([]); // this fixture's finding has no source_document_id
+  });
+});
+
+/**
+ * P6.B.4: GET /api/portal/claims/:id and GET /api/portal/claims/:id/documents,
+ * a dedicated fixture (rather than folded into the shared P6.B.1-3 one
+ * above) because it needs a fuller evidence chain than the others: a
+ * variance_finding WITH a source_document_id, a second dispute_line with NO
+ * variance_finding_id at all (proving the good line's document still
+ * surfaces per list-client-claim-documents.ts's own header comment), and
+ * multiple staggered recovery_event rows (proving cumulativeRecovered sums
+ * correctly and the ORDER BY recorded_at ASC is real).
+ */
+describe('client portal claim + document APIs (P6.B.4, DB, e2e)', () => {
+  let pool: pg.Pool;
+  let app: FastifyInstance;
+  let clientId: string;
+  let viewerUserId: string;
+  let adminUserId: string;
+  let carrierId: string;
+  let invoiceId: string;
+  let auditRunId: string;
+  let sourceDocumentId: string;
+  let claimId: string;
+  let recoveryEventOlderId: string;
+  let recoveryEventNewerId: string;
+  let claimNoDisputeId: string;
+  let otherClientId: string;
+  let otherClaimId: string;
+  let originalFlag: string | undefined;
+  const tag = `pcc-${Date.now()}`;
+
+  beforeAll(async () => {
+    originalFlag = process.env.DEV_AUTH_HEADERS;
+    process.env.DEV_AUTH_HEADERS = '1';
+    pool = getPool();
+    const owner = await pool.connect();
+    try {
+      const c1 = await owner.query(`INSERT INTO client (name, slug) VALUES ('PCC', $1) RETURNING id`, [tag]);
+      clientId = c1.rows[0].id;
+      const uViewer = await owner.query(`INSERT INTO app_user (email) VALUES ($1) RETURNING id`, [`${tag}-viewer@example.com`]);
+      viewerUserId = uViewer.rows[0].id;
+      const uAdmin = await owner.query(`INSERT INTO app_user (email) VALUES ($1) RETURNING id`, [`${tag}-admin@example.com`]);
+      adminUserId = uAdmin.rows[0].id;
+      await owner.query(`INSERT INTO membership (user_id, client_id, role) VALUES ($1, $2, 'client_viewer')`, [viewerUserId, clientId]);
+      await owner.query(`INSERT INTO membership (user_id, client_id, role) VALUES ($1, $2, 'client_admin')`, [adminUserId, clientId]);
+      const carrier = await owner.query(`INSERT INTO carrier (name) VALUES ('PCC Carrier') RETURNING id`);
+      carrierId = carrier.rows[0].id;
+
+      const other = await owner.query(`INSERT INTO client (name, slug) VALUES ('PCC-Other', $1) RETURNING id`, [`${tag}-other`]);
+      otherClientId = other.rows[0].id;
+
+      await withTenantTx({ clientIds: [clientId, otherClientId], internal: true }, async (c) => {
+        const invoice = await c.query(
+          `INSERT INTO invoice (client_id, carrier_id, transaction_set, invoice_number, currency, parser_version, status)
+           VALUES ($1, $2, '210', 'INV-1', 'USD', 'v1', 'ingested') RETURNING id`,
+          [clientId, carrierId],
+        );
+        invoiceId = invoice.rows[0].id;
+        const run = await c.query(
+          `INSERT INTO audit_run (client_id, invoice_id, engine_spec_version, outcome) VALUES ($1, $2, 'v1', 'SCORED') RETURNING id`,
+          [clientId, invoiceId],
+        );
+        auditRunId = run.rows[0].id;
+
+        const doc = await c.query<{ id: string }>(
+          `INSERT INTO source_document (client_id, sha256, storage_uri) VALUES ($1, $2, $3) RETURNING id`,
+          [clientId, tag.padEnd(64, '0').slice(0, 64), `r2://${tag}/doc-1`],
+        );
+        sourceDocumentId = doc.rows[0]!.id;
+
+        // The finding WITH a source document -- this is the one whose
+        // document must surface in the documents view.
+        const cfGood = await c.query(
+          `INSERT INTO charge_fact (client_id, invoice_id, code, category, amount, currency)
+           VALUES ($1, $2, '400', 'LINEHAUL', '1000.0000', 'USD') RETURNING id`,
+          [clientId, invoiceId],
+        );
+        const vfGood = await c.query<{ id: string }>(
+          `INSERT INTO variance_finding
+             (client_id, audit_run_id, charge_fact_id, criterion_id, rule_version_id, source_document_id, direction, variance_amount, currency, status, evaluated_expr)
+           SELECT $1, $2, $3, crit.id, rv.id, $4, 'OVERCHARGE', '100.0000', 'USD', 'open', '{}'::jsonb
+           FROM criterion crit JOIN rule r ON r.slug = 'contract-rate_variance'
+           JOIN rule_version rv ON rv.rule_id = r.id
+           WHERE crit.criterion_key = 'CONTRACT.RATE_VARIANCE' ORDER BY rv.recorded_at DESC LIMIT 1 RETURNING id`,
+          [clientId, auditRunId, cfGood.rows[0].id, sourceDocumentId],
+        );
+        const findingWithDocId = vfGood.rows[0]!.id;
+
+        const dispute = await c.query<{ id: string }>(
+          `INSERT INTO dispute (client_id, carrier_id, status, amount_claimed, currency) VALUES ($1, $2, 'accepted', '100.0000', 'USD') RETURNING id`,
+          [clientId, carrierId],
+        );
+        const disputeId = dispute.rows[0]!.id;
+        await c.query(
+          `INSERT INTO dispute_line (client_id, dispute_id, variance_finding_id, amount, currency) VALUES ($1, $2, $3, '100.0000', 'USD')`,
+          [clientId, disputeId, findingWithDocId],
+        );
+        // A second line with NO variance_finding_id at all -- proves the
+        // good line's document still surfaces (list-client-claim-documents.ts's
+        // own header comment: a direct join drops this line, not the whole request).
+        await c.query(
+          `INSERT INTO dispute_line (client_id, dispute_id, amount, currency) VALUES ($1, $2, '25.0000', 'USD')`,
+          [clientId, disputeId],
+        );
+
+        const claim = await c.query<{ id: string }>(
+          `INSERT INTO claim (client_id, dispute_id, amount_claimed, currency, status) VALUES ($1, $2, '100.0000', 'USD', 'open') RETURNING id`,
+          [clientId, disputeId],
+        );
+        claimId = claim.rows[0]!.id;
+
+        // Two recovery_events with explicit staggered recorded_at (now()
+        // is transaction-stable inside this one withTenantTx, so relying
+        // on the column default would make the ORDER BY assertion
+        // non-deterministic -- same trap round 73 hit on audit_run).
+        const eventOlder = await c.query<{ id: string }>(
+          `INSERT INTO recovery_event (client_id, claim_id, variance_finding_id, amount_recovered, currency, recorded_at)
+           VALUES ($1, $2, $3, '30.0000', 'USD', now() - interval '2 hours') RETURNING id`,
+          [clientId, claimId, findingWithDocId],
+        );
+        recoveryEventOlderId = eventOlder.rows[0]!.id;
+        const eventNewer = await c.query<{ id: string }>(
+          `INSERT INTO recovery_event (client_id, claim_id, variance_finding_id, amount_recovered, currency, recorded_at)
+           VALUES ($1, $2, $3, '20.0000', 'USD', now() - interval '1 hour') RETURNING id`,
+          [clientId, claimId, findingWithDocId],
+        );
+        recoveryEventNewerId = eventNewer.rows[0]!.id;
+
+        // A second claim with NO originating dispute at all -- AC4's "no
+        // data yet" case for the documents view (empty array, not an error).
+        const claimNoDispute = await c.query<{ id: string }>(
+          `INSERT INTO claim (client_id, dispute_id, amount_claimed, currency, status) VALUES ($1, NULL, '10.0000', 'USD', 'open') RETURNING id`,
+          [clientId],
+        );
+        claimNoDisputeId = claimNoDispute.rows[0]!.id;
+
+        const otherClaim = await c.query<{ id: string }>(
+          `INSERT INTO claim (client_id, dispute_id, amount_claimed, currency, status) VALUES ($1, NULL, '5.0000', 'USD', 'open') RETURNING id`,
+          [otherClientId],
+        );
+        otherClaimId = otherClaim.rows[0]!.id;
+      });
+    } finally {
+      owner.release();
+    }
+    app = buildApp();
+  });
+
+  afterAll(async () => {
+    process.env.DEV_AUTH_HEADERS = originalFlag;
+    await app.close();
+    const owner = await pool.connect();
+    try {
+      await owner.query(`DELETE FROM recovery_event WHERE client_id = ANY($1)`, [[clientId, otherClientId]]);
+      await owner.query(`DELETE FROM claim WHERE client_id = ANY($1)`, [[clientId, otherClientId]]);
+      await owner.query(`DELETE FROM dispute_line WHERE client_id = ANY($1)`, [[clientId, otherClientId]]);
+      await owner.query(`DELETE FROM dispute WHERE client_id = ANY($1)`, [[clientId, otherClientId]]);
+      await owner.query(`DELETE FROM variance_finding WHERE client_id = ANY($1)`, [[clientId, otherClientId]]);
+      await owner.query(`DELETE FROM charge_fact WHERE client_id = ANY($1)`, [[clientId, otherClientId]]);
+      await owner.query(`DELETE FROM source_document WHERE client_id = ANY($1)`, [[clientId, otherClientId]]);
+      await owner.query(`DELETE FROM audit_run WHERE client_id = ANY($1)`, [[clientId, otherClientId]]);
+      await owner.query(`DELETE FROM invoice WHERE client_id = ANY($1)`, [[clientId, otherClientId]]);
+      await owner.query(`DELETE FROM membership WHERE client_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM app_user WHERE id = ANY($1)`, [[viewerUserId, adminUserId]]);
+      await owner.query(`DELETE FROM client WHERE id = ANY($1)`, [[clientId, otherClientId]]);
+      await owner.query(`DELETE FROM carrier WHERE id = $1`, [carrierId]);
+    } finally {
+      owner.release();
+    }
+    await closePool();
+  });
+
+  // AC1: caller's own claim (status, amount claimed, currency, aging deadline)
+  // plus recovery-event history and cumulative recovered amount.
+  it('returns the claim with its full recovery-event history and cumulative recovered amount', async () => {
+    const res = await app.inject({
+      method: 'GET', url: `/api/portal/claims/${claimId}`, headers: { 'x-client-id': clientId, 'x-user-id': viewerUserId },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.id).toBe(claimId);
+    expect(body.status).toBe('open');
+    expect(body.amountClaimed).toBe('100.0000');
+    expect(body.cumulativeRecovered).toBe('50.0000'); // 30 + 20
+    expect(body.recoveryEvents.map((e: { id: string }) => e.id)).toEqual([recoveryEventOlderId, recoveryEventNewerId]);
+  });
+
+  it('rejects an unauthenticated claim request', async () => {
+    const res = await app.inject({ method: 'GET', url: `/api/portal/claims/${claimId}` });
+    expect(res.statusCode).toBe(401);
+  });
+
+  it('rejects a client_admin caller on the claim detail route -- sibling capability, out of this task\'s scope', async () => {
+    const res = await app.inject({
+      method: 'GET', url: `/api/portal/claims/${claimId}`, headers: { 'x-client-id': clientId, 'x-user-id': adminUserId },
+    });
+    expect(res.statusCode).toBe(401);
+  });
+
+  // AC3 (claim half): a claim belonging to a DIFFERENT client is rejected/not-found.
+  it('returns 404 for a claim that belongs to a different client', async () => {
+    const res = await app.inject({
+      method: 'GET', url: `/api/portal/claims/${otherClaimId}`, headers: { 'x-client-id': clientId, 'x-user-id': viewerUserId },
+    });
+    expect(res.statusCode).toBe(404);
+  });
+
+  it('returns 404 for a well-formed but nonexistent claim id', async () => {
+    const res = await app.inject({
+      method: 'GET', url: '/api/portal/claims/00000000-0000-4000-8000-000000000099',
+      headers: { 'x-client-id': clientId, 'x-user-id': viewerUserId },
+    });
+    expect(res.statusCode).toBe(404);
+  });
+
+  it('rejects a malformed claim id with 400', async () => {
+    const res = await app.inject({
+      method: 'GET', url: '/api/portal/claims/not-a-uuid', headers: { 'x-client-id': clientId, 'x-user-id': viewerUserId },
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
+  // AC4 (claim view half): a claim with no recovery events yet renders an
+  // explicit empty sub-state, not an error -- proven at the module/response
+  // level here; the component-level empty state is covered in
+  // ClientClaimView.test.tsx.
+  it('returns an empty recoveryEvents array for a claim with no recovery events yet', async () => {
+    const res = await app.inject({
+      method: 'GET', url: `/api/portal/claims/${claimNoDisputeId}`, headers: { 'x-client-id': clientId, 'x-user-id': viewerUserId },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().recoveryEvents).toEqual([]);
+  });
+
+  // AC2: source-document references (id, storage reference) resolved via
+  // the claim's originating dispute/finding chain.
+  it('returns the source-document reference resolved via the claim\'s originating dispute/finding chain, skipping the findingless line', async () => {
+    const res = await app.inject({
+      method: 'GET', url: `/api/portal/claims/${claimId}/documents`, headers: { 'x-client-id': clientId, 'x-user-id': viewerUserId },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.documents).toEqual([{ id: sourceDocumentId, sha256: tag.padEnd(64, '0').slice(0, 64), storageUri: `r2://${tag}/doc-1` }]);
+  });
+
+  // AC4 (documents half): a claim with no originating dispute resolves an
+  // explicit empty array, not an error.
+  it('returns an empty documents array for a claim with no originating dispute', async () => {
+    const res = await app.inject({
+      method: 'GET', url: `/api/portal/claims/${claimNoDisputeId}/documents`, headers: { 'x-client-id': clientId, 'x-user-id': viewerUserId },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ documents: [] });
+  });
+
+  it('rejects an unauthenticated documents request', async () => {
+    const res = await app.inject({ method: 'GET', url: `/api/portal/claims/${claimId}/documents` });
+    expect(res.statusCode).toBe(401);
+  });
+
+  it('rejects a client_admin caller on the documents route -- sibling capability, out of this task\'s scope', async () => {
+    const res = await app.inject({
+      method: 'GET', url: `/api/portal/claims/${claimId}/documents`, headers: { 'x-client-id': clientId, 'x-user-id': adminUserId },
+    });
+    expect(res.statusCode).toBe(401);
+  });
+
+  // AC3 (documents half): documents for a claim belonging to a DIFFERENT client are rejected/not-found.
+  it('returns 404 for documents of a claim that belongs to a different client', async () => {
+    const res = await app.inject({
+      method: 'GET', url: `/api/portal/claims/${otherClaimId}/documents`, headers: { 'x-client-id': clientId, 'x-user-id': viewerUserId },
+    });
+    expect(res.statusCode).toBe(404);
+  });
+
+  it('rejects a malformed claim id on the documents route with 400', async () => {
+    const res = await app.inject({
+      method: 'GET', url: '/api/portal/claims/not-a-uuid/documents', headers: { 'x-client-id': clientId, 'x-user-id': viewerUserId },
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it('has no POST/PUT/PATCH/DELETE route registered on the claim detail or documents paths -- no write surface exists to protect (No-gos: read-only)', async () => {
+    for (const method of ['POST', 'PUT', 'PATCH', 'DELETE'] as const) {
+      const detailRes = await app.inject({
+        method, url: `/api/portal/claims/${claimId}`, headers: { 'x-client-id': clientId, 'x-user-id': viewerUserId },
+      });
+      expect(detailRes.statusCode).toBe(404);
+      const docsRes = await app.inject({
+        method, url: `/api/portal/claims/${claimId}/documents`, headers: { 'x-client-id': clientId, 'x-user-id': viewerUserId },
+      });
+      expect(docsRes.statusCode).toBe(404);
+    }
   });
 });

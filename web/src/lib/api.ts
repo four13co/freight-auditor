@@ -576,6 +576,40 @@ export async function fetchClientPortalDisputeCommunications(disputeId: string):
   return ((await res.json()) as { communications: ClientPortalDisputeCommRow[] }).communications;
 }
 
+/** Mirrors get-claim-detail.ts's ClaimDetail shape exactly (P6.B.4). */
+export interface ClientPortalClaimDetail {
+  id: string;
+  disputeId: string | null;
+  amountClaimed: string;
+  currency: string | null;
+  status: string;
+  openedAt: string;
+  agingDeadlineAt: string | null;
+  recoveryEvents: { id: string; amountRecovered: string; currency: string | null; varianceFindingId: string | null; recordedAt: string }[];
+  cumulativeRecovered: string;
+}
+
+/** Client portal (P6.B.4) -- unwired to nav, same disclosure as the P6.B.1/P6.B.2/P6.B.3 precedent. */
+export async function fetchClientPortalClaim(claimId: string): Promise<ClientPortalClaimDetail> {
+  const res = await fetch(`/api/portal/claims/${claimId}`, { headers: authHeaders() });
+  if (!res.ok) throw new Error(`GET portal claim failed: ${res.status}`);
+  return (await res.json()) as ClientPortalClaimDetail;
+}
+
+/** Mirrors list-client-claim-documents.ts's ClaimDocumentRef shape exactly (P6.B.4). */
+export interface ClientPortalClaimDocumentRef {
+  id: string;
+  sha256: string;
+  storageUri: string;
+}
+
+/** Client portal (P6.B.4) -- unwired to nav, same disclosure as the P6.B.1/P6.B.2/P6.B.3 precedent. */
+export async function fetchClientPortalClaimDocuments(claimId: string): Promise<ClientPortalClaimDocumentRef[]> {
+  const res = await fetch(`/api/portal/claims/${claimId}/documents`, { headers: authHeaders() });
+  if (!res.ok) throw new Error(`GET portal claim documents failed: ${res.status}`);
+  return ((await res.json()) as { documents: ClientPortalClaimDocumentRef[] }).documents;
+}
+
 export interface ClientRecoveryReportBucket {
   currency: string | null;
   claimed: string;

@@ -193,19 +193,22 @@ jobs:
       #
       # 86e330b0y: R2 wiring is optional at deploy time -- `op item get` (existence
       # check only, output discarded, exit code read) decides whether the
-      # "Cloudflare R2" item exists in $OP_VAULT *before* `op inject` ever sees
+      # "CloudflareR2" item exists in $OP_VAULT *before* `op inject` ever sees
       # those lines. Missing item used to hard-fail the whole deploy (op inject
       # can't resolve a reference to an item that isn't there); now the R2 lines
       # are stripped from the template and OBJECT_STORE_BACKEND/OBJECT_STORE_ROOT
       # are overridden to the local disk backend instead, so the rest of the app
       # still deploys. The durable fix is provisioning the real 1Password item --
       # this is the documented interim graceful-skip, not a replacement for it.
+      # (86e331t1n: item renamed from "Cloudflare R2" to "CloudflareR2" -- the
+      # old name was never actually populated in the deploy vault, so this was
+      # the first real provisioning, not a live rename.)
       - name: Resolve runtime .env from 1Password
         run: |
           sed "s|\${OP_VAULT}|$OP_VAULT|g" .env.template > .env.tpl
-          if ! op item get "Cloudflare R2" --vault "$OP_VAULT" >/dev/null 2>&1; then
-            echo "::warning::1Password item 'Cloudflare R2' not found in vault $OP_VAULT -- deploying with OBJECT_STORE_BACKEND=local instead of failing the deploy (86e330b0y). Provision the item to restore R2 evidence storage."
-            sed '/^OBJECT_STORE_BACKEND=/d;/^R2_ACCOUNT_ID=/d;/^R2_ACCESS_KEY_ID=/d;/^R2_SECRET_ACCESS_KEY=/d;/^R2_BUCKET=/d' .env.tpl > .env.tpl.stripped
+          if ! op item get "CloudflareR2" --vault "$OP_VAULT" >/dev/null 2>&1; then
+            echo "::warning::1Password item 'CloudflareR2' not found in vault $OP_VAULT -- deploying with OBJECT_STORE_BACKEND=local instead of failing the deploy (86e330b0y). Provision the item to restore R2 evidence storage."
+            sed '/^OBJECT_STORE_BACKEND=/d;/^R2_ACCOUNT_ID=/d;/^R2_ACCESS_KEY_ID=/d;/^R2_SECRET_ACCESS_KEY=/d;/^R2_BUCKET=/d;/^R2_ENDPOINT=/d' .env.tpl > .env.tpl.stripped
             mv .env.tpl.stripped .env.tpl
             {
               echo 'OBJECT_STORE_BACKEND="local"'

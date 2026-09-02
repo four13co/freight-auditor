@@ -80,4 +80,27 @@ describe('listGateFailures (unit, mocked client)', () => {
     const rows = await listGateFailures(client, {});
     expect(rows).toEqual([]);
   });
+
+  it('uses a keyset predicate anchored on the cursor row itself and omits OFFSET when a cursor is given (P6.C.1)', async () => {
+    const { client, query } = mockClient([]);
+    const cursor = { id: 'gf5' };
+    await listGateFailures(client, { cursor, limit: 10 });
+    const [sql, params] = query.mock.calls[0] as [string, unknown[]];
+    // Anchored on a fresh DB read of the cursor row's own recorded_at (via a
+    // correlated subquery), not a client-round-tripped timestamp -- see
+    // list-claims.test.ts's equivalent test for why.
+    expect(sql).toMatch(/,\s*\(\s*SELECT recorded_at AS anchor_recorded_at, id AS anchor_id\s*FROM gate_failure AS cursor_row\s*WHERE cursor_row\.id = \$1\s*\) cursor_anchor/);
+    expect(sql).toMatch(/\(gate_failure\.recorded_at < cursor_anchor\.anchor_recorded_at OR \(gate_failure\.recorded_at = cursor_anchor\.anchor_recorded_at AND gate_failure\.id > cursor_anchor\.anchor_id\)\)/);
+    expect(sql).not.toMatch(/OFFSET/);
+    expect(sql).toMatch(/LIMIT \$2$/m);
+    expect(params).toEqual([cursor.id, 10]);
+  });
+
+  it('combines a carrier filter with a cursor, keeping positional params in order', async () => {
+    const { client, query } = mockClient([]);
+    const cursor = { id: 'gf5' };
+    await listGateFailures(client, { carrier: 'ACME', cursor, limit: 10 });
+    const [, params] = query.mock.calls[0] as [string, unknown[]];
+    expect(params).toEqual(['ACME', cursor.id, 10]);
+  });
 });

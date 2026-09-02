@@ -11,6 +11,7 @@ import {
   ReplayNotFoundError,
   ReplayUnavailableError,
 } from '../modules/audit-ledger/replay-audit-run.js';
+import { recordReplayIntegrityFailure } from '../jobs/replay-alert-metrics.js';
 
 // 86e2xcn18: contract_version_id binds against a uuid column
 // (lookupContractRate's SQL, migration 0011) -- a non-UUID value throws
@@ -108,6 +109,7 @@ export async function registerAuditRunsRoutes(auditRunsRoutes: FastifyInstance):
         return;
       }
       if (error instanceof ReplayIntegrityError) {
+        recordReplayIntegrityFailure();
         await reply.code(409).send({ error: error.code });
         return;
       }

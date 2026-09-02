@@ -1,4 +1,9 @@
-import { Decimal } from 'decimal.js';
+import {
+  accumulateClaimReconciliation,
+  emptyClaimReconciliationAccumulator,
+  finalizeClaimReconciliationTotals,
+  type ClaimReconciliationAccumulator,
+} from './reconcile-claim-buckets.js';
 
 /**
  * Pure aggregation for carrier-level recovery reporting (P5.C.1). Buckets
@@ -35,6 +40,11 @@ import { Decimal } from 'decimal.js';
  * Invariant every bucket satisfies: claimed == recovered + outstanding +
  * writtenOff + denied, using ONLY same-currency recovered amounts.
  * Asserted directly in this module's tests.
+ *
+ * The currency-bucketing/reconciliation math itself lives in
+ * reconcile-claim-buckets.ts, shared with aggregate-cross-client-
+ * portfolio.ts and reconcile-portfolio-totals.ts (86e32tg28) -- only the
+ * grouping key (carrierId+currency) and output shape are specific here.
  */
 export interface CarrierClaimRow {
   carrierId: string | null;
@@ -64,10 +74,6 @@ export interface CarrierRecoveryBucket {
   mismatchedCurrencyRecovered: string;
 }
 
-const TERMINAL_RECOVERED = 'recovered';
-const TERMINAL_DENIED = 'denied';
-const TERMINAL_WRITTEN_OFF = 'written_off';
-
 export function aggregateCarrierRecovery(
   claims: readonly CarrierClaimRow[],
   recoveryEvents: readonly CarrierRecoveryEventRow[],
@@ -79,10 +85,9 @@ export function aggregateCarrierRecovery(
     eventsByClaim.set(event.claimId, list);
   }
 
-  interface Accumulator {
-    carrierId: string | null; currency: string | null;
-    claimed: Decimal; recovered: Decimal; outstanding: Decimal; writtenOff: Decimal; denied: Decimal;
-    nullCurrencyRecovered: Decimal; mismatchedCurrencyRecovered: Decimal;
+  interface Accumulator extends ClaimReconciliationAccumulator {
+    carrierId: string | null;
+    currency: string | null;
   }
   const buckets = new Map<string, Accumulator>();
 
@@ -90,11 +95,7 @@ export function aggregateCarrierRecovery(
     const key = `${carrierId ?? ' '}::${currency ?? ' '}`;
     let bucket = buckets.get(key);
     if (!bucket) {
-      bucket = {
-        carrierId, currency,
-        claimed: new Decimal(0), recovered: new Decimal(0), outstanding: new Decimal(0), writtenOff: new Decimal(0), denied: new Decimal(0),
-        nullCurrencyRecovered: new Decimal(0), mismatchedCurrencyRecovered: new Decimal(0),
-      };
+      bucket = { carrierId, currency, ...emptyClaimReconciliationAccumulator() };
       buckets.set(key, bucket);
     }
     return bucket;
@@ -102,42 +103,12 @@ export function aggregateCarrierRecovery(
 
   for (const claim of claims) {
     const bucket = bucketFor(claim.carrierId, claim.currency);
-    const claimed = new Decimal(claim.amountClaimed);
-    bucket.claimed = bucket.claimed.plus(claimed);
-
-    let sameCurrencyRecovered = new Decimal(0);
-    for (const event of eventsByClaim.get(claim.claimId) ?? []) {
-      const amount = new Decimal(event.amountRecovered);
-      if (event.currency === null) {
-        bucket.nullCurrencyRecovered = bucket.nullCurrencyRecovered.plus(amount);
-      } else if (claim.currency !== null && event.currency !== claim.currency) {
-        bucket.mismatchedCurrencyRecovered = bucket.mismatchedCurrencyRecovered.plus(amount);
-      } else {
-        sameCurrencyRecovered = sameCurrencyRecovered.plus(amount);
-      }
-    }
-    bucket.recovered = bucket.recovered.plus(sameCurrencyRecovered);
-
-    if (claim.status === TERMINAL_RECOVERED) {
-      // fully recovered: outstanding/writtenOff/denied stay 0 for this claim
-    } else if (claim.status === TERMINAL_DENIED) {
-      bucket.denied = bucket.denied.plus(claimed).minus(sameCurrencyRecovered);
-    } else if (claim.status === TERMINAL_WRITTEN_OFF) {
-      bucket.writtenOff = bucket.writtenOff.plus(claimed).minus(sameCurrencyRecovered);
-    } else {
-      bucket.outstanding = bucket.outstanding.plus(claimed).minus(sameCurrencyRecovered);
-    }
+    accumulateClaimReconciliation(bucket, claim, eventsByClaim.get(claim.claimId) ?? []);
   }
 
   return [...buckets.values()].map((b) => ({
     carrierId: b.carrierId,
     currency: b.currency,
-    claimed: b.claimed.toFixed(4),
-    recovered: b.recovered.toFixed(4),
-    outstanding: b.outstanding.toFixed(4),
-    writtenOff: b.writtenOff.toFixed(4),
-    denied: b.denied.toFixed(4),
-    nullCurrencyRecovered: b.nullCurrencyRecovered.toFixed(4),
-    mismatchedCurrencyRecovered: b.mismatchedCurrencyRecovered.toFixed(4),
+    ...finalizeClaimReconciliationTotals(b),
   }));
 }

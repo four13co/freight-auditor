@@ -38,6 +38,12 @@ export default defineConfig({
         'src/modules/reference-data/object-store.ts',
         'src/modules/reference-data/source-document.ts',
         'src/modules/rate-engine/rate-lookup.ts',
+        // 86e32tg6n: ingest-invoice.ts now calls resolveChargeCode (a Postgres
+        // transaction boundary, same category as rate-lookup.ts above) instead
+        // of the in-memory stub, pulling crosswalk.ts into this same import
+        // chain for the first time. Fully covered by test:db (phase0-foundations
+        // AC5's precedence assertions, plus this item's own new integration test).
+        'src/modules/reference-data/crosswalk.ts',
         // 86e2xb911: same accident-of-import-graph story as 86e2v17u9 above --
         // app.ts now also registers invoice-drafts-routes.ts, which transitively
         // imports invoice-draft.ts and carrier-match.ts (both need a live

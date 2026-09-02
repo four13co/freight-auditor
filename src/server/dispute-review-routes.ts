@@ -2,11 +2,13 @@ import type { FastifyInstance } from 'fastify';
 import { randomUUID } from 'node:crypto';
 import { withTenantTx } from '../db/tenant-context.js';
 import { registerTenantAuthPreHandler } from '../modules/findings/tenant-auth.js';
+import { requireSingleClientId } from '../modules/ingestion/raw-upload-route.js';
 import { isUuid } from '../shared/request-validation.js';
 import { getDisputeDetail } from '../modules/disputes/get-dispute-detail.js';
 import { approveDispute } from '../modules/disputes/approve-dispute.js';
 import { listDisputeCommunications } from '../modules/disputes/list-dispute-communications.js';
 import { recordDisputeCommunication, RecordDisputeCommunicationError } from '../modules/disputes/record-dispute-communication.js';
+import { listDisputesDueForResponse } from '../modules/disputes/list-dispute-response-queue.js';
 import {
   acceptDispute,
   rejectDispute,
@@ -25,6 +27,22 @@ const MONEY_PATTERN = /^\d+(\.\d{1,4})?$/;
  */
 export async function registerDisputeReviewRoutes(routes: FastifyInstance): Promise<void> {
   await registerTenantAuthPreHandler(routes);
+
+  // P4.C.10: dispute-aging queue, mirroring GET /api/findings/queues's shape
+  // -- a read endpoint with no side effects. `clientId` is resolved via
+  // requireSingleClientId (86e31a9ch/#216 precedent, most recently
+  // claim-recovery-routes.ts) and threaded through to
+  // listDisputesDueForResponse as an explicit predicate alongside RLS.
+  routes.get('/api/disputes/queues', async (request, reply) => {
+    const clientId = requireSingleClientId(request.tenantContext!);
+    if (!clientId) {
+      await reply.code(401).send({ error: 'unauthorized' });
+      return;
+    }
+    const overdue = await withTenantTx(request.tenantContext!, (client) =>
+      listDisputesDueForResponse(client, clientId));
+    return { overdue };
+  });
 
   routes.get('/api/disputes/:id', async (request, reply) => {
     const { id } = request.params as { id: string };

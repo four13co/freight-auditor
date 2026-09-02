@@ -20,7 +20,13 @@ export const AuditEventInputSchema = z.object({
   entity: z.string().trim().min(1).max(100).regex(/^[a-z][a-z0-9_.-]*$/),
   entityId: postgresUuid.nullable().default(null),
   event: z.string().trim().min(1).max(100).regex(/^[a-z][a-z0-9_.-]*$/),
-  actorKind: z.enum(['analyst', 'ai', 'system']),
+  // 'client' added for P6.A.4 (86e2zfjp9): a client-portal user (client_admin
+  // /client_viewer) taking an auditable action through the portal is neither
+  // an internal analyst, an AI, nor the system -- mislabeling it as one of
+  // those would misattribute the action in an evidentiary record. Mirrors
+  // the actor_kind DB enum (migration 0070), which this schema does not read
+  // from directly and must be kept in sync with by hand.
+  actorKind: z.enum(['analyst', 'ai', 'system', 'client']),
   actorUserId: postgresUuid.nullable().default(null),
   ruleVersionId: postgresUuid.nullable().default(null),
   rubricSnapshotId: postgresUuid.nullable().default(null),

@@ -1,8 +1,10 @@
 import type pg from 'pg';
-import type { GoldenCorpusResult } from './golden-corpus-runner.js';
+
+interface BacktestCaseResult { id: string; passed: boolean; inputHash: string; expectedHash: string; actualHash: string; actual: unknown }
+interface BacktestResult { corpusHash: string; passed: boolean; passCount: number; regressionCount: number; cases: BacktestCaseResult[] }
 
 export async function persistBacktest(client: pg.PoolClient, input: {
-  clientId: string; ruleVersionId: string; result: GoldenCorpusResult;
+  clientId: string; ruleVersionId: string; result: BacktestResult;
 }): Promise<{ id: string; created: boolean }> {
   const inserted = await client.query<{ id: string }>(`INSERT INTO rule_backtest
     (client_id, rule_version_id, corpus_hash, passed, pass_count, regression_count) VALUES ($1,$2,$3,$4,$5,$6)

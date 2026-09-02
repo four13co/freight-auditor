@@ -1,10 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
 import type pg from 'pg';
 import { recordHumanOverrideReversal } from '../../src/modules/rule-engine/record-human-override-reversal.js';
+import { resetQuarantineAlertMetricsForTest, renderQuarantineAlertMetrics } from '../../src/jobs/quarantine-alert-metrics.js';
 
 const CLIENT_ID = '10000000-0000-4000-8000-000000000001';
 const CRITERION_ID = '20000000-0000-4000-8000-000000000002';
 const RULE_VERSION_ID = '30000000-0000-4000-8000-000000000003';
+const QUARANTINED_RULE_VERSION_ID = '40000000-0000-4000-8000-000000000004';
 
 function mockClient(opts: {
   clientRows?: unknown[]; criterionRows?: unknown[]; insertRows?: unknown[];
@@ -23,6 +25,10 @@ function mockClient(opts: {
     if (sql.includes('FROM rule_version rv JOIN rule')) return Promise.resolve({ rows: ruleRows });
     if (sql.includes('FROM promotion_policy')) return Promise.resolve({ rows: policyRows });
     if (sql.includes('coalesce(sum(reversal_count)')) return Promise.resolve({ rows: sumRows });
+    // transitionRuleLifecycle's own multi-query sequence (only reached when quarantine fires).
+    if (sql.includes('SELECT lifecycle_state FROM rule_version WHERE id=$1')) return Promise.resolve({ rows: [{ lifecycle_state: 'ACTIVE' }] });
+    if (sql.includes('INSERT INTO rule_version')) return Promise.resolve({ rows: [{ id: QUARANTINED_RULE_VERSION_ID }] });
+    if (sql.includes('INSERT INTO promotion_event')) return Promise.resolve({ rows: [] });
     throw new Error(`unexpected query: ${sql}`);
   });
   return { client: { query } as unknown as pg.PoolClient, query };
@@ -74,12 +80,27 @@ describe('recordHumanOverrideReversal', () => {
     expect(insertCall[0]).toMatch(/VALUES \(\$1, \$2, \$3, \$4::jsonb, 0, 1\)/);
   });
 
-  // The threshold-exceeded -> quarantine branch (transitionRuleLifecycle's
-  // own multi-query sequence) is exhaustively covered by the reintroduced
-  // test/unit/quarantine-on-reversal.test.ts (restored verbatim from git
-  // history, per this task's own instruction to reuse rather than
-  // re-derive) -- this file only proves recordHumanOverrideReversal's own
-  // insert + pass-through to quarantineOnReversal, not quarantine's internals.
+  // P6.C.9: the alert-triggering path -- a quarantine transition must
+  // increment freight_rule_quarantine_total. quarantine-on-reversal.ts's
+  // OWN internal branching (threshold math, the ACTIVE guard) stays covered
+  // by the reintroduced test/unit/quarantine-on-reversal.test.ts; this test
+  // only proves recordHumanOverrideReversal's call-site hook fires exactly
+  // when quarantine.quarantined is true.
+  it('increments freight_rule_quarantine_total when the reversal triggers a quarantine', async () => {
+    resetQuarantineAlertMetricsForTest();
+    const { client } = mockClient({ sumRows: [{ count: '6' }], policyRows: [{ client_id: CLIENT_ID, rule_type: 'STRUCTURAL', n1_confirm: 3, n2_confirm: 5, max_reversals: 5 }] });
+    const result = await recordHumanOverrideReversal(client, VALID_INPUT);
+    expect(result.quarantined).toBe(true);
+    expect(renderQuarantineAlertMetrics()).toContain('freight_rule_quarantine_total 1');
+  });
+
+  it('does not increment freight_rule_quarantine_total when the reversal stays under threshold', async () => {
+    resetQuarantineAlertMetricsForTest();
+    const { client } = mockClient({ sumRows: [{ count: '1' }] });
+    const result = await recordHumanOverrideReversal(client, VALID_INPUT);
+    expect(result.quarantined).toBe(false);
+    expect(renderQuarantineAlertMetrics()).toContain('freight_rule_quarantine_total 0');
+  });
 
   it('propagates the quarantine guard error when the rule is not ACTIVE', async () => {
     const { client } = mockClient({ ruleRows: [{ rule_type: 'STRUCTURAL', lifecycle_state: 'SHADOW' }] });

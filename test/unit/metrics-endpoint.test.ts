@@ -110,6 +110,21 @@ describe('GET /metrics (unit, mocked withTenantReadTx + collectors)', () => {
     resetReplayAlertMetricsForTest();
   });
 
+  it('P6.C.9: includes the rule-quarantine counter alongside the other alert/queue/discovery metrics', async () => {
+    const { recordRuleQuarantine, resetQuarantineAlertMetricsForTest } = await import('../../src/jobs/quarantine-alert-metrics.js');
+    resetQuarantineAlertMetricsForTest();
+    recordRuleQuarantine();
+    mockCollectors();
+    const { buildApp } = await import('../../src/server/app.js');
+    app = buildApp();
+
+    const res = await app.inject({ method: 'GET', url: '/metrics' });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body).toContain('freight_rule_quarantine_total 1');
+    resetQuarantineAlertMetricsForTest();
+  });
+
   it('AC4: returns a 5xx (not a misleadingly-empty 200) when the underlying queue-metrics query fails', async () => {
     mockCollectors({ queueError: true });
     const { buildApp } = await import('../../src/server/app.js');

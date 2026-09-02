@@ -63,6 +63,9 @@ describe('handleDeliverOutboxMessageJob', () => {
       (call: unknown[]) => typeof call[0] === 'string' && call[0].includes('audit_event'),
     );
     expect(auditInsert).toBeDefined();
+    const [, params] = auditInsert as [string, unknown[]];
+    expect(params[4]).toBe('workflow.outbox_message_sent');
+    expect(params[9]).toEqual({ workflowInstanceId: INSTANCE_ID, commandId: COMMAND_ID, messageType: 'carrier_notify' });
   });
 
   it('fails closed for an unregistered message type: no sender call, no completion, no audit event', async () => {

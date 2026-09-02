@@ -6,11 +6,11 @@ import type { ClientPortalInvoiceRow } from '../src/lib/api.js';
 const INVOICES: ClientPortalInvoiceRow[] = [
   {
     id: 'inv-1', invoiceNumber: 'INV-100', carrierId: 'car-1', carrierName: 'Acme Freight',
-    currency: 'USD', status: 'ingested', createdAt: '2026-01-15T00:00:00Z',
+    currency: 'USD', status: 'ingested', createdAt: '2026-01-15T00:00:00Z', auditRunId: 'run-1',
   },
   {
     id: 'inv-2', invoiceNumber: 'INV-200', carrierId: null, carrierName: null,
-    currency: 'CAD', status: 'reviewed', createdAt: '2026-02-01T00:00:00Z',
+    currency: 'CAD', status: 'reviewed', createdAt: '2026-02-01T00:00:00Z', auditRunId: null,
   },
 ];
 

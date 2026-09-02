@@ -16,20 +16,31 @@ describe('listClientInvoices', () => {
     expect(result).toEqual([]);
   });
 
-  it('maps a row to the camelCase shape, including the joined carrier name', async () => {
+  it('maps a row to the camelCase shape, including the joined carrier name and latest audit_run id', async () => {
     const { client } = mockClient([
       {
         id: 'inv-1', invoice_number: 'INV-100', carrier_id: 'car-1', carrier_name: 'Acme Freight',
-        currency: 'USD', status: 'ingested', created_at: new Date('2026-01-01T00:00:00Z'),
+        currency: 'USD', status: 'ingested', created_at: new Date('2026-01-01T00:00:00Z'), audit_run_id: 'run-1',
       },
     ]);
     const result = await listClientInvoices(client, CLIENT_ID);
     expect(result).toEqual([
       {
         id: 'inv-1', invoiceNumber: 'INV-100', carrierId: 'car-1', carrierName: 'Acme Freight',
-        currency: 'USD', status: 'ingested', createdAt: new Date('2026-01-01T00:00:00Z'),
+        currency: 'USD', status: 'ingested', createdAt: new Date('2026-01-01T00:00:00Z'), auditRunId: 'run-1',
       },
     ]);
+  });
+
+  it('passes null through for auditRunId when the invoice has never been audited', async () => {
+    const { client } = mockClient([
+      {
+        id: 'inv-1', invoice_number: 'INV-100', carrier_id: null, carrier_name: null,
+        currency: 'USD', status: 'ingested', created_at: new Date('2026-01-01T00:00:00Z'), audit_run_id: null,
+      },
+    ]);
+    const result = await listClientInvoices(client, CLIENT_ID);
+    expect(result[0]!.auditRunId).toBeNull();
   });
 
   it('scopes the query to the given clientId as the first parameter', async () => {
@@ -65,5 +76,13 @@ describe('listClientInvoices', () => {
     await listClientInvoices(client, CLIENT_ID);
     const [sql] = query.mock.calls[0] as [string, unknown[]];
     expect(sql).toContain('ORDER BY i.created_at DESC');
+  });
+
+  it('joins the newest audit_run per invoice via a LATERAL subquery, not a plain join', async () => {
+    const { client, query } = mockClient([]);
+    await listClientInvoices(client, CLIENT_ID);
+    const [sql] = query.mock.calls[0] as [string, unknown[]];
+    expect(sql).toContain('LEFT JOIN LATERAL');
+    expect(sql).toContain('ORDER BY created_at DESC LIMIT 1');
   });
 });

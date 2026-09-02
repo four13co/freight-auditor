@@ -19,6 +19,14 @@ export interface ClientInvoiceRow {
   currency: string | null;
   status: string;
   createdAt: Date;
+  /**
+   * The invoice's most recent audit_run id (null if no audit has run yet
+   * for this invoice), so the portal UI can link an invoice row to its
+   * scorecard (GET /api/portal/scorecard/:auditRunId) without a separate
+   * lookup. An invoice can in principle have more than one audit_run (a
+   * re-audit) -- the LATERAL join below picks the newest by created_at.
+   */
+  auditRunId: string | null;
 }
 
 export interface ListClientInvoicesOptions {
@@ -55,11 +63,15 @@ export async function listClientInvoices(
   params.push(limit, offset);
   const { rows } = await client.query<{
     id: string; invoice_number: string | null; carrier_id: string | null; carrier_name: string | null;
-    currency: string | null; status: string; created_at: Date;
+    currency: string | null; status: string; created_at: Date; audit_run_id: string | null;
   }>(
-    `SELECT i.id, i.invoice_number, i.carrier_id, c.name AS carrier_name, i.currency, i.status, i.created_at
+    `SELECT i.id, i.invoice_number, i.carrier_id, c.name AS carrier_name, i.currency, i.status, i.created_at,
+            latest_ar.id AS audit_run_id
        FROM invoice i
        LEFT JOIN carrier c ON c.id = i.carrier_id
+       LEFT JOIN LATERAL (
+         SELECT id FROM audit_run WHERE invoice_id = i.id ORDER BY created_at DESC LIMIT 1
+       ) latest_ar ON true
       WHERE ${conditions.join(' AND ')}
       ORDER BY i.created_at DESC
       LIMIT $${params.length - 1} OFFSET $${params.length}`,
@@ -74,5 +86,6 @@ export async function listClientInvoices(
     currency: r.currency,
     status: r.status,
     createdAt: r.created_at,
+    auditRunId: r.audit_run_id,
   }));
 }

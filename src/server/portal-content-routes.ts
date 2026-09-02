@@ -1,14 +1,15 @@
 import type { FastifyInstance } from 'fastify';
 import { withTenantTx } from '../db/tenant-context.js';
 import { registerClientViewerAuthPreHandler } from '../modules/identity/client-viewer-auth.js';
+import { isUuid } from '../shared/request-validation.js';
 import { listClientInvoices } from '../modules/portal/list-client-invoices.js';
-import { getClientScorecardSummary } from '../modules/portal/get-client-scorecard-summary.js';
+import { getClientAuditRunScorecard } from '../modules/portal/get-client-audit-run-scorecard.js';
 
 const MAX_LIMIT = 200;
 
 /**
- * Client portal content read APIs (P6.B.1): invoice list + scorecard
- * summary, gated by client-viewer-auth.ts's OWN preHandler
+ * Client portal content read APIs (P6.B.1): invoice list + per-audit-run
+ * scorecard, gated by client-viewer-auth.ts's OWN preHandler
  * (registerClientViewerAuthPreHandler) rather than the shared
  * registerTenantAuthPreHandler every internal-facing route module uses --
  * same reasoning as portfolio-routes.ts's own header comment: this surface
@@ -18,6 +19,11 @@ const MAX_LIMIT = 200;
  * always resolves a single clientId (never multi-client), so unlike
  * claim-recovery-routes.ts there is no "no single tenant scope" case to
  * reject here.
+ *
+ * GET /api/portal/scorecard/:auditRunId (not a client-wide summary --
+ * see get-client-audit-run-scorecard.ts's own header comment for why)
+ * mirrors claim-recovery-routes.ts's GET /api/claims/:id shape exactly:
+ * isUuid-validate the param, 404 when the module resolves null.
  *
  * client_admin's equivalent access (P6.A.3, sibling capability) and the
  * portal UI shell/nav that will mount these views (P6.A.1) are explicitly
@@ -55,10 +61,22 @@ export async function registerPortalContentRoutes(routes: FastifyInstance): Prom
     return { invoices };
   });
 
-  routes.get('/api/portal/scorecard', async (request) => {
+  routes.get('/api/portal/scorecard/:auditRunId', async (request, reply) => {
     const clientId = request.tenantContext!.clientIds![0]!;
 
-    const buckets = await withTenantTx(request.tenantContext!, (client) => getClientScorecardSummary(client, clientId));
-    return { buckets };
+    const { auditRunId } = request.params as { auditRunId: string };
+    if (!isUuid(auditRunId)) {
+      await reply.code(400).send({ error: 'invalid audit run id: must be a well-formed UUID' });
+      return;
+    }
+
+    const scorecard = await withTenantTx(request.tenantContext!, (client) =>
+      getClientAuditRunScorecard(client, clientId, auditRunId),
+    );
+    if (!scorecard) {
+      await reply.code(404).send({ error: 'audit run not found' });
+      return;
+    }
+    return scorecard;
   });
 }

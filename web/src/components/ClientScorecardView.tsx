@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { fetchClientPortalScorecard, type ClientPortalScorecardBucket } from '../lib/api.js';
+import { fetchClientPortalAuditRunScorecard, type ClientPortalAuditRunScorecard } from '../lib/api.js';
 
 function formatAmount(value: string, currency: string | null): string {
   const n = Number(value);
@@ -8,27 +8,33 @@ function formatAmount(value: string, currency: string | null): string {
 }
 
 /**
- * Client-facing scorecard summary (P6.B.1). Unwired to nav -- same
+ * Client-facing single-audit-run scorecard (P6.B.1). Unwired to nav -- same
  * disclosure as PortfolioReport.tsx's own P5.C siblings: the portal UI
- * shell/nav that will mount this is a separate item's boundary (P6.A.1).
+ * shell/nav that will mount this (and thread it a real auditRunId, e.g.
+ * from a ClientInvoicesView row's own auditRunId) is a separate item's
+ * boundary (P6.A.1).
  *
- * Bucketed by currency, never blended (currency-safety, matching
- * get-client-scorecard-summary.ts's own header comment) -- a client billed
- * in multiple currencies sees one row per currency, not a single mixed
- * total.
+ * Takes auditRunId as a prop rather than self-fetching with no args --
+ * unlike ClientRecoveryReport.tsx's single fixed per-client scope, a
+ * scorecard is inherently per-run (GET /api/portal/scorecard/:auditRunId,
+ * see get-client-audit-run-scorecard.ts's own header comment for why this
+ * isn't a client-wide rollup). Still self-fetching on mount/prop-change,
+ * same loading/error shape as the rest of this precedent.
  */
-export function ClientScorecardView() {
-  const [buckets, setBuckets] = useState<ClientPortalScorecardBucket[] | null>(null);
+export function ClientScorecardView({ auditRunId }: { auditRunId: string }) {
+  const [scorecard, setScorecard] = useState<ClientPortalAuditRunScorecard | null>(null);
   const [error, setError] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
-    fetchClientPortalScorecard().then(
-      (data) => { if (!cancelled) setBuckets(data); },
+    setScorecard(null);
+    setError(false);
+    fetchClientPortalAuditRunScorecard(auditRunId).then(
+      (data) => { if (!cancelled) setScorecard(data); },
       () => { if (!cancelled) setError(true); },
     );
     return () => { cancelled = true; };
-  }, []);
+  }, [auditRunId]);
 
   return (
     <section data-testid="client-scorecard-view" className="border border-[rgba(32,30,29,.3)] bg-[#f3f2f2] p-3">
@@ -40,22 +46,21 @@ export function ClientScorecardView() {
         </span>
       )}
 
-      {!error && buckets === null && (
+      {!error && scorecard === null && (
         <span className="text-xs font-semibold text-[rgba(32,30,29,0.65)]">Loading…</span>
       )}
 
-      {!error && buckets !== null && buckets.length === 0 && (
+      {!error && scorecard !== null && scorecard.conformedCount === null && (
         <span data-testid="client-scorecard-empty" className="text-xs font-semibold text-[rgba(32,30,29,0.65)]">
-          No audit runs recorded yet.
+          No scorecard recorded for this audit run yet.
         </span>
       )}
 
-      {!error && buckets !== null && buckets.length > 0 && (
+      {!error && scorecard !== null && scorecard.conformedCount !== null && (
         <table data-testid="client-scorecard-table" className="w-full text-xs">
           <thead>
             <tr className="border-b text-left">
-              <th className="py-1 pr-2">Currency</th>
-              <th className="py-1 pr-2">Runs</th>
+              <th className="py-1 pr-2">Invoice</th>
               <th className="py-1 pr-2">Conformed</th>
               <th className="py-1 pr-2">Variance</th>
               <th className="py-1 pr-2">Unassessable</th>
@@ -64,17 +69,14 @@ export function ClientScorecardView() {
             </tr>
           </thead>
           <tbody>
-            {buckets.map((b) => (
-              <tr key={b.currency ?? ''} data-testid="client-scorecard-row" className="border-t">
-                <td className="py-1 pr-2 font-extrabold">{b.currency ?? '—'}</td>
-                <td className="py-1 pr-2 tabular-nums">{b.runCount}</td>
-                <td className="py-1 pr-2 tabular-nums">{b.conformedCount}</td>
-                <td className="py-1 pr-2 tabular-nums">{b.varianceCount}</td>
-                <td className="py-1 pr-2 tabular-nums">{b.unassessableCount}</td>
-                <td className="py-1 pr-2 tabular-nums">{formatAmount(b.totalOvercharge, b.currency)}</td>
-                <td className="py-1 pr-2 tabular-nums">{formatAmount(b.totalUndercharge, b.currency)}</td>
-              </tr>
-            ))}
+            <tr data-testid="client-scorecard-row" className="border-t">
+              <td className="py-1 pr-2 font-extrabold">{scorecard.invoiceNumber ?? '—'}</td>
+              <td className="py-1 pr-2 tabular-nums">{scorecard.conformedCount}</td>
+              <td className="py-1 pr-2 tabular-nums">{scorecard.varianceCount}</td>
+              <td className="py-1 pr-2 tabular-nums">{scorecard.unassessableCount}</td>
+              <td className="py-1 pr-2 tabular-nums">{formatAmount(scorecard.totalOvercharge!, scorecard.currency)}</td>
+              <td className="py-1 pr-2 tabular-nums">{formatAmount(scorecard.totalUndercharge!, scorecard.currency)}</td>
+            </tr>
           </tbody>
         </table>
       )}

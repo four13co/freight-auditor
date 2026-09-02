@@ -3,9 +3,10 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 
 /**
  * Request-level unit coverage of GET /api/portal/invoices and
- * GET /api/portal/scorecard via Fastify's .inject(), with db/tenant-context
- * AND client-viewer-auth.ts's preHandler mocked so this runs with no live
- * Postgres -- same pattern as claim-recovery-endpoint.test.ts. Complements
+ * GET /api/portal/scorecard/:auditRunId via Fastify's .inject(), with
+ * db/tenant-context AND client-viewer-auth.ts's preHandler mocked so this
+ * runs with no live Postgres -- same pattern as
+ * claim-recovery-endpoint.test.ts. Complements
  * test/db/portal-content-routes.db.test.ts, which covers the same routes
  * against a real DB, including the cross-tenant RLS proof.
  */
@@ -98,33 +99,66 @@ describe('portal content APIs (unit, mocked withTenantTx + client-viewer-auth)',
     expect(res.statusCode).toBe(400);
   });
 
-  it('returns { buckets } for an authorized scorecard request, threading the resolved clientId through', async () => {
+  const AUDIT_RUN_ID = '40000000-0000-4000-8000-000000000002';
+
+  it('returns the scorecard for an authorized request, threading the resolved clientId and auditRunId through', async () => {
     mockAuthorized();
     vi.doMock('../../src/db/tenant-context.js', () => ({
       withTenantTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
     }));
-    const getClientScorecardSummary = vi.fn().mockResolvedValue([{ currency: 'USD', runCount: 1 }]);
-    vi.doMock('../../src/modules/portal/get-client-scorecard-summary.js', () => ({ getClientScorecardSummary }));
+    const scorecard = { auditRunId: AUDIT_RUN_ID, currency: 'USD', conformedCount: 8 };
+    const getClientAuditRunScorecard = vi.fn().mockResolvedValue(scorecard);
+    vi.doMock('../../src/modules/portal/get-client-audit-run-scorecard.js', () => ({ getClientAuditRunScorecard }));
     const { buildApp } = await import('../../src/server/app.js');
     app = buildApp();
 
-    const res = await app.inject({ method: 'GET', url: '/api/portal/scorecard' });
+    const res = await app.inject({ method: 'GET', url: `/api/portal/scorecard/${AUDIT_RUN_ID}` });
 
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual({ buckets: [{ currency: 'USD', runCount: 1 }] });
-    expect(getClientScorecardSummary).toHaveBeenCalledWith({}, CLIENT_ID);
+    expect(res.json()).toEqual(scorecard);
+    expect(getClientAuditRunScorecard).toHaveBeenCalledWith({}, CLIENT_ID, AUDIT_RUN_ID);
   });
 
-  it('rejects an unauthenticated scorecard request with 401, without calling getClientScorecardSummary', async () => {
-    mockClientViewerAuth(null);
-    vi.doMock('../../src/db/tenant-context.js', () => ({ withTenantTx: vi.fn() }));
-    const getClientScorecardSummary = vi.fn();
-    vi.doMock('../../src/modules/portal/get-client-scorecard-summary.js', () => ({ getClientScorecardSummary }));
+  it('returns 404 when getClientAuditRunScorecard resolves null', async () => {
+    mockAuthorized();
+    vi.doMock('../../src/db/tenant-context.js', () => ({
+      withTenantTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
+    }));
+    vi.doMock('../../src/modules/portal/get-client-audit-run-scorecard.js', () => ({
+      getClientAuditRunScorecard: vi.fn().mockResolvedValue(null),
+    }));
     const { buildApp } = await import('../../src/server/app.js');
     app = buildApp();
 
-    const res = await app.inject({ method: 'GET', url: '/api/portal/scorecard' });
+    const res = await app.inject({ method: 'GET', url: `/api/portal/scorecard/${AUDIT_RUN_ID}` });
+    expect(res.statusCode).toBe(404);
+  });
+
+  it('rejects a malformed audit run id with 400, without calling getClientAuditRunScorecard', async () => {
+    mockAuthorized();
+    vi.doMock('../../src/db/tenant-context.js', () => ({
+      withTenantTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
+    }));
+    const getClientAuditRunScorecard = vi.fn();
+    vi.doMock('../../src/modules/portal/get-client-audit-run-scorecard.js', () => ({ getClientAuditRunScorecard }));
+    const { buildApp } = await import('../../src/server/app.js');
+    app = buildApp();
+
+    const res = await app.inject({ method: 'GET', url: '/api/portal/scorecard/not-a-uuid' });
+    expect(res.statusCode).toBe(400);
+    expect(getClientAuditRunScorecard).not.toHaveBeenCalled();
+  });
+
+  it('rejects an unauthenticated scorecard request with 401, without calling getClientAuditRunScorecard', async () => {
+    mockClientViewerAuth(null);
+    vi.doMock('../../src/db/tenant-context.js', () => ({ withTenantTx: vi.fn() }));
+    const getClientAuditRunScorecard = vi.fn();
+    vi.doMock('../../src/modules/portal/get-client-audit-run-scorecard.js', () => ({ getClientAuditRunScorecard }));
+    const { buildApp } = await import('../../src/server/app.js');
+    app = buildApp();
+
+    const res = await app.inject({ method: 'GET', url: `/api/portal/scorecard/${AUDIT_RUN_ID}` });
     expect(res.statusCode).toBe(401);
-    expect(getClientScorecardSummary).not.toHaveBeenCalled();
+    expect(getClientAuditRunScorecard).not.toHaveBeenCalled();
   });
 });

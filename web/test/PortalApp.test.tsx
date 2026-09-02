@@ -47,4 +47,20 @@ describe('PortalApp', () => {
       expect(screen.getByTestId('portal-placeholder')).toHaveTextContent(new RegExp(`${label}.*coming soon`, 'i'));
     }
   });
+
+  it('86e320pkc AC2: renders the default platform swatch, not a Customer logo, when no branding is configured', () => {
+    render(<PortalApp />);
+    expect(screen.getByTestId('brand-mark-default')).toBeInTheDocument();
+    expect(screen.queryByTestId('brand-mark-logo')).not.toBeInTheDocument();
+  });
+
+  it("86e320pkc AC1: renders the Customer's logo instead of the platform swatch when branding is configured", () => {
+    render(
+      <PortalApp
+        branding={{ branded: true, logoUrl: 'https://cdn.example.com/bank-a/logo.png', primaryColor: '#111111', secondaryColor: '#222222' }}
+      />,
+    );
+    expect(screen.getByTestId('brand-mark-logo')).toHaveAttribute('src', 'https://cdn.example.com/bank-a/logo.png');
+    expect(screen.queryByTestId('brand-mark-default')).not.toBeInTheDocument();
+  });
 });

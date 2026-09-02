@@ -30,6 +30,7 @@ import {
   type RuleProposal,
   type ContractRuleProposalPreview,
   type PendingPaymentAuthorizationRow,
+  type Branding,
 } from '../lib/api.js';
 
 /**
@@ -44,7 +45,7 @@ import {
  */
 type LoadStatus = 'loading' | 'error' | 'ready';
 
-export function Dashboard() {
+export function Dashboard({ branding }: { branding?: Branding | null } = {}) {
   const [summary, setSummary] = useState<FindingsSummary | null>(null);
   const [rows, setRows] = useState<FindingRow[]>([]);
   const [carrierFilter, setCarrierFilter] = useState('');
@@ -120,7 +121,7 @@ export function Dashboard() {
 
   return (
     <div className="flex h-screen w-full bg-[#eae9e9] text-[#201e1d]">
-      <Sidebar />
+      <Sidebar branding={branding} />
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
         <Header />
         <PasskeyRegistration />

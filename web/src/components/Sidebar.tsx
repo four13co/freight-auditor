@@ -20,6 +20,9 @@
  * app's existing pill/tag visual language (FindingsTable/FindingDetail's
  * status tags) so it reads as an established UI pattern, not a one-off.
  */
+import type { Branding } from '../lib/api.js';
+import { BrandMark } from './BrandMark.js';
+
 const SOON_BADGE_CLASS =
   'px-1 py-px text-[9px] font-extrabold uppercase tracking-[0.04em] bg-[rgba(243,242,242,0.16)] text-[rgba(243,242,242,0.75)]';
 
@@ -27,19 +30,34 @@ function SoonBadge() {
   return <span className={SOON_BADGE_CLASS}>Soon</span>;
 }
 
-export function Sidebar() {
+/**
+ * 86e320pkc: the logo swatch and "Dashboard" active-item background are this
+ * chrome's own branding surface -- BrandMark swaps the swatch for a
+ * Customer's logo when configured, and the active background reads
+ * --brand-primary (App.tsx sets it once branding resolves) with a CSS
+ * fallback to the platform's own red, so an unbranded visit renders
+ * pixel-identical to before.
+ */
+export function Sidebar({ branding }: { branding?: Branding | null } = {}) {
   return (
     <div className="flex w-[228px] flex-none flex-col bg-[#201e1d] text-[#f3f2f2]">
       <div className="flex h-16 flex-none items-center gap-2.5 border-b-2 border-[rgba(243,242,242,0.25)] px-[18px]">
-        <div className="h-[22px] w-[22px] bg-[#ec3013]" />
-        <div className="text-[15px] font-extrabold tracking-[-0.015em]">Freight Auditor</div>
+        <BrandMark branding={branding} />
+        <div className="text-[15px] font-extrabold tracking-[-0.015em]" style={{ color: 'var(--brand-secondary, #f3f2f2)' }}>
+          Freight Auditor
+        </div>
       </div>
 
       <div className="flex flex-col py-[18px]">
         <div className="px-[18px] pb-2 text-[11px] font-extrabold uppercase tracking-[0.1em] text-[rgba(243,242,242,0.5)]">
           Audit
         </div>
-        <div className="bg-[#ec3013] px-[18px] py-[9px] text-sm font-extrabold text-[#f3f2f2]">Dashboard</div>
+        <div
+          className="px-[18px] py-[9px] text-sm font-extrabold text-[#f3f2f2]"
+          style={{ backgroundColor: 'var(--brand-primary, #ec3013)' }}
+        >
+          Dashboard
+        </div>
         <button
           type="button"
           disabled

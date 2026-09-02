@@ -464,3 +464,42 @@ export async function fetchClientRecoveryReport(): Promise<ClientRecoveryReportB
   if (!res.ok) throw new Error(`GET recovery report failed: ${res.status}`);
   return ((await res.json()) as { buckets: ClientRecoveryReportBucket[] }).buckets;
 }
+
+/**
+ * 86e320pkc: per-Customer white-labeling. No headers -- GET /api/branding is
+ * unauthenticated and resolves purely from the request's own Host header
+ * (the domain the browser is already showing), so this fires before any
+ * session/client_id exists, unlike every authHeaders()-gated fetch above.
+ */
+export interface Branding {
+  branded: boolean;
+  logoUrl: string | null;
+  primaryColor: string | null;
+  secondaryColor: string | null;
+}
+
+const UNBRANDED: Branding = { branded: false, logoUrl: null, primaryColor: null, secondaryColor: null };
+
+/**
+ * Fails closed to UNBRANDED on any error or malformed response, the same
+ * convention fetchActorContext uses -- a branding lookup must never block
+ * or break the app it's meant to only decorate.
+ */
+export async function fetchBranding(): Promise<Branding> {
+  try {
+    const res = await fetch('/api/branding');
+    if (!res.ok) return UNBRANDED;
+    const body = (await res.json()) as Partial<Branding>;
+    if (body.branded !== true || typeof body.logoUrl !== 'string' || typeof body.primaryColor !== 'string') {
+      return UNBRANDED;
+    }
+    return {
+      branded: true,
+      logoUrl: body.logoUrl,
+      primaryColor: body.primaryColor,
+      secondaryColor: typeof body.secondaryColor === 'string' ? body.secondaryColor : null,
+    };
+  } catch {
+    return UNBRANDED;
+  }
+}

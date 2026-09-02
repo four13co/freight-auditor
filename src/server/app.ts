@@ -3,6 +3,7 @@ import { registerFindingsRoutes } from './findings-routes.js';
 import { registerAuthRoutes } from './auth-routes.js';
 import { registerStaticRoutes } from './static-routes.js';
 import { registerMetricsRoutes } from './metrics-routes.js';
+import { registerBrandingRoutes } from './branding-routes.js';
 import { registerAuditRunsRoutes } from './audit-runs-routes.js';
 import { registerInvoiceDraftsRoutes } from './invoice-drafts-routes.js';
 import { registerEvidenceRoutes } from './evidence-routes.js';
@@ -44,6 +45,11 @@ export function buildApp(): FastifyInstance {
   // top-level and unauthenticated, same posture as /health -- a Prometheus
   // scraper carries no session.
   void app.register(registerMetricsRoutes);
+
+  // Per-Customer white-labeling (86e320pkc): top-level and unauthenticated,
+  // same posture as /health -- must be reachable before any session exists
+  // (branding renders on the login page itself, not only after sign-in).
+  void app.register(registerBrandingRoutes);
 
   // Auth routes registered at top level -- must be reachable with only a
   // session cookie (or no session at all), before any tenant scope exists

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { fetchFindings, fetchFindingsSummary, fetchAndStoreClientId } from '../src/lib/api.js';
+import { fetchFindings, fetchFindingsSummary, fetchAndStoreClientId, fetchBranding } from '../src/lib/api.js';
 
 /**
  * 86e2urebj: the dashboard broke on Development because fetchFindings/
@@ -216,5 +216,60 @@ describe('fetchAndStoreClientId', () => {
 
     await expect(fetchAndStoreClientId()).resolves.toBeUndefined();
     expect(sessionStorage.getItem(STORAGE_KEY)).toBeNull();
+  });
+});
+
+describe('fetchBranding', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('AC1: sends no headers, and returns the branding the backend resolved', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ branded: true, logoUrl: 'https://cdn.example.com/logo.png', primaryColor: '#111', secondaryColor: '#222' }), { status: 200 }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await fetchBranding();
+
+    expect(fetchMock).toHaveBeenCalledWith('/api/branding');
+    expect(result).toEqual({ branded: true, logoUrl: 'https://cdn.example.com/logo.png', primaryColor: '#111', secondaryColor: '#222' });
+  });
+
+  it('AC2: a { branded: false } response resolves to the unbranded default', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ branded: false }), { status: 200 })));
+
+    const result = await fetchBranding();
+
+    expect(result).toEqual({ branded: false, logoUrl: null, primaryColor: null, secondaryColor: null });
+  });
+
+  it('fails closed to unbranded, never throwing, on a non-ok response', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(null, { status: 500 })));
+
+    await expect(fetchBranding()).resolves.toEqual({ branded: false, logoUrl: null, primaryColor: null, secondaryColor: null });
+  });
+
+  it('fails closed to unbranded, never throwing, when fetch itself rejects (e.g. network error)', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('network error')));
+
+    await expect(fetchBranding()).resolves.toEqual({ branded: false, logoUrl: null, primaryColor: null, secondaryColor: null });
+  });
+
+  it('treats a malformed body (missing logoUrl/primaryColor despite branded: true) as unbranded rather than throwing', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ branded: true }), { status: 200 })));
+
+    await expect(fetchBranding()).resolves.toEqual({ branded: false, logoUrl: null, primaryColor: null, secondaryColor: null });
+  });
+
+  it('a missing secondaryColor on an otherwise-branded response maps to null', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(new Response(JSON.stringify({ branded: true, logoUrl: 'https://cdn.example.com/logo.png', primaryColor: '#111' }), { status: 200 })),
+    );
+
+    const result = await fetchBranding();
+
+    expect(result.secondaryColor).toBeNull();
   });
 });

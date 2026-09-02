@@ -157,3 +157,49 @@ describe('App (session gate)', () => {
     expect(screen.queryByRole('heading', { name: /sign in/i })).not.toBeInTheDocument();
   });
 });
+
+/**
+ * 86e320pkc: App.tsx's own branding wiring -- the single GET /api/branding
+ * fetch and the --brand-primary/--brand-secondary CSS custom properties it
+ * sets on the document root. Runs unconditionally (even in dev mode, even
+ * before any session resolves), so it needs its own fetch mock distinct
+ * from the beforeEach's memberships-shaped default.
+ */
+describe('App (branding)', () => {
+  const originalFetch = global.fetch;
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+    document.documentElement.style.removeProperty('--brand-primary');
+    document.documentElement.style.removeProperty('--brand-secondary');
+  });
+
+  it("86e320pkc AC1: sets --brand-primary/--brand-secondary on the document root from a branded response", async () => {
+    vi.stubEnv('DEV', true);
+    useSessionMock.mockReturnValue({ data: null, isPending: false });
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ branded: true, logoUrl: 'https://cdn.example.com/logo.png', primaryColor: '#111111', secondaryColor: '#222222' }),
+    }) as unknown as typeof fetch;
+    const { default: App } = await import('../src/App.js');
+    render(<App />);
+
+    await waitFor(() => expect(document.documentElement.style.getPropertyValue('--brand-primary')).toBe('#111111'));
+    expect(document.documentElement.style.getPropertyValue('--brand-secondary')).toBe('#222222');
+  });
+
+  it('86e320pkc AC2: leaves no --brand-primary/--brand-secondary set for an unbranded (default-domain) response', async () => {
+    vi.stubEnv('DEV', true);
+    useSessionMock.mockReturnValue({ data: null, isPending: false });
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ branded: false }),
+    }) as unknown as typeof fetch;
+    const { default: App } = await import('../src/App.js');
+    render(<App />);
+
+    await waitFor(() => expect(global.fetch).toHaveBeenCalledWith('/api/branding'));
+    expect(document.documentElement.style.getPropertyValue('--brand-primary')).toBe('');
+    expect(document.documentElement.style.getPropertyValue('--brand-secondary')).toBe('');
+  });
+});

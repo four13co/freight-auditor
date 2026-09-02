@@ -476,4 +476,160 @@ describe('portal content APIs (unit, mocked withTenantTx + client-viewer-auth)',
       expect(commsRes.statusCode).toBe(404);
     }
   });
+
+  const CLAIM_ID = '60000000-0000-4000-8000-000000000005';
+
+  it('returns the claim for an authorized request, threading the resolved clientId and claimId through', async () => {
+    mockAuthorized();
+    vi.doMock('../../src/db/tenant-context.js', () => ({
+      withTenantTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
+    }));
+    const detail = { id: CLAIM_ID, status: 'open', recoveryEvents: [], cumulativeRecovered: '0.0000' };
+    const getClaimDetail = vi.fn().mockResolvedValue(detail);
+    vi.doMock('../../src/modules/claims/get-claim-detail.js', () => ({ getClaimDetail }));
+    const { buildApp } = await import('../../src/server/app.js');
+    app = buildApp();
+
+    const res = await app.inject({ method: 'GET', url: `/api/portal/claims/${CLAIM_ID}` });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual(detail);
+    expect(getClaimDetail).toHaveBeenCalledWith({}, CLIENT_ID, CLAIM_ID);
+  });
+
+  it('returns 404 when getClaimDetail resolves null (not found, or belongs to a different client)', async () => {
+    mockAuthorized();
+    vi.doMock('../../src/db/tenant-context.js', () => ({
+      withTenantTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
+    }));
+    vi.doMock('../../src/modules/claims/get-claim-detail.js', () => ({ getClaimDetail: vi.fn().mockResolvedValue(null) }));
+    const { buildApp } = await import('../../src/server/app.js');
+    app = buildApp();
+
+    const res = await app.inject({ method: 'GET', url: `/api/portal/claims/${CLAIM_ID}` });
+    expect(res.statusCode).toBe(404);
+  });
+
+  it('rejects a malformed claim id with 400, without calling getClaimDetail', async () => {
+    mockAuthorized();
+    vi.doMock('../../src/db/tenant-context.js', () => ({
+      withTenantTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
+    }));
+    const getClaimDetail = vi.fn();
+    vi.doMock('../../src/modules/claims/get-claim-detail.js', () => ({ getClaimDetail }));
+    const { buildApp } = await import('../../src/server/app.js');
+    app = buildApp();
+
+    const res = await app.inject({ method: 'GET', url: '/api/portal/claims/not-a-uuid' });
+    expect(res.statusCode).toBe(400);
+    expect(getClaimDetail).not.toHaveBeenCalled();
+  });
+
+  it('rejects an unauthenticated claim request with 401, without calling getClaimDetail', async () => {
+    mockClientViewerAuth(null);
+    vi.doMock('../../src/db/tenant-context.js', () => ({ withTenantTx: vi.fn() }));
+    const getClaimDetail = vi.fn();
+    vi.doMock('../../src/modules/claims/get-claim-detail.js', () => ({ getClaimDetail }));
+    const { buildApp } = await import('../../src/server/app.js');
+    app = buildApp();
+
+    const res = await app.inject({ method: 'GET', url: `/api/portal/claims/${CLAIM_ID}` });
+    expect(res.statusCode).toBe(401);
+    expect(getClaimDetail).not.toHaveBeenCalled();
+  });
+
+  it('returns { documents } for an authorized request, threading the resolved clientId and claimId through', async () => {
+    mockAuthorized();
+    vi.doMock('../../src/db/tenant-context.js', () => ({
+      withTenantTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
+    }));
+    const documents = [{ id: 'doc-1', sha256: 'a'.repeat(64), storageUri: 'r2://doc-1' }];
+    const listClientClaimDocuments = vi.fn().mockResolvedValue(documents);
+    vi.doMock('../../src/modules/portal/list-client-claim-documents.js', () => ({ listClientClaimDocuments }));
+    const { buildApp } = await import('../../src/server/app.js');
+    app = buildApp();
+
+    const res = await app.inject({ method: 'GET', url: `/api/portal/claims/${CLAIM_ID}/documents` });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ documents });
+    expect(listClientClaimDocuments).toHaveBeenCalledWith({}, CLIENT_ID, CLAIM_ID);
+  });
+
+  it('returns 404 for documents when listClientClaimDocuments resolves null (claim not found, or belongs to a different client)', async () => {
+    mockAuthorized();
+    vi.doMock('../../src/db/tenant-context.js', () => ({
+      withTenantTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
+    }));
+    vi.doMock('../../src/modules/portal/list-client-claim-documents.js', () => ({
+      listClientClaimDocuments: vi.fn().mockResolvedValue(null),
+    }));
+    const { buildApp } = await import('../../src/server/app.js');
+    app = buildApp();
+
+    const res = await app.inject({ method: 'GET', url: `/api/portal/claims/${CLAIM_ID}/documents` });
+    expect(res.statusCode).toBe(404);
+  });
+
+  it('returns 200 with an empty documents array when the claim exists but resolves no documents yet', async () => {
+    mockAuthorized();
+    vi.doMock('../../src/db/tenant-context.js', () => ({
+      withTenantTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
+    }));
+    vi.doMock('../../src/modules/portal/list-client-claim-documents.js', () => ({
+      listClientClaimDocuments: vi.fn().mockResolvedValue([]),
+    }));
+    const { buildApp } = await import('../../src/server/app.js');
+    app = buildApp();
+
+    const res = await app.inject({ method: 'GET', url: `/api/portal/claims/${CLAIM_ID}/documents` });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ documents: [] });
+  });
+
+  it('rejects a malformed claim id on the documents route with 400', async () => {
+    mockAuthorized();
+    vi.doMock('../../src/db/tenant-context.js', () => ({
+      withTenantTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
+    }));
+    const listClientClaimDocuments = vi.fn();
+    vi.doMock('../../src/modules/portal/list-client-claim-documents.js', () => ({ listClientClaimDocuments }));
+    const { buildApp } = await import('../../src/server/app.js');
+    app = buildApp();
+
+    const res = await app.inject({ method: 'GET', url: '/api/portal/claims/not-a-uuid/documents' });
+    expect(res.statusCode).toBe(400);
+    expect(listClientClaimDocuments).not.toHaveBeenCalled();
+  });
+
+  it('rejects an unauthenticated documents request with 401', async () => {
+    mockClientViewerAuth(null);
+    vi.doMock('../../src/db/tenant-context.js', () => ({ withTenantTx: vi.fn() }));
+    const listClientClaimDocuments = vi.fn();
+    vi.doMock('../../src/modules/portal/list-client-claim-documents.js', () => ({ listClientClaimDocuments }));
+    const { buildApp } = await import('../../src/server/app.js');
+    app = buildApp();
+
+    const res = await app.inject({ method: 'GET', url: `/api/portal/claims/${CLAIM_ID}/documents` });
+    expect(res.statusCode).toBe(401);
+    expect(listClientClaimDocuments).not.toHaveBeenCalled();
+  });
+
+  it('has no POST/PUT/PATCH/DELETE route registered on the claim detail or documents paths -- no write surface exists to protect (No-gos: read-only)', async () => {
+    mockAuthorized();
+    vi.doMock('../../src/db/tenant-context.js', () => ({
+      withTenantTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
+    }));
+    vi.doMock('../../src/modules/claims/get-claim-detail.js', () => ({ getClaimDetail: vi.fn() }));
+    vi.doMock('../../src/modules/portal/list-client-claim-documents.js', () => ({ listClientClaimDocuments: vi.fn() }));
+    const { buildApp } = await import('../../src/server/app.js');
+    app = buildApp();
+
+    for (const method of ['POST', 'PUT', 'PATCH', 'DELETE'] as const) {
+      const detailRes = await app.inject({ method, url: `/api/portal/claims/${CLAIM_ID}` });
+      expect(detailRes.statusCode).toBe(404);
+      const docsRes = await app.inject({ method, url: `/api/portal/claims/${CLAIM_ID}/documents` });
+      expect(docsRes.statusCode).toBe(404);
+    }
+  });
 });

@@ -9,6 +9,8 @@ import { getDefensibilityChain } from '../modules/findings/get-defensibility-cha
 import { ALL_VARIANCE_STATUSES } from '../shared/variance-status.js';
 import { getClientDisputeDetail } from '../modules/portal/get-client-dispute-detail.js';
 import { listClientDisputeCommunications } from '../modules/portal/list-client-dispute-communications.js';
+import { getClaimDetail } from '../modules/claims/get-claim-detail.js';
+import { listClientClaimDocuments } from '../modules/portal/list-client-claim-documents.js';
 
 const MAX_LIMIT = 200;
 const VARIANCE_STATUS_VALUES = new Set<string>(ALL_VARIANCE_STATUSES);
@@ -55,6 +57,21 @@ const NUMERIC_STRING = /^-?\d+(\.\d+)?$/;
  * itself before returning communications, mirroring
  * dispute-review-routes.ts's internal GET /api/disputes/:id/communications
  * exactly.
+ *
+ * GET /api/portal/claims/:id (P6.B.4) reuses getClaimDetail as-is
+ * (modules/claims/get-claim-detail.ts) -- like getDefensibilityChain, it
+ * already carries an explicit client_id predicate on both its queries, so
+ * no wrapper is needed (unlike the P6.B.3 dispute functions).
+ *
+ * GET /api/portal/claims/:id/documents (P6.B.4) resolves the claim's
+ * evidence documents via a new module, list-client-claim-documents.ts,
+ * rather than the existing buildEvidencePacket
+ * (modules/disputes/build-evidence-packet.ts) -- that function throws when
+ * ANY dispute_line on the claim's originating dispute lacks a
+ * variance_finding_id, which would report zero documents for a claim with
+ * even one findingless line alongside otherwise-good ones. The new
+ * module's direct join drops a findingless (or document-less) line via the
+ * JOIN instead -- see its own header comment for the full reasoning.
  *
  * client_admin's equivalent access (P6.A.3, sibling capability) and the
  * portal UI shell/nav that will mount these views (P6.A.1) are explicitly
@@ -232,5 +249,43 @@ export async function registerPortalContentRoutes(routes: FastifyInstance): Prom
       listClientDisputeCommunications(client, clientId, id),
     );
     return { communications };
+  });
+
+  routes.get('/api/portal/claims/:id', async (request, reply) => {
+    const clientId = request.tenantContext!.clientIds![0]!;
+
+    const { id } = request.params as { id: string };
+    if (!isUuid(id)) {
+      await reply.code(400).send({ error: 'invalid claim id: must be a well-formed UUID' });
+      return;
+    }
+
+    const detail = await withTenantTx(request.tenantContext!, (client) =>
+      getClaimDetail(client, clientId, id),
+    );
+    if (!detail) {
+      await reply.code(404).send({ error: 'claim not found' });
+      return;
+    }
+    return detail;
+  });
+
+  routes.get('/api/portal/claims/:id/documents', async (request, reply) => {
+    const clientId = request.tenantContext!.clientIds![0]!;
+
+    const { id } = request.params as { id: string };
+    if (!isUuid(id)) {
+      await reply.code(400).send({ error: 'invalid claim id: must be a well-formed UUID' });
+      return;
+    }
+
+    const documents = await withTenantTx(request.tenantContext!, (client) =>
+      listClientClaimDocuments(client, clientId, id),
+    );
+    if (!documents) {
+      await reply.code(404).send({ error: 'claim not found' });
+      return;
+    }
+    return { documents };
   });
 }

@@ -9,7 +9,6 @@ export const JOB_NAMES = {
   EVALUATE_AUDIT_V1: 'freight.audit.evaluate.v1',
   REPLAY_AUDIT_V1: 'freight.audit.replay.v1',
   SYNC_REFERENCE_DATA_V1: 'freight.reference-data.sync.v1',
-  POLL_SFTP_V1: 'freight.ingestion.sftp.poll.v1',
   ESCALATE_CLAIM_V1: 'freight.claims.escalate.v1',
   FOLLOW_UP_CLAIM_V1: 'freight.claims.follow-up.v1',
   SCAN_CLAIM_AGING_V1: 'freight.claims.scan-aging.v1',
@@ -28,7 +27,6 @@ export const JOB_DEAD_LETTER_NAMES: Record<JobName, string> = {
   [JOB_NAMES.EVALUATE_AUDIT_V1]: 'freight.audit.evaluate.dead-letter.v1',
   [JOB_NAMES.REPLAY_AUDIT_V1]: 'freight.audit.replay.dead-letter.v1',
   [JOB_NAMES.SYNC_REFERENCE_DATA_V1]: 'freight.reference-data.sync.dead-letter.v1',
-  [JOB_NAMES.POLL_SFTP_V1]: 'freight.ingestion.sftp.poll.dead-letter.v1',
   [JOB_NAMES.ESCALATE_CLAIM_V1]: 'freight.claims.escalate.dead-letter.v1',
   [JOB_NAMES.FOLLOW_UP_CLAIM_V1]: 'freight.claims.follow-up.dead-letter.v1',
   [JOB_NAMES.SCAN_CLAIM_AGING_V1]: 'freight.claims.scan-aging.dead-letter.v1',
@@ -68,10 +66,6 @@ export const jobPayloadSchemas = {
     ...envelope,
     source: z.enum(['eia_diesel', 'mileage', 'ocean_tariff', 'nmfc']),
     publicationVersion: z.string().trim().min(1).max(255),
-  }).strict(),
-  [JOB_NAMES.POLL_SFTP_V1]: z.object({
-    ...envelope,
-    connectionId: id,
   }).strict(),
   [JOB_NAMES.ESCALATE_CLAIM_V1]: z.object({
     ...envelope,

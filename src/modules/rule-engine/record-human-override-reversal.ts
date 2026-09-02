@@ -1,6 +1,7 @@
 import type pg from 'pg';
 import { isUuid } from '../../shared/request-validation.js';
 import { quarantineOnReversal } from './quarantine-on-reversal.js';
+import { recordRuleQuarantine } from '../../jobs/quarantine-alert-metrics.js';
 
 /**
  * P6.C.8: the first write path to `human_override`. The table is
@@ -67,6 +68,10 @@ export async function recordHumanOverrideReversal(
     criterionId: input.criterionId,
     ruleVersionId: input.ruleVersionId,
   });
+  // P6.C.9: alert on the quarantine transition itself, not on every
+  // reversal -- quarantine-on-reversal.ts (P6.C.8) is left untouched per
+  // this task's own No-go.
+  if (quarantine.quarantined) recordRuleQuarantine();
 
   return { humanOverrideId, quarantined: quarantine.quarantined, ruleVersionId: quarantine.ruleVersionId };
 }

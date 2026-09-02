@@ -4,6 +4,7 @@ import { withTenantReadTx } from '../db/tenant-context.js';
 import { collectQueueMetrics, renderQueueMetrics } from '../jobs/metrics.js';
 import { collectDiscoveryMetrics, renderDiscoveryMetrics } from '../jobs/discovery-metrics.js';
 import { renderReplayAlertMetrics } from '../jobs/replay-alert-metrics.js';
+import { renderQuarantineAlertMetrics } from '../jobs/quarantine-alert-metrics.js';
 
 /**
  * P6.C.4: makes worker-throughput/queue-backlog + discovery metrics --
@@ -40,7 +41,7 @@ export async function registerMetricsRoutes(app: FastifyInstance): Promise<void>
         const discovery = await collectDiscoveryMetrics(client);
         return [queue, discovery] as const;
       });
-      const body = renderQueueMetrics(queueMetrics) + renderDiscoveryMetrics(discoveryMetrics) + renderReplayAlertMetrics();
+      const body = renderQueueMetrics(queueMetrics) + renderDiscoveryMetrics(discoveryMetrics) + renderReplayAlertMetrics() + renderQuarantineAlertMetrics();
       return reply.code(200).type('text/plain; charset=utf-8').send(body);
     } catch (error) {
       // Never log the error message: a pg/network error can echo a connection

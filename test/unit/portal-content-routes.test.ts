@@ -328,4 +328,152 @@ describe('portal content APIs (unit, mocked withTenantTx + client-viewer-auth)',
       expect(evidenceRes.statusCode).toBe(404);
     }
   });
+
+  const DISPUTE_ID = '50000000-0000-4000-8000-000000000004';
+
+  it('returns the dispute for an authorized request, threading the resolved clientId and disputeId through', async () => {
+    mockAuthorized();
+    vi.doMock('../../src/db/tenant-context.js', () => ({
+      withTenantTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
+    }));
+    const detail = { id: DISPUTE_ID, status: 'draft', lines: [] };
+    const getClientDisputeDetail = vi.fn().mockResolvedValue(detail);
+    vi.doMock('../../src/modules/portal/get-client-dispute-detail.js', () => ({ getClientDisputeDetail }));
+    const { buildApp } = await import('../../src/server/app.js');
+    app = buildApp();
+
+    const res = await app.inject({ method: 'GET', url: `/api/portal/disputes/${DISPUTE_ID}` });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual(detail);
+    expect(getClientDisputeDetail).toHaveBeenCalledWith({}, CLIENT_ID, DISPUTE_ID);
+  });
+
+  it('returns 404 when getClientDisputeDetail resolves null (not found, or belongs to a different client)', async () => {
+    mockAuthorized();
+    vi.doMock('../../src/db/tenant-context.js', () => ({
+      withTenantTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
+    }));
+    vi.doMock('../../src/modules/portal/get-client-dispute-detail.js', () => ({
+      getClientDisputeDetail: vi.fn().mockResolvedValue(null),
+    }));
+    const { buildApp } = await import('../../src/server/app.js');
+    app = buildApp();
+
+    const res = await app.inject({ method: 'GET', url: `/api/portal/disputes/${DISPUTE_ID}` });
+    expect(res.statusCode).toBe(404);
+  });
+
+  it('rejects a malformed dispute id with 400, without calling getClientDisputeDetail', async () => {
+    mockAuthorized();
+    vi.doMock('../../src/db/tenant-context.js', () => ({
+      withTenantTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
+    }));
+    const getClientDisputeDetail = vi.fn();
+    vi.doMock('../../src/modules/portal/get-client-dispute-detail.js', () => ({ getClientDisputeDetail }));
+    const { buildApp } = await import('../../src/server/app.js');
+    app = buildApp();
+
+    const res = await app.inject({ method: 'GET', url: '/api/portal/disputes/not-a-uuid' });
+    expect(res.statusCode).toBe(400);
+    expect(getClientDisputeDetail).not.toHaveBeenCalled();
+  });
+
+  it('rejects an unauthenticated dispute request with 401, without calling getClientDisputeDetail', async () => {
+    mockClientViewerAuth(null);
+    vi.doMock('../../src/db/tenant-context.js', () => ({ withTenantTx: vi.fn() }));
+    const getClientDisputeDetail = vi.fn();
+    vi.doMock('../../src/modules/portal/get-client-dispute-detail.js', () => ({ getClientDisputeDetail }));
+    const { buildApp } = await import('../../src/server/app.js');
+    app = buildApp();
+
+    const res = await app.inject({ method: 'GET', url: `/api/portal/disputes/${DISPUTE_ID}` });
+    expect(res.statusCode).toBe(401);
+    expect(getClientDisputeDetail).not.toHaveBeenCalled();
+  });
+
+  it('returns { communications } for an authorized request, only after confirming the dispute is visible to this clientId', async () => {
+    mockAuthorized();
+    vi.doMock('../../src/db/tenant-context.js', () => ({
+      withTenantTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
+    }));
+    const getClientDisputeDetail = vi.fn().mockResolvedValue({ id: DISPUTE_ID, status: 'draft', lines: [] });
+    vi.doMock('../../src/modules/portal/get-client-dispute-detail.js', () => ({ getClientDisputeDetail }));
+    const comms = [{ id: 'c1', direction: 'outbound', body: 'hi', recordedAt: '2026-09-01T00:00:00Z' }];
+    const listClientDisputeCommunications = vi.fn().mockResolvedValue(comms);
+    vi.doMock('../../src/modules/portal/list-client-dispute-communications.js', () => ({ listClientDisputeCommunications }));
+    const { buildApp } = await import('../../src/server/app.js');
+    app = buildApp();
+
+    const res = await app.inject({ method: 'GET', url: `/api/portal/disputes/${DISPUTE_ID}/communications` });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ communications: comms });
+    expect(getClientDisputeDetail).toHaveBeenCalledWith({}, CLIENT_ID, DISPUTE_ID);
+    expect(listClientDisputeCommunications).toHaveBeenCalledWith({}, CLIENT_ID, DISPUTE_ID);
+  });
+
+  it('returns 404 for communications on a dispute that does not exist or belongs to a different client, without calling listClientDisputeCommunications', async () => {
+    mockAuthorized();
+    vi.doMock('../../src/db/tenant-context.js', () => ({
+      withTenantTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
+    }));
+    vi.doMock('../../src/modules/portal/get-client-dispute-detail.js', () => ({
+      getClientDisputeDetail: vi.fn().mockResolvedValue(null),
+    }));
+    const listClientDisputeCommunications = vi.fn();
+    vi.doMock('../../src/modules/portal/list-client-dispute-communications.js', () => ({ listClientDisputeCommunications }));
+    const { buildApp } = await import('../../src/server/app.js');
+    app = buildApp();
+
+    const res = await app.inject({ method: 'GET', url: `/api/portal/disputes/${DISPUTE_ID}/communications` });
+    expect(res.statusCode).toBe(404);
+    expect(listClientDisputeCommunications).not.toHaveBeenCalled();
+  });
+
+  it('rejects a malformed dispute id on the communications route with 400', async () => {
+    mockAuthorized();
+    vi.doMock('../../src/db/tenant-context.js', () => ({
+      withTenantTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
+    }));
+    const getClientDisputeDetail = vi.fn();
+    vi.doMock('../../src/modules/portal/get-client-dispute-detail.js', () => ({ getClientDisputeDetail }));
+    const { buildApp } = await import('../../src/server/app.js');
+    app = buildApp();
+
+    const res = await app.inject({ method: 'GET', url: '/api/portal/disputes/not-a-uuid/communications' });
+    expect(res.statusCode).toBe(400);
+    expect(getClientDisputeDetail).not.toHaveBeenCalled();
+  });
+
+  it('rejects an unauthenticated communications request with 401', async () => {
+    mockClientViewerAuth(null);
+    vi.doMock('../../src/db/tenant-context.js', () => ({ withTenantTx: vi.fn() }));
+    const getClientDisputeDetail = vi.fn();
+    vi.doMock('../../src/modules/portal/get-client-dispute-detail.js', () => ({ getClientDisputeDetail }));
+    const { buildApp } = await import('../../src/server/app.js');
+    app = buildApp();
+
+    const res = await app.inject({ method: 'GET', url: `/api/portal/disputes/${DISPUTE_ID}/communications` });
+    expect(res.statusCode).toBe(401);
+    expect(getClientDisputeDetail).not.toHaveBeenCalled();
+  });
+
+  it('has no POST/PUT/PATCH/DELETE route registered on the dispute detail or communications paths -- no write surface exists to protect (No-gos: read-only)', async () => {
+    mockAuthorized();
+    vi.doMock('../../src/db/tenant-context.js', () => ({
+      withTenantTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
+    }));
+    vi.doMock('../../src/modules/portal/get-client-dispute-detail.js', () => ({ getClientDisputeDetail: vi.fn() }));
+    vi.doMock('../../src/modules/portal/list-client-dispute-communications.js', () => ({ listClientDisputeCommunications: vi.fn() }));
+    const { buildApp } = await import('../../src/server/app.js');
+    app = buildApp();
+
+    for (const method of ['POST', 'PUT', 'PATCH', 'DELETE'] as const) {
+      const detailRes = await app.inject({ method, url: `/api/portal/disputes/${DISPUTE_ID}` });
+      expect(detailRes.statusCode).toBe(404);
+      const commsRes = await app.inject({ method, url: `/api/portal/disputes/${DISPUTE_ID}/communications` });
+      expect(commsRes.statusCode).toBe(404);
+    }
+  });
 });

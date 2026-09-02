@@ -7,6 +7,8 @@ import { getClientAuditRunScorecard } from '../modules/portal/get-client-audit-r
 import { listClientFindings, type ClientFindingsSortKey } from '../modules/portal/list-client-findings.js';
 import { getDefensibilityChain } from '../modules/findings/get-defensibility-chain.js';
 import { ALL_VARIANCE_STATUSES } from '../shared/variance-status.js';
+import { getClientDisputeDetail } from '../modules/portal/get-client-dispute-detail.js';
+import { listClientDisputeCommunications } from '../modules/portal/list-client-dispute-communications.js';
 
 const MAX_LIMIT = 200;
 const VARIANCE_STATUS_VALUES = new Set<string>(ALL_VARIANCE_STATUSES);
@@ -40,6 +42,19 @@ const NUMERIC_STRING = /^-?\d+(\.\d+)?$/;
  * calls with an explicit clientId -- no field-level filtering needed here,
  * since that route already exposes this same shape to a tenant-scoped
  * caller today.
+ *
+ * GET /api/portal/disputes/:id and GET /api/portal/disputes/:id/communications
+ * (P6.B.3) do NOT reuse the internal getDisputeDetail/listDisputeCommunications
+ * as-is -- unlike getDefensibilityChain, those rely on RLS alone (no clientId
+ * param at all), so new client-scoped wrapper modules
+ * (get-client-dispute-detail.ts / list-client-dispute-communications.ts)
+ * mirror their join shape with an added explicit client_id predicate,
+ * matching this surface's own convention elsewhere.
+ *
+ * GET /api/portal/disputes/:id/communications 404s on the dispute lookup
+ * itself before returning communications, mirroring
+ * dispute-review-routes.ts's internal GET /api/disputes/:id/communications
+ * exactly.
  *
  * client_admin's equivalent access (P6.A.3, sibling capability) and the
  * portal UI shell/nav that will mount these views (P6.A.1) are explicitly
@@ -175,5 +190,47 @@ export async function registerPortalContentRoutes(routes: FastifyInstance): Prom
       return;
     }
     return chain;
+  });
+
+  routes.get('/api/portal/disputes/:id', async (request, reply) => {
+    const clientId = request.tenantContext!.clientIds![0]!;
+
+    const { id } = request.params as { id: string };
+    if (!isUuid(id)) {
+      await reply.code(400).send({ error: 'invalid dispute id: must be a well-formed UUID' });
+      return;
+    }
+
+    const detail = await withTenantTx(request.tenantContext!, (client) =>
+      getClientDisputeDetail(client, clientId, id),
+    );
+    if (!detail) {
+      await reply.code(404).send({ error: 'dispute not found' });
+      return;
+    }
+    return detail;
+  });
+
+  routes.get('/api/portal/disputes/:id/communications', async (request, reply) => {
+    const clientId = request.tenantContext!.clientIds![0]!;
+
+    const { id } = request.params as { id: string };
+    if (!isUuid(id)) {
+      await reply.code(400).send({ error: 'invalid dispute id: must be a well-formed UUID' });
+      return;
+    }
+
+    const detail = await withTenantTx(request.tenantContext!, (client) =>
+      getClientDisputeDetail(client, clientId, id),
+    );
+    if (!detail) {
+      await reply.code(404).send({ error: 'dispute not found' });
+      return;
+    }
+
+    const communications = await withTenantTx(request.tenantContext!, (client) =>
+      listClientDisputeCommunications(client, clientId, id),
+    );
+    return { communications };
   });
 }

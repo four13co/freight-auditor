@@ -18,11 +18,15 @@ function mockClient(opts: MockOpts = {}) {
     if (sql.includes('FROM workflow_instance')) {
       return Promise.resolve({ rows: instanceFound ? [{}] : [], rowCount: instanceFound ? 1 : 0 });
     }
+    if (sql.includes('INSERT INTO workflow_command')) {
+      // ON CONFLICT DO NOTHING: simulate a pre-existing dedupe-key row by
+      // returning no RETURNING rows, matching what a real unique-constraint
+      // conflict produces (migration 0072, workflow_command_dedupe_key).
+      if (existingId) return Promise.resolve({ rows: [], rowCount: 0 });
+      return Promise.resolve({ rows: [{ id: COMMAND_ID }], rowCount: 1 });
+    }
     if (sql.includes('SELECT id FROM workflow_command')) {
       return Promise.resolve({ rows: existingId ? [{ id: existingId }] : [], rowCount: existingId ? 1 : 0 });
-    }
-    if (sql.includes('INSERT INTO workflow_command')) {
-      return Promise.resolve({ rows: [{ id: COMMAND_ID }], rowCount: 1 });
     }
     if (sql.includes('INSERT INTO audit_event')) {
       return Promise.resolve({ rows: [{ id: 'audit-event-id', created: true }], rowCount: 1 });
@@ -65,7 +69,7 @@ describe('scheduleWorkflowCommand', () => {
     expect(values).toEqual([CLIENT_ID, INSTANCE_ID, 'send_reminder', '{}', RUN_AFTER.toISOString()]);
   });
 
-  it('is idempotent: returns the existing pending command instead of inserting a duplicate', async () => {
+  it('is idempotent: returns the existing command instead of a duplicate when the dedupe-key insert conflicts', async () => {
     const { client, query } = mockClient({ existingId: 'existing-command-id' });
     const result = await scheduleWorkflowCommand(client, {
       clientId: CLIENT_ID,
@@ -75,8 +79,8 @@ describe('scheduleWorkflowCommand', () => {
     });
     expect(result).toEqual({ commandId: 'existing-command-id', created: false });
 
-    const insertCall = query.mock.calls.find((call: unknown[]) => (call[0] as string).includes('INSERT INTO workflow_command'));
-    expect(insertCall).toBeUndefined();
+    const auditCall = query.mock.calls.find((call: unknown[]) => (call[0] as string).includes('INSERT INTO audit_event'));
+    expect(auditCall).toBeUndefined();
   });
 
   it('rejects a commandType that fails the open-text CHECK-matching regex', async () => {

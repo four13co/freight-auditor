@@ -28,7 +28,7 @@ describe('contract upload routes', () => {
     vi.doMock('../../src/modules/contracts/upload-contract-document.js', async (original) => ({
       ...(await original()), uploadContractDocument, uploadContractVersionDocument,
     }));
-    vi.doMock('../../src/modules/reference-data/configured-object-store.js', () => ({ configuredObjectStore: () => ({}) }));
+    vi.doMock('../../src/modules/reference-data/object-store-config.js', () => ({ runtimeObjectStore: () => ({}) }));
     const finalizeContractVersion = vi.fn().mockResolvedValue({ id: 'verified', verificationHash: 'a'.repeat(64), fieldCount: 2, created: true });
     vi.doMock('../../src/modules/contracts/finalize-contract-version.js', () => ({ finalizeContractVersion }));
     const { registerContractsRoutes } = await import('../../src/server/contracts-routes.js');

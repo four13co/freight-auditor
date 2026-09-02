@@ -1,6 +1,7 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 import { buildApp } from '../../src/server/app.js';
+import { resetRuntimeObjectStore } from '../../src/modules/reference-data/object-store-config.js';
 
 describe('GET /health (unit, via inject)', () => {
   let app: FastifyInstance | undefined;
@@ -8,13 +9,14 @@ describe('GET /health (unit, via inject)', () => {
   afterEach(async () => {
     if (app) await app.close();
     app = undefined;
+    resetRuntimeObjectStore();
   });
 
   it('returns 200 with {status:"ok"}', async () => {
     app = buildApp();
     const res = await app.inject({ method: 'GET', url: '/health' });
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toMatchObject({ status: 'ok' });
+    expect(res.json()).toMatchObject({ status: 'ok', object_store: 'ok' });
   });
 
   it('includes a build identifier so a rolling-swap deploy can distinguish revisions', async () => {
@@ -63,6 +65,28 @@ describe('GET /health (unit, via inject)', () => {
       expect(res.json()).toMatchObject({ status: 'ok', database: 'unreachable' });
     } finally {
       if (original !== undefined) process.env.DATABASE_URL = original;
+    }
+  });
+
+  it('returns 503 not_ready when dependencies are unavailable', async () => {
+    const originalDatabaseUrl = process.env.DATABASE_URL;
+    const originalBackend = process.env.OBJECT_STORE_BACKEND;
+    delete process.env.DATABASE_URL;
+    process.env.OBJECT_STORE_BACKEND = 'r2';
+    resetRuntimeObjectStore();
+    try {
+      app = buildApp();
+      const res = await app.inject({ method: 'GET', url: '/ready' });
+      expect(res.statusCode).toBe(503);
+      expect(res.json()).toMatchObject({
+        status: 'not_ready',
+        database: 'unreachable',
+        object_store: 'misconfigured',
+      });
+    } finally {
+      if (originalDatabaseUrl !== undefined) process.env.DATABASE_URL = originalDatabaseUrl;
+      if (originalBackend === undefined) delete process.env.OBJECT_STORE_BACKEND;
+      else process.env.OBJECT_STORE_BACKEND = originalBackend;
     }
   });
 });

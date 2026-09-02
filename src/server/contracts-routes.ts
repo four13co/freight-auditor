@@ -2,7 +2,7 @@ import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { ZodError } from 'zod';
 import { withTenantTx } from '../db/tenant-context.js';
 import { registerTenantAuthPreHandler } from '../modules/findings/tenant-auth.js';
-import { configuredObjectStore } from '../modules/reference-data/configured-object-store.js';
+import { runtimeObjectStore } from '../modules/reference-data/object-store-config.js';
 import {
   ContractNotFoundError,
   ContractUploadConflictError,
@@ -11,7 +11,7 @@ import {
   uploadContractDocument,
   uploadContractVersionDocument,
 } from '../modules/contracts/upload-contract-document.js';
-import { objectStoreRoot, registerBufferContentTypeParser, requireNonEmptyBuffer, requireSingleClientId } from '../modules/ingestion/raw-upload-route.js';
+import { registerBufferContentTypeParser, requireNonEmptyBuffer, requireSingleClientId } from '../modules/ingestion/raw-upload-route.js';
 import { isUuid } from '../shared/request-validation.js';
 import { FinalizeContractVersionInputSchema, ContractVersionFinalizationError } from '../modules/contracts/finalize-contract-version-schema.js';
 import { finalizeContractVersion } from '../modules/contracts/finalize-contract-version.js';
@@ -49,7 +49,7 @@ export async function registerContractsRoutes(routes: FastifyInstance): Promise<
     if (!bytes) return reply.code(400).send({ error: 'request body must be a non-empty PDF or XLSX payload' });
     try {
       const metadata = ContractUploadMetadataSchema.parse(metadataFromQuery(request));
-      const result = await withTenantTx(ctx, (client) => uploadContractDocument(client, configuredObjectStore(objectStoreRoot()), {
+      const result = await withTenantTx(ctx, (client) => uploadContractDocument(client, runtimeObjectStore(), {
         clientId, actorUserId: request.actorUserId ?? null, bytes,
         contentType: request.headers['content-type']!, metadata,
       }));
@@ -71,7 +71,7 @@ export async function registerContractsRoutes(routes: FastifyInstance): Promise<
     if (!bytes) return reply.code(400).send({ error: 'request body must be a non-empty PDF or XLSX payload' });
     try {
       const metadata = ContractVersionUploadMetadataSchema.parse(versionMetadataFromQuery(request));
-      const result = await withTenantTx(ctx, (client) => uploadContractVersionDocument(client, configuredObjectStore(objectStoreRoot()), {
+      const result = await withTenantTx(ctx, (client) => uploadContractVersionDocument(client, runtimeObjectStore(), {
         clientId, actorUserId: request.actorUserId ?? null, contractId: id, bytes,
         contentType: request.headers['content-type']!, metadata,
       }));

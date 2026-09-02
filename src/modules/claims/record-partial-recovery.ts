@@ -1,7 +1,9 @@
 import type pg from 'pg';
+import type PgBoss from 'pg-boss';
 import { z } from 'zod';
 import { deterministicAuditEventId, writeAuditEvent } from '../audit-ledger/write-audit-event.js';
 import { validatePartialRecovery, type ClaimRow } from './validate-partial-recovery.js';
+import { enqueueReconciliationExport } from './enqueue-reconciliation-export.js';
 
 const schema = z.object({
   clientId: z.uuid(),
@@ -40,9 +42,16 @@ export interface RecordPartialRecoveryResult {
  * recovery_event rows, computed fresh inside this transaction (never
  * cached), so concurrent partial recoveries against the same claim are
  * each checked against the true prior total as of their own transaction.
+ *
+ * Also enqueues an EXPORT_RECORD_V1 job (P5.C.5) carrying the recovery
+ * event's reconciliation data, in the same transaction as the write --
+ * enqueue failure rolls back the whole recovery_event write (the enqueue is
+ * part of this function's own unit of work), but the export ATTEMPT itself
+ * never does: the job runs later, off this request path, via the worker.
  */
 export async function recordPartialRecovery(
   client: pg.PoolClient,
+  boss: Pick<PgBoss, 'send'>,
   untrusted: z.input<typeof schema>,
 ): Promise<RecordPartialRecoveryResult> {
   const input = schema.parse(untrusted);
@@ -83,6 +92,15 @@ export async function recordPartialRecovery(
       cumulativeRecovered: validated.cumulativeRecovered,
       isFinal: validated.isFinal,
     },
+  });
+
+  await enqueueReconciliationExport(client, boss, {
+    clientId: input.clientId,
+    claimId: input.claimId,
+    recoveryEventId,
+    amountRecovered: validated.amountRecovered,
+    currency: validated.currency,
+    varianceFindingId: input.varianceFindingId ?? null,
   });
 
   return { recoveryEventId, cumulativeRecovered: validated.cumulativeRecovered, isFinal: validated.isFinal };

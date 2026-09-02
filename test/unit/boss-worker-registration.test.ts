@@ -46,6 +46,7 @@ describe('registerJobConsumers', () => {
       withTenantTx, handleFollowUp, handleEscalation: vi.fn(), handleScan: vi.fn(),
       handleWorkflowCommandScan: vi.fn(), handleRunWorkflowCommand: vi.fn(),
       handleOutboxMessageScan: vi.fn(), handleDeliverOutboxMessage: vi.fn(), handleExportRecord: vi.fn(),
+      handleDiscoverTriggers: vi.fn(),
     });
 
     expect(followUpWorker).toBeDefined();
@@ -72,6 +73,7 @@ describe('registerJobConsumers', () => {
       withTenantTx, handleFollowUp: vi.fn(), handleEscalation, handleScan: vi.fn(),
       handleWorkflowCommandScan: vi.fn(), handleRunWorkflowCommand: vi.fn(),
       handleOutboxMessageScan: vi.fn(), handleDeliverOutboxMessage: vi.fn(), handleExportRecord: vi.fn(),
+      handleDiscoverTriggers: vi.fn(),
     });
 
     expect(escalationWorker).toBeDefined();
@@ -96,6 +98,7 @@ describe('registerJobConsumers', () => {
       withTenantTx: vi.fn(), handleFollowUp: vi.fn(), handleEscalation: vi.fn(), handleScan,
       handleWorkflowCommandScan: vi.fn(), handleRunWorkflowCommand: vi.fn(),
       handleOutboxMessageScan: vi.fn(), handleDeliverOutboxMessage: vi.fn(), handleExportRecord: vi.fn(),
+      handleDiscoverTriggers: vi.fn(),
     });
 
     expect(scanWorker).toBeDefined();
@@ -145,6 +148,7 @@ describe('registerJobConsumers', () => {
       withTenantTx: vi.fn(), handleFollowUp: vi.fn(), handleEscalation: vi.fn(), handleScan: vi.fn(),
       handleWorkflowCommandScan, handleRunWorkflowCommand: vi.fn(),
       handleOutboxMessageScan: vi.fn(), handleDeliverOutboxMessage: vi.fn(), handleExportRecord: vi.fn(),
+      handleDiscoverTriggers: vi.fn(),
     });
 
     expect(scanWorker).toBeDefined();
@@ -170,6 +174,7 @@ describe('registerJobConsumers', () => {
       withTenantTx, handleFollowUp: vi.fn(), handleEscalation: vi.fn(), handleScan: vi.fn(),
       handleWorkflowCommandScan: vi.fn(), handleRunWorkflowCommand,
       handleOutboxMessageScan: vi.fn(), handleDeliverOutboxMessage: vi.fn(), handleExportRecord: vi.fn(),
+      handleDiscoverTriggers: vi.fn(),
     });
 
     expect(runWorker).toBeDefined();
@@ -203,6 +208,17 @@ describe('registerJobConsumers', () => {
     expect(registeredNames).toContain(JOB_NAMES.EXPORT_RECORD_V1);
   });
 
+  it('registers a work handler for the discover-triggers job', async () => {
+    const work = vi.fn().mockResolvedValue('worker-id');
+    const schedule = vi.fn().mockResolvedValue(undefined);
+    const boss = { work, schedule, send: vi.fn() };
+
+    await registerJobConsumers(boss as never);
+
+    const registeredNames = work.mock.calls.map(([name]) => name);
+    expect(registeredNames).toContain(JOB_NAMES.DISCOVER_TRIGGERS_V1);
+  });
+
   it('schedules the outbox-message scan tick on a recurring cron', async () => {
     const work = vi.fn().mockResolvedValue('worker-id');
     const schedule = vi.fn().mockResolvedValue(undefined);
@@ -231,6 +247,7 @@ describe('registerJobConsumers', () => {
       withTenantTx: vi.fn(), handleFollowUp: vi.fn(), handleEscalation: vi.fn(), handleScan: vi.fn(),
       handleWorkflowCommandScan: vi.fn(), handleRunWorkflowCommand: vi.fn(),
       handleOutboxMessageScan, handleDeliverOutboxMessage: vi.fn(), handleExportRecord: vi.fn(),
+      handleDiscoverTriggers: vi.fn(),
     });
 
     expect(scanWorker).toBeDefined();
@@ -256,6 +273,7 @@ describe('registerJobConsumers', () => {
       withTenantTx, handleFollowUp: vi.fn(), handleEscalation: vi.fn(), handleScan: vi.fn(),
       handleWorkflowCommandScan: vi.fn(), handleRunWorkflowCommand: vi.fn(),
       handleOutboxMessageScan: vi.fn(), handleDeliverOutboxMessage, handleExportRecord: vi.fn(),
+      handleDiscoverTriggers: vi.fn(),
     });
 
     expect(deliverWorker).toBeDefined();
@@ -282,6 +300,7 @@ describe('registerJobConsumers', () => {
       withTenantTx, handleFollowUp: vi.fn(), handleEscalation: vi.fn(), handleScan: vi.fn(),
       handleWorkflowCommandScan: vi.fn(), handleRunWorkflowCommand: vi.fn(),
       handleOutboxMessageScan: vi.fn(), handleDeliverOutboxMessage: vi.fn(), handleExportRecord,
+      handleDiscoverTriggers: vi.fn(),
     });
 
     expect(exportWorker).toBeDefined();
@@ -290,5 +309,32 @@ describe('registerJobConsumers', () => {
 
     expect(withTenantTx).toHaveBeenCalledWith({ clientIds: ['client-5'] }, expect.any(Function));
     expect(handleExportRecord).toHaveBeenCalledWith(fakeClient, jobData);
+  });
+
+  it('actually invokes handleDiscoverTriggers with the job payload inside a tenant-scoped transaction for the correct clientId', async () => {
+    let discoverWorker: ((jobs: unknown[]) => Promise<void>) | undefined;
+    const work = vi.fn().mockImplementation(async (name: string, handler: (jobs: unknown[]) => Promise<void>) => {
+      if (name === JOB_NAMES.DISCOVER_TRIGGERS_V1) discoverWorker = handler;
+      return 'worker-id';
+    });
+    const schedule = vi.fn().mockResolvedValue(undefined);
+    const boss = { work, schedule, send: vi.fn() };
+    const fakeClient = { marker: 'tenant-scoped-client' };
+    const withTenantTx = vi.fn().mockImplementation(async (ctx, fn) => fn(fakeClient));
+    const handleDiscoverTriggers = vi.fn().mockResolvedValue(undefined);
+
+    await registerJobConsumers(boss as never, {
+      withTenantTx, handleFollowUp: vi.fn(), handleEscalation: vi.fn(), handleScan: vi.fn(),
+      handleWorkflowCommandScan: vi.fn(), handleRunWorkflowCommand: vi.fn(),
+      handleOutboxMessageScan: vi.fn(), handleDeliverOutboxMessage: vi.fn(), handleExportRecord: vi.fn(),
+      handleDiscoverTriggers,
+    });
+
+    expect(discoverWorker).toBeDefined();
+    const jobData = { clientId: 'client-6', auditRunId: 'audit-run-1' };
+    await discoverWorker!([{ id: 'job-9', data: jobData, expireInSeconds: 900 }]);
+
+    expect(withTenantTx).toHaveBeenCalledWith({ clientIds: ['client-6'] }, expect.any(Function));
+    expect(handleDiscoverTriggers).toHaveBeenCalledWith(fakeClient, jobData);
   });
 });

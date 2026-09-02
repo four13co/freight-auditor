@@ -4,6 +4,7 @@ import { getPool, closePool } from '../../src/db/pool.js';
 import { withTenantTx } from '../../src/db/tenant-context.js';
 import { createClaimFromDispute, DisputeNotFoundError } from '../../src/modules/claims/create-claim-from-dispute.js';
 import { ClaimableDisputeError } from '../../src/modules/claims/validate-claimable-dispute.js';
+import { acceptDispute } from '../../src/modules/disputes/resolve-dispute.js';
 import { cleanupTenantFixtures } from './helpers/cleanup-tenant-fixtures.js';
 
 /**
@@ -16,6 +17,7 @@ describe('createClaimFromDispute (DB)', () => {
   let pool: pg.Pool;
   let clientAId: string;
   let clientBId: string;
+  let actorUserId: string;
   const tag = `ccfd-${Date.now()}`;
 
   beforeAll(async () => {
@@ -26,6 +28,8 @@ describe('createClaimFromDispute (DB)', () => {
       clientAId = a.rows[0].id;
       const b = await owner.query(`INSERT INTO client (name, slug) VALUES ('CCFD-B', $1) RETURNING id`, [`${tag}-b`]);
       clientBId = b.rows[0].id;
+      const u = await owner.query(`INSERT INTO app_user (email) VALUES ($1) RETURNING id`, [`${tag}@example.com`]);
+      actorUserId = u.rows[0].id;
     } finally {
       owner.release();
     }
@@ -33,6 +37,12 @@ describe('createClaimFromDispute (DB)', () => {
 
   afterAll(async () => {
     await cleanupTenantFixtures(pool, [clientAId, clientBId]);
+    const owner = await pool.connect();
+    try {
+      await owner.query(`DELETE FROM app_user WHERE id = $1`, [actorUserId]);
+    } finally {
+      owner.release();
+    }
     await closePool();
   });
 
@@ -62,6 +72,19 @@ describe('createClaimFromDispute (DB)', () => {
     expect(result.amountClaimed).toBe('500.0000');
     expect(result.currency).toBe('USD');
     expect(ledger).toMatchObject({ event: 'claim.created', actor_kind: 'analyst' });
+  });
+
+  it('86e32tg1w: succeeds against a dispute that reached accepted through the real acceptDispute transition, not a hand-inserted status', async () => {
+    const result = await withTenantTx({ clientIds: [clientAId], internal: true }, async (c) => {
+      const disputeId = await seedDispute(c, { clientId: clientAId, status: 'sent' });
+      const transition = await acceptDispute(c, disputeId, actorUserId);
+      return { transition, claim: await createClaimFromDispute(c, { clientId: clientAId, disputeId }) };
+    });
+
+    expect(result.transition).toEqual({ found: true });
+    expect(result.claim.created).toBe(true);
+    expect(result.claim.amountClaimed).toBe('500.0000');
+    expect(result.claim.currency).toBe('USD');
   });
 
   it('AC2 (idempotent retry): a second create for the same dispute returns the existing claim, writes no duplicate', async () => {

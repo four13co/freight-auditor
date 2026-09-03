@@ -25,6 +25,99 @@ import pg from 'pg';
 export const DEV_CLIENT_ID = '11111111-1111-4111-8111-111111111111';
 export const DEV_USER_ID = '22222222-2222-4222-8222-222222222222';
 
+// 86e33trjc: the pre-86e33t12f sentinel ids. A persistent, non-ephemeral
+// deploy database (the dev Neon instance) already has 'dev-dashboard'
+// client/app_user rows under these OLD ids from every deploy before #319
+// merged. ON CONFLICT (id) DO NOTHING doesn't help there: the NEW id's
+// INSERT is a genuinely different row, so it collides on the separate
+// client_slug_key / app_user_email_key UNIQUE constraints instead of being
+// suppressed. reconcileSentinelId (below) migrates any pre-existing row (and
+// everything that references it) from the old id to the new one before the
+// inserts below run, so they become true no-ops against an
+// already-reconciled database -- exactly like they already are against a
+// fresh one, where the old row never existed at all.
+const OLD_DEV_CLIENT_ID = '11111111-1111-1111-1111-111111111111';
+const OLD_DEV_USER_ID = '22222222-2222-2222-2222-222222222222';
+
+/**
+ * Migrates a row from oldId to newId in place: copies the old row's own
+ * columns (every column, not a hardcoded literal set -- an is_active=false
+ * or an old created_at on the real row must survive, not get silently reset)
+ * into a new row under newId, repoints every foreign key (in any table) that
+ * referenced oldId, then removes the oldId row. Postgres enforces FK NO
+ * ACTION checks immediately, so a child can only be repointed to newId once
+ * a newId row exists, and the old row can only be deleted once nothing
+ * references it -- this ordering is why UPDATE-in-place on the parent's own
+ * id column isn't used here (it would require the new id to exist before the
+ * row moves and children to move before the old row's id changes, which is
+ * circular).
+ *
+ * uniqueColumn is freed (suffixed) first so the copy's real value doesn't
+ * collide with the still-present old row before it's replaced, then
+ * regexp_replace strips that same suffix back off in the copy.
+ *
+ * Both the copied column list and the FK-repoint set come from
+ * information_schema, not an enumerated list -- this repo has dozens of
+ * tables with a client_id/actor_user_id FK, and a hardcoded list would
+ * silently miss the next column or table a migration adds.
+ *
+ * No-ops if the old row doesn't exist (fresh DB -- nothing to reconcile) or
+ * the new one already does (a prior run already reconciled it).
+ *
+ * @param {pg.Pool} pool
+ * @param {{ table: string, uniqueColumn: string, oldId: string, newId: string }} opts
+ */
+async function reconcileSentinelId(pool, { table, uniqueColumn, oldId, newId }) {
+  const { rowCount: oldExists } = await pool.query(`SELECT 1 FROM "${table}" WHERE id = $1`, [oldId]);
+  if (oldExists === 0) return;
+  const { rowCount: newExists } = await pool.query(`SELECT 1 FROM "${table}" WHERE id = $1`, [newId]);
+  if (newExists > 0) return;
+
+  const { rows: columnRows } = await pool.query(
+    `SELECT column_name FROM information_schema.columns
+      WHERE table_schema = 'public' AND table_name = $1 AND column_name <> 'id'
+      ORDER BY ordinal_position`,
+    [table],
+  );
+  const columns = columnRows.map((r) => r.column_name);
+  const insertColumns = columns.map((c) => `"${c}"`).join(', ');
+  const selectList = columns
+    .map((c) => (c === uniqueColumn ? `regexp_replace("${c}", '--reconciling-86e33trjc$', '')` : `"${c}"`))
+    .join(', ');
+
+  const { rows: fks } = await pool.query(
+    `SELECT tc.table_name, kcu.column_name
+       FROM information_schema.table_constraints tc
+       JOIN information_schema.key_column_usage kcu
+         ON kcu.constraint_name = tc.constraint_name AND kcu.table_schema = tc.table_schema AND kcu.table_name = tc.table_name
+       JOIN information_schema.constraint_column_usage ccu
+         ON ccu.constraint_name = tc.constraint_name AND ccu.table_schema = tc.table_schema
+      WHERE tc.constraint_type = 'FOREIGN KEY' AND tc.table_schema = 'public'
+        AND ccu.table_name = $1 AND ccu.column_name = 'id'`,
+    [table],
+  );
+
+  const conn = await pool.connect();
+  try {
+    await conn.query('BEGIN');
+    await conn.query(`UPDATE "${table}" SET "${uniqueColumn}" = "${uniqueColumn}" || '--reconciling-86e33trjc' WHERE id = $1`, [oldId]);
+    await conn.query(
+      `INSERT INTO "${table}" (id, ${insertColumns}) SELECT $1, ${selectList} FROM "${table}" WHERE id = $2`,
+      [newId, oldId],
+    );
+    for (const { table_name, column_name } of fks) {
+      await conn.query(`UPDATE "${table_name}" SET "${column_name}" = $1 WHERE "${column_name}" = $2`, [newId, oldId]);
+    }
+    await conn.query(`DELETE FROM "${table}" WHERE id = $1`, [oldId]);
+    await conn.query('COMMIT');
+  } catch (err) {
+    await conn.query('ROLLBACK');
+    throw err;
+  } finally {
+    conn.release();
+  }
+}
+
 /**
  * @param {object} [opts]
  * @param {pg.Pool} [opts.pool] - injectable for tests (avoids a real connection)
@@ -34,6 +127,19 @@ export async function seedDevTenant({ pool } = {}) {
   const ownedPool = !pool;
   const client = pool ?? new pg.Pool({ connectionString: requireDatabaseUrl() });
   try {
+    await reconcileSentinelId(client, {
+      table: 'client',
+      uniqueColumn: 'slug',
+      oldId: OLD_DEV_CLIENT_ID,
+      newId: DEV_CLIENT_ID,
+    });
+    await reconcileSentinelId(client, {
+      table: 'app_user',
+      uniqueColumn: 'email',
+      oldId: OLD_DEV_USER_ID,
+      newId: DEV_USER_ID,
+    });
+
     await client.query(
       `INSERT INTO client (id, name, slug) VALUES ($1, 'Dev Dashboard Client', 'dev-dashboard')
        ON CONFLICT (id) DO NOTHING`,

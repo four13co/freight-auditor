@@ -15,6 +15,10 @@ playwright/.cache/
 # Local-disk ObjectStore default root (86e2v17u9) -- dev-only ingested
 # document bytes, never committed.
 .data/
+# 86e33t7yu: captured full test:db failure output (scripts/test-db-capture.mjs),
+# local diagnostic evidence only -- *.log above already covers the files
+# themselves, this just makes the directory's purpose explicit.
+.test-failures/
 # Machine-local loop run state. The loops' shared config
 # (.claude/clickup-build.config.json) IS tracked — only per-machine
 # run state is ignored, so a fresh clone gets the config but not

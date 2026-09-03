@@ -17,7 +17,15 @@ describe('seedDevTenant (DB)', () => {
 
   /**
    * Finds every FK column (in any table) referencing table(id) and deletes
-   * rows matching id -- the test-side mirror of what production's
+   * rows matching id, RECURSIVELY -- 86e33u1u5: a first version of this only
+   * walked one level (direct references to `table`), which failed with a
+   * real FK violation once a directly-referencing row itself had its own
+   * dependents (e.g. deleting a `contract` row referencing DEV_CLIENT_ID
+   * while a `contract_version` row still referenced that contract's own id
+   * -- a table one level further removed from client(id), never queried).
+   * Before deleting each directly-referencing row, this now recurses onto
+   * that row's own id first, clearing anything that references IT, however
+   * deep the chain goes -- the test-side mirror of what production's
    * reconcileSentinelId discovers generically via information_schema, used
    * here to tear down whatever ambient fixture footprint another db test
    * file in this same run (e.g. dashboard-auth-headers.db.test.ts's own
@@ -25,8 +33,18 @@ describe('seedDevTenant (DB)', () => {
    * test needs a clean "only the OLD sentinel exists" starting point. This
    * suite's files share one never-rolled-back pool/DB (by design, per this
    * file's own pre-existing tests), so nothing else guarantees that.
+   *
+   * Assumes every table's primary key column is literally named `id` --
+   * true throughout this schema's migrations (`id uuid PRIMARY KEY DEFAULT
+   * gen_random_uuid()`). depth guards against a genuine reference cycle
+   * (never expected in this schema, which is a strict tenant-hierarchy DAG)
+   * turning into an infinite loop -- a real cycle throws loudly here rather
+   * than hanging the test run.
    */
-  async function deleteReferencingRows(pool: import('pg').Pool, table: string, id: string) {
+  async function deleteReferencingRows(pool: import('pg').Pool, table: string, id: string, depth = 0) {
+    if (depth > 20) {
+      throw new Error(`deleteReferencingRows: recursion depth exceeded at "${table}" id=${id} -- likely a reference cycle`);
+    }
     const { rows: fks } = await pool.query<{ table_name: string; column_name: string }>(
       `SELECT tc.table_name, kcu.column_name
          FROM information_schema.table_constraints tc
@@ -39,6 +57,13 @@ describe('seedDevTenant (DB)', () => {
       [table],
     );
     for (const { table_name, column_name } of fks) {
+      const { rows: referencing } = await pool.query<{ id: string }>(
+        `SELECT id FROM "${table_name}" WHERE "${column_name}" = $1`,
+        [id],
+      );
+      for (const { id: referencingId } of referencing) {
+        await deleteReferencingRows(pool, table_name, referencingId, depth + 1);
+      }
       await pool.query(`DELETE FROM "${table_name}" WHERE "${column_name}" = $1`, [id]);
     }
   }
@@ -126,6 +151,53 @@ describe('seedDevTenant (DB)', () => {
     // ambient fixture state other tests depend on.
     await pool.query(`UPDATE client SET is_active = true WHERE id = $1`, [DEV_CLIENT_ID]);
     await pool.query(`UPDATE app_user SET is_active = true WHERE id = $1`, [DEV_USER_ID]);
+  });
+
+  /**
+   * 86e33u1u5: the regression proof for the transitive-FK fix above.
+   * `contract` references client(id) directly; `contract_version`
+   * references `contract(id)` -- one level further removed from client, and
+   * exactly the shape that made the pre-fix, one-level-only version of
+   * deleteReferencingRows fail with a real FK violation
+   * (contract_version_contract_id_fkey) once a directly-referencing row had
+   * its own dependents.
+   */
+  it('deleteReferencingRows handles a transitive dependent (contract -> contract_version) without an FK violation', async () => {
+    const pool = getPool();
+    const tag = `dfr-${Date.now()}`;
+
+    const client = await pool.query<{ id: string }>(
+      `INSERT INTO client (name, slug) VALUES ('DFR Transitive Test Client', $1) RETURNING id`,
+      [tag],
+    );
+    const clientId = client.rows[0]!.id;
+    const carrier = await pool.query<{ id: string }>(`INSERT INTO carrier (name) VALUES ($1) RETURNING id`, [`Carrier-${tag}`]);
+    const contract = await pool.query<{ id: string }>(
+      `INSERT INTO contract (client_id, carrier_id, name) VALUES ($1, $2, 'DFR Test Contract') RETURNING id`,
+      [clientId, carrier.rows[0]!.id],
+    );
+    const contractId = contract.rows[0]!.id;
+    await pool.query(
+      `INSERT INTO contract_version (client_id, contract_id, version_label, valid_from) VALUES ($1, $2, 'v1', '2026-01-01')`,
+      [clientId, contractId],
+    );
+
+    // A thrown FK violation here fails the test directly -- no need for an
+    // explicit not.toThrow() wrapper on an async call.
+    await deleteReferencingRows(pool, 'client', clientId);
+
+    const remainingContract = await pool.query(`SELECT 1 FROM contract WHERE id = $1`, [contractId]);
+    expect(remainingContract.rowCount).toBe(0);
+    const remainingVersion = await pool.query(`SELECT 1 FROM contract_version WHERE contract_id = $1`, [contractId]);
+    expect(remainingVersion.rowCount).toBe(0);
+
+    // deleteReferencingRows only clears what REFERENCES the given id, by
+    // contract -- the client row itself is the caller's own responsibility
+    // (mirrors the reconciliation test above, which deletes it separately).
+    const remainingClient = await pool.query(`SELECT 1 FROM client WHERE id = $1`, [clientId]);
+    expect(remainingClient.rowCount).toBe(1);
+    await pool.query(`DELETE FROM carrier WHERE id = $1`, [carrier.rows[0]!.id]);
+    await pool.query(`DELETE FROM client WHERE id = $1`, [clientId]);
   });
 
   it('creates a client + app_user + membership row for the fixed dev IDs', async () => {

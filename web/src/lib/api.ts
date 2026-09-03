@@ -280,13 +280,15 @@ export async function acceptContractRuleProposal(id: string, backtestId: string,
   return (await res.json()) as { shadowRuleVersionId: string };
 }
 export async function ratifyContractRuleProposal(acceptanceId:string,rationale:string):Promise<{activeRuleVersionId:string}>{const res=await fetch(`/api/contracts/rule-proposal-acceptances/${acceptanceId}/ratify`,{method:'POST',headers:{...authHeaders(),'content-type':'application/json'},body:JSON.stringify({rationale})});if(!res.ok)throw new Error(`POST contract rule proposal ratification failed: ${res.status}`);return await res.json() as {activeRuleVersionId:string};}
-export async function ratifyRuleProposal(id: string, rationale: string): Promise<void> {
+export async function ratifyRuleProposal(id: string, rationale: string): Promise<{ ruleVersionId: string }> {
   const res = await fetch(`/api/rules/${id}/ratify`, { method: 'POST', headers: { ...authHeaders(), 'content-type': 'application/json' }, body: JSON.stringify({ rationale }) });
   if (!res.ok) throw new Error('POST ratify failed');
+  return (await res.json()) as { ruleVersionId: string };
 }
-export async function activateShadowRule(id: string, rationale: string): Promise<void> {
+export async function activateShadowRule(id: string, rationale: string): Promise<{ ruleVersionId: string }> {
   const res = await fetch(`/api/rules/${id}/activate`, { method: 'POST', headers: { ...authHeaders(), 'content-type': 'application/json' }, body: JSON.stringify({ rationale }) });
   if (!res.ok) throw new Error('POST activate failed');
+  return (await res.json()) as { ruleVersionId: string };
 }
 
 export async function fetchPendingPaymentAuthorizations(): Promise<PendingPaymentAuthorizationRow[]> {

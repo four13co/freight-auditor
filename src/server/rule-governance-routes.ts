@@ -15,8 +15,14 @@ export async function registerRuleGovernanceRoutes(routes: FastifyInstance): Pro
   await routes.register(async (tenantRoutes) => {
     await registerTenantAuthPreHandler(tenantRoutes);
     tenantRoutes.get('/api/rules/proposals', async (request) => ({ proposals: await withTenantTx(request.tenantContext!, async (client) =>
+      // 86e33t9n0: transitionRuleLifecycle is append-only -- ratifying/
+      // activating never mutates the predecessor row's own lifecycle_state,
+      // it only INSERTs a new successor row. Without this exclusion, a
+      // superseded PROPOSED/SHADOW row stays visible forever as a ghost
+      // duplicate alongside its real successor.
       (await client.query(`SELECT rv.id, r.slug, r.rule_type, rv.hardness, rv.lifecycle_state, rv.ast_hash, rv.recorded_at
         FROM rule_version rv JOIN rule r ON r.id=rv.rule_id WHERE rv.lifecycle_state IN ('PROPOSED','SHADOW')
+        AND NOT EXISTS (SELECT 1 FROM rule_version successor WHERE successor.predecessor_rule_version_id = rv.id)
         ORDER BY rv.recorded_at, rv.id`)).rows) }));
     tenantRoutes.get('/api/contracts/rule-proposal-previews', async (request) => ({ proposals: await withTenantTx(
       request.tenantContext!, (client) => listContractRuleProposalPreviews(client)) }));

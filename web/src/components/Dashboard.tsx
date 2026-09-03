@@ -153,8 +153,8 @@ export function Dashboard({ branding }: { branding?: Branding | null } = {}) {
               <GateFailuresPanel rows={gateFailures} />
               <ReviewQueues queues={reviewQueues} />
               <RubricConflictQueue rows={rubricConflicts} />
-              <RuleProposalQueue rows={ruleProposals} onRatified={(id, lifecycle) => setRuleProposals((rows) => lifecycle === 'ACTIVE'
-                ? rows.filter((r) => r.id !== id) : rows.map((r) => r.id === id ? { ...r, lifecycle_state: 'SHADOW' } : r))} />
+              <RuleProposalQueue rows={ruleProposals} onRatified={(oldId, newId, lifecycle) => setRuleProposals((rows) => lifecycle === 'ACTIVE'
+                ? rows.filter((r) => r.id !== oldId) : rows.map((r) => r.id === oldId ? { ...r, id: newId, lifecycle_state: 'SHADOW' } : r))} />
               <PaymentApprovalQueue rows={pendingPayments} onDecided={(auditRunId) =>
                 setPendingPayments((rows) => rows.filter((r) => r.auditRunId !== auditRunId))} />
               <ContractRubricPreview rows={contractProposals} onAccepted={(id, shadowRuleVersionId, rationale) =>

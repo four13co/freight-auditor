@@ -4,6 +4,8 @@ import pg from 'pg';
 import { FIXTURE_CARRIER_NAME } from '../../../scripts/seed-fullstack-e2e-fixture.mjs';
 import { withTenantTx } from '../../../src/db/tenant-context.js';
 import { persistContractExtraction } from '../../../src/modules/contracts/persist-contract-extraction.js';
+import { persistRawDocumentAnalysis } from '../../../src/modules/contracts/persist-raw-document-analysis.js';
+import { AZURE_DOCUMENT_INTELLIGENCE_API_VERSION, DEFAULT_AZURE_DOCUMENT_MODEL, type AzureAnalyzeResult } from '../../../src/modules/contracts/azure-document-intelligence.js';
 import { contractExtractionIdempotencyKey } from '../../../src/modules/contracts/validate-contract-extraction-response.js';
 import { CONTRACT_EXTRACTION_SCHEMA_VERSION, type ContractExtraction } from '../../../src/modules/contracts/contract-extraction-schema.js';
 import { makeTextPdf } from '../../../test/fixtures/pdf-invoice.js';
@@ -21,8 +23,14 @@ import { makeTextPdf } from '../../../test/fixtures/pdf-invoice.js';
 // non-HTTP precondition directly, drive the real transition over real HTTP"
 // pattern P7.A.3/P7.A.4 already established for the invoice-draft flow.
 //
-// persistRawDocumentAnalysis (the Solution text's other named sub-step) is
-// deliberately not called -- see the beforeAll block below for why.
+// persistRawDocumentAnalysis (the Solution text's other named sub-step) IS
+// called below, with a fabricated AzureAnalyzeResult (no real Azure API call
+// -- the function only persists an already-obtained result, it never talks
+// to Azure itself). This also fixes 86e33t126: importing anything from
+// azure-document-intelligence.ts pulls its `analyze()` method's body into
+// web/'s tsc type-checked graph for the first time, which is what surfaces
+// (and, with 86e33t126's fix applied, no longer fails on) the Buffer/BodyInit
+// mismatch that's specific to web/'s DOM-lib tsconfig.
 //
 // AC2 explicitly does NOT touch ContractRubricPreview (unrelated feature --
 // AI rule-proposal review, not contract-version finalization; see this
@@ -50,6 +58,7 @@ let contractVersionId: string;
 let sourceDocumentId: string;
 let sourceDocumentSha256: string;
 let extractionResponseHash: string;
+let rawDocumentAnalysisId: string;
 
 const FIELD_PATH = 'linehaulRate';
 
@@ -119,17 +128,23 @@ test.beforeAll(async ({ request }) => {
   // persistContractExtraction today; see header note).
   //
   // persistRawDocumentAnalysis (the Solution text's other named sub-step) is
-  // deliberately NOT called here: finalizeContractVersion never reads
-  // raw_document_analysis -- it only checks the contract_extraction.persisted
-  // audit event and extraction_field rows -- so it isn't load-bearing for any
-  // of this task's ACs, and none of them assert on it. Skipping it also avoids
-  // pulling azure-document-intelligence.ts into web/'s TypeScript build graph,
-  // where a pre-existing Buffer/BodyInit incompatibility under web's DOM-lib
-  // tsconfig fails `tsc -b` (root's plain tsc --noEmit passes clean on the same
-  // file -- this is specific to web's type environment). That's a real,
-  // pre-existing bug in a module this task doesn't otherwise touch, worth its
-  // own item; flagged in the PR body rather than fixed here.
+  // called too, per 86e33t126's fix -- see header note. Not load-bearing for
+  // this task's own ACs (finalizeContractVersion never reads
+  // raw_document_analysis), so no test below asserts on rawDocumentAnalysisId
+  // beyond what's needed to tear it down cleanly.
+  const fabricatedAzureResult: AzureAnalyzeResult = {
+    provider: 'azure-document-intelligence',
+    apiVersion: AZURE_DOCUMENT_INTELLIGENCE_API_VERSION,
+    modelId: DEFAULT_AZURE_DOCUMENT_MODEL,
+    operationLocation: `https://e2e-fixture.example.test/documentintelligence/operations/${sourceDocumentSha256}`,
+    rawResponse: { status: 'succeeded', analyzeResult: { apiVersion: AZURE_DOCUMENT_INTELLIGENCE_API_VERSION, modelId: DEFAULT_AZURE_DOCUMENT_MODEL, content: 'Linehaul rate: $2.50 per mile' } },
+  };
   await withTenantTx({ clientIds: [clientId], internal: true }, async (client) => {
+    const rawAnalysis = await persistRawDocumentAnalysis(client, {
+      clientId, sourceDocumentId, actorUserId: userId, result: fabricatedAzureResult,
+    });
+    rawDocumentAnalysisId = rawAnalysis.id;
+
     const extraction = buildExtraction(sourceDocumentSha256);
     const idempotencyKey = contractExtractionIdempotencyKey(extraction);
     const persisted = await persistContractExtraction(client, {
@@ -142,7 +157,8 @@ test.beforeAll(async ({ request }) => {
 test.afterAll(async () => {
   await pool.query(`DELETE FROM verified_contract_version WHERE contract_version_id = $1`, [contractVersionId]);
   await pool.query(`DELETE FROM extraction_field WHERE client_id = $1 AND source_document_id = $2`, [clientId, sourceDocumentId]);
-  await pool.query(`DELETE FROM audit_event WHERE client_id = $1 AND entity_id IN ($2, $3)`, [clientId, sourceDocumentId, contractVersionId]);
+  await pool.query(`DELETE FROM audit_event WHERE client_id = $1 AND entity_id IN ($2, $3, $4)`, [clientId, sourceDocumentId, contractVersionId, rawDocumentAnalysisId]);
+  await pool.query(`DELETE FROM raw_document_analysis WHERE id = $1`, [rawDocumentAnalysisId]);
   await pool.query(`DELETE FROM contract_version WHERE id = $1`, [contractVersionId]);
   await pool.query(`DELETE FROM contract WHERE id = $1`, [contractId]);
   await pool.query(`DELETE FROM source_document WHERE id = $1`, [sourceDocumentId]);

@@ -80,10 +80,18 @@ export class AzureDocumentIntelligenceAdapter {
       const url = new URL(`${this.endpoint.pathname}/documentintelligence/documentModels/${encodeURIComponent(this.modelId)}:analyze`, this.endpoint);
       url.searchParams.set('api-version', AZURE_DOCUMENT_INTELLIGENCE_API_VERSION);
       url.searchParams.set('outputContentFormat', 'text');
+      // web/'s DOM-lib tsconfig types fetch's BodyInit without Node's Buffer in
+      // the union (root's plain tsc --noEmit passes the identical file clean),
+      // and TS's now-generic Uint8Array<ArrayBufferLike> doesn't satisfy DOM's
+      // BodyInit either -- an actual ArrayBuffer copy of exactly this Buffer's
+      // bytes (not the whole, possibly-pooled backing buffer) is unambiguous in
+      // both environments' typings, with no behavior change.
+      const bytes = input.bytes;
+      const body = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
       const response = await this.fetchImpl(url, {
         method: 'POST',
         headers: { 'Ocp-Apim-Subscription-Key': this.config.apiKey, 'Content-Type': input.contentType },
-        body: input.bytes,
+        body,
       });
       if (response.status !== 202) throw await providerError(response, 'ANALYZE_REJECTED');
       operationLocation = response.headers.get('operation-location') ?? undefined;

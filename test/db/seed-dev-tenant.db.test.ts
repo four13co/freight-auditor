@@ -1,4 +1,5 @@
 import { describe, it, expect, afterAll } from 'vitest';
+import { z } from 'zod';
 import { getPool, closePool } from '../../src/db/pool.js';
 import { seedDevTenant, DEV_CLIENT_ID, DEV_USER_ID } from '../../scripts/seed-dev-tenant.mjs';
 
@@ -41,5 +42,20 @@ describe('seedDevTenant (DB)', () => {
       [DEV_USER_ID, DEV_CLIENT_ID],
     );
     expect(Number(membership.rows[0].count)).toBe(1);
+  });
+
+  /**
+   * 86e33t12f: the original sentinel values (…-1111-1111-1111-…,
+   * …-2222-2222-2222-…) fail zod's strict z.uuid() (RFC4122 variant nibble
+   * must be [89ab]; the old placeholders used a bare repeated digit). Any
+   * module that validates a dev-auth clientId/actorUserId this strictly --
+   * confirmed live in authorize-payment.ts and persist-contract-extraction.ts
+   * -- 500s under standard dev auth. Decided (Bridge, 2026-09-03) to fix the
+   * fixture values themselves rather than relax validation per-module.
+   */
+  it('DEV_CLIENT_ID and DEV_USER_ID are RFC4122-compliant (pass strict zod z.uuid())', () => {
+    const uuid = z.string().uuid();
+    expect(uuid.safeParse(DEV_CLIENT_ID).success).toBe(true);
+    expect(uuid.safeParse(DEV_USER_ID).success).toBe(true);
   });
 });

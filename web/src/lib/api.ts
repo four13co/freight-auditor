@@ -183,8 +183,8 @@ function authHeaders(): HeadersInit {
     return clientId ? { 'x-client-id': clientId } : {};
   }
   return {
-    'x-client-id': '11111111-1111-1111-1111-111111111111',
-    'x-user-id': '22222222-2222-2222-2222-222222222222',
+    'x-client-id': '11111111-1111-4111-8111-111111111111',
+    'x-user-id': '22222222-2222-4222-8222-222222222222',
   };
 }
 

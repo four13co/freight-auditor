@@ -15,8 +15,15 @@
 
 import pg from 'pg';
 
-export const DEV_CLIENT_ID = '11111111-1111-1111-1111-111111111111';
-export const DEV_USER_ID = '22222222-2222-2222-2222-222222222222';
+// 86e33t12f: these must be real RFC4122 v4 UUIDs (variant nibble [89ab]) --
+// the original all-repeated-digit sentinels failed zod's strict z.uuid(),
+// 500ing any module (authorize-payment.ts, persist-contract-extraction.ts)
+// that validates a dev-auth clientId/actorUserId that strictly. Kept
+// visually recognizable as dev fixtures via the repeated 1s/2s elsewhere in
+// the value. Must stay in lockstep with web/src/lib/api.ts's hardcoded
+// mirror (its own comment documents the must-match requirement).
+export const DEV_CLIENT_ID = '11111111-1111-4111-8111-111111111111';
+export const DEV_USER_ID = '22222222-2222-4222-8222-222222222222';
 
 /**
  * @param {object} [opts]

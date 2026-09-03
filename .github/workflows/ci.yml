@@ -64,6 +64,20 @@ jobs:
       - name: Run DB test suite
         run: npm run test:db
 
+      # 86e33t7yu: every occurrence of the list-findings.db.test.ts flake so
+      # far has been unrecoverable evidence -- captured to disk by
+      # scripts/test-db-capture.mjs (npm run test:db above), but a failed
+      # runner's filesystem is destroyed within seconds of the job ending.
+      # Upload it as a real artifact so a CI-side occurrence is diagnosable
+      # after the fact, not just a local one.
+      - name: Upload captured test:db failure output
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-db-failure-logs
+          path: .test-failures/
+          retention-days: 14
+
   lint:
     runs-on: ubuntu-latest
     timeout-minutes: 10

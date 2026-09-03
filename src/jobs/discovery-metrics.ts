@@ -61,12 +61,19 @@ const PROPOSALS_BY_LIFECYCLE_SQL = `
 `;
 
 export async function collectDiscoveryMetrics(client: pg.PoolClient): Promise<DiscoveryMetrics> {
-  const [aiProposals, abstentions, humanTouch, proposalsByLifecycle] = await Promise.all([
-    client.query(AI_PROPOSALS_SQL, []),
-    client.query(ABSTENTIONS_SQL, []),
-    client.query(HUMAN_TOUCH_SQL, []),
-    client.query(PROPOSALS_BY_LIFECYCLE_SQL, []),
-  ]);
+  // Sequential, not Promise.all: a single pg.PoolClient holds one physical
+  // connection, so firing 4 queries concurrently on it (as this previously
+  // did) doesn't actually parallelize -- it just relies on pg's internal
+  // query queue, which node-postgres itself now flags as deprecated
+  // ("Calling client.query() when the client is already executing a query").
+  // These 4 reads are independent and cheap; sequencing them costs nothing
+  // meaningful and removes the only unawaited-concurrent-query pattern in
+  // this codebase that could leave a connection in a not-fully-settled
+  // state when it's released back to the pool (86e33t7yu).
+  const aiProposals = await client.query(AI_PROPOSALS_SQL, []);
+  const abstentions = await client.query(ABSTENTIONS_SQL, []);
+  const humanTouch = await client.query(HUMAN_TOUCH_SQL, []);
+  const proposalsByLifecycle = await client.query(PROPOSALS_BY_LIFECYCLE_SQL, []);
   const humanTouchRow = (humanTouch.rows as HumanTouchRow[])[0];
   return {
     aiProposalsByModel: (aiProposals.rows as AiProposalRow[]).map((r) => ({

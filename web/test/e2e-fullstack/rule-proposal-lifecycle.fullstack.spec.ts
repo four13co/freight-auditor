@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import pg from 'pg';
-import { DEV_CLIENT_ID } from '../../../scripts/seed-dev-tenant.mjs';
+import { DEV_CLIENT_ID, DEV_USER_ID } from '../../../scripts/seed-dev-tenant.mjs';
 
 // 86e33qz9j: full-stack e2e for RuleProposalQueue.tsx's real 2-stage
 // lifecycle (PROPOSED -> SHADOW -> ACTIVE) -- real Fastify server + real
@@ -17,22 +17,22 @@ import { DEV_CLIENT_ID } from '../../../scripts/seed-dev-tenant.mjs';
 // migrations/0006_rubric_rule_grid.sql and absence from apply_tenant_rls's
 // pairs list -- so seeding is a plain INSERT, no withTenantTx needed.
 //
-// A real, load-bearing quirk this spec works around rather than papering
-// over: transitionRuleLifecycle (src/modules/rule-engine/transition-rule-
+// transitionRuleLifecycle (src/modules/rule-engine/transition-rule-
 // lifecycle.ts) never mutates a rule_version row in place -- each transition
 // INSERTs a NEW immutable row (predecessor_rule_version_id linking back) and
-// returns its id. Dashboard.tsx's own onRatified handler patches the
-// EXISTING row object's lifecycle_state locally (for the immediate "button
-// swap, no reload" UI feedback AC2 describes) but keeps the OLD id -- it
-// never swaps in the real new id the ratify response returns. Acting on that
-// same in-memory row a second time would target the wrong (stale) rule_version
-// id. This spec asserts AC2's own claim (the live button swap) against that
-// same page, then reloads before AC3's Activate click, which re-fetches
-// GET /api/rules/proposals fresh and correctly returns the real SHADOW row
-// under its own id -- the same "reload between independently-stated Given
-// clauses" allowance already used for ReviewQueues' AC2 (86e33qz8v), not the
-// stricter "without a full reload" bar that's specific to P7.B.1's
-// FindingDetail/Dashboard.tsx row-patch claim.
+// returns its id. AC2/AC3 below reload between them (the same "reload
+// between independently-stated Given clauses" allowance already used for
+// ReviewQueues' AC2, 86e33qz8v), so they don't exercise the no-reload path.
+//
+// 86e33t9n0 fixed two real bugs in this append-only-transition flow, found
+// during this task's own build and disclosed (not fixed) in PR #311: (1)
+// Dashboard.tsx's onRatified used to patch the row's lifecycle_state in
+// place while keeping the OLD (now-superseded) id, so acting on that same
+// row a second time without a reload would target the wrong rule_version;
+// (2) GET /api/rules/proposals had no check for whether a row had since
+// been superseded, so the original PROPOSED row stayed visible forever as a
+// ghost duplicate after ratification. The two tests at the bottom of this
+// file prove both fixes directly, against the real route/DB.
 
 const SLUG = `p7b5-test-rule-${Date.now()}`;
 
@@ -120,19 +120,13 @@ test('AC3: clicking Activate on a SHADOW proposal moves it to ACTIVE and it is n
 
   await page.goto('/');
   const queue = page.getByTestId('rule-proposal-queue');
-  // A real, pre-existing quirk found here: GET /api/rules/proposals filters
-  // only on lifecycle_state IN ('PROPOSED','SHADOW'), with no filter on
-  // whether a row has since been superseded (predecessor_rule_version_id
-  // pointed at by a newer row) -- so after a reload, the original PROPOSED
-  // row from AC1/AC2 is STILL present alongside the new SHADOW row, as a
-  // permanent "ghost" duplicate for the same rule/slug. Scoping this
-  // locator to the SHADOW-labeled row specifically (not just the slug) is
-  // what makes this assertion target the right one; the stale PROPOSED
-  // ghost is disclosed in the PR body as a real finding, out of scope to
-  // fix for an e2e-coverage task.
-  // Case-SENSITIVE regexes, not plain strings: the button label "Ratify to
+  // 86e33t9n0 fixed the ghost-duplicate bug: the original PROPOSED row is no
+  // longer returned once a successor exists, so after this reload exactly
+  // ONE row for this slug is visible (the real SHADOW row), not two.
+  await expect(queue.locator('div').filter({ hasText: SLUG })).toHaveCount(1);
+  // Case-SENSITIVE regex, not a plain string: the button label "Ratify to
   // shadow" (lowercase) would otherwise case-insensitively match a plain
-  // 'SHADOW' string filter too, defeating the disambiguation.
+  // 'SHADOW' string filter too.
   const shadowRow = queue.locator('div').filter({ hasText: SLUG }).filter({ hasText: /SHADOW/ });
   await expect(shadowRow).toBeVisible();
 
@@ -146,11 +140,102 @@ test('AC3: clicking Activate on a SHADOW proposal moves it to ACTIVE and it is n
   expect(activeRow.rows[0]!.lifecycle_state).toBe('ACTIVE');
 
   // The now-ACTIVE row is no longer actionable: GET /api/rules/proposals
-  // only ever returns PROPOSED/SHADOW rows, and the local onRatified patch
-  // filters an ACTIVE transition out of the visible list too -- the
-  // SHADOW-labeled row specifically is gone (the stale PROPOSED ghost from
-  // the quirk above is a separate, pre-existing row this AC says nothing
-  // about, so it is deliberately not asserted on here).
-  await expect(queue.locator('div').filter({ hasText: SLUG }).filter({ hasText: /SHADOW/ })).toHaveCount(0);
-  await expect(queue.locator('div').filter({ hasText: SLUG }).filter({ hasText: /ACTIVE/ })).toHaveCount(0);
+  // only ever returns PROPOSED/SHADOW rows, the local onRatified patch
+  // filters an ACTIVE transition out of the visible list too, AND (86e33t9n0)
+  // the now-superseded SHADOW row no longer ghosts the list either -- nothing
+  // for this slug renders at all.
+  await expect(queue.locator('div').filter({ hasText: SLUG })).toHaveCount(0);
+});
+
+test('AC (86e33t9n0): clicking Activate immediately after Ratify targets the correct, current row -- no reload', async ({ page }) => {
+  const slug = `p7b5-no-reload-${Date.now()}`;
+  const rule = await pool.query<{ id: string }>(`INSERT INTO rule (slug, rule_type) VALUES ($1, 'STRUCTURAL') RETURNING id`, [slug]);
+  const noReloadRuleId = rule.rows[0]!.id;
+  const rv = await pool.query<{ id: string }>(
+    `INSERT INTO rule_version (rule_id, hardness, lifecycle_state, ast, ast_hash, emits)
+     VALUES ($1, 'AI_CANON', 'PROPOSED', '{}'::jsonb, $2, 'PASS_FAIL') RETURNING id`,
+    [noReloadRuleId, slug.padEnd(64, '2').slice(0, 64)],
+  );
+  const proposedId = rv.rows[0]!.id;
+
+  try {
+    await page.goto('/');
+    const queue = page.getByTestId('rule-proposal-queue');
+    const row = queue.locator('div').filter({ hasText: slug });
+    await expect(row).toBeVisible();
+
+    const ratifyPost = page.waitForResponse((res) => res.url().includes(`/api/rules/${proposedId}/ratify`) && res.request().method() === 'POST');
+    await row.getByRole('button', { name: 'Ratify to shadow' }).click();
+    const ratifyBody = await (await ratifyPost).json() as { ruleVersionId: string };
+    const shadowId = ratifyBody.ruleVersionId;
+    expect(shadowId).not.toBe(proposedId);
+    await expect(row.getByRole('button', { name: 'Activate' })).toBeVisible();
+
+    // promoteShadowRule requires a passing rule_backtest scoped to the real
+    // new SHADOW id -- only knowable after the ratify response above.
+    await pool.query(
+      `INSERT INTO rule_backtest (client_id, rule_version_id, corpus_hash, passed, pass_count, regression_count)
+       VALUES ($1, $2, $3, true, 1, 0)`,
+      [DEV_CLIENT_ID, shadowId, slug.padEnd(64, '4').slice(0, 64)],
+    );
+
+    // The bug: before the fix, this click would fire against the STALE
+    // pre-ratify proposedId, not the real new shadowId -- the URL assertion
+    // below is what catches it. (transitionRuleLifecycle would then reject
+    // that call, since proposedId's own lifecycle_state is still PROPOSED
+    // in the DB -- transitions are append-only and never mutate the
+    // predecessor -- and PROPOSED -> ACTIVE is not an allowed transition;
+    // that specific route has no error mapping for it, so it would have
+    // surfaced as an uncaught 500, not a clean 4xx.)
+    const activatePost = page.waitForResponse((res) => res.url().includes('/api/rules/') && res.url().includes('/activate') && res.request().method() === 'POST');
+    await row.getByRole('button', { name: 'Activate' }).click();
+    const activateResponse = await activatePost;
+    expect(activateResponse.url()).toContain(`/api/rules/${shadowId}/activate`);
+    expect(activateResponse.status()).toBe(201);
+    const activateBody = await activateResponse.json() as { ruleVersionId: string };
+
+    const activeRow = await pool.query<{ lifecycle_state: string }>(`SELECT lifecycle_state FROM rule_version WHERE id = $1`, [activateBody.ruleVersionId]);
+    expect(activeRow.rows[0]!.lifecycle_state).toBe('ACTIVE');
+  } finally {
+    await pool.query(`DELETE FROM promotion_event WHERE rule_version_id IN (SELECT id FROM rule_version WHERE rule_id = $1)`, [noReloadRuleId]);
+    await pool.query(`DELETE FROM rule_backtest WHERE rule_version_id IN (SELECT id FROM rule_version WHERE rule_id = $1)`, [noReloadRuleId]);
+    await pool.query(`DELETE FROM audit_event WHERE entity = 'rule_version' AND entity_id IN (SELECT id FROM rule_version WHERE rule_id = $1)`, [noReloadRuleId]);
+    await pool.query(`DELETE FROM rule_version WHERE rule_id = $1`, [noReloadRuleId]);
+    await pool.query(`DELETE FROM rule WHERE id = $1`, [noReloadRuleId]);
+  }
+});
+
+test('AC (86e33t9n0): after ratifying, GET /api/rules/proposals no longer returns the original superseded PROPOSED row', async ({ request }) => {
+  const slug = `p7b5-ghost-check-${Date.now()}`;
+  const rule = await pool.query<{ id: string }>(`INSERT INTO rule (slug, rule_type) VALUES ($1, 'STRUCTURAL') RETURNING id`, [slug]);
+  const ghostRuleId = rule.rows[0]!.id;
+  const rv = await pool.query<{ id: string }>(
+    `INSERT INTO rule_version (rule_id, hardness, lifecycle_state, ast, ast_hash, emits)
+     VALUES ($1, 'AI_CANON', 'PROPOSED', '{}'::jsonb, $2, 'PASS_FAIL') RETURNING id`,
+    [ghostRuleId, slug.padEnd(64, '3').slice(0, 64)],
+  );
+  const proposedId = rv.rows[0]!.id;
+
+  try {
+    const before = await request.get('/api/rules/proposals', { headers: { 'x-client-id': DEV_CLIENT_ID, 'x-user-id': DEV_USER_ID } });
+    const beforeIds = ((await before.json()) as { proposals: { id: string }[] }).proposals.map((p) => p.id);
+    expect(beforeIds).toContain(proposedId);
+
+    const ratify = await request.post(`/api/rules/${proposedId}/ratify`, {
+      headers: { 'x-client-id': DEV_CLIENT_ID, 'x-user-id': DEV_USER_ID, 'content-type': 'application/json' },
+      data: { rationale: 'ghost-check ratification' },
+    });
+    expect(ratify.status()).toBe(201);
+    const { ruleVersionId: shadowId } = (await ratify.json()) as { ruleVersionId: string };
+
+    const after = await request.get('/api/rules/proposals', { headers: { 'x-client-id': DEV_CLIENT_ID, 'x-user-id': DEV_USER_ID } });
+    const afterIds = ((await after.json()) as { proposals: { id: string }[] }).proposals.map((p) => p.id);
+    expect(afterIds).not.toContain(proposedId);
+    expect(afterIds).toContain(shadowId);
+  } finally {
+    await pool.query(`DELETE FROM promotion_event WHERE rule_version_id IN (SELECT id FROM rule_version WHERE rule_id = $1)`, [ghostRuleId]);
+    await pool.query(`DELETE FROM audit_event WHERE entity = 'rule_version' AND entity_id IN (SELECT id FROM rule_version WHERE rule_id = $1)`, [ghostRuleId]);
+    await pool.query(`DELETE FROM rule_version WHERE rule_id = $1`, [ghostRuleId]);
+    await pool.query(`DELETE FROM rule WHERE id = $1`, [ghostRuleId]);
+  }
 });

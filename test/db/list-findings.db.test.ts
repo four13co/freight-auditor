@@ -441,12 +441,12 @@ describe('listFindings (DB)', () => {
       amounts: string[],
     ): Promise<void> {
       for (const amount of amounts) {
-        const inv = await owner.query<{ id: string }>(
+        const inv = await owner.query(
           `INSERT INTO invoice (client_id, carrier_id, transaction_set, invoice_number, currency, parser_version)
            VALUES ($1, $2, '210', $3, 'USD', 'test') RETURNING id`,
           [clientId, carrierId, `INV-${sortTag}-pollution-${amount}`],
         );
-        const run = await owner.query<{ id: string }>(
+        const run = await owner.query(
           `INSERT INTO audit_run (client_id, invoice_id, engine_spec_version, outcome)
            VALUES ($1, $2, 'test', 'SCORED') RETURNING id`,
           [clientId, inv.rows[0].id],
@@ -508,7 +508,12 @@ describe('listFindings (DB)', () => {
     }
 
     it('AC1: sorting by variance surfaces the true largest-variance finding even when 50+ other findings exist', async () => {
-      const rows = await withTenantTx({ clientIds: [sortClientId], internal: true }, async (c) => {
+      // 86e34fx55: internal:false scopes RLS strictly to sortClientId (same
+      // fix PR #333 applied to AC1 above) -- internal:true's portfolio-wide
+      // visibility would otherwise let another client's/test's pollution
+      // rows (see pollutionClientId above) leak into this query's result
+      // set and corrupt the sort assertion below.
+      const rows = await withTenantTx({ clientIds: [sortClientId], internal: false }, async (c) => {
         // 55 filler rows with variance 1.00..55.00 -- all rank below the
         // default LIMIT 50 page boundary by created_at (insertion order), so
         // a query that sorted only the first page would never see the
@@ -553,7 +558,10 @@ describe('listFindings (DB)', () => {
     });
 
     it('AC1: sorting by variance ASC surfaces the smallest, even past the default LIMIT 50 window', async () => {
-      const rows = await withTenantTx({ clientIds: [sortClientId], internal: true }, async (c) => {
+      // 86e34fx55: internal:false, same reasoning as the DESC test above --
+      // this exact-array assertion is the one PR #333 flagged as the more
+      // fragile of the two (any pollution row landing in 1.00-5.00 breaks it).
+      const rows = await withTenantTx({ clientIds: [sortClientId], internal: false }, async (c) => {
         return listFindings(c, { clientIds: [sortClientId], sort: 'variance', sortDir: 'asc', limit: 5 });
       });
       // Filler rows (1.00..55.00) plus BIGGEST (99999.00) from the previous

@@ -36,6 +36,13 @@ import { registerRecoveryReportRoutes } from './recovery-report-routes.js';
 export function buildApp(): FastifyInstance {
   const app = Fastify({
     logger: process.env.NODE_ENV !== 'test',
+    // 86e34cfpe: fastify's default forceCloseConnections:'idle' only takes
+    // effect when a custom `serverFactory` is supplied (see fastify.js's
+    // onClose hook) -- without one, close() just waits on Node's http.Server
+    // to drain existing keep-alive sockets naturally, which can take up to
+    // keepAliveTimeout. No production code calls app.close() today (no
+    // SIGTERM handler exists), so this only changes test-time shutdown.
+    forceCloseConnections: true,
   });
 
   // Static/health routes registered at top level -- must NOT opt into the

@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { PortalApp } from '../src/components/PortalApp.js';
@@ -6,8 +6,21 @@ import { PortalApp } from '../src/components/PortalApp.js';
 /**
  * 86e2zfjmb: the client portal shell + navigation itself (App.tsx's own
  * tests cover WHICH actors land here, not what's rendered once they do).
+ *
+ * 86e34cfpd: every named view fetches on mount once wired to a real route,
+ * so this suite stubs global fetch (mirroring every one of the 10 views'
+ * own *.test.tsx precedent) -- rejecting uniformly is enough here since
+ * these tests only assert which section renders, not its loaded content.
  */
 describe('PortalApp', () => {
+  beforeEach(() => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('mocked')));
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
   it('AC2: renders the portal shell with a nav item for every B.1-B.7 section', () => {
     render(<PortalApp />);
 
@@ -29,22 +42,39 @@ describe('PortalApp', () => {
     expect(screen.getByTestId('portal-placeholder')).toHaveTextContent(/coming soon/i);
   });
 
-  it('AC3: navigating to a nav section with no content view built yet shows its own placeholder, never a blank screen', async () => {
+  /**
+   * 86e34cfpd AC1: supersedes this suite's prior "every nav section shows
+   * its own placeholder" coverage -- now that 86e2zfjx3's 10 views are
+   * wired in, none of these 5 named sections has "no content view built
+   * yet" to prove a placeholder for; a real view renders for every one
+   * instead. The prior guarantee this replaced (no blank screen ever) is
+   * still exercised here, just against the new expected content: only the
+   * wildcard "*" route (covered above) still falls through to ComingSoon.
+   */
+  it('AC1: navigating to a nav section renders its real content view, never the placeholder', async () => {
     render(<PortalApp />);
 
     await userEvent.click(screen.getByRole('link', { name: 'Invoices' }));
 
-    expect(screen.getByTestId('portal-placeholder')).toBeVisible();
-    expect(screen.getByTestId('portal-placeholder')).toHaveTextContent(/invoices.*coming soon/i);
+    expect(screen.getByTestId('client-invoices-view')).toBeVisible();
+    expect(screen.queryByTestId('portal-placeholder')).not.toBeInTheDocument();
   });
 
-  it('AC3: every nav section renders its own labeled placeholder', async () => {
+  it('AC1: every nav section renders its own real content view', async () => {
     render(<PortalApp />);
     const user = userEvent.setup();
 
-    for (const label of ['Findings', 'Disputes', 'Claims & Recovery', 'Audit log']) {
+    const expectedTestIdBySection: Record<string, string> = {
+      Findings: 'client-findings-view',
+      Disputes: 'client-dispute-detail-view',
+      'Claims & Recovery': 'client-claim-view',
+      'Audit log': 'client-audit-log-view',
+    };
+
+    for (const [label, testId] of Object.entries(expectedTestIdBySection)) {
       await user.click(screen.getByRole('link', { name: label }));
-      expect(screen.getByTestId('portal-placeholder')).toHaveTextContent(new RegExp(`${label}.*coming soon`, 'i'));
+      expect(screen.getByTestId(testId)).toBeVisible();
+      expect(screen.queryByTestId('portal-placeholder')).not.toBeInTheDocument();
     }
   });
 

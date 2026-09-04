@@ -16,9 +16,25 @@ jobs:
         with:
           node-version: '24'
           cache: 'npm'
+          cache-dependency-path: |
+            package-lock.json
+            web/package-lock.json
 
       - name: Install dependencies
         run: npm ci
+
+      # 86e34cgz4: test/e2e/web-scaffold.e2e.test.ts's beforeAll only installs/builds
+      # web/ if web/node_modules or web/dist don't already exist -- provisioning them
+      # here (matching ci.yml's web/web-fullstack/web-fullstack-auth jobs) means that
+      # existsSync check skips both steps entirely inside the test's hook, instead of
+      # re-paying a ~60-80s install+build cost against vitest's 60s hook timeout on
+      # every Coverage Gate run.
+      - name: Install web dependencies
+        run: npm ci
+        working-directory: web
+
+      - name: Build web
+        run: npm --prefix web run build
 
       # Default-suite scope only (vitest.config.ts excludes test/db/**) — this is what
       # runs without a live Postgres, so it's what CI can gate deterministically on

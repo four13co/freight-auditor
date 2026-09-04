@@ -168,13 +168,63 @@ describe('listFindings (DB)', () => {
   });
 
   it('AC3: status filter narrows the result set', async () => {
-    const rows = await withTenantTx({ clientIds: [clientAId], internal: true }, async (c) => {
-      await seedFinding(c, { clientId: clientAId, status: 'open' });
-      await seedFinding(c, { clientId: clientAId, status: 'closed' });
-      return listFindings(c, { clientIds: [clientAId], status: 'closed' });
-    });
-    expect(rows.length).toBeGreaterThanOrEqual(1);
-    expect(rows.every((r) => r.status === 'closed')).toBe(true);
+    // 86e34g85f: stress-tests PR #333's "insulated in practice" claim about
+    // this test's internal:true usage (flagged, never verified) by seeding a
+    // second, unrelated client's status:'closed' row directly via the owner
+    // connection (bypasses RLS), mirroring PR #334's seedPollutionRows
+    // pattern. Cleaned up locally (not via the shared afterAll) since this
+    // pollution client is scoped to this one test.
+    const owner = await pool.connect();
+    let pollutionClientId = '';
+    try {
+      const pc = await owner.query(
+        `INSERT INTO client (name, slug) VALUES ('LF-AC3-Pollution', $1) RETURNING id`,
+        [`${tag}-ac3-pollution`],
+      );
+      pollutionClientId = pc.rows[0].id;
+      const inv = await owner.query(
+        `INSERT INTO invoice (client_id, carrier_id, transaction_set, invoice_number, currency, parser_version)
+         VALUES ($1, $2, '210', $3, 'USD', 'test') RETURNING id`,
+        [pollutionClientId, carrierId, `INV-${tag}-ac3-pollution`],
+      );
+      const run = await owner.query(
+        `INSERT INTO audit_run (client_id, invoice_id, engine_spec_version, outcome)
+         VALUES ($1, $2, 'test', 'SCORED') RETURNING id`,
+        [pollutionClientId, inv.rows[0].id],
+      );
+      await owner.query(
+        `INSERT INTO variance_finding (client_id, audit_run_id, criterion_id, rule_version_id, direction, variance_amount, currency, status, evaluated_expr)
+         SELECT $1, $2, c.id, rv.id, 'OVERCHARGE', '10.0000', 'USD', 'closed', '{}'::jsonb
+         FROM criterion c JOIN rule r ON r.slug = 'contract-rate_variance'
+         JOIN rule_version rv ON rv.rule_id = r.id
+         WHERE c.criterion_key = 'CONTRACT.RATE_VARIANCE' ORDER BY rv.recorded_at DESC LIMIT 1`,
+        [pollutionClientId, run.rows[0].id],
+      );
+
+      const rows = await withTenantTx({ clientIds: [clientAId], internal: true }, async (c) => {
+        await seedFinding(c, { clientId: clientAId, status: 'open' });
+        await seedFinding(c, { clientId: clientAId, status: 'closed' });
+        return listFindings(c, { clientIds: [clientAId], status: 'closed' });
+      });
+      // 86e34g85f DETERMINATION: this reproduces green even with a foreign
+      // client's closed-status row present -- unlike the sort block
+      // (86e34fx55), this test's own status:'closed' filter narrows the SQL
+      // query itself (listFindings' WHERE variance_finding.status = $status),
+      // so a pollution row of the same status only adds another row
+      // satisfying every(status === 'closed'); it can't corrupt either
+      // assertion. PR #333's "insulated in practice" claim is CONFIRMED SAFE
+      // for this site -- internal:true is not switched to internal:false
+      // here, unlike every other fix in this chain, because there is nothing
+      // to fix.
+      expect(rows.length).toBeGreaterThanOrEqual(1);
+      expect(rows.every((r) => r.status === 'closed')).toBe(true);
+    } finally {
+      await owner.query(`DELETE FROM variance_finding WHERE client_id = $1`, [pollutionClientId]);
+      await owner.query(`DELETE FROM audit_run WHERE client_id = $1`, [pollutionClientId]);
+      await owner.query(`DELETE FROM invoice WHERE client_id = $1`, [pollutionClientId]);
+      await owner.query(`DELETE FROM client WHERE id = $1`, [pollutionClientId]);
+      owner.release();
+    }
   });
 
   it('AC3: carrier filter narrows the result set to that carrier only', async () => {

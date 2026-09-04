@@ -51,4 +51,35 @@ describe('ClientRecoveryReport (P5.C.2)', () => {
     render(<ClientRecoveryReport />);
     expect(screen.getByText('Loading…')).toBeInTheDocument();
   });
+
+  // 86e2zfjx3 AC1: the loading container is aria-busy and wrapped in a persistent aria-live region.
+  it('marks the loading state aria-busy inside an aria-live="polite" region', () => {
+    fetchMock.mockReturnValue(new Promise(() => {}));
+    render(<ClientRecoveryReport />);
+    const region = screen.getByTestId('client-recovery-report-live-region');
+    expect(region).toHaveAttribute('aria-live', 'polite');
+    expect(region).toHaveAttribute('aria-busy', 'true');
+    expect(region).toContainElement(screen.getByTestId('client-recovery-report-loading'));
+  });
+
+  // 86e2zfjx3 AC2: the error container is role="alert".
+  it('marks the error message role="alert"', async () => {
+    fetchMock.mockResolvedValue(new Response(null, { status: 401 }));
+    render(<ClientRecoveryReport />);
+    await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument());
+    expect(screen.getByRole('alert')).toHaveAttribute('data-testid', 'client-recovery-report-error');
+  });
+
+  // 86e2zfjx3 AC3: the empty container is role="status".
+  it('marks the empty-state message role="status"', async () => {
+    fetchMock.mockResolvedValue(new Response(JSON.stringify({ buckets: [] }), { status: 200 }));
+    render(<ClientRecoveryReport />);
+    await waitFor(() => expect(screen.getByRole('status')).toBeInTheDocument());
+    expect(screen.getByRole('status')).toHaveAttribute('data-testid', 'client-recovery-report-empty');
+  });
+
+  it('clears aria-busy once the fetch resolves', async () => {
+    render(<ClientRecoveryReport />);
+    await waitFor(() => expect(screen.getByTestId('client-recovery-report-live-region')).toHaveAttribute('aria-busy', 'false'));
+  });
 });

@@ -36,24 +36,27 @@ export function ClientAuditLogView() {
     <section data-testid="client-audit-log-view" className="border border-[rgba(32,30,29,.3)] bg-[#f3f2f2] p-3">
       <h2 className="mb-2 text-sm font-extrabold">Audit log</h2>
 
-      {error && (
-        <span data-testid="client-audit-log-error" className="text-xs font-semibold text-[#7c1405]">
-          Couldn&rsquo;t load the audit log.
-        </span>
-      )}
+      {/* Persistent across every branch AND every page change (AC5 reuses this exact region for
+          pagination) -- a live region that unmounts/remounts with its contents does not announce,
+          since screen readers need it present in the DOM before the content inside it changes. */}
+      <div aria-live="polite" aria-busy={!error && events === null} data-testid="client-audit-log-live-region">
+        {error && (
+          <span role="alert" data-testid="client-audit-log-error" className="text-xs font-semibold text-[#7c1405]">
+            Couldn&rsquo;t load the audit log.
+          </span>
+        )}
 
-      {!error && events === null && (
-        <span className="text-xs font-semibold text-[rgba(32,30,29,0.65)]">Loading…</span>
-      )}
+        {!error && events === null && (
+          <span data-testid="client-audit-log-loading" className="text-xs font-semibold text-[rgba(32,30,29,0.65)]">Loading…</span>
+        )}
 
-      {!error && events !== null && events.length === 0 && (
-        <span data-testid="client-audit-log-empty" className="text-xs font-semibold text-[rgba(32,30,29,0.65)]">
-          No audit events recorded yet.
-        </span>
-      )}
+        {!error && events !== null && events.length === 0 && (
+          <span role="status" data-testid="client-audit-log-empty" className="text-xs font-semibold text-[rgba(32,30,29,0.65)]">
+            No audit events recorded yet.
+          </span>
+        )}
 
-      {!error && events !== null && events.length > 0 && (
-        <>
+        {!error && events !== null && events.length > 0 && (
           <table data-testid="client-audit-log-table" className="w-full text-xs">
             <thead>
               <tr className="border-b text-left">
@@ -74,28 +77,30 @@ export function ClientAuditLogView() {
               ))}
             </tbody>
           </table>
+        )}
+      </div>
 
-          <div className="mt-2 flex gap-2">
-            <button
-              type="button"
-              data-testid="client-audit-log-prev"
-              className="border border-[rgba(32,30,29,.3)] px-2 py-1 text-xs font-semibold disabled:opacity-40"
-              disabled={page === 0}
-              onClick={() => setPage((p) => Math.max(0, p - 1))}
-            >
-              Previous
-            </button>
-            <button
-              type="button"
-              data-testid="client-audit-log-next"
-              className="border border-[rgba(32,30,29,.3)] px-2 py-1 text-xs font-semibold disabled:opacity-40"
-              disabled={!hasMore}
-              onClick={() => setPage((p) => p + 1)}
-            >
-              Next
-            </button>
-          </div>
-        </>
+      {!error && events !== null && events.length > 0 && (
+        <div className="mt-2 flex gap-2">
+          <button
+            type="button"
+            data-testid="client-audit-log-prev"
+            className="border border-[rgba(32,30,29,.3)] px-2 py-1 text-xs font-semibold disabled:opacity-40"
+            disabled={page === 0}
+            onClick={() => setPage((p) => Math.max(0, p - 1))}
+          >
+            Previous
+          </button>
+          <button
+            type="button"
+            data-testid="client-audit-log-next"
+            className="border border-[rgba(32,30,29,.3)] px-2 py-1 text-xs font-semibold disabled:opacity-40"
+            disabled={!hasMore}
+            onClick={() => setPage((p) => p + 1)}
+          >
+            Next
+          </button>
+        </div>
       )}
     </section>
   );

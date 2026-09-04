@@ -123,7 +123,22 @@ describe('listFindings (DB)', () => {
   }
 
   it('AC1: returns seeded rows with invoice/carrier/billed/expected/variance/status', async () => {
-    const rows = await withTenantTx({ clientIds: [clientAId], internal: true }, async (c) => {
+    // 86e34dee2: internal:true grants portfolio-wide (cross-client) RLS
+    // visibility BY DESIGN (migrations/0009) -- listFindings never adds its
+    // own client_id filter (RLS is the only boundary, see this function's
+    // own doc comment), so an exact toHaveLength(1) assertion under
+    // internal:true is only ever true when the WHOLE database contains
+    // exactly one variance_finding row. On a DB reused across other
+    // suites/fixtures (real precondition: heavy Playwright fullstack-suite
+    // reuse before a fresh test:db run) that count includes every other
+    // client's leftover rows too, so this failed with far more than 1 row --
+    // not an RLS/tenant-scoping defect (confirmed by reproducing exactly
+    // this: 21 pre-existing rows + this test's own seed = 22 returned).
+    // internal:false scopes strictly to clientAId (real per-request
+    // production behavior -- resolveAuthorizedTenantContext never produces
+    // internal:true for this route), making the count assertion correct
+    // regardless of what other tenants' data exists in the DB.
+    const rows = await withTenantTx({ clientIds: [clientAId], internal: false }, async (c) => {
       await seedFinding(c, { clientId: clientAId });
       return listFindings(c, { clientIds: [clientAId] });
     });

@@ -65,4 +65,35 @@ describe('ClientScorecardView (P6.B.1)', () => {
     rerender(<ClientScorecardView auditRunId="run-2" />);
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/portal/scorecard/run-2', expect.any(Object)));
   });
+
+  // 86e2zfjx3 AC1: the loading container is aria-busy and wrapped in a persistent aria-live region.
+  it('marks the loading state aria-busy inside an aria-live="polite" region', () => {
+    fetchMock.mockReturnValue(new Promise(() => {}));
+    render(<ClientScorecardView auditRunId={AUDIT_RUN_ID} />);
+    const region = screen.getByTestId('client-scorecard-live-region');
+    expect(region).toHaveAttribute('aria-live', 'polite');
+    expect(region).toHaveAttribute('aria-busy', 'true');
+    expect(region).toContainElement(screen.getByTestId('client-scorecard-loading'));
+  });
+
+  // 86e2zfjx3 AC2: the error container is role="alert".
+  it('marks the error message role="alert"', async () => {
+    fetchMock.mockResolvedValue(new Response(null, { status: 401 }));
+    render(<ClientScorecardView auditRunId={AUDIT_RUN_ID} />);
+    await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument());
+    expect(screen.getByRole('alert')).toHaveAttribute('data-testid', 'client-scorecard-error');
+  });
+
+  // 86e2zfjx3 AC3: the empty container is role="status".
+  it('marks the empty-state message role="status"', async () => {
+    fetchMock.mockResolvedValue(new Response(JSON.stringify({ ...SCORECARD, conformedCount: null }), { status: 200 }));
+    render(<ClientScorecardView auditRunId={AUDIT_RUN_ID} />);
+    await waitFor(() => expect(screen.getByRole('status')).toBeInTheDocument());
+    expect(screen.getByRole('status')).toHaveAttribute('data-testid', 'client-scorecard-empty');
+  });
+
+  it('clears aria-busy once the fetch resolves', async () => {
+    render(<ClientScorecardView auditRunId={AUDIT_RUN_ID} />);
+    await waitFor(() => expect(screen.getByTestId('client-scorecard-live-region')).toHaveAttribute('aria-busy', 'false'));
+  });
 });

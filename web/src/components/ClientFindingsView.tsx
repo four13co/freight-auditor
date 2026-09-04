@@ -32,48 +32,50 @@ export function ClientFindingsView() {
     <section data-testid="client-findings-view" className="border border-[rgba(32,30,29,.3)] bg-[#f3f2f2] p-3">
       <h2 className="mb-2 text-sm font-extrabold">Findings</h2>
 
-      {error && (
-        <span data-testid="client-findings-error" className="text-xs font-semibold text-[#7c1405]">
-          Couldn&rsquo;t load findings.
-        </span>
-      )}
+      <div aria-live="polite" aria-busy={!error && findings === null} data-testid="client-findings-live-region">
+        {error && (
+          <span role="alert" data-testid="client-findings-error" className="text-xs font-semibold text-[#7c1405]">
+            Couldn&rsquo;t load findings.
+          </span>
+        )}
 
-      {!error && findings === null && (
-        <span className="text-xs font-semibold text-[rgba(32,30,29,0.65)]">Loading…</span>
-      )}
+        {!error && findings === null && (
+          <span data-testid="client-findings-loading" className="text-xs font-semibold text-[rgba(32,30,29,0.65)]">Loading…</span>
+        )}
 
-      {!error && findings !== null && findings.length === 0 && (
-        <span data-testid="client-findings-empty" className="text-xs font-semibold text-[rgba(32,30,29,0.65)]">
-          No findings recorded yet.
-        </span>
-      )}
+        {!error && findings !== null && findings.length === 0 && (
+          <span role="status" data-testid="client-findings-empty" className="text-xs font-semibold text-[rgba(32,30,29,0.65)]">
+            No findings recorded yet.
+          </span>
+        )}
 
-      {!error && findings !== null && findings.length > 0 && (
-        <table data-testid="client-findings-table" className="w-full text-xs">
-          <thead>
-            <tr className="border-b text-left">
-              <th className="py-1 pr-2">Invoice</th>
-              <th className="py-1 pr-2">Carrier</th>
-              <th className="py-1 pr-2">Billed</th>
-              <th className="py-1 pr-2">Expected</th>
-              <th className="py-1 pr-2">Variance</th>
-              <th className="py-1 pr-2">Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            {findings.map((f) => (
-              <tr key={f.id} data-testid="client-findings-row" className="border-t">
-                <td className="py-1 pr-2 font-extrabold">{f.invoiceNumber ?? '—'}</td>
-                <td className="py-1 pr-2">{f.carrierName ?? '—'}</td>
-                <td className="py-1 pr-2 tabular-nums">{formatAmount(f.billed)}</td>
-                <td className="py-1 pr-2 tabular-nums">{formatAmount(f.expected)}</td>
-                <td className="py-1 pr-2 tabular-nums">{formatAmount(f.varianceAmount)}</td>
-                <td className="py-1 pr-2">{f.status}</td>
+        {!error && findings !== null && findings.length > 0 && (
+          <table data-testid="client-findings-table" className="w-full text-xs">
+            <thead>
+              <tr className="border-b text-left">
+                <th className="py-1 pr-2">Invoice</th>
+                <th className="py-1 pr-2">Carrier</th>
+                <th className="py-1 pr-2">Billed</th>
+                <th className="py-1 pr-2">Expected</th>
+                <th className="py-1 pr-2">Variance</th>
+                <th className="py-1 pr-2">Status</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
+            </thead>
+            <tbody>
+              {findings.map((f) => (
+                <tr key={f.id} data-testid="client-findings-row" className="border-t">
+                  <td className="py-1 pr-2 font-extrabold">{f.invoiceNumber ?? '—'}</td>
+                  <td className="py-1 pr-2">{f.carrierName ?? '—'}</td>
+                  <td className="py-1 pr-2 tabular-nums">{formatAmount(f.billed)}</td>
+                  <td className="py-1 pr-2 tabular-nums">{formatAmount(f.expected)}</td>
+                  <td className="py-1 pr-2 tabular-nums">{formatAmount(f.varianceAmount)}</td>
+                  <td className="py-1 pr-2">{f.status}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
     </section>
   );
 }

@@ -1,15 +1,26 @@
+import { useState } from 'react';
 import { HashRouter, NavLink, Route, Routes } from 'react-router-dom';
 import type { Branding } from '../lib/api.js';
 import { BrandMark } from './BrandMark.js';
+import { ClientInvoicesView } from './ClientInvoicesView.js';
+import { ClientScorecardView } from './ClientScorecardView.js';
+import { ClientFindingsView } from './ClientFindingsView.js';
+import { ClientFindingEvidenceView } from './ClientFindingEvidenceView.js';
+import { ClientDisputeDetailView } from './ClientDisputeDetailView.js';
+import { ClientDisputeCommunicationsView } from './ClientDisputeCommunicationsView.js';
+import { ClientClaimView } from './ClientClaimView.js';
+import { ClientClaimDocumentsView } from './ClientClaimDocumentsView.js';
+import { ClientRecoveryReport } from './ClientRecoveryReport.js';
+import { ClientAuditLogView } from './ClientAuditLogView.js';
 
 /**
  * Client portal shell + navigation (P6.A.1). The chrome portal members
  * (client_viewer/client_admin) land in once App.tsx routes a real,
- * non-internal session here; the actual content views (Invoices, Findings,
- * Disputes, Claims & Recovery, Audit log -- B.1-B.6) don't exist yet, so
- * every route renders a placeholder empty state, reusing Sidebar.tsx's
- * existing dark-sidebar/red-active-state visual language rather than
- * inventing a second one.
+ * non-internal session here. 86e34cfpd wired the 10 B.1-B.6 content views
+ * (built, RTL-tested, but previously unmounted -- 86e2zfjx3) into the 5
+ * named routes below; only the wildcard "*" route still renders the
+ * ComingSoon placeholder, reusing Sidebar.tsx's existing dark-sidebar/
+ * red-active-state visual language rather than inventing a second one.
  *
  * HashRouter, not BrowserRouter: static-routes.ts's @fastify/static mount
  * has no SPA catch-all fallback to index.html for an arbitrary path, and
@@ -82,17 +93,140 @@ function PortalNav({ branding }: { branding?: Branding | null }) {
   );
 }
 
+/**
+ * 86e34cfpd: none of the 10 views' own backends expose a list-of-disputes /
+ * list-of-claims / list-of-audit-runs endpoint to drive a real row-click
+ * selection flow (ClientFindingsView and ClientInvoicesView are the only
+ * list views among the 10, and neither takes a selection callback -- the
+ * No-gos forbid changing their internal logic). This minimal id-entry form
+ * is the smallest faithful seam that makes the nullable-id views reachable
+ * at all without inventing new list UI/API out of this task's routing-only
+ * scope; a real row-driven picker is a follow-up once a list endpoint
+ * exists.
+ */
+function IdPicker({ label, testId, onSelect }: { label: string; testId: string; onSelect: (id: string) => void }) {
+  const [value, setValue] = useState('');
+  return (
+    <form
+      data-testid={testId}
+      className="mb-2 flex items-end gap-2"
+      onSubmit={(e) => {
+        e.preventDefault();
+        const trimmed = value.trim();
+        if (trimmed) onSelect(trimmed);
+      }}
+    >
+      <label className="flex flex-col text-xs font-semibold">
+        {label}
+        <input
+          type="text"
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          className="border border-[rgba(32,30,29,.3)] px-2 py-1 text-xs font-normal"
+        />
+      </label>
+      <button type="submit" className="border border-[rgba(32,30,29,.3)] px-2 py-1 text-xs font-semibold">
+        View
+      </button>
+    </form>
+  );
+}
+
+function InvoicesSection() {
+  const [auditRunId, setAuditRunId] = useState<string | null>(null);
+  return (
+    <div className="flex flex-1 flex-col gap-3 overflow-auto p-3">
+      <ClientInvoicesView />
+      <IdPicker label="Audit run ID" testId="portal-scorecard-picker" onSelect={setAuditRunId} />
+      {auditRunId !== null ? (
+        <ClientScorecardView auditRunId={auditRunId} />
+      ) : (
+        <span role="status" data-testid="client-scorecard-not-selected" className="text-xs font-semibold text-[rgba(32,30,29,0.65)]">
+          Select an audit run to view its scorecard.
+        </span>
+      )}
+    </div>
+  );
+}
+
+function FindingsSection() {
+  const [findingId, setFindingId] = useState<string | null>(null);
+  return (
+    <div className="flex flex-1 flex-col gap-3 overflow-auto p-3">
+      <ClientFindingsView />
+      <IdPicker label="Finding ID" testId="portal-finding-evidence-picker" onSelect={setFindingId} />
+      <ClientFindingEvidenceView findingId={findingId} />
+    </div>
+  );
+}
+
+/**
+ * 86e34cfpd (post-#331 fix): ClientDisputeDetailView and
+ * ClientDisputeCommunicationsView each independently call useFocusOnReady
+ * -- a hook this task's No-gos forbid touching -- which moves focus the
+ * moment ITS OWN ready:false->true transition fires. #331 fed both views
+ * the same disputeId from one picker, so selecting a dispute flipped both
+ * transitions in the same commit; React runs effects in mount order, so
+ * the second-mounted view (Communications) always won the race and stole
+ * focus back from Detail, regardless of which one the user meant to read.
+ * Review's FAIL on #331 (2026-09-04) named two fixes: only the primary
+ * view claims focus, or the id-setter distinguishes which view is being
+ * selected for. This does the latter -- Detail and Communications get
+ * their own independent id state and their own picker, so submitting one
+ * never also flips the other's readiness. Neither view's internals nor
+ * useFocusOnReady itself changed; the race is eliminated structurally by
+ * never letting one user action drive two simultaneous transitions.
+ * ClaimsSection below had the identical latent shape (ClientClaimView +
+ * ClientClaimDocumentsView sharing one claimId) -- fixed the same way here
+ * even though no e2e exercised it, rather than leave a known duplicate of
+ * the just-diagnosed bug in place.
+ */
+function DisputesSection() {
+  const [detailDisputeId, setDetailDisputeId] = useState<string | null>(null);
+  const [commsDisputeId, setCommsDisputeId] = useState<string | null>(null);
+  return (
+    <div className="flex flex-1 flex-col gap-3 overflow-auto p-3">
+      <IdPicker label="Dispute ID" testId="portal-dispute-picker" onSelect={setDetailDisputeId} />
+      <ClientDisputeDetailView disputeId={detailDisputeId} />
+      <IdPicker label="Communications dispute ID" testId="portal-dispute-comms-picker" onSelect={setCommsDisputeId} />
+      <ClientDisputeCommunicationsView disputeId={commsDisputeId} />
+    </div>
+  );
+}
+
+function ClaimsSection() {
+  const [claimId, setClaimId] = useState<string | null>(null);
+  const [claimDocumentsId, setClaimDocumentsId] = useState<string | null>(null);
+  return (
+    <div className="flex flex-1 flex-col gap-3 overflow-auto p-3">
+      <IdPicker label="Claim ID" testId="portal-claim-picker" onSelect={setClaimId} />
+      <ClientClaimView claimId={claimId} />
+      <IdPicker label="Documents claim ID" testId="portal-claim-documents-picker" onSelect={setClaimDocumentsId} />
+      <ClientClaimDocumentsView claimId={claimDocumentsId} />
+      <ClientRecoveryReport />
+    </div>
+  );
+}
+
+function AuditLogSection() {
+  return (
+    <div className="flex flex-1 flex-col overflow-auto p-3">
+      <ClientAuditLogView />
+    </div>
+  );
+}
+
 function PortalShellInner({ branding }: { branding?: Branding | null }) {
   return (
     <div data-testid="portal-shell" className="flex h-screen">
       <PortalNav branding={branding} />
       <div className="flex flex-1 flex-col">
         <Routes>
-          <Route path="/invoices" element={<ComingSoon label="Invoices" />} />
-          <Route path="/findings" element={<ComingSoon label="Findings" />} />
-          <Route path="/disputes" element={<ComingSoon label="Disputes" />} />
-          <Route path="/claims" element={<ComingSoon label="Claims & Recovery" />} />
-          <Route path="/audit-log" element={<ComingSoon label="Audit log" />} />
+          <Route path="/invoices" element={<InvoicesSection />} />
+          <Route path="/findings" element={<FindingsSection />} />
+          <Route path="/disputes" element={<DisputesSection />} />
+          <Route path="/claims" element={<ClaimsSection />} />
+          <Route path="/audit-log" element={<AuditLogSection />} />
           <Route path="*" element={<ComingSoon label="Overview" />} />
         </Routes>
       </div>

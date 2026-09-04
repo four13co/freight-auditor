@@ -79,4 +79,49 @@ describe('ClientClaimView (P6.B.4)', () => {
     rerender(<ClientClaimView claimId={null} />);
     expect(screen.getByTestId('client-claim-empty')).toBeInTheDocument();
   });
+
+  // 86e2zfjx3 AC1: the loading container is aria-busy and wrapped in a persistent aria-live region.
+  it('marks the loading state aria-busy inside an aria-live="polite" region', () => {
+    fetchMock.mockReturnValue(new Promise(() => {}));
+    render(<ClientClaimView claimId={CLAIM_ID} />);
+    const region = screen.getByTestId('client-claim-live-region');
+    expect(region).toHaveAttribute('aria-live', 'polite');
+    expect(region).toHaveAttribute('aria-busy', 'true');
+    expect(region).toContainElement(screen.getByTestId('client-claim-loading'));
+  });
+
+  // 86e2zfjx3 AC2: the error container is role="alert".
+  it('marks the error message role="alert"', async () => {
+    fetchMock.mockResolvedValue(new Response(null, { status: 401 }));
+    render(<ClientClaimView claimId={CLAIM_ID} />);
+    await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument());
+    expect(screen.getByRole('alert')).toHaveAttribute('data-testid', 'client-claim-error');
+  });
+
+  // 86e2zfjx3 AC3: both empty-state flavors (no-selection, and a selected claim with zero recovery events) are role="status".
+  it('marks the no-selection state role="status"', () => {
+    render(<ClientClaimView claimId={null} />);
+    expect(screen.getByRole('status')).toHaveAttribute('data-testid', 'client-claim-empty');
+  });
+
+  it('marks the recovery-events-empty state role="status"', async () => {
+    fetchMock.mockResolvedValue(new Response(JSON.stringify({ ...CLAIM, recoveryEvents: [], cumulativeRecovered: '0.0000' }), { status: 200 }));
+    render(<ClientClaimView claimId={CLAIM_ID} />);
+    await waitFor(() => expect(screen.getByRole('status')).toBeInTheDocument());
+    expect(screen.getByRole('status')).toHaveAttribute('data-testid', 'client-claim-recovery-events-empty');
+  });
+
+  it('clears aria-busy once the fetch resolves', async () => {
+    render(<ClientClaimView claimId={CLAIM_ID} />);
+    await waitFor(() => expect(screen.getByTestId('client-claim-live-region')).toHaveAttribute('aria-busy', 'false'));
+  });
+
+  // 86e2zfjx3 AC4: covered via RTL, not Playwright -- see the PR body's Uncertainties.
+  it('moves focus to the newly-rendered content once a selected claim finishes loading', async () => {
+    const { rerender } = render(<ClientClaimView claimId={null} />);
+    rerender(<ClientClaimView claimId={CLAIM_ID} />);
+
+    await waitFor(() => expect(screen.getByTestId('client-claim-content')).toBeInTheDocument());
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByTestId('client-claim-content')));
+  });
 });

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { fetchClientPortalClaim, type ClientPortalClaimDetail } from '../lib/api.js';
+import { useFocusOnReady } from '../lib/use-focus-on-ready.js';
 
 function formatAmount(value: string, currency: string | null): string {
   const n = Number(value);
@@ -40,67 +41,72 @@ export function ClientClaimView({ claimId }: { claimId: string | null }) {
     return () => { cancelled = true; };
   }, [claimId]);
 
+  const ready = claimId !== null && (claim !== null || error);
+  const readyRef = useFocusOnReady<HTMLDivElement>(ready);
+
   return (
     <section data-testid="client-claim-view" className="border border-[rgba(32,30,29,.3)] bg-[#f3f2f2] p-3">
       <h2 className="mb-2 text-sm font-extrabold">Claim</h2>
 
-      {claimId === null && (
-        <span data-testid="client-claim-empty" className="text-xs font-semibold text-[rgba(32,30,29,0.65)]">
-          Select a claim to view its detail.
-        </span>
-      )}
+      <div aria-live="polite" aria-busy={claimId !== null && !error && claim === null} data-testid="client-claim-live-region">
+        {claimId === null && (
+          <span role="status" data-testid="client-claim-empty" className="text-xs font-semibold text-[rgba(32,30,29,0.65)]">
+            Select a claim to view its detail.
+          </span>
+        )}
 
-      {claimId !== null && error && (
-        <span data-testid="client-claim-error" className="text-xs font-semibold text-[#7c1405]">
-          Couldn&rsquo;t load claim.
-        </span>
-      )}
-
-      {claimId !== null && !error && claim === null && (
-        <span className="text-xs font-semibold text-[rgba(32,30,29,0.65)]">Loading…</span>
-      )}
-
-      {claimId !== null && !error && claim !== null && (
-        <div data-testid="client-claim-content" className="text-xs">
-          <div className="flex gap-2">
-            <span className="font-extrabold">Status</span>
-            <span>{claim.status}</span>
+        {claimId !== null && error && (
+          <div ref={readyRef} tabIndex={-1} role="alert" data-testid="client-claim-error" className="text-xs font-semibold text-[#7c1405]">
+            Couldn&rsquo;t load claim.
           </div>
-          <div className="flex gap-2">
-            <span className="font-extrabold">Amount claimed</span>
-            <span>{formatAmount(claim.amountClaimed, claim.currency)}</span>
-          </div>
-          <div className="flex gap-2">
-            <span className="font-extrabold">Cumulative recovered</span>
-            <span>{formatAmount(claim.cumulativeRecovered, claim.currency)}</span>
-          </div>
+        )}
 
-          {claim.recoveryEvents.length === 0 && (
-            <span data-testid="client-claim-recovery-events-empty" className="mt-2 block text-xs font-semibold text-[rgba(32,30,29,0.65)]">
-              No recovery events recorded yet.
-            </span>
-          )}
+        {claimId !== null && !error && claim === null && (
+          <span data-testid="client-claim-loading" className="text-xs font-semibold text-[rgba(32,30,29,0.65)]">Loading…</span>
+        )}
 
-          {claim.recoveryEvents.length > 0 && (
-            <table data-testid="client-claim-recovery-events-table" className="mt-2 w-full text-xs">
-              <thead>
-                <tr className="border-b text-left">
-                  <th className="py-1 pr-2">Recovered</th>
-                  <th className="py-1 pr-2">Date</th>
-                </tr>
-              </thead>
-              <tbody>
-                {claim.recoveryEvents.map((event) => (
-                  <tr key={event.id} data-testid="client-claim-recovery-event-row" className="border-t">
-                    <td className="py-1 pr-2 tabular-nums">{formatAmount(event.amountRecovered, event.currency)}</td>
-                    <td className="py-1 pr-2 tabular-nums">{formatDate(event.recordedAt)}</td>
+        {claimId !== null && !error && claim !== null && (
+          <div ref={readyRef} tabIndex={-1} data-testid="client-claim-content" className="text-xs">
+            <div className="flex gap-2">
+              <span className="font-extrabold">Status</span>
+              <span>{claim.status}</span>
+            </div>
+            <div className="flex gap-2">
+              <span className="font-extrabold">Amount claimed</span>
+              <span>{formatAmount(claim.amountClaimed, claim.currency)}</span>
+            </div>
+            <div className="flex gap-2">
+              <span className="font-extrabold">Cumulative recovered</span>
+              <span>{formatAmount(claim.cumulativeRecovered, claim.currency)}</span>
+            </div>
+
+            {claim.recoveryEvents.length === 0 && (
+              <span role="status" data-testid="client-claim-recovery-events-empty" className="mt-2 block text-xs font-semibold text-[rgba(32,30,29,0.65)]">
+                No recovery events recorded yet.
+              </span>
+            )}
+
+            {claim.recoveryEvents.length > 0 && (
+              <table data-testid="client-claim-recovery-events-table" className="mt-2 w-full text-xs">
+                <thead>
+                  <tr className="border-b text-left">
+                    <th className="py-1 pr-2">Recovered</th>
+                    <th className="py-1 pr-2">Date</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
-      )}
+                </thead>
+                <tbody>
+                  {claim.recoveryEvents.map((event) => (
+                    <tr key={event.id} data-testid="client-claim-recovery-event-row" className="border-t">
+                      <td className="py-1 pr-2 tabular-nums">{formatAmount(event.amountRecovered, event.currency)}</td>
+                      <td className="py-1 pr-2 tabular-nums">{formatDate(event.recordedAt)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        )}
+      </div>
     </section>
   );
 }

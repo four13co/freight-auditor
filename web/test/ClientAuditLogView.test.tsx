@@ -102,4 +102,61 @@ describe('ClientAuditLogView (P6.B.6)', () => {
     await waitFor(() => expect(fetchMock).toHaveBeenLastCalledWith('/api/portal/audit-log?limit=50&offset=50', expect.any(Object)));
     expect(screen.getByTestId('client-audit-log-prev')).not.toBeDisabled();
   });
+
+  // 86e2zfjx3 AC1: the loading container is aria-busy and wrapped in a persistent aria-live region.
+  it('marks the loading state aria-busy inside an aria-live="polite" region', () => {
+    fetchMock.mockReturnValue(new Promise(() => {}));
+    render(<ClientAuditLogView />);
+    const region = screen.getByTestId('client-audit-log-live-region');
+    expect(region).toHaveAttribute('aria-live', 'polite');
+    expect(region).toHaveAttribute('aria-busy', 'true');
+    expect(region).toContainElement(screen.getByTestId('client-audit-log-loading'));
+  });
+
+  // 86e2zfjx3 AC2: the error container is role="alert".
+  it('marks the error message role="alert"', async () => {
+    fetchMock.mockResolvedValue(new Response(null, { status: 401 }));
+    render(<ClientAuditLogView />);
+    await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument());
+    expect(screen.getByRole('alert')).toHaveAttribute('data-testid', 'client-audit-log-error');
+  });
+
+  // 86e2zfjx3 AC3: the empty container is role="status".
+  it('marks the empty-state message role="status"', async () => {
+    render(<ClientAuditLogView />);
+    await waitFor(() => expect(screen.getByRole('status')).toBeInTheDocument());
+    expect(screen.getByRole('status')).toHaveAttribute('data-testid', 'client-audit-log-empty');
+  });
+
+  /**
+   * 86e2zfjx3 AC5 (RTL substitute for the "e2e Playwright" wording -- see PR body's
+   * Uncertainties: these 10 views are unwired to any route, so no page.goto() can reach
+   * them without touching PortalApp.tsx, which is outside this task's 10 named files).
+   * Proves the SAME live region present during the initial load persists across the page
+   * change (never unmounts/remounts), which is what makes the announcement possible --
+   * a region that disappears and reappears with new content does not announce.
+   */
+  it('reuses the same persistent aria-live region to announce a page change (AC5)', async () => {
+    const user = userEvent.setup();
+    const PAGE_2 = Array.from({ length: 50 }, (_, i) => event({ id: `page2-e-${i}`, entity: 'claim' }));
+    fetchMock.mockImplementation((url: string) => Promise.resolve(new Response(
+      JSON.stringify({ events: url.includes('offset=50') ? PAGE_2 : FULL_PAGE }),
+      { status: 200 },
+    )));
+    render(<ClientAuditLogView />);
+
+    await waitFor(() => expect(screen.getByTestId('client-audit-log-next')).not.toBeDisabled());
+    const region = screen.getByTestId('client-audit-log-live-region');
+    const initialRows = screen.getAllByTestId('client-audit-log-row').map((r) => r.textContent);
+
+    await user.click(screen.getByTestId('client-audit-log-next'));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenLastCalledWith('/api/portal/audit-log?limit=50&offset=50', expect.any(Object)));
+    // Same DOM node throughout -- never unmounted between pages.
+    expect(screen.getByTestId('client-audit-log-live-region')).toBe(region);
+    await waitFor(() => {
+      const updatedRows = screen.getAllByTestId('client-audit-log-row').map((r) => r.textContent);
+      expect(updatedRows).not.toEqual(initialRows);
+    });
+  });
 });

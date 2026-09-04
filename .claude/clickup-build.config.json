@@ -21,7 +21,8 @@
   "git": {
     "integration_branch": "Development",
     "production_branch": "Production",
-    "$worktree_root_note": "Intentionally omitted: it was an absolute path under one developer's home dir, which cannot be correct for anyone else. The loops resolve worktrees relative to the checkout, matching the sibling repos (tzp-3plc, tzp-tiktok), which track no worktree_root either.",
+    "worktree_root": "..",
+    "$worktree_root_note": "Set to '..' (sibling-of-checkout) on 2026-09-04, replacing an earlier omission. The prior note reasoned that dropping the key entirely was correct because tzp-3plc/tzp-tiktok also omit it, and that the loops 'resolve worktrees relative to the checkout' — but with the key truly absent, loop-build-v2.md's `<worktree_root>/<name>` template has no defined fallback, and Build improvised a path nested INSIDE the checkout instead of beside it (confirmed: fa-accessible-portal-states/ showed up as an untracked dir in the primary checkout's own git status). tzp-3plc's omission is a different, deliberately-documented special case (shared worktree root across its three profiles, per its own project_tzp_worktree_naming_standard memory), not evidence that omitting is safe here. LOOP-ARCHITECTURE.md's own example configs, kickoff-loops.md's bootstrap fallback (`worktree_root // \"..\"`), and sibling repos autonomous-site-builder/claude-config all use the literal relative path '..' — this just makes that convention explicit instead of relying on undefined behavior.",
     "worktree_naming": "fa-<scope>",
     "branch_naming": "<type>/<scope>-<item-id>"
   },

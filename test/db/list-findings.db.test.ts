@@ -380,6 +380,8 @@ describe('listFindings (DB)', () => {
     const sortTag = `lf-sort-${Date.now()}`;
     let sortClientId: string;
     let sortCarrierId: string;
+    let pollutionClientId: string;
+    let pollutionCarrierId: string;
 
     beforeAll(async () => {
       const owner = await pool.connect();
@@ -388,6 +390,24 @@ describe('listFindings (DB)', () => {
         sortClientId = c.rows[0].id;
         const carrier = await owner.query(`INSERT INTO carrier (name) VALUES ($1) RETURNING id`, [`Carrier-${sortTag}`]);
         sortCarrierId = carrier.rows[0].id;
+
+        // 86e34fx55: a second, unrelated client's rows -- seeded directly via
+        // the owner connection (bypasses RLS, same as sortClientId/carrier
+        // above) to simulate DB-reuse pollution already present when these
+        // tests run, mirroring PR #333's own repro method. Deliberately
+        // chosen to collide with both assertions below: amounts in
+        // 1.00-5.00 would corrupt the ASC test's exact-array match, and an
+        // amount above 99999.0000 would knock BIGGEST out of first place in
+        // the DESC test -- if either test were still relying on
+        // internal:true's portfolio-wide RLS visibility instead of scoping
+        // to sortClientId via internal:false.
+        const pc = await owner.query(`INSERT INTO client (name, slug) VALUES ('LF-Sort-Pollution', $1) RETURNING id`, [`${sortTag}-pollution`]);
+        pollutionClientId = pc.rows[0].id;
+        const pCarrier = await owner.query(`INSERT INTO carrier (name) VALUES ($1) RETURNING id`, [`Carrier-${sortTag}-pollution`]);
+        pollutionCarrierId = pCarrier.rows[0].id;
+        await seedPollutionRows(owner, pollutionClientId, pollutionCarrierId, [
+          '1.0000', '2.0000', '3.0000', '4.0000', '5.0000', '999999.0000',
+        ]);
       } finally {
         owner.release();
       }
@@ -396,16 +416,51 @@ describe('listFindings (DB)', () => {
     afterAll(async () => {
       const owner = await pool.connect();
       try {
-        await owner.query(`DELETE FROM variance_finding WHERE client_id = $1`, [sortClientId]);
-        await owner.query(`DELETE FROM charge_fact WHERE client_id = $1`, [sortClientId]);
-        await owner.query(`DELETE FROM audit_run WHERE client_id = $1`, [sortClientId]);
-        await owner.query(`DELETE FROM invoice WHERE client_id = $1`, [sortClientId]);
-        await owner.query(`DELETE FROM carrier WHERE id = $1`, [sortCarrierId]);
-        await owner.query(`DELETE FROM client WHERE id = $1`, [sortClientId]);
+        const bothClients = [sortClientId, pollutionClientId];
+        await owner.query(`DELETE FROM variance_finding WHERE client_id = ANY($1::uuid[])`, [bothClients]);
+        await owner.query(`DELETE FROM charge_fact WHERE client_id = ANY($1::uuid[])`, [bothClients]);
+        await owner.query(`DELETE FROM audit_run WHERE client_id = ANY($1::uuid[])`, [bothClients]);
+        await owner.query(`DELETE FROM invoice WHERE client_id = ANY($1::uuid[])`, [bothClients]);
+        await owner.query(`DELETE FROM carrier WHERE id = ANY($1::uuid[])`, [[sortCarrierId, pollutionCarrierId]]);
+        await owner.query(`DELETE FROM client WHERE id = ANY($1::uuid[])`, [bothClients]);
       } finally {
         owner.release();
       }
     });
+
+    /**
+     * Seeds one bare variance_finding row per given amount for `clientId`,
+     * via the owner connection (bypasses RLS) -- simulates rows another
+     * client/test already left in the DB, independent of and invisible to
+     * sortClientId's own RLS scope once a test uses internal:false.
+     */
+    async function seedPollutionRows(
+      owner: pg.PoolClient,
+      clientId: string,
+      carrierId: string,
+      amounts: string[],
+    ): Promise<void> {
+      for (const amount of amounts) {
+        const inv = await owner.query<{ id: string }>(
+          `INSERT INTO invoice (client_id, carrier_id, transaction_set, invoice_number, currency, parser_version)
+           VALUES ($1, $2, '210', $3, 'USD', 'test') RETURNING id`,
+          [clientId, carrierId, `INV-${sortTag}-pollution-${amount}`],
+        );
+        const run = await owner.query<{ id: string }>(
+          `INSERT INTO audit_run (client_id, invoice_id, engine_spec_version, outcome)
+           VALUES ($1, $2, 'test', 'SCORED') RETURNING id`,
+          [clientId, inv.rows[0].id],
+        );
+        await owner.query(
+          `INSERT INTO variance_finding (client_id, audit_run_id, criterion_id, rule_version_id, direction, variance_amount, currency, status, evaluated_expr)
+           SELECT $1, $2, c.id, rv.id, 'OVERCHARGE', $3, 'USD', 'open', '{}'::jsonb
+           FROM criterion c JOIN rule r ON r.slug = 'contract-rate_variance'
+           JOIN rule_version rv ON rv.rule_id = r.id
+           WHERE c.criterion_key = 'CONTRACT.RATE_VARIANCE' ORDER BY rv.recorded_at DESC LIMIT 1`,
+          [clientId, run.rows[0].id, amount],
+        );
+      }
+    }
 
     /**
      * Bulk-seeds `count` filler variance_finding rows with small, distinct

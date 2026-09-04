@@ -18,6 +18,7 @@
     "test:watch": "vitest",
     "test:e2e": "vitest run --dir test/e2e",
     "test:db": "node scripts/test-db-capture.mjs",
+    "launch-readiness": "node scripts/launch-readiness-check.mjs",
     "web:test": "npm --prefix web run test",
     "web:typecheck": "npm --prefix web run typecheck",
     "web:e2e": "npm --prefix web run test:e2e",

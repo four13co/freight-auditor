@@ -1,4 +1,4 @@
-import { Decimal } from 'decimal.js';
+import { validateRecoveryAmountAndCurrency } from './validate-recovery-amount-and-currency.js';
 
 /**
  * Pure validation over an already-fetched dispute row (P5.A.1). A claim can
@@ -43,11 +43,20 @@ export function validateClaimableDispute(row: ClaimableDisputeRow): ValidatedCla
   if (row.status !== 'accepted') throw new ClaimableDisputeError('NOT_ACCEPTED');
   if (row.amountClaimed === null) throw new ClaimableDisputeError('MISSING_AMOUNT');
   if (row.currency === null) throw new ClaimableDisputeError('MISSING_CURRENCY');
-  if (new Decimal(row.amountClaimed).lte(0)) throw new ClaimableDisputeError('NON_POSITIVE_AMOUNT');
+
+  // existingCurrency: null -- a single dispute's own amount/currency, nothing
+  // to compare against, so onMissingCurrency/onMixedCurrency are unreachable
+  // here (currency is already proven non-null above, and there is no second
+  // currency to mismatch against).
+  const validated = validateRecoveryAmountAndCurrency(row.amountClaimed, row.currency, null, {
+    onNonPositiveAmount: () => { throw new ClaimableDisputeError('NON_POSITIVE_AMOUNT'); },
+    onMissingCurrency: () => { throw new Error('unreachable: currency already checked non-null'); },
+    onMixedCurrency: () => { throw new Error('unreachable: no existingCurrency provided'); },
+  });
 
   return {
     disputeId: row.id,
-    amountClaimed: row.amountClaimed,
-    currency: row.currency,
+    amountClaimed: validated.amount,
+    currency: validated.currency,
   };
 }

@@ -5,12 +5,10 @@ import { seedAdminUser, ADMIN_EMAIL } from '../../scripts/seed-admin-user.mjs';
 
 /**
  * Seeds a real better-auth credentialed account for greg@four13.co, scoped
- * client_admin on the existing dev tenant (the highest membership_role that
- * exists today -- role isn't yet read anywhere in tenant-auth.ts's
- * authorization check, so this is the correct/highest label available, not
- * a functional escalation beyond ordinary membership). Same shape as
- * seed-e2e-auth-user.mjs's db coverage: creates via getAuth().api.signUpEmail
- * rather than hand-writing a ba_account row.
+ * as an internal analyst (86e367qxx) on the existing dev tenant -- Greg's
+ * own operator login for the dashboard, not a client-portal account. Same
+ * shape as seed-e2e-auth-user.mjs's db coverage: creates via
+ * getAuth().api.signUpEmail rather than hand-writing a ba_account row.
  */
 describe('seedAdminUser (DB)', () => {
   const password = 'test-only-admin-password-1234567890';
@@ -44,7 +42,7 @@ describe('seedAdminUser (DB)', () => {
     await closePool();
   });
 
-  it('creates a real credentialed app_user + client_admin membership on the dev tenant', async () => {
+  it('creates a real credentialed app_user + analyst membership on the dev tenant', async () => {
     const pool = getPool();
     await seedAdminUser({ pool, password });
 
@@ -60,7 +58,7 @@ describe('seedAdminUser (DB)', () => {
       [userId, DEV_CLIENT_ID],
     );
     expect(membership.rowCount).toBe(1);
-    expect(membership.rows[0].role).toBe('client_admin');
+    expect(membership.rows[0].role).toBe('analyst');
   });
 
   it('is idempotent: running it twice does not error or duplicate the account/membership', async () => {

@@ -51,9 +51,15 @@ export async function seedE2eAuthUser({ pool } = {}) {
       userId = result.user.id;
     }
 
+    // 86e367qxx: role is 'analyst', not 'client_admin' -- this row's own
+    // is_internal=true (below) represents an internal analyst identity, and
+    // role is now read by registerAnalystOnlyPreHandler (dispute
+    // accept/reject/partial-accept/close, finding reverse). Same correction
+    // as seed-dev-tenant.mjs/seed-admin-user.mjs, which document the "role
+    // was never read, so this was a placeholder" history in full.
     await client.query(
-      `INSERT INTO membership (user_id, client_id, role) VALUES ($1, $2, 'client_admin')
-       ON CONFLICT (user_id, client_id) DO NOTHING`,
+      `INSERT INTO membership (user_id, client_id, role) VALUES ($1, $2, 'analyst')
+       ON CONFLICT (user_id, client_id) DO UPDATE SET role = EXCLUDED.role`,
       [userId, DEV_CLIENT_ID],
     );
     // 86e2zfjmb: this suite's real-session.fullstack.spec.ts logs in as this

@@ -80,7 +80,11 @@ test.beforeAll(async () => {
     [`e2e-dispute-lifecycle-${Date.now()}@example.test`],
   );
   userId = userRow.rows[0]!.id;
-  await pool.query(`INSERT INTO membership (user_id, client_id, role) VALUES ($1, $2, 'client_admin')`, [userId, clientId]);
+  // 86e367qxx: 'analyst', not 'client_admin' -- accept/reject/partial-accept/
+  // close record a CARRIER's response (relayed by an internal analyst), not
+  // a client-portal user's own action; registerAnalystOnlyPreHandler now
+  // rejects client_admin/client_viewer on these routes with 403.
+  await pool.query(`INSERT INTO membership (user_id, client_id, role) VALUES ($1, $2, 'analyst')`, [userId, clientId]);
 
   const carrier = await pool.query<{ id: string }>(
     `INSERT INTO carrier (name) VALUES ($1) RETURNING id`,

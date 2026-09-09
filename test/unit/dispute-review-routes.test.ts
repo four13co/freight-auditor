@@ -6,12 +6,20 @@ const CLIENT_ID = '11111111-1111-4111-8111-111111111111';
 const ACTOR_USER_ID = '22222222-2222-4222-8222-222222222222';
 const DISPUTE_ID = '70000000-0000-4000-8000-000000000001';
 
-function mockAuth() {
+function mockAuth(role: string = 'analyst') {
   vi.doMock('../../src/modules/findings/tenant-auth.js', () => ({
     registerTenantAuthPreHandler: async (routes: FastifyInstance) => {
       routes.addHook('preHandler', async (request: FastifyRequest, _reply: FastifyReply) => {
         request.tenantContext = { clientIds: [CLIENT_ID] };
         request.actorUserId = ACTOR_USER_ID;
+        request.actorRole = role;
+      });
+    },
+    registerAnalystOnlyPreHandler: async (routes: FastifyInstance) => {
+      routes.addHook('preHandler', async (request: FastifyRequest, reply: FastifyReply) => {
+        if (request.actorRole !== 'analyst' && request.actorRole !== 'lead') {
+          await reply.code(403).send({ error: 'internal analyst role required' });
+        }
       });
     },
   }));
@@ -101,6 +109,67 @@ describe('dispute review routes', () => {
 
     const response = await app.inject({ method: 'POST', url: `/api/disputes/${DISPUTE_ID}/approve` });
     expect(response.statusCode).toBe(409);
+  });
+
+  describe('86e367qxx: analyst-only mutation guard', () => {
+    const acceptDispute = vi.fn().mockResolvedValue({ found: true });
+    const rejectDispute = vi.fn().mockResolvedValue({ found: true });
+    const partiallyAcceptDispute = vi.fn().mockResolvedValue({ found: true });
+    const closeDispute = vi.fn().mockResolvedValue({ found: true });
+
+    function mockResolveDispute() {
+      vi.doMock('../../src/modules/disputes/resolve-dispute.js', () => ({
+        acceptDispute, rejectDispute, partiallyAcceptDispute, closeDispute,
+        DisputeTransitionError: class extends Error { code = 'ACCEPTED_AMOUNT_EXCEEDS_CLAIMED'; },
+      }));
+    }
+
+    it.each([
+      ['accept', () => acceptDispute],
+      ['reject', () => rejectDispute],
+      ['close', () => closeDispute],
+    ] as const)('rejects a client_viewer accepting/rejecting/closing (%s) with 403, without calling the resolver', async (action, resolverFn) => {
+      mockAuth('client_viewer');
+      vi.doMock('../../src/db/tenant-context.js', () => ({ withTenantTx: vi.fn(async (_ctx, fn) => fn({})) }));
+      mockResolveDispute();
+      const { registerDisputeReviewRoutes } = await import('../../src/server/dispute-review-routes.js');
+      app = Fastify();
+      await app.register(registerDisputeReviewRoutes);
+      await app.ready();
+
+      const response = await app.inject({ method: 'POST', url: `/api/disputes/${DISPUTE_ID}/${action}` });
+      expect(response.statusCode).toBe(403);
+      expect(resolverFn()).not.toHaveBeenCalled();
+    });
+
+    it('rejects a client_admin partially-accepting a dispute with 403, without calling the resolver', async () => {
+      mockAuth('client_admin');
+      vi.doMock('../../src/db/tenant-context.js', () => ({ withTenantTx: vi.fn(async (_ctx, fn) => fn({})) }));
+      mockResolveDispute();
+      const { registerDisputeReviewRoutes } = await import('../../src/server/dispute-review-routes.js');
+      app = Fastify();
+      await app.register(registerDisputeReviewRoutes);
+      await app.ready();
+
+      const response = await app.inject({
+        method: 'POST', url: `/api/disputes/${DISPUTE_ID}/partial-accept`, payload: { acceptedAmount: '300.0000' },
+      });
+      expect(response.statusCode).toBe(403);
+      expect(partiallyAcceptDispute).not.toHaveBeenCalled();
+    });
+
+    it('lets a lead accept a dispute through, same as analyst', async () => {
+      mockAuth('lead');
+      vi.doMock('../../src/db/tenant-context.js', () => ({ withTenantTx: vi.fn(async (_ctx, fn) => fn({})) }));
+      mockResolveDispute();
+      const { registerDisputeReviewRoutes } = await import('../../src/server/dispute-review-routes.js');
+      app = Fastify();
+      await app.register(registerDisputeReviewRoutes);
+      await app.ready();
+
+      const response = await app.inject({ method: 'POST', url: `/api/disputes/${DISPUTE_ID}/accept` });
+      expect(response.statusCode).toBe(200);
+    });
   });
 
   describe('P4.C.9: response transitions', () => {

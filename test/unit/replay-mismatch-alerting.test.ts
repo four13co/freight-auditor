@@ -14,6 +14,7 @@ function mockTenantAuth(resolvedContext: unknown) {
         request.tenantContext = resolvedContext as FastifyRequest['tenantContext'];
       });
     },
+    registerAnalystOnlyPreHandler: async () => {},
   }));
 }
 

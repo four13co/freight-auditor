@@ -49,6 +49,8 @@ describe('seedFullstackE2eFixture (DB)', () => {
     await pool.query(`DELETE FROM gate_failure WHERE client_id = $1`, [DEV_CLIENT_ID]);
     await pool.query(`DELETE FROM audit_event WHERE client_id = $1`, [DEV_CLIENT_ID]);
     await pool.query(`DELETE FROM audit_replay_manifest WHERE client_id = $1`, [DEV_CLIENT_ID]);
+    // 86e367r9x: persistAuditRun now wires a payment_gate_decision row per run.
+    await pool.query(`DELETE FROM payment_gate_decision WHERE client_id = $1`, [DEV_CLIENT_ID]);
     await pool.query(`DELETE FROM audit_run WHERE client_id = $1`, [DEV_CLIENT_ID]);
     await pool.query(`DELETE FROM charge_fact WHERE client_id = $1`, [DEV_CLIENT_ID]);
     await pool.query(`DELETE FROM source_document WHERE client_id = $1`, [DEV_CLIENT_ID]);

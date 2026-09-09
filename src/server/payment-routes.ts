@@ -5,6 +5,8 @@ import { isUuid } from '../shared/request-validation.js';
 import { isPaymentAuthorizationAction, type PaymentAuthorizationAction } from '../modules/payments/payment-authorization-action.js';
 import { authorizePayment, AuthorizePaymentError } from '../modules/payments/authorize-payment.js';
 import { listPendingPaymentAuthorizations } from '../modules/payments/list-pending-payment-authorizations.js';
+import { upsertPaymentPolicy } from '../modules/payments/upsert-payment-policy.js';
+import { PaymentPolicyValidationError } from '../modules/payments/payment-policy-config.js';
 
 /**
  * Payment authorization APIs (P4.B.5) plus the analyst payment-approval
@@ -13,9 +15,14 @@ import { listPendingPaymentAuthorizations } from '../modules/payments/list-pendi
  * instance -- registering it at the app level would also gate /health
  * (findings-routes.ts's own precedent/warning).
  *
- * Deliberately excludes do_not_pay (system-generated, P4.B.4) and any read
- * against client_payment_policy (that table is on #161, unmerged, and
- * policy-gated enforcement is P4.B.2's boundary, not this one's).
+ * Deliberately excludes do_not_pay (system-generated, P4.B.4).
+ *
+ * 86e367r9x: client_payment_policy (migration 0058) is applied and
+ * upsertPaymentPolicy already worked against it -- it just had no route.
+ * PUT /api/payment-policy below is that route (configuration write only,
+ * matching upsertPaymentPolicy's own boundary -- it never reads/enforces
+ * the policy against a payment; persist.ts's generateHoldDecision wiring
+ * is what reads hold_then_approve).
  */
 export async function registerPaymentRoutes(paymentRoutes: FastifyInstance): Promise<void> {
   await registerTenantAuthPreHandler(paymentRoutes);
@@ -71,6 +78,35 @@ export async function registerPaymentRoutes(paymentRoutes: FastifyInstance): Pro
     } catch (error) {
       if (error instanceof AuthorizePaymentError) {
         await reply.code(404).send({ error: 'audit run not found' });
+        return;
+      }
+      throw error;
+    }
+  });
+
+  // 86e367r9x: configuration write for the calling tenant's own payment
+  // policy. clientId/configuredBy are always server-derived (tenantContext /
+  // actorUserId), never taken from the body, so a caller can't write another
+  // client's policy or attribute the change to a different user.
+  paymentRoutes.put('/api/payment-policy', async (request, reply) => {
+    if (!request.actorUserId) {
+      await reply.code(401).send({ error: 'authenticated analyst identity required' });
+      return;
+    }
+    const clientId = request.tenantContext!.clientIds?.[0];
+    if (!clientId) {
+      await reply.code(401).send({ error: 'unauthorized' });
+      return;
+    }
+    const body = request.body as Record<string, unknown>;
+
+    try {
+      const policy = await withTenantTx(request.tenantContext!, (client) =>
+        upsertPaymentPolicy(client, { ...body, clientId, configuredBy: request.actorUserId }));
+      return policy;
+    } catch (error) {
+      if (error instanceof PaymentPolicyValidationError) {
+        await reply.code(400).send({ error: error.code, issues: error.issues });
         return;
       }
       throw error;

@@ -38,6 +38,8 @@ describe('listFindings (DB)', () => {
       await owner.query(`DELETE FROM variance_finding WHERE client_id IN ($1, $2)`, [clientAId, clientBId]);
       await owner.query(`DELETE FROM expected_charge WHERE client_id IN ($1, $2)`, [clientAId, clientBId]);
       await owner.query(`DELETE FROM charge_fact WHERE client_id IN ($1, $2)`, [clientAId, clientBId]);
+      // 86e367r9x: persistAuditRun now wires a payment_gate_decision row per run.
+      await owner.query(`DELETE FROM payment_gate_decision WHERE client_id IN ($1, $2)`, [clientAId, clientBId]);
       await owner.query(`DELETE FROM audit_run WHERE client_id IN ($1, $2)`, [clientAId, clientBId]);
       await owner.query(`DELETE FROM invoice WHERE client_id IN ($1, $2)`, [clientAId, clientBId]);
       await owner.query(`DELETE FROM carrier WHERE id = ANY($1::uuid[])`, [[carrierId, ...extraCarrierIds]]);
@@ -220,6 +222,8 @@ describe('listFindings (DB)', () => {
       expect(rows.every((r) => r.status === 'closed')).toBe(true);
     } finally {
       await owner.query(`DELETE FROM variance_finding WHERE client_id = $1`, [pollutionClientId]);
+      // 86e367r9x: persistAuditRun now wires a payment_gate_decision row per run.
+      await owner.query(`DELETE FROM payment_gate_decision WHERE client_id = $1`, [pollutionClientId]);
       await owner.query(`DELETE FROM audit_run WHERE client_id = $1`, [pollutionClientId]);
       await owner.query(`DELETE FROM invoice WHERE client_id = $1`, [pollutionClientId]);
       await owner.query(`DELETE FROM client WHERE id = $1`, [pollutionClientId]);
@@ -469,6 +473,8 @@ describe('listFindings (DB)', () => {
         const bothClients = [sortClientId, pollutionClientId];
         await owner.query(`DELETE FROM variance_finding WHERE client_id = ANY($1::uuid[])`, [bothClients]);
         await owner.query(`DELETE FROM charge_fact WHERE client_id = ANY($1::uuid[])`, [bothClients]);
+        // 86e367r9x: persistAuditRun now wires a payment_gate_decision row per run.
+        await owner.query(`DELETE FROM payment_gate_decision WHERE client_id = ANY($1::uuid[])`, [bothClients]);
         await owner.query(`DELETE FROM audit_run WHERE client_id = ANY($1::uuid[])`, [bothClients]);
         await owner.query(`DELETE FROM invoice WHERE client_id = ANY($1::uuid[])`, [bothClients]);
         await owner.query(`DELETE FROM carrier WHERE id = ANY($1::uuid[])`, [[sortCarrierId, pollutionCarrierId]]);

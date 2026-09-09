@@ -6,6 +6,9 @@ import { resolveCriterionIds } from './resolve-criterion-ids.js';
 import { deterministicAuditEventId, writeAuditEvent } from '../audit-ledger/write-audit-event.js';
 import { replayManifestHash, type AuditReplayManifest } from '../audit-ledger/replay-manifest.js';
 import { resolveTransportEvidence } from './resolve-transport-evidence.js';
+import { generateHoldDecision } from '../payments/generate-hold-decision.js';
+import { generateDoNotPayDecision } from '../payments/generate-do-not-pay-decision.js';
+import { DEFAULT_PAYMENT_POLICY } from '../payments/payment-policy-config.js';
 
 /**
  * Persist a parsed invoice + its audit result into the canonical schema
@@ -136,6 +139,33 @@ export async function persistAuditRun(
         resolvedIdsByCriterionKey.get(g.criterionKey)!.sourceDocumentId, transportDocumentId, g.defect, g.citation ?? null, JSON.stringify(g.evaluatedExpr)],
     );
     gateFailureIds.push(gf.rows[0]!.id);
+  }
+
+  // 3.5. payment_gate_decision (86e367r9x): the two generators wire directly
+  // onto the outcome this function just persisted -- generateHoldDecision
+  // (SCORED, the platform hold-then-approve default per Master Spec §10) and
+  // generateDoNotPayDecision (REJECTED_REWORK, using the gate_failure rows
+  // just written above). Both were already built+tested but had zero callers
+  // outside tests, so no payment_gate_decision row was ever created in
+  // production -- this is the fix. holdThenApprove is read from
+  // client_payment_policy when a client has configured one, else the
+  // platform default (DEFAULT_PAYMENT_POLICY, matching generateHoldDecision's
+  // own default parameter). generateShortPayDecision is deliberately NOT
+  // wired here -- its precondition (accepted OVERCHARGE findings) can never
+  // be true at initial persist time (variance_finding rows are always
+  // freshly 'open' here, never 'accepted'), so calling it now would lock in
+  // a short-pay decision computed against zero accepted disputes. That is a
+  // separate, later-triggered lifecycle question this item's own solution
+  // sketch didn't ask to solve.
+  if (result.outcome === 'SCORED') {
+    const policy = (await client.query<{ hold_then_approve: boolean }>(
+      `SELECT hold_then_approve FROM client_payment_policy WHERE client_id = $1`, [clientId],
+    )).rows[0];
+    await generateHoldDecision(client, {
+      clientId, auditRunId, holdThenApprove: policy?.hold_then_approve ?? DEFAULT_PAYMENT_POLICY.holdThenApprove,
+    });
+  } else {
+    await generateDoNotPayDecision(client, { clientId, auditRunId });
   }
 
   // 4. charge_findings (scoring observations) — append-only. Empty on REJECTED_REWORK.

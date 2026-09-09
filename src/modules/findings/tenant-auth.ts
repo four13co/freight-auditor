@@ -13,6 +13,12 @@ declare module 'fastify' {
   interface FastifyRequest {
     tenantContext?: TenantContext;
     actorUserId?: string;
+    // 86e367qxx: the resolved membership row's role (analyst/lead/
+    // client_viewer/client_admin), set alongside actorUserId by the same
+    // membership lookup below. Existing routes don't read this -- it exists
+    // for analyst-only-mutation guards (see registerAnalystOnlyPreHandler)
+    // to check without a second DB round trip.
+    actorRole?: string;
   }
 }
 
@@ -42,13 +48,20 @@ function readHeader(value: string | string[] | undefined): string | undefined {
   return Array.isArray(value) ? value[0] : value;
 }
 
-async function lookupMembership(userId: string, clientId: string): Promise<boolean> {
+/**
+ * 86e367qxx: returns the membership row's role (not just existence) so
+ * callers can set request.actorRole -- widened in place rather than adding a
+ * second lookup because it's the exact same SELECT, one extra column, and
+ * every existing caller here still only checks truthiness (a role string is
+ * as truthy as `1` was) so no existing 401/access behavior changes.
+ */
+async function lookupMembership(userId: string, clientId: string): Promise<string | null> {
   return withTenantTx({ internal: true }, async (client) => {
-    const result = await client.query(
-      `SELECT 1 FROM membership WHERE user_id = $1 AND client_id = $2 LIMIT 1`,
+    const result = await client.query<{ role: string }>(
+      `SELECT role FROM membership WHERE user_id = $1 AND client_id = $2 LIMIT 1`,
       [userId, clientId],
     );
-    return (result.rowCount ?? 0) > 0;
+    return result.rows[0]?.role ?? null;
   });
 }
 
@@ -109,9 +122,10 @@ async function resolveViaDevHeaders(request: FastifyRequest): Promise<TenantCont
   const userId = readHeader(request.headers['x-user-id']);
   if (!clientId || !userId) return null;
 
-  const hasMembership = await lookupMembership(userId, clientId);
-  if (!hasMembership) return null;
+  const role = await lookupMembership(userId, clientId);
+  if (!role) return null;
   request.actorUserId = userId;
+  request.actorRole = role;
   return { clientIds: [clientId], internal: false };
 }
 
@@ -156,9 +170,10 @@ async function resolveViaSession(request: FastifyRequest): Promise<TenantContext
   const clientId = readHeader(request.headers['x-client-id']);
   if (!clientId) return null;
 
-  const hasMembership = await lookupMembership(session.user.id, clientId);
-  if (!hasMembership) return null;
+  const role = await lookupMembership(session.user.id, clientId);
+  if (!role) return null;
   request.actorUserId = session.user.id;
+  request.actorRole = role;
   return { clientIds: [clientId], internal: false };
 }
 
@@ -202,5 +217,26 @@ export async function registerTenantAuthPreHandler(routes: FastifyInstance): Pro
       return;
     }
     request.tenantContext = ctx;
+  });
+}
+
+const ANALYST_MEMBERSHIP_ROLES: ReadonlySet<string> = new Set(['analyst', 'lead']);
+
+/**
+ * 86e367qxx: analyst/lead vs. client_viewer/client_admin -- registerTenantAuthPreHandler
+ * grants a full read+write TenantContext to ANY membership row for the
+ * user+client pair regardless of role (it has to: most tenant-scoped routes,
+ * e.g. GET /api/disputes/:id, are legitimately readable by a portal user too).
+ * A route that must additionally reject the two portal roles nests this
+ * preHandler in its own registered sub-scope, AFTER registerTenantAuthPreHandler
+ * has already run and set request.actorRole -- see dispute-review-routes.ts's
+ * and findings-routes.ts's mutation sub-scopes for the pattern.
+ */
+export async function registerAnalystOnlyPreHandler(routes: FastifyInstance): Promise<void> {
+  routes.addHook('preHandler', async (request: FastifyRequest, reply: FastifyReply) => {
+    if (!ANALYST_MEMBERSHIP_ROLES.has(request.actorRole ?? '')) {
+      await reply.code(403).send({ error: 'internal analyst role required' });
+      return;
+    }
   });
 }

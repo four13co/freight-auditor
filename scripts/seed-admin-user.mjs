@@ -1,19 +1,24 @@
 #!/usr/bin/env node
 // Idempotently seeds a real better-auth credentialed account for Greg's own
-// login (greg@four13.co), scoped client_admin on the existing dev tenant --
-// the highest membership_role that exists today (86e2wxxxx). Same shape as
-// seed-e2e-auth-user.mjs: creates the account via getAuth().api.signUpEmail(...)
-// rather than hand-writing a ba_account row, since better-auth's password hash
-// format is an internal library detail (and this repo overrides
-// advanced.database.generateId -- see src/auth/better-auth.ts), so creating
-// the account through better-auth's own API is the only version-safe way to
-// produce a row it will later accept as a valid credential.
+// login (greg@four13.co), scoped as an internal analyst on the existing dev
+// tenant. Same shape as seed-e2e-auth-user.mjs: creates the account via
+// getAuth().api.signUpEmail(...) rather than hand-writing a ba_account row,
+// since better-auth's password hash format is an internal library detail
+// (and this repo overrides advanced.database.generateId -- see
+// src/auth/better-auth.ts), so creating the account through better-auth's
+// own API is the only version-safe way to produce a row it will later
+// accept as a valid credential.
 //
 // Reuses DEV_CLIENT_ID from seed-dev-tenant.mjs rather than a new tenant --
-// there is only one tenant in this app today, and client_admin is scoped to
-// it (role isn't yet read anywhere in tenant-auth.ts's authorization check,
-// so this doesn't grant anything beyond ordinary membership today -- it's
-// the correct/highest label available, not a functional escalation).
+// there is only one tenant in this app today.
+//
+// 86e367qxx: membership.role is 'analyst', not 'client_admin' -- this is
+// Greg's own operator login for the dashboard, not a client-portal account,
+// and role is now read (registerAnalystOnlyPreHandler gates dispute
+// accept/reject/partial-accept/close and finding reverse on it). The prior
+// 'client_admin' choice predates that: its own comment said "the highest
+// membership_role that exists today... role isn't yet read anywhere," which
+// this item makes no longer true.
 //
 // Idempotent: signUpEmail errors on an existing email, so this checks for the
 // account first and skips creation if already present -- safe to re-run on
@@ -54,8 +59,8 @@ export async function seedAdminUser({ pool, password } = {}) {
     }
 
     await client.query(
-      `INSERT INTO membership (user_id, client_id, role) VALUES ($1, $2, 'client_admin')
-       ON CONFLICT (user_id, client_id) DO NOTHING`,
+      `INSERT INTO membership (user_id, client_id, role) VALUES ($1, $2, 'analyst')
+       ON CONFLICT (user_id, client_id) DO UPDATE SET role = EXCLUDED.role`,
       [userId, DEV_CLIENT_ID],
     );
   } finally {

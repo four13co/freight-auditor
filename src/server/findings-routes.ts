@@ -4,7 +4,7 @@ import { listFindings, type FindingsSortKey } from '../modules/findings/list-fin
 import { getFindingsSummary } from '../modules/findings/findings-summary.js';
 import { listGateFailures } from '../modules/findings/list-gate-failures.js';
 import { updateFindingStatus } from '../modules/findings/update-finding-status.js';
-import { registerTenantAuthPreHandler } from '../modules/findings/tenant-auth.js';
+import { registerTenantAuthPreHandler, registerAnalystOnlyPreHandler } from '../modules/findings/tenant-auth.js';
 import { ALL_VARIANCE_STATUSES, WRITABLE_VARIANCE_STATUSES } from '../shared/variance-status.js';
 import { isUuid } from '../shared/request-validation.js';
 import { decodeCursor, paginateKeyset } from '../shared/cursor-pagination.js';
@@ -225,42 +225,53 @@ export async function registerFindingsRoutes(findingsRoutes: FastifyInstance): P
   // accept/waive/escalate never reference rule_hardness). Kept as its own
   // route rather than a fourth FINDING_ACTION_STATUS entry so the existing
   // action route's tested shape (action/note only) is untouched.
-  findingsRoutes.post('/api/findings/:id/reverse', async (request, reply) => {
-    const { id } = request.params as { id: string };
-    if (!isUuid(id)) return reply.code(400).send({ error: 'invalid finding id: must be a well-formed UUID' });
-    const body = request.body as { caseFingerprint?: unknown; assertedValue?: unknown };
-    if (typeof body.caseFingerprint !== 'string' || !body.caseFingerprint.trim())
-      return reply.code(400).send({ error: 'invalid caseFingerprint: must be a non-empty string' });
-    if (body.assertedValue === undefined) return reply.code(400).send({ error: 'assertedValue is required' });
+  //
+  // 86e367qxx: reversing a FIRM_RULE finding's verdict is an internal
+  // analyst judgment call (overriding the audit engine's own hard rule),
+  // not a client-portal action -- own nested scope + registerAnalystOnlyPreHandler
+  // (runs after the tenant-auth preHandler above, using request.actorRole)
+  // so a client_viewer/client_admin membership -- which legitimately
+  // satisfies GET /api/findings reads -- is rejected here with 403.
+  await findingsRoutes.register(async (reverseRoutes) => {
+    await registerAnalystOnlyPreHandler(reverseRoutes);
 
-    try {
-      const result = await withTenantTx(request.tenantContext!, async (client) => {
-        const clientId = request.tenantContext!.clientIds![0]!;
-        const finding = (await client.query<{ criterion_id: string | null; rule_version_id: string | null }>(
-          `SELECT criterion_id, rule_version_id FROM variance_finding WHERE id = $1`, [id],
-        )).rows[0];
-        if (!finding) return { status: 'not_found' as const };
-        if (!finding.criterion_id || !finding.rule_version_id) return { status: 'no_attribution' as const };
+    reverseRoutes.post('/api/findings/:id/reverse', async (request, reply) => {
+      const { id } = request.params as { id: string };
+      if (!isUuid(id)) return reply.code(400).send({ error: 'invalid finding id: must be a well-formed UUID' });
+      const body = request.body as { caseFingerprint?: unknown; assertedValue?: unknown };
+      if (typeof body.caseFingerprint !== 'string' || !body.caseFingerprint.trim())
+        return reply.code(400).send({ error: 'invalid caseFingerprint: must be a non-empty string' });
+      if (body.assertedValue === undefined) return reply.code(400).send({ error: 'assertedValue is required' });
 
-        const rule = (await client.query<{ hardness: string }>(
-          `SELECT hardness FROM rule_version WHERE id = $1`, [finding.rule_version_id],
-        )).rows[0];
-        if (!rule || rule.hardness !== 'FIRM_RULE') return { status: 'not_firm_rule' as const };
+      try {
+        const result = await withTenantTx(request.tenantContext!, async (client) => {
+          const clientId = request.tenantContext!.clientIds![0]!;
+          const finding = (await client.query<{ criterion_id: string | null; rule_version_id: string | null }>(
+            `SELECT criterion_id, rule_version_id FROM variance_finding WHERE id = $1`, [id],
+          )).rows[0];
+          if (!finding) return { status: 'not_found' as const };
+          if (!finding.criterion_id || !finding.rule_version_id) return { status: 'no_attribution' as const };
 
-        const reversal = await recordHumanOverrideReversal(client, {
-          clientId, criterionId: finding.criterion_id, ruleVersionId: finding.rule_version_id,
-          caseFingerprint: body.caseFingerprint as string, assertedValue: body.assertedValue,
+          const rule = (await client.query<{ hardness: string }>(
+            `SELECT hardness FROM rule_version WHERE id = $1`, [finding.rule_version_id],
+          )).rows[0];
+          if (!rule || rule.hardness !== 'FIRM_RULE') return { status: 'not_firm_rule' as const };
+
+          const reversal = await recordHumanOverrideReversal(client, {
+            clientId, criterionId: finding.criterion_id, ruleVersionId: finding.rule_version_id,
+            caseFingerprint: body.caseFingerprint as string, assertedValue: body.assertedValue,
+          });
+          return { status: 'ok' as const, reversal };
         });
-        return { status: 'ok' as const, reversal };
-      });
 
-      if (result.status === 'not_found') return reply.code(404).send({ error: 'finding not found' });
-      if (result.status === 'no_attribution') return reply.code(422).send({ error: 'finding has no criterion/rule_version attribution to reverse' });
-      if (result.status === 'not_firm_rule') return reply.code(409).send({ error: 'NOT_A_FIRM_RULE' });
-      return reply.code(201).send({ id, ...result.reversal });
-    } catch (error) {
-      if (error instanceof InvalidReversalRequestError) return reply.code(400).send({ error: error.code });
-      throw error;
-    }
+        if (result.status === 'not_found') return reply.code(404).send({ error: 'finding not found' });
+        if (result.status === 'no_attribution') return reply.code(422).send({ error: 'finding has no criterion/rule_version attribution to reverse' });
+        if (result.status === 'not_firm_rule') return reply.code(409).send({ error: 'NOT_A_FIRM_RULE' });
+        return reply.code(201).send({ id, ...result.reversal });
+      } catch (error) {
+        if (error instanceof InvalidReversalRequestError) return reply.code(400).send({ error: error.code });
+        throw error;
+      }
+    });
   });
 }

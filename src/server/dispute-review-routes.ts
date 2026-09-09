@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { randomUUID } from 'node:crypto';
 import { withTenantTx } from '../db/tenant-context.js';
-import { registerTenantAuthPreHandler } from '../modules/findings/tenant-auth.js';
+import { registerTenantAuthPreHandler, registerAnalystOnlyPreHandler } from '../modules/findings/tenant-auth.js';
 import { requireSingleClientId } from '../modules/ingestion/raw-upload-route.js';
 import { isUuid } from '../shared/request-validation.js';
 import { getDisputeDetail } from '../modules/disputes/get-dispute-detail.js';
@@ -85,98 +85,111 @@ export async function registerDisputeReviewRoutes(routes: FastifyInstance): Prom
   // currently in a state this transition accepts from" -- the caller
   // cannot distinguish those two without leaking existence across tenants,
   // matching approve's own 409 semantics.
-  routes.post('/api/disputes/:id/accept', async (request, reply) => {
-    const { id } = request.params as { id: string };
-    if (!isUuid(id)) {
-      await reply.code(400).send({ error: 'invalid dispute id: must be a well-formed UUID' });
-      return;
-    }
-    if (!request.actorUserId) {
-      await reply.code(401).send({ error: 'authenticated analyst identity required' });
-      return;
-    }
+  //
+  // 86e367qxx: these 4 record a CARRIER's response to a dispute (relayed by
+  // an internal analyst -- there is no carrier-facing portal) -- not a
+  // client-portal user's own action on their own dispute. Own nested scope
+  // + registerAnalystOnlyPreHandler (runs AFTER the tenant-auth preHandler
+  // above, using the request.actorRole it already set) so a client_viewer/
+  // client_admin membership -- which legitimately satisfies the read-side
+  // tenant-auth check above for GET /api/disputes/:id -- is rejected here
+  // with 403 instead of being able to fabricate a carrier response.
+  await routes.register(async (mutationRoutes) => {
+    await registerAnalystOnlyPreHandler(mutationRoutes);
 
-    const result = await withTenantTx(request.tenantContext!, (client) =>
-      acceptDispute(client, id, request.actorUserId!));
-    if (!result.found) {
-      await reply.code(409).send({ error: 'dispute not found or not currently awaiting a carrier response' });
-      return;
-    }
-    return { disputeId: id, status: 'accepted' };
-  });
+    mutationRoutes.post('/api/disputes/:id/accept', async (request, reply) => {
+      const { id } = request.params as { id: string };
+      if (!isUuid(id)) {
+        await reply.code(400).send({ error: 'invalid dispute id: must be a well-formed UUID' });
+        return;
+      }
+      if (!request.actorUserId) {
+        await reply.code(401).send({ error: 'authenticated analyst identity required' });
+        return;
+      }
 
-  routes.post('/api/disputes/:id/reject', async (request, reply) => {
-    const { id } = request.params as { id: string };
-    if (!isUuid(id)) {
-      await reply.code(400).send({ error: 'invalid dispute id: must be a well-formed UUID' });
-      return;
-    }
-    if (!request.actorUserId) {
-      await reply.code(401).send({ error: 'authenticated analyst identity required' });
-      return;
-    }
-
-    const result = await withTenantTx(request.tenantContext!, (client) =>
-      rejectDispute(client, id, request.actorUserId!));
-    if (!result.found) {
-      await reply.code(409).send({ error: 'dispute not found or not currently awaiting a carrier response' });
-      return;
-    }
-    return { disputeId: id, status: 'rejected' };
-  });
-
-  routes.post('/api/disputes/:id/partial-accept', async (request, reply) => {
-    const { id } = request.params as { id: string };
-    if (!isUuid(id)) {
-      await reply.code(400).send({ error: 'invalid dispute id: must be a well-formed UUID' });
-      return;
-    }
-    if (!request.actorUserId) {
-      await reply.code(401).send({ error: 'authenticated analyst identity required' });
-      return;
-    }
-
-    const requestBody = request.body as { acceptedAmount?: unknown };
-    if (typeof requestBody.acceptedAmount !== 'string' || !MONEY_PATTERN.test(requestBody.acceptedAmount)) {
-      await reply.code(400).send({ error: 'acceptedAmount is required and must be a non-negative decimal string' });
-      return;
-    }
-
-    try {
       const result = await withTenantTx(request.tenantContext!, (client) =>
-        partiallyAcceptDispute(client, id, request.actorUserId!, requestBody.acceptedAmount as string));
+        acceptDispute(client, id, request.actorUserId!));
       if (!result.found) {
         await reply.code(409).send({ error: 'dispute not found or not currently awaiting a carrier response' });
         return;
       }
-      return { disputeId: id, status: 'partial' };
-    } catch (err) {
-      if (err instanceof DisputeTransitionError && err.code === 'ACCEPTED_AMOUNT_EXCEEDS_CLAIMED') {
-        await reply.code(422).send({ error: 'acceptedAmount exceeds the dispute\'s amount_claimed' });
+      return { disputeId: id, status: 'accepted' };
+    });
+
+    mutationRoutes.post('/api/disputes/:id/reject', async (request, reply) => {
+      const { id } = request.params as { id: string };
+      if (!isUuid(id)) {
+        await reply.code(400).send({ error: 'invalid dispute id: must be a well-formed UUID' });
         return;
       }
-      throw err;
-    }
-  });
+      if (!request.actorUserId) {
+        await reply.code(401).send({ error: 'authenticated analyst identity required' });
+        return;
+      }
 
-  routes.post('/api/disputes/:id/close', async (request, reply) => {
-    const { id } = request.params as { id: string };
-    if (!isUuid(id)) {
-      await reply.code(400).send({ error: 'invalid dispute id: must be a well-formed UUID' });
-      return;
-    }
-    if (!request.actorUserId) {
-      await reply.code(401).send({ error: 'authenticated analyst identity required' });
-      return;
-    }
+      const result = await withTenantTx(request.tenantContext!, (client) =>
+        rejectDispute(client, id, request.actorUserId!));
+      if (!result.found) {
+        await reply.code(409).send({ error: 'dispute not found or not currently awaiting a carrier response' });
+        return;
+      }
+      return { disputeId: id, status: 'rejected' };
+    });
 
-    const result = await withTenantTx(request.tenantContext!, (client) =>
-      closeDispute(client, id, request.actorUserId!));
-    if (!result.found) {
-      await reply.code(409).send({ error: 'dispute not found or not currently in a resolved (accepted/rejected/partial) state' });
-      return;
-    }
-    return { disputeId: id, status: 'closed' };
+    mutationRoutes.post('/api/disputes/:id/partial-accept', async (request, reply) => {
+      const { id } = request.params as { id: string };
+      if (!isUuid(id)) {
+        await reply.code(400).send({ error: 'invalid dispute id: must be a well-formed UUID' });
+        return;
+      }
+      if (!request.actorUserId) {
+        await reply.code(401).send({ error: 'authenticated analyst identity required' });
+        return;
+      }
+
+      const requestBody = request.body as { acceptedAmount?: unknown };
+      if (typeof requestBody.acceptedAmount !== 'string' || !MONEY_PATTERN.test(requestBody.acceptedAmount)) {
+        await reply.code(400).send({ error: 'acceptedAmount is required and must be a non-negative decimal string' });
+        return;
+      }
+
+      try {
+        const result = await withTenantTx(request.tenantContext!, (client) =>
+          partiallyAcceptDispute(client, id, request.actorUserId!, requestBody.acceptedAmount as string));
+        if (!result.found) {
+          await reply.code(409).send({ error: 'dispute not found or not currently awaiting a carrier response' });
+          return;
+        }
+        return { disputeId: id, status: 'partial' };
+      } catch (err) {
+        if (err instanceof DisputeTransitionError && err.code === 'ACCEPTED_AMOUNT_EXCEEDS_CLAIMED') {
+          await reply.code(422).send({ error: 'acceptedAmount exceeds the dispute\'s amount_claimed' });
+          return;
+        }
+        throw err;
+      }
+    });
+
+    mutationRoutes.post('/api/disputes/:id/close', async (request, reply) => {
+      const { id } = request.params as { id: string };
+      if (!isUuid(id)) {
+        await reply.code(400).send({ error: 'invalid dispute id: must be a well-formed UUID' });
+        return;
+      }
+      if (!request.actorUserId) {
+        await reply.code(401).send({ error: 'authenticated analyst identity required' });
+        return;
+      }
+
+      const result = await withTenantTx(request.tenantContext!, (client) =>
+        closeDispute(client, id, request.actorUserId!));
+      if (!result.found) {
+        await reply.code(409).send({ error: 'dispute not found or not currently in a resolved (accepted/rejected/partial) state' });
+        return;
+      }
+      return { disputeId: id, status: 'closed' };
+    });
   });
 
   // P4.C.8: the append-only communications log for a dispute. GET lists

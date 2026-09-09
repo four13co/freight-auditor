@@ -62,7 +62,7 @@ describe('resolveAuthorizedTenantContext (DEV_AUTH_HEADERS set)', () => {
   });
 
   it('looks up membership under an internal-scoped transaction and returns the client scope when found', async () => {
-    const query = vi.fn().mockResolvedValue({ rowCount: 1 });
+    const query = vi.fn().mockResolvedValue({ rows: [{ role: 'analyst' }] });
     const withTenantTx = vi.fn(async (ctx, fn) => fn({ query }));
     vi.doMock('../../src/db/tenant-context.js', () => ({ withTenantTx }));
     const { resolveAuthorizedTenantContext } = await import('../../src/modules/findings/tenant-auth.js');
@@ -77,7 +77,7 @@ describe('resolveAuthorizedTenantContext (DEV_AUTH_HEADERS set)', () => {
   });
 
   it('returns null when no membership row exists for the claimed pair', async () => {
-    const query = vi.fn().mockResolvedValue({ rowCount: 0 });
+    const query = vi.fn().mockResolvedValue({ rows: [] });
     const withTenantTx = vi.fn(async (ctx, fn) => fn({ query }));
     vi.doMock('../../src/db/tenant-context.js', () => ({ withTenantTx }));
     const { resolveAuthorizedTenantContext } = await import('../../src/modules/findings/tenant-auth.js');
@@ -89,7 +89,7 @@ describe('resolveAuthorizedTenantContext (DEV_AUTH_HEADERS set)', () => {
   });
 
   it('takes the first value when a header is sent multiple times', async () => {
-    const query = vi.fn().mockResolvedValue({ rowCount: 1 });
+    const query = vi.fn().mockResolvedValue({ rows: [{ role: 'analyst' }] });
     const withTenantTx = vi.fn(async (ctx, fn) => fn({ query }));
     vi.doMock('../../src/db/tenant-context.js', () => ({ withTenantTx }));
     const { resolveAuthorizedTenantContext } = await import('../../src/modules/findings/tenant-auth.js');
@@ -165,7 +165,7 @@ describe('resolveAuthorizedTenantContext (DEV_AUTH_HEADERS unset -- the prod def
 
   it('resolves via a verified session + membership row when both are present', async () => {
     const getSession = vi.fn().mockResolvedValue({ user: { id: 'session-user-1' }, session: {} });
-    const query = vi.fn().mockResolvedValue({ rowCount: 1 });
+    const query = vi.fn().mockResolvedValue({ rows: [{ role: 'analyst' }] });
     const withTenantTx = vi.fn(async (ctx, fn) => fn({ query }));
     vi.doMock('../../src/auth/better-auth.js', () => ({ getAuth: () => ({ api: { getSession } }) }));
     vi.doMock('../../src/db/tenant-context.js', () => ({ withTenantTx }));
@@ -181,7 +181,7 @@ describe('resolveAuthorizedTenantContext (DEV_AUTH_HEADERS unset -- the prod def
 
   it('rejects a valid session with no membership row for the target client', async () => {
     const getSession = vi.fn().mockResolvedValue({ user: { id: 'session-user-1' }, session: {} });
-    const query = vi.fn().mockResolvedValue({ rowCount: 0 });
+    const query = vi.fn().mockResolvedValue({ rows: [] });
     const withTenantTx = vi.fn(async (ctx, fn) => fn({ query }));
     vi.doMock('../../src/auth/better-auth.js', () => ({ getAuth: () => ({ api: { getSession } }) }));
     vi.doMock('../../src/db/tenant-context.js', () => ({ withTenantTx }));
@@ -372,7 +372,7 @@ describe('registerTenantAuthPreHandler', () => {
   });
 
   it('sets request.tenantContext and lets the request through on a valid membership', async () => {
-    const query = vi.fn().mockResolvedValue({ rowCount: 1 });
+    const query = vi.fn().mockResolvedValue({ rows: [{ role: 'analyst' }] });
     const withTenantTx = vi.fn(async (_ctx: unknown, fn: (client: { query: typeof query }) => unknown) => fn({ query }));
     vi.doMock('../../src/db/tenant-context.js', () => ({ withTenantTx }));
     const { registerTenantAuthPreHandler } = await import('../../src/modules/findings/tenant-auth.js');

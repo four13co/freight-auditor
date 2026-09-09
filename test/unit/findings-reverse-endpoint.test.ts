@@ -1,7 +1,7 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 
-function mockTenantAuth(resolvedContext: unknown) {
+function mockTenantAuth(resolvedContext: unknown, role: string = 'analyst') {
   vi.doMock('../../src/modules/findings/tenant-auth.js', () => ({
     resolveAuthorizedTenantContext: vi.fn().mockResolvedValue(resolvedContext),
     registerTenantAuthPreHandler: async (routes: FastifyInstance) => {
@@ -11,6 +11,14 @@ function mockTenantAuth(resolvedContext: unknown) {
           return;
         }
         request.tenantContext = resolvedContext as FastifyRequest['tenantContext'];
+        request.actorRole = role;
+      });
+    },
+    registerAnalystOnlyPreHandler: async (routes: FastifyInstance) => {
+      routes.addHook('preHandler', async (request: FastifyRequest, reply: FastifyReply) => {
+        if (request.actorRole !== 'analyst' && request.actorRole !== 'lead') {
+          await reply.code(403).send({ error: 'internal analyst role required' });
+        }
       });
     },
   }));
@@ -39,8 +47,8 @@ describe('POST /api/findings/:id/reverse (unit, mocked withTenantTx + tenant-aut
     vi.doUnmock('../../src/modules/rule-engine/record-human-override-reversal.js');
   });
 
-  function mockAuthorized() {
-    mockTenantAuth({ clientIds: ['client-abc'], internal: false });
+  function mockAuthorized(role: string = 'analyst') {
+    mockTenantAuth({ clientIds: ['client-abc'], internal: false }, role);
   }
 
   function mockTx(findingRows: unknown[], ruleRows: unknown[]) {
@@ -156,6 +164,50 @@ describe('POST /api/findings/:id/reverse (unit, mocked withTenantTx + tenant-aut
 
     const res = await app.inject({ method: 'POST', url: `/api/findings/${FINDING_ID}/reverse`, payload: { assertedValue: 1 } });
     expect(res.statusCode).toBe(400);
+  });
+
+  it('86e367qxx: rejects a client_viewer with 403, without calling recordHumanOverrideReversal', async () => {
+    mockAuthorized('client_viewer');
+    mockTx([], []);
+    const recordHumanOverrideReversal = vi.fn();
+    vi.doMock('../../src/modules/rule-engine/record-human-override-reversal.js', () => ({ recordHumanOverrideReversal, InvalidReversalRequestError: class extends Error {} }));
+    const { buildApp } = await import('../../src/server/app.js');
+    app = buildApp();
+
+    const res = await app.inject({ method: 'POST', url: `/api/findings/${FINDING_ID}/reverse`, payload: { caseFingerprint: 'x', assertedValue: 1 } });
+    expect(res.statusCode).toBe(403);
+    expect(recordHumanOverrideReversal).not.toHaveBeenCalled();
+  });
+
+  it('86e367qxx: rejects a client_admin with 403, without calling recordHumanOverrideReversal', async () => {
+    mockAuthorized('client_admin');
+    mockTx([], []);
+    const recordHumanOverrideReversal = vi.fn();
+    vi.doMock('../../src/modules/rule-engine/record-human-override-reversal.js', () => ({ recordHumanOverrideReversal, InvalidReversalRequestError: class extends Error {} }));
+    const { buildApp } = await import('../../src/server/app.js');
+    app = buildApp();
+
+    const res = await app.inject({ method: 'POST', url: `/api/findings/${FINDING_ID}/reverse`, payload: { caseFingerprint: 'x', assertedValue: 1 } });
+    expect(res.statusCode).toBe(403);
+    expect(recordHumanOverrideReversal).not.toHaveBeenCalled();
+  });
+
+  it('86e367qxx: lets a lead reverse a FIRM_RULE finding through, same as analyst', async () => {
+    mockAuthorized('lead');
+    mockTx([{ criterion_id: CRITERION_ID, rule_version_id: RULE_VERSION_ID }], [{ hardness: 'FIRM_RULE' }]);
+    const recordHumanOverrideReversal = vi.fn().mockResolvedValue({ humanOverrideId: 'override-1', quarantined: false, ruleVersionId: RULE_VERSION_ID });
+    vi.doMock('../../src/modules/rule-engine/record-human-override-reversal.js', () => ({
+      recordHumanOverrideReversal,
+      InvalidReversalRequestError: class InvalidReversalRequestError extends Error { code = 'X'; },
+    }));
+    const { buildApp } = await import('../../src/server/app.js');
+    app = buildApp();
+
+    const res = await app.inject({
+      method: 'POST', url: `/api/findings/${FINDING_ID}/reverse`,
+      payload: { caseFingerprint: 'ocean/fsc', assertedValue: { rate: '1.1' } },
+    });
+    expect(res.statusCode).toBe(201);
   });
 
   it('rejects an unauthenticated request with 401', async () => {

@@ -161,9 +161,19 @@ export async function seedDevTenant({ pool } = {}) {
     // client-scoped membership row -- the dev-header path
     // (resolveViaDevHeaders, tenant-auth.ts) still requires one to satisfy
     // its own membership check, unchanged by this item's No-gos.
+    //
+    // 86e367qxx: role is 'analyst', not 'client_admin' -- until this item,
+    // role was never read for the dev-header path (any membership row
+    // sufficed), so 'client_admin' sat here as an arbitrary placeholder
+    // despite this row's own is_internal=true representing an internal
+    // analyst, not a portal member. registerAnalystOnlyPreHandler now reads
+    // it, so it must actually say what this identity has always been.
+    // DO UPDATE (not DO NOTHING) so a persistent, already-seeded DB (the
+    // dev Neon instance) picks up the corrected role on the next deploy --
+    // an INSERT-only upsert would leave 'client_admin' there forever.
     await client.query(
-      `INSERT INTO membership (user_id, client_id, role) VALUES ($1, $2, 'client_admin')
-       ON CONFLICT (user_id, client_id) DO NOTHING`,
+      `INSERT INTO membership (user_id, client_id, role) VALUES ($1, $2, 'analyst')
+       ON CONFLICT (user_id, client_id) DO UPDATE SET role = EXCLUDED.role`,
       [DEV_USER_ID, DEV_CLIENT_ID],
     );
   } finally {

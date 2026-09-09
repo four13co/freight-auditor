@@ -22,6 +22,7 @@ function mockTenantAuth(resolvedContext: unknown) {
         request.actorUserId = 'user-1';
       });
     },
+    registerAnalystOnlyPreHandler: async () => {},
   }));
 }
 

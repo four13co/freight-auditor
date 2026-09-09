@@ -114,6 +114,8 @@ test.beforeAll(async () => {
 test.afterAll(async () => {
   await pool.query(`DELETE FROM finding_status_event WHERE variance_finding_id IN ($1, $2)`, [escalationFindingId, unassessableFindingId]);
   await pool.query(`DELETE FROM variance_finding WHERE id IN ($1, $2)`, [escalationFindingId, unassessableFindingId]);
+  // 86e367r9x: persistAuditRun now wires a payment_gate_decision row per run.
+  await pool.query(`DELETE FROM payment_gate_decision WHERE audit_run_id IN ($1, $2)`, [escalationAuditRunId, unassessableAuditRunId]);
   await pool.query(`DELETE FROM audit_run WHERE id IN ($1, $2)`, [escalationAuditRunId, unassessableAuditRunId]);
   await pool.query(`DELETE FROM invoice WHERE id IN ($1, $2)`, [escalationInvoiceId, unassessableInvoiceId]);
   await pool.query(`DELETE FROM carrier WHERE id = $1`, [carrierId]);

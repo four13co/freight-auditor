@@ -59,6 +59,8 @@ describe('PATCH /api/findings/:id/status (DB, e2e)', () => {
       await owner.query(`DELETE FROM finding_status_event WHERE client_id IN ($1, $2)`, [clientId, otherClientId]);
       await owner.query(`DELETE FROM variance_finding WHERE client_id IN ($1, $2)`, [clientId, otherClientId]);
       await owner.query(`DELETE FROM charge_fact WHERE client_id IN ($1, $2)`, [clientId, otherClientId]);
+      // 86e367r9x: persistAuditRun now wires a payment_gate_decision row per run.
+      await owner.query(`DELETE FROM payment_gate_decision WHERE client_id IN ($1, $2)`, [clientId, otherClientId]);
       await owner.query(`DELETE FROM audit_run WHERE client_id IN ($1, $2)`, [clientId, otherClientId]);
       await owner.query(`DELETE FROM invoice WHERE client_id IN ($1, $2)`, [clientId, otherClientId]);
       await owner.query(`DELETE FROM carrier WHERE id = $1`, [carrierId]);

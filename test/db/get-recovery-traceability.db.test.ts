@@ -47,6 +47,8 @@ describe('getRecoveryTraceability (DB)', () => {
       await owner.query(`DELETE FROM dispute WHERE client_id = $1`, [clientId]);
       await owner.query(`DELETE FROM variance_finding WHERE client_id = $1`, [clientId]);
       await owner.query(`DELETE FROM charge_fact WHERE client_id = $1`, [clientId]);
+      // 86e367r9x: persistAuditRun now wires a payment_gate_decision row per run.
+      await owner.query(`DELETE FROM payment_gate_decision WHERE client_id = $1`, [clientId]);
       await owner.query(`DELETE FROM audit_run WHERE client_id = $1`, [clientId]);
       await owner.query(`DELETE FROM invoice WHERE client_id = $1`, [clientId]);
       await owner.query(`DELETE FROM contract_clause WHERE client_id = $1`, [clientId]);

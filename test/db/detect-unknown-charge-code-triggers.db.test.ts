@@ -33,6 +33,8 @@ describe('detectUnknownChargeCodeTriggers (DB)', () => {
       await owner.query(`DELETE FROM unknown_charge_code_trigger WHERE client_id = $1`, [clientId]);
       await owner.query(`DELETE FROM audit_event WHERE client_id = $1`, [clientId]);
       await owner.query(`DELETE FROM charge_fact WHERE client_id = $1`, [clientId]);
+      // 86e367r9x: persistAuditRun now wires a payment_gate_decision row per run.
+      await owner.query(`DELETE FROM payment_gate_decision WHERE client_id = $1`, [clientId]);
       await owner.query(`DELETE FROM audit_run WHERE client_id = $1`, [clientId]);
       await owner.query(`DELETE FROM invoice WHERE client_id = $1`, [clientId]);
       await owner.query(`DELETE FROM carrier WHERE id = $1`, [carrierId]);

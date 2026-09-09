@@ -40,6 +40,11 @@ describe('Phase 1 persistence (DB)', () => {
       // variance_finding before audit_run (86e2v17p5's derivation now writes
       // here too).
       await owner.query(`DELETE FROM variance_finding WHERE client_id = $1`, [clientId]);
+      // 86e367r9x: persistAuditRun now wires generateHoldDecision/
+      // generateDoNotPayDecision internally, so every run this suite
+      // persists leaves a payment_gate_decision row referencing it -- must
+      // clear before deleting audit_run (FK).
+      await owner.query(`DELETE FROM payment_gate_decision WHERE client_id = $1`, [clientId]);
       await owner.query(`DELETE FROM scorecard WHERE client_id = $1`, [clientId]);
       await owner.query(`DELETE FROM charge_finding WHERE client_id = $1`, [clientId]);
       await owner.query(`DELETE FROM gate_failure WHERE client_id = $1`, [clientId]);

@@ -42,6 +42,8 @@ describe('discovery rule proposals (DB)', () => {
     await pool.query(`DELETE FROM coverage_marker WHERE client_id=$1`, [clientId]);
     await pool.query(`DELETE FROM unknown_charge_code_trigger WHERE client_id=$1`, [clientId]);
     await pool.query(`DELETE FROM charge_fact WHERE client_id=$1`, [clientId]);
+    // 86e367r9x: persistAuditRun now wires a payment_gate_decision row per run.
+    await pool.query(`DELETE FROM payment_gate_decision WHERE client_id=$1`, [clientId]);
     await pool.query(`DELETE FROM audit_run WHERE client_id=$1`, [clientId]);
     await pool.query(`DELETE FROM invoice WHERE client_id=$1`, [clientId]);
     await pool.query(`DELETE FROM carrier WHERE id=$1`, [carrierId]);

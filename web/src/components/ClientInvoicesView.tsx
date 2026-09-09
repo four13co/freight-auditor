@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
 import { fetchClientPortalInvoices, type ClientPortalInvoiceRow } from '../lib/api.js';
+import { useClientPortalResource } from '../lib/use-client-portal-resource.js';
 
 function formatDate(value: string): string {
   return new Date(value).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
@@ -14,17 +14,10 @@ function formatDate(value: string): string {
  * mirroring PortfolioReport.tsx's own fetch-on-mount shape.
  */
 export function ClientInvoicesView() {
-  const [invoices, setInvoices] = useState<ClientPortalInvoiceRow[] | null>(null);
-  const [error, setError] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-    fetchClientPortalInvoices().then(
-      (data) => { if (!cancelled) setInvoices(data); },
-      () => { if (!cancelled) setError(true); },
-    );
-    return () => { cancelled = true; };
-  }, []);
+  const { data: invoices, error } = useClientPortalResource<ClientPortalInvoiceRow[]>(
+    () => fetchClientPortalInvoices(),
+    [],
+  );
 
   return (
     <section data-testid="client-invoices-view" className="border border-[rgba(32,30,29,.3)] bg-[#f3f2f2] p-3">

@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { fetchClientPortalAuditLog, type ClientPortalAuditEventRow } from '../lib/api.js';
+import { useClientPortalResource } from '../lib/use-client-portal-resource.js';
 
 const PAGE_SIZE = 50;
 
@@ -16,19 +17,10 @@ const PAGE_SIZE = 50;
  */
 export function ClientAuditLogView() {
   const [page, setPage] = useState(0);
-  const [events, setEvents] = useState<ClientPortalAuditEventRow[] | null>(null);
-  const [error, setError] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-    setEvents(null);
-    setError(false);
-    fetchClientPortalAuditLog(PAGE_SIZE, page * PAGE_SIZE).then(
-      (data) => { if (!cancelled) setEvents(data.events); },
-      () => { if (!cancelled) setError(true); },
-    );
-    return () => { cancelled = true; };
-  }, [page]);
+  const { data: events, error } = useClientPortalResource<ClientPortalAuditEventRow[]>(
+    () => fetchClientPortalAuditLog(PAGE_SIZE, page * PAGE_SIZE).then((data) => data.events),
+    [page],
+  );
 
   const hasMore = events !== null && events.length === PAGE_SIZE;
 

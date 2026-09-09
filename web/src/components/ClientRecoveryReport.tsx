@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
 import { fetchClientRecoveryReport, type ClientRecoveryReportBucket } from '../lib/api.js';
+import { useClientPortalResource } from '../lib/use-client-portal-resource.js';
 
 function formatAmount(value: string, currency: string | null): string {
   const n = Number(value);
@@ -17,17 +17,10 @@ function formatAmount(value: string, currency: string | null): string {
  * already scoped to one tenant.
  */
 export function ClientRecoveryReport() {
-  const [buckets, setBuckets] = useState<ClientRecoveryReportBucket[] | null>(null);
-  const [error, setError] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-    fetchClientRecoveryReport().then(
-      (data) => { if (!cancelled) setBuckets(data); },
-      () => { if (!cancelled) setError(true); },
-    );
-    return () => { cancelled = true; };
-  }, []);
+  const { data: buckets, error } = useClientPortalResource<ClientRecoveryReportBucket[]>(
+    () => fetchClientRecoveryReport(),
+    [],
+  );
 
   return (
     <section data-testid="client-recovery-report" className="border border-[rgba(32,30,29,.3)] bg-[#f3f2f2] p-3">

@@ -2,23 +2,19 @@ import { createHash } from 'node:crypto';
 import { z } from 'zod';
 import type { AnthropicStructuredResult, VersionedAnthropicProvider, VersionedPrompt } from '../contracts/anthropic-provider.js';
 import { rejectModelMoneyAuthority } from '../contracts/model-money-authority-gate.js';
+import type { EvidenceStatement } from './render-evidence-statement.js';
 
 export const EVIDENCE_PROSE_SCHEMA_VERSION = 'evidence-prose/1';
 export const EVIDENCE_PROSE_PROMPT_VERSION = 'dispute-evidence-prose/1';
 
 /**
- * The statement shape this module consumes -- structurally matches
- * EvidenceStatement from render-evidence-statement.ts (P4.C.4/#172,
- * unmerged) via a locally-declared interface rather than an import, same
- * cross-PR pattern as #172 used against #170.
+ * 86e367r7r: was a locally-declared interface structurally duplicating
+ * EvidenceStatement (render-evidence-statement.ts) -- the "keep the two
+ * PRs mergeable in either order" reason no longer applies now that both
+ * have long since merged. Re-exported under this module's own established
+ * name so existing importers are unaffected.
  */
-export interface EvidenceStatementInput {
-  disputeLineId: string;
-  amountLabel: string;
-  varianceLabel: string | null;
-  citations: Array<{ kind: string; reference: string; page: string | null }>;
-  criterionKey: string;
-}
+export type EvidenceStatementInput = EvidenceStatement;
 
 const modelParagraphSchema = z.object({
   disputeLineId: z.string(),

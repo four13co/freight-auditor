@@ -1,17 +1,11 @@
-import type PgBoss from 'pg-boss';
-import type pg from 'pg';
-import { withTenantTx, type TenantContext } from '../db/tenant-context.js';
+import { withTenantTx } from '../db/tenant-context.js';
 import { scheduleOutboxDeliveryJobs, type ScheduleOutboxDeliveryJobsResult } from '../modules/workflow/schedule-outbox-delivery-jobs.js';
 import { reclaimStaleOutboxMessagesForActiveClients, type ReclaimStaleOutboxMessagesResult } from '../modules/workflow/reclaim-stale-outbox-messages.js';
-import { parseJobPayload, JOB_NAMES } from './contracts.js';
+import { JOB_NAMES } from './contracts.js';
+import { makeReclaimAndScanJobHandler, type ReclaimAndScanJobDeps } from './make-reclaim-and-scan-job-handler.js';
 
 export type OutboxMessageScanResult = ScheduleOutboxDeliveryJobsResult & ReclaimStaleOutboxMessagesResult;
-
-export interface OutboxMessageScanDeps {
-  withTenantTx: (ctx: TenantContext, fn: (client: pg.PoolClient) => Promise<OutboxMessageScanResult>) => Promise<OutboxMessageScanResult>;
-  reclaim: typeof reclaimStaleOutboxMessagesForActiveClients;
-  scan: typeof scheduleOutboxDeliveryJobs;
-}
+export type OutboxMessageScanDeps = ReclaimAndScanJobDeps<ScheduleOutboxDeliveryJobsResult, ReclaimStaleOutboxMessagesResult>;
 
 const defaultDeps: OutboxMessageScanDeps = {
   withTenantTx,
@@ -28,18 +22,10 @@ const defaultDeps: OutboxMessageScanDeps = {
  * handleWorkflowCommandScanJob one level up the pipeline -- a scheduled
  * scan, not a request on behalf of one tenant -- so a row recovered back to
  * 'pending' this tick is already visible to the due-query claim that
- * follows it.
+ * follows it. Shared handler shape lives in
+ * make-reclaim-and-scan-job-handler.ts (86e367r8f).
  */
-export async function handleOutboxMessageScanJob(
-  boss: Pick<PgBoss, 'send'>,
-  untrustedPayload: unknown,
-  deps: OutboxMessageScanDeps = defaultDeps,
-): Promise<OutboxMessageScanResult> {
-  const payload = parseJobPayload(JOB_NAMES.SCAN_OUTBOX_MESSAGES_V1, untrustedPayload);
-  const now = new Date(payload.requestedAt);
-  return deps.withTenantTx({ internal: true }, async (client) => {
-    const recovery = await deps.reclaim(client, now);
-    const scanResult = await deps.scan(client, boss, now);
-    return { ...scanResult, ...recovery };
-  });
-}
+export const handleOutboxMessageScanJob = makeReclaimAndScanJobHandler<
+  ScheduleOutboxDeliveryJobsResult,
+  ReclaimStaleOutboxMessagesResult
+>(JOB_NAMES.SCAN_OUTBOX_MESSAGES_V1, defaultDeps);

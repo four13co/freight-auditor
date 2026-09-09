@@ -76,6 +76,8 @@ describe('rule_backtest / rule_backtest_case / charge_alignment_member RLS (86e3
     await pool.query(`DELETE FROM charge_alignment_member WHERE client_id = ANY($1)`, [[clientId, otherClientId]]);
     await pool.query(`DELETE FROM charge_alignment WHERE client_id = ANY($1)`, [[clientId, otherClientId]]);
     await pool.query(`DELETE FROM charge_fact WHERE client_id = ANY($1)`, [[clientId, otherClientId]]);
+    // 86e367r9x: persistAuditRun now wires a payment_gate_decision row per run.
+    await pool.query(`DELETE FROM payment_gate_decision WHERE client_id = ANY($1)`, [[clientId, otherClientId]]);
     await pool.query(`DELETE FROM audit_run WHERE client_id = ANY($1)`, [[clientId, otherClientId]]);
     await pool.query(`DELETE FROM invoice WHERE client_id = ANY($1)`, [[clientId, otherClientId]]);
     await pool.query(`DELETE FROM carrier WHERE name=$1`, [tag]);

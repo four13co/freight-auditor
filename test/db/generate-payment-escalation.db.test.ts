@@ -29,6 +29,17 @@ describe('generatePaymentEscalation (DB)', () => {
     try {
       const c = await owner.query(`INSERT INTO client (name, slug) VALUES ('ESC', $1) RETURNING id`, [tag]);
       clientId = c.rows[0].id;
+      // 86e367r9x: persistAuditRun now wires its own default 'hold' decision
+      // for a SCORED run -- this suite's own insertHold() helper needs to be
+      // the ONLY hold row (it backdates recorded_at to simulate an elapsed
+      // grace period), so opt this client out via client_payment_policy.
+      const configuredBy = await owner.query<{ id: string }>(
+        `INSERT INTO app_user (email) VALUES ($1) RETURNING id`, [`${tag}-configurer@example.com`],
+      );
+      await owner.query(
+        `INSERT INTO client_payment_policy (client_id, hold_then_approve, configured_by) VALUES ($1, false, $2)`,
+        [clientId, configuredBy.rows[0]!.id],
+      );
     } finally {
       owner.release();
     }
@@ -48,6 +59,8 @@ describe('generatePaymentEscalation (DB)', () => {
       await owner.query(`DELETE FROM audit_run WHERE client_id = $1`, [clientId]);
       await owner.query(`DELETE FROM charge_fact WHERE client_id = $1`, [clientId]);
       await owner.query(`DELETE FROM invoice WHERE client_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM client_payment_policy WHERE client_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM app_user WHERE email = $1`, [`${tag}-configurer@example.com`]);
       await owner.query(`DELETE FROM client WHERE id = $1`, [clientId]);
     } finally {
       owner.release();

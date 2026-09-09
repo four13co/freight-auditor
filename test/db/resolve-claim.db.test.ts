@@ -37,6 +37,8 @@ describe('resolveClaim (DB)', () => {
       await owner.query(`DELETE FROM recovery_event WHERE client_id IN ($1, $2)`, [clientAId, clientBId]);
       await owner.query(`DELETE FROM claim WHERE client_id IN ($1, $2)`, [clientAId, clientBId]);
       await owner.query(`DELETE FROM variance_finding WHERE client_id IN ($1, $2)`, [clientAId, clientBId]);
+      // 86e367r9x: persistAuditRun now wires a payment_gate_decision row per run.
+      await owner.query(`DELETE FROM payment_gate_decision WHERE client_id IN ($1, $2)`, [clientAId, clientBId]);
       await owner.query(`DELETE FROM audit_run WHERE client_id IN ($1, $2)`, [clientAId, clientBId]);
       await owner.query(`DELETE FROM invoice WHERE client_id IN ($1, $2)`, [clientAId, clientBId]);
       await owner.query(`DELETE FROM client WHERE id IN ($1, $2)`, [clientAId, clientBId]);

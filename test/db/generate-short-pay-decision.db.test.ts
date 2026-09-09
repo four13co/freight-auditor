@@ -145,8 +145,11 @@ describe('generateShortPayDecision (DB)', () => {
 
       const first = await generateShortPayDecision(c, { clientId, auditRunId: p.auditRunId, shortPayEnabled: true });
       const retry = await generateShortPayDecision(c, { clientId, auditRunId: p.auditRunId, shortPayEnabled: true });
+      // Scoped to action='short_pay' -- persistAuditRun (86e367r9x) also
+      // wires the default 'hold' decision for this SCORED run alongside the
+      // short_pay one this test is actually about.
       const decisions = await c.query(
-        `SELECT action, actor_kind, amount, currency FROM payment_gate_decision WHERE client_id = $1 AND audit_run_id = $2`,
+        `SELECT action, actor_kind, amount, currency FROM payment_gate_decision WHERE client_id = $1 AND audit_run_id = $2 AND action = 'short_pay'`,
         [clientId, p.auditRunId],
       );
       return { first, retry, decisions: decisions.rows, invoiceTotal, findingId };

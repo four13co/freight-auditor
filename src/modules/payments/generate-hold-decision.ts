@@ -30,22 +30,24 @@ export interface HoldDecisionResult {
  * classification and any later amount computation.
  *
  * holdThenApprove defaults to true and is accepted as a PARAMETER rather
- * than read from client_payment_policy (P4.B.1/#161, still unmerged, and
- * that table does not exist on this branch's Development base) -- the
- * caller resolves the client's policy (or accepts the true default) and
- * passes it in. Once #161 merges, the caller reads client_payment_policy
- * and passes hold_then_approve through; this function's contract does not
- * change. holdThenApprove: false means the client has opted out of the
- * default hold, so this generates no decision at all (short-pay/opt-out
- * enforcement for that path is P4.B.3's boundary, not this one's).
+ * than read internally -- the caller resolves the client's policy (or
+ * accepts the true default) and passes it in; this function never reads
+ * client_payment_policy itself. (86e367r9x: client_payment_policy, migration
+ * 0058, is applied and upsertPaymentPolicy already works against it -- an
+ * earlier version of this comment claimed the table "does not exist on this
+ * branch," which was stale even before this function's only real caller,
+ * persist.ts, was wired up.) holdThenApprove: false means the client has
+ * opted out of the default hold, so this generates no decision at all
+ * (short-pay/opt-out enforcement for that path is P4.B.3's boundary, not
+ * this one's).
  *
- * Idempotent per (client, audit_run, 'hold'): payment_gate_decision has no
- * unique constraint on Development yet (#195's payment_gate_decision_run_
- * action_uk is unmerged), so this is a plain SELECT-then-INSERT inside the
- * caller's transaction rather than an ON CONFLICT reference to a constraint
- * that doesn't exist on this base. Once #195 merges, this can tighten to
- * ON CONFLICT; not done here to avoid a merge-order coupling this item
- * doesn't otherwise have.
+ * Idempotent per (client, audit_run, 'hold'): payment_gate_decision does
+ * have a unique constraint on (client_id, audit_run_id, action) (migration
+ * 0052's payment_gate_decision_run_action_uk -- an earlier version of this
+ * comment claimed it was unmerged, which was also stale). This still uses a
+ * plain SELECT-then-INSERT rather than ON CONFLICT; both are correct inside
+ * the caller's single transaction, and switching to ON CONFLICT is a pure
+ * style change outside this item's scope.
  */
 export async function generateHoldDecision(
   client: pg.PoolClient,

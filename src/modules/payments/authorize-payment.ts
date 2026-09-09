@@ -32,12 +32,12 @@ export interface AuthorizePaymentResult {
  * authenticated human, which is what "no automatic payment approval"
  * (this task's own Exclusions line) means in code.
  *
- * Idempotent via SELECT-then-INSERT inside the caller's transaction (a
- * correct guarantee against concurrent writes within one request; #163
- * (open, unmerged) adds a UNIQUE (client_id, audit_run_id, action)
- * constraint on payment_gate_decision that would make this airtight across
- * transactions too -- deliberately not duplicated here to avoid two
- * migrations racing to create the same constraint name).
+ * Idempotent via SELECT-then-INSERT inside the caller's transaction. (86e367r9x:
+ * payment_gate_decision does have a UNIQUE (client_id, audit_run_id, action)
+ * constraint -- migration 0052's payment_gate_decision_run_action_uk -- that
+ * makes this airtight across transactions too; an earlier version of this
+ * comment claimed it was still "open, unmerged," which was stale. This still
+ * uses SELECT-then-INSERT rather than ON CONFLICT; both are correct here.)
  */
 export async function authorizePayment(
   client: pg.PoolClient,

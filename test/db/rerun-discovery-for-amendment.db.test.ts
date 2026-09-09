@@ -93,6 +93,8 @@ describe('rerunDiscoveryForAmendment (DB)', () => {
     await pool.query(`DELETE FROM promotion_event WHERE rule_version_id IN (SELECT id FROM rule_version WHERE rule_id = $1)`, [ruleId]);
     await pool.query(`DELETE FROM charge_finding WHERE client_id = $1`, [clientId]);
     await pool.query(`DELETE FROM charge_fact WHERE client_id = $1`, [clientId]);
+    // 86e367r9x: persistAuditRun now wires a payment_gate_decision row per run.
+    await pool.query(`DELETE FROM payment_gate_decision WHERE client_id = $1`, [clientId]);
     await pool.query(`DELETE FROM audit_run WHERE client_id = $1`, [clientId]);
     await pool.query(`DELETE FROM invoice WHERE client_id = $1`, [clientId]);
     await pool.query(`DELETE FROM criterion WHERE criterion_key = $1`, [`criterion-${tag}`]);

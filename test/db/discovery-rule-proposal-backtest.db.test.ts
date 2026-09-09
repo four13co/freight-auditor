@@ -63,6 +63,8 @@ describe('discovery proposal backtest and SHADOW acceptance (DB)', () => {
     await pool.query(`DELETE FROM discovery_rule_proposal WHERE id=$1`, [proposalId]);
     await pool.query(`DELETE FROM unknown_charge_code_trigger WHERE client_id=$1`, [clientId]);
     await pool.query(`DELETE FROM charge_fact WHERE client_id=$1`, [clientId]);
+    // 86e367r9x: persistAuditRun now wires a payment_gate_decision row per run.
+    await pool.query(`DELETE FROM payment_gate_decision WHERE client_id=$1`, [clientId]);
     await pool.query(`DELETE FROM audit_run WHERE client_id=$1`, [clientId]);
     await pool.query(`DELETE FROM invoice WHERE client_id=$1`, [clientId]);
     await pool.query(`DELETE FROM app_user WHERE id=$1`, [userId]);

@@ -38,19 +38,30 @@ export interface ShortPayDecisionResult {
  * shortPayEnabled defaults to false and this generates no decision at all
  * unless the caller explicitly opts a client in.
  *
- * shortPayEnabled is accepted as a PARAMETER, not read from
- * client_payment_policy (P4.B.1/#161, unmerged and absent from this
- * branch's Development base) -- same treatment as generate-hold-decision.ts's
- * holdThenApprove, just defaulting the other direction (§10: short-pay is
- * opt-in, hold-then-approve is the default). Once #161 merges, the caller
- * reads client_payment_policy.short_pay_enabled and passes it through.
+ * shortPayEnabled is accepted as a PARAMETER, not read internally by this
+ * function -- same treatment as generate-hold-decision.ts's holdThenApprove,
+ * just defaulting the other direction (§10: short-pay is opt-in,
+ * hold-then-approve is the default). (86e367r9x: client_payment_policy,
+ * migration 0058, is applied and readable -- an earlier version of this
+ * comment claimed it was unmerged/absent, which was stale.)
  *
- * Idempotent per (client, audit_run, 'short_pay'): payment_gate_decision has
- * no unique constraint on Development yet (#195's constraint is unmerged,
- * same reasoning as #196/#167), so this is a plain SELECT-then-INSERT
- * inside the caller's transaction. Writes its own 'short_pay' row and never
- * touches any existing 'hold' row for the same run -- which decision
- * supersedes which is lifecycle sequencing outside this item's boundary.
+ * Deliberately NOT auto-wired into persist.ts alongside generateHoldDecision
+ * (86e367r9x): its precondition -- accepted OVERCHARGE findings -- can never
+ * be true at initial audit-run persist time (variance_finding rows are
+ * always freshly 'open' there), so calling it there would lock in a
+ * short-pay decision computed against zero accepted disputes. Recomputing
+ * short-pay once findings are later accepted/disputed is a separate,
+ * not-yet-built trigger point.
+ *
+ * Idempotent per (client, audit_run, 'short_pay'): payment_gate_decision
+ * does have a unique constraint on (client_id, audit_run_id, action)
+ * (migration 0052's payment_gate_decision_run_action_uk -- an earlier
+ * version of this comment claimed it was unmerged, which was also stale).
+ * This still uses a plain SELECT-then-INSERT rather than ON CONFLICT; both
+ * are correct inside the caller's single transaction. Writes its own
+ * 'short_pay' row and never touches any existing 'hold' row for the same
+ * run -- which decision supersedes which is lifecycle sequencing outside
+ * this item's boundary.
  */
 export async function generateShortPayDecision(
   client: pg.PoolClient,

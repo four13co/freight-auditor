@@ -202,6 +202,8 @@ describe('client portal content APIs (DB, e2e)', () => {
       await owner.query(`DELETE FROM expected_charge WHERE client_id = ANY($1)`, [[clientId, otherClientId]]);
       await owner.query(`DELETE FROM charge_fact WHERE client_id = ANY($1)`, [[clientId, otherClientId]]);
       await owner.query(`DELETE FROM scorecard WHERE client_id = ANY($1)`, [[clientId, otherClientId]]);
+      // 86e367r9x: persistAuditRun now wires a payment_gate_decision row per run.
+      await owner.query(`DELETE FROM payment_gate_decision WHERE client_id = ANY($1)`, [[clientId, otherClientId]]);
       await owner.query(`DELETE FROM audit_run WHERE client_id = ANY($1)`, [[clientId, otherClientId]]);
       await owner.query(`DELETE FROM invoice WHERE client_id = ANY($1)`, [[clientId, otherClientId]]);
       await owner.query(`DELETE FROM membership WHERE client_id = $1`, [clientId]);
@@ -624,6 +626,8 @@ describe('portal content query modules: explicit client_id predicate (DB)', () =
       await owner.query(`DELETE FROM variance_finding WHERE client_id = $1`, [clientAId]);
       await owner.query(`DELETE FROM charge_fact WHERE client_id = $1`, [clientAId]);
       await owner.query(`DELETE FROM scorecard WHERE client_id = $1`, [clientAId]);
+      // 86e367r9x: persistAuditRun now wires a payment_gate_decision row per run.
+      await owner.query(`DELETE FROM payment_gate_decision WHERE client_id = $1`, [clientAId]);
       await owner.query(`DELETE FROM audit_run WHERE client_id = $1`, [clientAId]);
       await owner.query(`DELETE FROM invoice WHERE client_id = $1`, [clientAId]);
       await owner.query(`DELETE FROM client WHERE id = $1`, [clientAId]);
@@ -858,6 +862,8 @@ describe('client portal claim + document APIs (P6.B.4, DB, e2e)', () => {
       await owner.query(`DELETE FROM variance_finding WHERE client_id = ANY($1)`, [[clientId, otherClientId]]);
       await owner.query(`DELETE FROM charge_fact WHERE client_id = ANY($1)`, [[clientId, otherClientId]]);
       await owner.query(`DELETE FROM source_document WHERE client_id = ANY($1)`, [[clientId, otherClientId]]);
+      // 86e367r9x: persistAuditRun now wires a payment_gate_decision row per run.
+      await owner.query(`DELETE FROM payment_gate_decision WHERE client_id = ANY($1)`, [[clientId, otherClientId]]);
       await owner.query(`DELETE FROM audit_run WHERE client_id = ANY($1)`, [[clientId, otherClientId]]);
       await owner.query(`DELETE FROM invoice WHERE client_id = ANY($1)`, [[clientId, otherClientId]]);
       await owner.query(`DELETE FROM membership WHERE client_id = $1`, [clientId]);

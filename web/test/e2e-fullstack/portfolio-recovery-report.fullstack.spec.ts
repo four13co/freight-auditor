@@ -2,6 +2,7 @@ import { test, expect } from '@playwright/test';
 import pg from 'pg';
 import { withTenantTx } from '../../../src/db/tenant-context.js';
 import { assertSeeded } from '../e2e-fullstack-auth/assert-seeded.js';
+import { seedDedicatedTenant } from './seed-dedicated-tenant.js';
 
 // 86e33qzmr: full-stack e2e for the cross-client portfolio recovery report
 // (portfolio-routes.ts) -- real Fastify server + real Postgres, real HTTP,
@@ -37,34 +38,28 @@ let portalUserId: string;
 test.beforeAll(async () => {
   pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
 
-  const clientA = await pool.query<{ id: string }>(
-    `INSERT INTO client (name, slug) VALUES ('E2E Portfolio Recovery Client A', $1) RETURNING id`,
-    [`e2e-portfolio-a-${Date.now()}`],
-  );
-  clientAId = clientA.rows[0]!.id;
-  const clientB = await pool.query<{ id: string }>(
-    `INSERT INTO client (name, slug) VALUES ('E2E Portfolio Recovery Client B', $1) RETURNING id`,
-    [`e2e-portfolio-b-${Date.now()}`],
-  );
-  clientBId = clientB.rows[0]!.id;
+  clientBId = (await seedDedicatedTenant(pool, { clientName: 'E2E Portfolio Recovery Client B' })).clientId;
 
   // is_internal=true: the real analyst identity the route's own preHandler
-  // checks (internal-analyst-auth.ts's lookupIsInternal).
+  // checks (internal-analyst-auth.ts's lookupIsInternal). Not a tenant
+  // fixture (no client, no membership) -- stays its own explicit insert
+  // rather than going through seedDedicatedTenant (86e367r99).
   const internalUser = await pool.query<{ id: string }>(
     `INSERT INTO app_user (email, full_name, is_internal) VALUES ($1, 'E2E Portfolio Internal Analyst', true) RETURNING id`,
     [`e2e-portfolio-internal-${Date.now()}@example.test`],
   );
   internalUserId = internalUser.rows[0]!.id;
 
-  // is_internal defaults to false -- a real client-portal-scoped identity
-  // (AC2's negative case), with a real membership under client A so it
-  // mirrors an actual portal session's shape.
-  const portalUser = await pool.query<{ id: string }>(
-    `INSERT INTO app_user (email, full_name) VALUES ($1, 'E2E Portfolio Portal User') RETURNING id`,
-    [`e2e-portfolio-portal-${Date.now()}@example.test`],
-  );
-  portalUserId = portalUser.rows[0]!.id;
-  await pool.query(`INSERT INTO membership (user_id, client_id, role) VALUES ($1, $2, 'client_admin')`, [portalUserId, clientAId]);
+  // Client A + its portal user: is_internal defaults to false -- a real
+  // client-portal-scoped identity (AC2's negative case), with a real
+  // membership under client A so it mirrors an actual portal session's shape.
+  const seededA = await seedDedicatedTenant(pool, {
+    clientName: 'E2E Portfolio Recovery Client A',
+    role: 'client_admin',
+    userName: 'E2E Portfolio Portal User',
+  });
+  clientAId = seededA.clientId;
+  portalUserId = seededA.userId!;
 
   await withTenantTx({ clientIds: [clientAId, clientBId], internal: true }, async (client) => {
     // Client A: claimed 300, recovered 100 (same currency) -> outstanding 200.

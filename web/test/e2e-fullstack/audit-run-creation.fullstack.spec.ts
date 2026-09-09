@@ -3,7 +3,7 @@ import pg from 'pg';
 import { DEV_CLIENT_ID, DEV_USER_ID } from '../../../scripts/seed-dev-tenant.mjs';
 import { FIXTURE_CARRIER_NAME } from '../../../scripts/seed-fullstack-e2e-fixture.mjs';
 import { GOLDEN_210 } from '../../../test/fixtures/edi-golden.js';
-import { assertSeeded } from '../e2e-fullstack-auth/assert-seeded.js';
+import { assertSeeded, assertSeededRow } from '../e2e-fullstack-auth/assert-seeded.js';
 
 // 86e33qywh: full-stack e2e for the raw-EDI intake path -- browser/API ->
 // real Fastify server -> real Postgres, no route mocking, same contract as
@@ -40,21 +40,18 @@ test.beforeAll(async ({ request }) => {
     errorHint: "Has 'npm run seed:dev' been run against this database?",
   });
 
-  const row = await pool.query<{ id: string }>(
+  const row = await assertSeededRow<{ id: string }>(
+    pool,
     `SELECT cv.id FROM contract_version cv
      JOIN contract c ON c.id = cv.contract_id
      JOIN carrier ca ON ca.id = c.carrier_id
      WHERE ca.name = $1 AND cv.client_id = $2
      ORDER BY cv.id LIMIT 1`,
     [FIXTURE_CARRIER_NAME, DEV_CLIENT_ID],
+    `audit-run-creation.fullstack.spec: no contract_version found for carrier "${FIXTURE_CARRIER_NAME}" / ` +
+      `client ${DEV_CLIENT_ID} -- has 'npm run seed:e2e-fullstack-fixture' been run against this database?`,
   );
-  if (!row.rows[0]) {
-    throw new Error(
-      `audit-run-creation.fullstack.spec: no contract_version found for carrier "${FIXTURE_CARRIER_NAME}" / ` +
-        `client ${DEV_CLIENT_ID} -- has 'npm run seed:e2e-fullstack-fixture' been run against this database?`,
-    );
-  }
-  contractVersionId = row.rows[0].id;
+  contractVersionId = row.id;
 });
 
 test.afterAll(async () => {

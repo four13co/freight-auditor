@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { test, expect } from '@playwright/test';
 import pg from 'pg';
 import { FIXTURE_CARRIER_NAME } from '../../../scripts/seed-fullstack-e2e-fixture.mjs';
+import { assertSeededRow } from '../e2e-fullstack-auth/assert-seeded.js';
 import { withTenantTx } from '../../../src/db/tenant-context.js';
 import { persistContractExtraction } from '../../../src/modules/contracts/persist-contract-extraction.js';
 import { persistRawDocumentAnalysis } from '../../../src/modules/contracts/persist-raw-document-analysis.js';
@@ -100,14 +101,14 @@ test.beforeAll(async ({ request }) => {
   userId = userRow.rows[0]!.id;
   await pool.query(`INSERT INTO membership (user_id, client_id, role) VALUES ($1, $2, 'client_admin')`, [userId, clientId]);
 
-  const carrier = await pool.query<{ id: string }>(`SELECT id FROM carrier WHERE name = $1 LIMIT 1`, [FIXTURE_CARRIER_NAME]);
-  if (!carrier.rows[0]) {
-    throw new Error(
-      `contract-ingestion-lifecycle.fullstack.spec: no carrier found named "${FIXTURE_CARRIER_NAME}" -- ` +
-        `has 'npm run seed:e2e-fullstack-fixture' been run against this database?`,
-    );
-  }
-  carrierId = carrier.rows[0].id;
+  const carrier = await assertSeededRow<{ id: string }>(
+    pool,
+    `SELECT id FROM carrier WHERE name = $1 LIMIT 1`,
+    [FIXTURE_CARRIER_NAME],
+    `contract-ingestion-lifecycle.fullstack.spec: no carrier found named "${FIXTURE_CARRIER_NAME}" -- ` +
+      `has 'npm run seed:e2e-fullstack-fixture' been run against this database?`,
+  );
+  carrierId = carrier.id;
 
   // Step 1: upload -- fully real, over real HTTP.
   const pdf = await makeTextPdf(['E2E Contract Fixture', 'Linehaul rate: $2.50 per mile']);

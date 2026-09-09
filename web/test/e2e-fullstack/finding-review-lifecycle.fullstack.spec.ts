@@ -2,6 +2,7 @@ import { test, expect } from '@playwright/test';
 import pg from 'pg';
 import { DEV_CLIENT_ID, DEV_USER_ID } from '../../../scripts/seed-dev-tenant.mjs';
 import { FIXTURE_CARRIER_NAME } from '../../../scripts/seed-fullstack-e2e-fixture.mjs';
+import { assertSeededRow } from '../e2e-fullstack-auth/assert-seeded.js';
 
 // 86e33qz8c: full-stack e2e for the core analyst review loop -- status
 // change and gating action go through the real Dashboard FindingsTable /
@@ -53,22 +54,19 @@ let ruleVersionId: string;
 test.beforeAll(async ({ request }) => {
   pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
 
-  const contractVersion = await pool.query<{ id: string }>(
+  const contractVersion = await assertSeededRow<{ id: string }>(
+    pool,
     `SELECT cv.id FROM contract_version cv
      JOIN contract c ON c.id = cv.contract_id
      JOIN carrier ca ON ca.id = c.carrier_id
      WHERE ca.name = $1 AND cv.client_id = $2
      ORDER BY cv.id LIMIT 1`,
     [FIXTURE_CARRIER_NAME, DEV_CLIENT_ID],
+    `finding-review-lifecycle.fullstack.spec: no contract_version found for carrier "${FIXTURE_CARRIER_NAME}" / ` +
+      `client ${DEV_CLIENT_ID} -- has 'npm run seed:e2e-fullstack-fixture' been run against this database?`,
   );
-  if (!contractVersion.rows[0]) {
-    throw new Error(
-      `finding-review-lifecycle.fullstack.spec: no contract_version found for carrier "${FIXTURE_CARRIER_NAME}" / ` +
-        `client ${DEV_CLIENT_ID} -- has 'npm run seed:e2e-fullstack-fixture' been run against this database?`,
-    );
-  }
 
-  const post = await request.post(`/api/audit-runs?contract_version_id=${contractVersion.rows[0].id}`, {
+  const post = await request.post(`/api/audit-runs?contract_version_id=${contractVersion.id}`, {
     headers: { 'x-client-id': DEV_CLIENT_ID, 'x-user-id': DEV_USER_ID, 'content-type': 'application/edi-x12' },
     data: EDI_210,
   });

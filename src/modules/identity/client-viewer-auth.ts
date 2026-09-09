@@ -1,7 +1,7 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { withTenantTx, type TenantContext } from '../../db/tenant-context.js';
 import { getAuth } from '../../auth/better-auth.js';
-import { toFetchHeaders } from '../findings/tenant-auth.js';
+import { readHeader, toFetchHeaders } from '../findings/tenant-auth.js';
 
 // 86e2zfjmw: augments Fastify's own request type with clientPortalReadOnly,
 // separate from tenantContext/actorUserId (already declared by
@@ -41,10 +41,6 @@ declare module 'fastify' {
  * through, so any future write escape route in this surface is easy to
  * audit for.
  */
-
-function readHeader(value: string | string[] | undefined): string | undefined {
-  return Array.isArray(value) ? value[0] : value;
-}
 
 const SAFE_METHODS = new Set(['GET', 'HEAD']);
 

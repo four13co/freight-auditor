@@ -44,7 +44,7 @@ declare module 'fastify' {
  * bypasses the client_id check), never via the scope we're still deciding
  * whether to grant.
  */
-function readHeader(value: string | string[] | undefined): string | undefined {
+export function readHeader(value: string | string[] | undefined): string | undefined {
   return Array.isArray(value) ? value[0] : value;
 }
 

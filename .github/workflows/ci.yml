@@ -171,6 +171,20 @@ jobs:
       # binaries. No restore-keys: a stale prefix match would silently install
       # wrong-version browsers and fail confusingly at test time instead of
       # cache time.
+      # 86e36n9fz: `playwright install-deps` (below) runs `apt-get update`,
+      # which refreshes EVERY apt source configured on the runner --
+      # including ubuntu-latest's pre-installed google-chrome.list, a source
+      # this suite never actually installs from (it runs Playwright's own
+      # bundled Chromium, never system google-chrome-stable). A transient
+      # checksum mismatch on Google's own apt mirror during that refresh
+      # failed this step twice on otherwise-green PRs (#355, #356) with no
+      # real dependency involved. Removing the unused source here (before
+      # the cache step, so it applies whether or not the cache hits) means
+      # apt-get update never touches it, eliminating the flake's actual
+      # source rather than retrying around it.
+      - name: Remove unused Google Chrome apt source
+        run: sudo rm -f /etc/apt/sources.list.d/google-chrome.list
+
       - name: Cache Playwright browsers
         uses: actions/cache@v4
         with:
@@ -265,6 +279,20 @@ jobs:
 
       # 86e2wb87v: see the `web` job's identical cache step above for the full
       # rationale (same flaky install step, same fix).
+      # 86e36n9fz: `playwright install-deps` (below) runs `apt-get update`,
+      # which refreshes EVERY apt source configured on the runner --
+      # including ubuntu-latest's pre-installed google-chrome.list, a source
+      # this suite never actually installs from (it runs Playwright's own
+      # bundled Chromium, never system google-chrome-stable). A transient
+      # checksum mismatch on Google's own apt mirror during that refresh
+      # failed this step twice on otherwise-green PRs (#355, #356) with no
+      # real dependency involved. Removing the unused source here (before
+      # the cache step, so it applies whether or not the cache hits) means
+      # apt-get update never touches it, eliminating the flake's actual
+      # source rather than retrying around it.
+      - name: Remove unused Google Chrome apt source
+        run: sudo rm -f /etc/apt/sources.list.d/google-chrome.list
+
       - name: Cache Playwright browsers
         uses: actions/cache@v4
         with:
@@ -377,6 +405,20 @@ jobs:
 
       # 86e2wb87v: see the `web` job's identical cache step for the full
       # rationale (same flaky install step, same fix).
+      # 86e36n9fz: `playwright install-deps` (below) runs `apt-get update`,
+      # which refreshes EVERY apt source configured on the runner --
+      # including ubuntu-latest's pre-installed google-chrome.list, a source
+      # this suite never actually installs from (it runs Playwright's own
+      # bundled Chromium, never system google-chrome-stable). A transient
+      # checksum mismatch on Google's own apt mirror during that refresh
+      # failed this step twice on otherwise-green PRs (#355, #356) with no
+      # real dependency involved. Removing the unused source here (before
+      # the cache step, so it applies whether or not the cache hits) means
+      # apt-get update never touches it, eliminating the flake's actual
+      # source rather than retrying around it.
+      - name: Remove unused Google Chrome apt source
+        run: sudo rm -f /etc/apt/sources.list.d/google-chrome.list
+
       - name: Cache Playwright browsers
         uses: actions/cache@v4
         with:

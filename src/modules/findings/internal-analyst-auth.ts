@@ -1,7 +1,7 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { withTenantTx, type TenantContext } from '../../db/tenant-context.js';
 import { getAuth } from '../../auth/better-auth.js';
-import { toFetchHeaders } from './tenant-auth.js';
+import { readHeader, toFetchHeaders } from './tenant-auth.js';
 
 /**
  * Isolated auth resolver for internal-analyst-only routes (P5.C.3, rebuild).
@@ -23,15 +23,11 @@ import { toFetchHeaders } from './tenant-auth.js';
  * This resolver only grants { internal: true } (no clientIds at all) on
  * whichever route(s) opt into THIS preHandler -- currently just
  * portfolio-routes.ts's GET /api/portfolio/cross-client-recovery. No
- * existing route's auth behavior changes. `toFetchHeaders` is imported
- * (not duplicated) from tenant-auth.ts -- it is a pure header-format
- * conversion with no auth decision in it, so reusing it carries none of the
- * risk that reusing the resolvers themselves would.
+ * existing route's auth behavior changes. `toFetchHeaders` and `readHeader`
+ * are imported (not duplicated) from tenant-auth.ts -- both are pure
+ * header-format helpers with no auth decision in them, so reusing them
+ * carries none of the risk that reusing the resolvers themselves would.
  */
-
-function readHeader(value: string | string[] | undefined): string | undefined {
-  return Array.isArray(value) ? value[0] : value;
-}
 
 /**
  * app_user carries no RLS (it is not in migration 0009's tenant-table list --

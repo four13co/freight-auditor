@@ -1,7 +1,7 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { withTenantTx, type TenantContext } from '../../db/tenant-context.js';
 import { getAuth } from '../../auth/better-auth.js';
-import { toFetchHeaders } from '../findings/tenant-auth.js';
+import { readHeader, toFetchHeaders } from '../findings/tenant-auth.js';
 
 // 86e2zfjnd: augments Fastify's own request type with actorUserId only --
 // tenantContext is already declared by tenant-auth.ts's own declare-module
@@ -37,10 +37,6 @@ import { toFetchHeaders } from '../findings/tenant-auth.js';
  * top of that raw write capability are a sibling capability (P6.B.5,
  * "Add policy-controlled client-admin approvals") and out of scope here.
  */
-
-function readHeader(value: string | string[] | undefined): string | undefined {
-  return Array.isArray(value) ? value[0] : value;
-}
 
 /**
  * membership carries FORCE RLS keyed on client_id (migration 0009), so the

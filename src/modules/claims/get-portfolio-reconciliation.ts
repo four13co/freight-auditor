@@ -14,10 +14,10 @@ const schema = z.object({
  * the carrier join and carrierId scoping -- this item groups by currency
  * only, across every carrier, not per-carrier.
  *
- * Deliberately self-contained (no import from #202's files) so this
- * compiles and its DB test is runnable against Development as it stands
- * today, with no dependency on #202 merging first -- see
- * reconcile-portfolio-totals.ts's doc comment for why.
+ * reconcile-portfolio-totals.ts (in turn) imports its shared
+ * currency-bucketing/reconciliation math from reconcile-claim-buckets.ts
+ * (86e32tg28) -- the original "deliberately self-contained, no import from
+ * #202's files" constraint no longer applies now that #202 has merged.
  */
 export async function getPortfolioReconciliation(
   client: pg.PoolClient,

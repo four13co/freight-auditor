@@ -69,6 +69,8 @@ test.afterAll(async () => {
     );
     await pool.query(`DELETE FROM gate_failure WHERE audit_run_id = $1`, [auditRunId]);
     await pool.query(`DELETE FROM audit_replay_manifest WHERE audit_run_id = $1`, [auditRunId]);
+    // 86e367r9x: persistAuditRun now wires a payment_gate_decision row per run.
+    await pool.query(`DELETE FROM payment_gate_decision WHERE audit_run_id = $1`, [auditRunId]);
     await pool.query(`DELETE FROM audit_run WHERE id = $1`, [auditRunId]);
     if (sourceDocument.rows[0]?.source_document_id) {
       await pool.query(`DELETE FROM source_document WHERE id = $1`, [sourceDocument.rows[0].source_document_id]);

@@ -12,11 +12,14 @@ function mockClient(opts: { chargeRows?: Array<{ id: string; code: string | null
   const query = vi.fn().mockImplementation(async (sql: string, values: unknown[]) => {
     if (sql.includes('FROM audit_run')) return { rows: [{ invoice_id: invoiceId }] };
     if (sql.includes('FROM charge_fact')) return { rows: chargeRows };
-    if (sql.startsWith('INSERT INTO unknown_charge_code_trigger')) {
-      return inserted ? { rows: [{ id: `trigger-for-${(values as unknown[])[2]}` }] } : { rows: [] };
-    }
-    if (sql.startsWith('SELECT id FROM unknown_charge_code_trigger')) {
-      return { rows: [{ id: `existing-for-${(values as unknown[])[1]}` }] };
+    // insertIdempotent() issues one combined WITH-CTE query (86e367r7f) --
+    // both the insert-succeeded and fallback-existing cases are simulated
+    // from this single branch now, keyed on the same charge_fact_id param.
+    if (sql.includes('INSERT INTO unknown_charge_code_trigger')) {
+      const chargeFactIdParam = (values as unknown[])[2];
+      return inserted
+        ? { rows: [{ id: `trigger-for-${chargeFactIdParam}`, created: true }] }
+        : { rows: [{ id: `existing-for-${chargeFactIdParam}`, created: false }] };
     }
     if (sql.includes('audit_event')) return { rows: [{ id: 'audit-event-id', created: true }] };
     throw new Error(`unexpected query: ${sql}`);
@@ -57,5 +60,13 @@ describe('detectUnknownChargeCodeTriggers', () => {
     await expect(detectUnknownChargeCodeTriggers({ query } as never, { clientId: 'not-a-uuid', auditRunId }))
       .rejects.toThrow();
     expect(query).not.toHaveBeenCalled();
+  });
+
+  it('86e367r7f: the idempotent fallback path issues one round trip, not two', async () => {
+    const client = mockClient({ chargeRows: [{ id: chargeFactId, code: 'FSC', x12_element: 'L108' }], inserted: false });
+    await detectUnknownChargeCodeTriggers(client, { clientId, auditRunId });
+    // audit_run lookup + charge_fact lookup + one combined insert-or-fetch query + audit event write = 4.
+    // The old two-statement insert-then-fallback-SELECT form issued a 5th call here on a conflict.
+    expect((client as unknown as { query: ReturnType<typeof vi.fn> }).query).toHaveBeenCalledTimes(4);
   });
 });

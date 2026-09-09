@@ -1,6 +1,7 @@
 import type pg from 'pg';
 import { z } from 'zod';
 import { deterministicAuditEventId, writeAuditEvent } from '../audit-ledger/write-audit-event.js';
+import { insertIdempotent } from '../../db/insert-idempotent.js';
 
 const schema = z.object({
   clientId: z.uuid(),
@@ -87,21 +88,16 @@ export async function detectExtractionQualityTriggers(
     if (!triggerType) continue;
 
     const detail = { extractionStatus: row.extraction_status, confidence, fieldPath: row.field_path, extractionResponseHash: input.extractionResponseHash };
-    const inserted = await client.query<{ id: string }>(
-      `INSERT INTO extraction_quality_trigger (client_id, source_document_id, extraction_field_id, trigger_type, field_path, confidence, detail)
-       VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb) ON CONFLICT DO NOTHING RETURNING id`,
-      [input.clientId, input.sourceDocumentId, row.id, triggerType, row.field_path, confidence, JSON.stringify(detail)],
-    );
-    let id = inserted.rows[0]?.id;
-    if (id) createdCount++;
-    if (!id) {
-      id = (await client.query<{ id: string }>(
-        `SELECT id FROM extraction_quality_trigger WHERE client_id = $1 AND extraction_field_id = $2 AND trigger_type = $3`,
-        [input.clientId, row.id, triggerType],
-      )).rows[0]?.id;
-    }
-    if (!id) throw new ExtractionQualityTriggerError('TRIGGER_CONFLICT');
-    ids.push(id);
+    const result = await insertIdempotent(client, {
+      insertSql: `INSERT INTO extraction_quality_trigger (client_id, source_document_id, extraction_field_id, trigger_type, field_path, confidence, detail)
+       VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb) ON CONFLICT DO NOTHING`,
+      insertParams: [input.clientId, input.sourceDocumentId, row.id, triggerType, row.field_path, confidence, JSON.stringify(detail)],
+      fallbackSql: `SELECT id FROM extraction_quality_trigger WHERE client_id = $8 AND extraction_field_id = $9 AND trigger_type = $10`,
+      fallbackParams: [input.clientId, row.id, triggerType],
+    });
+    if (result?.created) createdCount++;
+    if (!result) throw new ExtractionQualityTriggerError('TRIGGER_CONFLICT');
+    ids.push(result.id);
   }
 
   // Scoped to one extraction run, so a re-run of this exact hash (e.g. a

@@ -20,6 +20,15 @@ export const CLAIM_TERMINAL_STATUSES: ReadonlySet<ClaimTerminalStatus> = new Set
 
 export const CLAIM_TERMINAL_EVENT_NAMES: readonly string[] = Object.values(CLAIM_TERMINAL_EVENTS);
 
+/**
+ * 86e367qzk: the audit_event name generateClaimFollowUp writes once a claim
+ * has been followed up on. Previously declared/hardcoded independently in
+ * generate-claim-escalation.ts, list-claim-aging-queues.ts, and
+ * generate-claim-follow-up.ts -- same unification CLAIM_TERMINAL_EVENTS
+ * already got above.
+ */
+export const CLAIM_FOLLOW_UP_EVENT = 'claim.follow_up_sent';
+
 export function isClaimTerminalStatus(status: string): status is ClaimTerminalStatus {
   return (CLAIM_TERMINAL_STATUSES as ReadonlySet<string>).has(status);
 }

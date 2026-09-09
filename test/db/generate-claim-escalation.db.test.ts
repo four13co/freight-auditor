@@ -2,7 +2,8 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import type pg from 'pg';
 import { getPool, closePool } from '../../src/db/pool.js';
 import { withTenantTx } from '../../src/db/tenant-context.js';
-import { generateClaimEscalation, GenerateClaimEscalationError, CLAIM_FOLLOW_UP_EVENT } from '../../src/modules/claims/generate-claim-escalation.js';
+import { generateClaimEscalation, GenerateClaimEscalationError } from '../../src/modules/claims/generate-claim-escalation.js';
+import { CLAIM_FOLLOW_UP_EVENT } from '../../src/modules/claims/claim-status.js';
 import { deterministicAuditEventId, writeAuditEvent } from '../../src/modules/audit-ledger/write-audit-event.js';
 
 /**

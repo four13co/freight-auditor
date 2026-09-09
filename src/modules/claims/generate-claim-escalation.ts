@@ -1,15 +1,6 @@
 import type pg from 'pg';
 import { deterministicAuditEventId, writeAuditEvent } from '../audit-ledger/write-audit-event.js';
-import { isClaimTerminalStatus } from './claim-status.js';
-
-/**
- * The audit_event name P5.B.2's generateClaimFollowUp writes. Duplicated
- * here as a string literal rather than imported from
- * generate-claim-follow-up.ts (P5.B.2/#184, still open/unmerged) -- same
- * treatment CLAIM_TERMINAL_EVENTS (P5.A.5) gave resolve-claim.ts's event
- * names. Once #184 merges, this should import the constant instead.
- */
-export const CLAIM_FOLLOW_UP_EVENT = 'claim.follow_up_sent';
+import { isClaimTerminalStatus, CLAIM_FOLLOW_UP_EVENT } from './claim-status.js';
 
 const DEFAULT_GRACE_PERIOD_DAYS = 7;
 

@@ -1,13 +1,6 @@
 import type pg from 'pg';
 import { z } from 'zod';
-import { CLAIM_TERMINAL_EVENT_NAMES } from './claim-status.js';
-
-/**
- * The audit_event name #184's generateClaimFollowUp (P5.B.2, still
- * open/unmerged) writes once a claim has been followed up on. Duplicated
- * as a string literal, same treatment #187 gave it as CLAIM_FOLLOW_UP_EVENT.
- */
-const CLAIM_FOLLOW_UP_EVENT = 'claim.follow_up_sent';
+import { CLAIM_TERMINAL_EVENT_NAMES, CLAIM_FOLLOW_UP_EVENT } from './claim-status.js';
 
 const schema = z.object({
   clientId: z.uuid(),

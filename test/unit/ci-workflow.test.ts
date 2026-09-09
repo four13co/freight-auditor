@@ -119,6 +119,43 @@ describe('ci.yml (unit, merge-commit trigger)', () => {
     );
   });
 
+  describe('unused Google Chrome apt source removal (86e36n9fz)', () => {
+    // playwright install-deps runs apt-get update, which refreshes every
+    // apt source configured on the runner -- including ubuntu-latest's
+    // pre-installed google-chrome.list, which this suite never installs
+    // from. A transient checksum mismatch on that unrelated mirror failed
+    // this step twice on otherwise-green PRs (#355, #356). Removing the
+    // source before it can be refreshed eliminates the flake's actual
+    // cause; asserted before the cache step (not merely "somewhere before
+    // install") so a future edit can't silently move it to only apply on a
+    // cache miss.
+    it.each(['web', 'web-fullstack', 'web-fullstack-auth'])(
+      'job "%s" removes the unused Google Chrome apt source immediately before "Cache Playwright browsers"',
+      (jobName) => {
+        const workflow = loadCiWorkflow();
+        const job = getJob(workflow, jobName);
+        const cacheIndex = job.steps.findIndex((s) => s.name === 'Cache Playwright browsers');
+        expect(cacheIndex, `expected "${jobName}" to have a "Cache Playwright browsers" step`).toBeGreaterThanOrEqual(0);
+
+        const removeStep = job.steps[cacheIndex - 1];
+        expect(removeStep, `expected a step immediately before "Cache Playwright browsers" in "${jobName}"`).toBeDefined();
+        expect(removeStep!.name).toBe('Remove unused Google Chrome apt source');
+        expect(removeStep!.run).toBe('sudo rm -f /etc/apt/sources.list.d/google-chrome.list');
+      },
+    );
+
+    it.each(['web', 'web-fullstack', 'web-fullstack-auth'])(
+      'job "%s" still installs and runs the real Playwright/Chromium install step unchanged',
+      (jobName) => {
+        const workflow = loadCiWorkflow();
+        const job = getJob(workflow, jobName);
+        const installStep = job.steps.find((s) => s.name === 'Install Playwright browsers');
+        expect(installStep, `expected "${jobName}" to have an "Install Playwright browsers" step`).toBeDefined();
+        expect(installStep!.run).toBe('npx playwright install-deps chromium && npx playwright install chromium');
+      },
+    );
+  });
+
   describe('web-fullstack-auth job (86e2vqggf)', () => {
     // This job exists specifically to exercise the path web-fullstack does
     // NOT (a real better-auth session, no DEV_AUTH_HEADERS) -- its defining

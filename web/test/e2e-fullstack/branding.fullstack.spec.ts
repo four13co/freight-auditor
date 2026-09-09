@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import pg from 'pg';
+import { seedDedicatedTenant } from './seed-dedicated-tenant.js';
 
 // 86e33tmnp: full-stack e2e for per-customer white-label branding
 // (86e320pkc) -- real Fastify server + real Postgres + real browser, no
@@ -44,16 +45,8 @@ let clientD2Id: string;
 test.beforeAll(async () => {
   pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
 
-  const clientD1 = await pool.query<{ id: string }>(
-    `INSERT INTO client (name, slug) VALUES ('E2E Branding Client D1', $1) RETURNING id`,
-    [`e2e-branding-d1-${Date.now()}`],
-  );
-  clientD1Id = clientD1.rows[0]!.id;
-  const clientD2 = await pool.query<{ id: string }>(
-    `INSERT INTO client (name, slug) VALUES ('E2E Branding Client D2', $1) RETURNING id`,
-    [`e2e-branding-d2-${Date.now()}`],
-  );
-  clientD2Id = clientD2.rows[0]!.id;
+  clientD1Id = (await seedDedicatedTenant(pool, { clientName: 'E2E Branding Client D1' })).clientId;
+  clientD2Id = (await seedDedicatedTenant(pool, { clientName: 'E2E Branding Client D2' })).clientId;
 
   await pool.query(
     `INSERT INTO customer_branding (client_id, domain, logo_url, primary_color, secondary_color)

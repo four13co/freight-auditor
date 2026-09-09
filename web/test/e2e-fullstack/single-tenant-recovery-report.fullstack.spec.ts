@@ -2,6 +2,7 @@ import { test, expect } from '@playwright/test';
 import pg from 'pg';
 import { withTenantTx } from '../../../src/db/tenant-context.js';
 import { assertSeeded } from '../e2e-fullstack-auth/assert-seeded.js';
+import { seedDedicatedTenant } from './seed-dedicated-tenant.js';
 
 // 86e33qzn3: full-stack e2e for the single-tenant recovery report
 // (recovery-report-routes.ts) -- real Fastify server + real Postgres, real
@@ -37,30 +38,21 @@ let userBId: string;
 test.beforeAll(async () => {
   pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
 
-  const clientA = await pool.query<{ id: string }>(
-    `INSERT INTO client (name, slug) VALUES ('E2E Tenant Recovery Client A', $1) RETURNING id`,
-    [`e2e-tenant-recovery-a-${Date.now()}`],
-  );
-  clientAId = clientA.rows[0]!.id;
-  const clientB = await pool.query<{ id: string }>(
-    `INSERT INTO client (name, slug) VALUES ('E2E Tenant Recovery Client B', $1) RETURNING id`,
-    [`e2e-tenant-recovery-b-${Date.now()}`],
-  );
-  clientBId = clientB.rows[0]!.id;
+  const seededA = await seedDedicatedTenant(pool, {
+    clientName: 'E2E Tenant Recovery Client A',
+    role: 'client_admin',
+    userName: 'E2E Tenant Recovery User A',
+  });
+  clientAId = seededA.clientId;
+  userAId = seededA.userId!;
 
-  const userA = await pool.query<{ id: string }>(
-    `INSERT INTO app_user (email, full_name) VALUES ($1, 'E2E Tenant Recovery User A') RETURNING id`,
-    [`e2e-tenant-recovery-a-${Date.now()}@example.test`],
-  );
-  userAId = userA.rows[0]!.id;
-  await pool.query(`INSERT INTO membership (user_id, client_id, role) VALUES ($1, $2, 'client_admin')`, [userAId, clientAId]);
-
-  const userB = await pool.query<{ id: string }>(
-    `INSERT INTO app_user (email, full_name) VALUES ($1, 'E2E Tenant Recovery User B') RETURNING id`,
-    [`e2e-tenant-recovery-b-${Date.now()}@example.test`],
-  );
-  userBId = userB.rows[0]!.id;
-  await pool.query(`INSERT INTO membership (user_id, client_id, role) VALUES ($1, $2, 'client_admin')`, [userBId, clientBId]);
+  const seededB = await seedDedicatedTenant(pool, {
+    clientName: 'E2E Tenant Recovery Client B',
+    role: 'client_admin',
+    userName: 'E2E Tenant Recovery User B',
+  });
+  clientBId = seededB.clientId;
+  userBId = seededB.userId!;
 
   await withTenantTx({ clientIds: [clientAId, clientBId], internal: true }, async (client) => {
     // Client A: claimed 400, recovered 150 (same currency) -> outstanding 250.

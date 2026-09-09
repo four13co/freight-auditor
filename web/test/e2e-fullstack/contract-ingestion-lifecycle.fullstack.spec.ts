@@ -10,6 +10,7 @@ import { AZURE_DOCUMENT_INTELLIGENCE_API_VERSION, DEFAULT_AZURE_DOCUMENT_MODEL, 
 import { contractExtractionIdempotencyKey } from '../../../src/modules/contracts/validate-contract-extraction-response.js';
 import { CONTRACT_EXTRACTION_SCHEMA_VERSION, type ContractExtraction } from '../../../src/modules/contracts/contract-extraction-schema.js';
 import { makeTextPdf } from '../../../test/fixtures/pdf-invoice.js';
+import { seedDedicatedTenant } from './seed-dedicated-tenant.js';
 
 // 86e33qyyg: full-stack e2e for contract ingestion -> versioning -> finalization
 // -- real Fastify server + real Postgres, real HTTP for the two steps that
@@ -89,17 +90,13 @@ test.beforeAll(async ({ request }) => {
 
   // Dedicated tenant for this spec (see header note) -- ids come from the
   // DB's own gen_random_uuid() defaults, so they satisfy zod's strict uuid().
-  const clientRow = await pool.query<{ id: string }>(
-    `INSERT INTO client (name, slug) VALUES ('E2E Contract Ingestion Fixture Client', $1) RETURNING id`,
-    [`e2e-contract-ingestion-${Date.now()}`],
-  );
-  clientId = clientRow.rows[0]!.id;
-  const userRow = await pool.query<{ id: string }>(
-    `INSERT INTO app_user (email, full_name) VALUES ($1, 'E2E Contract Ingestion Fixture User') RETURNING id`,
-    [`e2e-contract-ingestion-${Date.now()}@example.test`],
-  );
-  userId = userRow.rows[0]!.id;
-  await pool.query(`INSERT INTO membership (user_id, client_id, role) VALUES ($1, $2, 'client_admin')`, [userId, clientId]);
+  const seeded = await seedDedicatedTenant(pool, {
+    clientName: 'E2E Contract Ingestion Fixture Client',
+    role: 'client_admin',
+    userName: 'E2E Contract Ingestion Fixture User',
+  });
+  clientId = seeded.clientId;
+  userId = seeded.userId!;
 
   const carrier = await assertSeededRow<{ id: string }>(
     pool,

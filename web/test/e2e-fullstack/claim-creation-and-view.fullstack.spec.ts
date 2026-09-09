@@ -5,6 +5,7 @@ import { seedCriteria } from '../../../scripts/seed-criteria.mjs';
 import { createDisputeFromFindings } from '../../../src/modules/disputes/create-dispute-from-findings.js';
 import { approveDispute } from '../../../src/modules/disputes/approve-dispute.js';
 import { acceptDispute } from '../../../src/modules/disputes/resolve-dispute.js';
+import { seedDedicatedTenant } from './seed-dedicated-tenant.js';
 
 // 86e33qzmb: full-stack e2e for claim creation from a resolved dispute
 // (claim-routes.ts) and its list/detail read APIs (claim-recovery-routes.ts)
@@ -45,23 +46,15 @@ test.beforeAll(async ({ request }) => {
   pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
   await seedCriteria({ client: pool });
 
-  const clientRow = await pool.query<{ id: string }>(
-    `INSERT INTO client (name, slug) VALUES ('E2E Claim Creation Fixture Client', $1) RETURNING id`,
-    [`e2e-claim-creation-${Date.now()}`],
-  );
-  clientId = clientRow.rows[0]!.id;
-  const userRow = await pool.query<{ id: string }>(
-    `INSERT INTO app_user (email, full_name) VALUES ($1, 'E2E Claim Creation Fixture User') RETURNING id`,
-    [`e2e-claim-creation-${Date.now()}@example.test`],
-  );
-  userId = userRow.rows[0]!.id;
-  await pool.query(`INSERT INTO membership (user_id, client_id, role) VALUES ($1, $2, 'client_admin')`, [userId, clientId]);
-
-  const carrier = await pool.query<{ id: string }>(
-    `INSERT INTO carrier (name) VALUES ($1) RETURNING id`,
-    [`E2E Claim Creation Carrier ${Date.now()}`],
-  );
-  carrierId = carrier.rows[0]!.id;
+  const seeded = await seedDedicatedTenant(pool, {
+    clientName: 'E2E Claim Creation Fixture Client',
+    role: 'client_admin',
+    userName: 'E2E Claim Creation Fixture User',
+    carrierName: `E2E Claim Creation Carrier ${Date.now()}`,
+  });
+  clientId = seeded.clientId;
+  userId = seeded.userId!;
+  carrierId = seeded.carrierId!;
 
   await withTenantTx({ clientIds: [clientId], internal: true }, async (client) => {
     const invoice = await client.query<{ id: string }>(

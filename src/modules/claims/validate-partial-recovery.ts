@@ -1,4 +1,5 @@
 import { Decimal } from 'decimal.js';
+import { validateRecoveryAmountAndCurrency } from './validate-recovery-amount-and-currency.js';
 
 /**
  * Pure validation for recording a partial recovery event against a claim
@@ -46,17 +47,19 @@ export function validatePartialRecovery(
   currency: string | null,
   priorRecoveredTotal: string,
 ): ValidatedPartialRecovery {
-  if (new Decimal(amountRecovered).lte(0)) throw new PartialRecoveryError('NON_POSITIVE_AMOUNT');
-  if (currency === null) throw new PartialRecoveryError('MISSING_CURRENCY');
-  if (claim.currency !== null && currency !== claim.currency) throw new PartialRecoveryError('MIXED_CURRENCY');
+  const validated = validateRecoveryAmountAndCurrency(amountRecovered, currency, claim.currency, {
+    onNonPositiveAmount: () => { throw new PartialRecoveryError('NON_POSITIVE_AMOUNT'); },
+    onMissingCurrency: () => { throw new PartialRecoveryError('MISSING_CURRENCY'); },
+    onMixedCurrency: () => { throw new PartialRecoveryError('MIXED_CURRENCY'); },
+  });
 
-  const cumulative = new Decimal(priorRecoveredTotal).plus(amountRecovered);
+  const cumulative = new Decimal(priorRecoveredTotal).plus(validated.amount);
   if (cumulative.gt(new Decimal(claim.amountClaimed))) throw new PartialRecoveryError('EXCEEDS_CLAIMED_AMOUNT');
 
   return {
     claimId: claim.id,
-    amountRecovered,
-    currency,
+    amountRecovered: validated.amount,
+    currency: validated.currency,
     cumulativeRecovered: cumulative.toFixed(4),
     isFinal: cumulative.eq(new Decimal(claim.amountClaimed)),
   };

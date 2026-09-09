@@ -1,5 +1,6 @@
 import { Decimal } from 'decimal.js';
 import { isClaimTerminalStatus } from './claim-status.js';
+import { validateRecoveryAmountAndCurrency } from './validate-recovery-amount-and-currency.js';
 
 /**
  * Pure validation for the three ways a claim reaches a terminal outcome
@@ -74,19 +75,21 @@ export function validateClaimResolution(
   }
 
   if (amountRecovered === null) throw new ClaimResolutionError('NON_POSITIVE_AMOUNT');
-  if (new Decimal(amountRecovered).lte(0)) throw new ClaimResolutionError('NON_POSITIVE_AMOUNT');
-  if (currency === null) throw new ClaimResolutionError('MISSING_CURRENCY');
-  if (claim.currency !== null && currency !== claim.currency) throw new ClaimResolutionError('MIXED_CURRENCY');
+  const validated = validateRecoveryAmountAndCurrency(amountRecovered, currency, claim.currency, {
+    onNonPositiveAmount: () => { throw new ClaimResolutionError('NON_POSITIVE_AMOUNT'); },
+    onMissingCurrency: () => { throw new ClaimResolutionError('MISSING_CURRENCY'); },
+    onMixedCurrency: () => { throw new ClaimResolutionError('MIXED_CURRENCY'); },
+  });
 
-  const cumulative = new Decimal(priorRecoveredTotal).plus(amountRecovered);
+  const cumulative = new Decimal(priorRecoveredTotal).plus(validated.amount);
   const claimed = new Decimal(claim.amountClaimed);
 
   if (kind === 'FULL_RECOVERY') {
     if (!cumulative.eq(claimed)) throw new ClaimResolutionError('FULL_RECOVERY_AMOUNT_MISMATCH');
-    return { claimId: claim.id, kind, amountRecovered, currency, newStatus: 'recovered' };
+    return { claimId: claim.id, kind, amountRecovered: validated.amount, currency: validated.currency, newStatus: 'recovered' };
   }
 
   // WRITE_OFF with a nonzero final recovery
   if (cumulative.gte(claimed)) throw new ClaimResolutionError('WRITE_OFF_EXCEEDS_CLAIMED_AMOUNT');
-  return { claimId: claim.id, kind, amountRecovered, currency, newStatus: 'written_off' };
+  return { claimId: claim.id, kind, amountRecovered: validated.amount, currency: validated.currency, newStatus: 'written_off' };
 }

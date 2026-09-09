@@ -10,13 +10,9 @@ import {
   type ExtractInvoiceFromTextImpl,
 } from './pdf-extract.js';
 import { matchCarrierName } from './carrier-match.js';
-import { evaluateInvoice, type AuditResult } from '../evaluator/evaluate-invoice.js';
-import { STANDARD_RUBRIC } from '../rubric-resolver/standard-rubric.js';
-import { CONTRACT_RUBRIC } from '../rubric-resolver/contract-rubric.js';
+import type { AuditResult } from '../evaluator/evaluate-invoice.js';
 import { persistAuditRun, type PersistedRun } from '../evaluator/persist.js';
-import { lookupContractRate } from '../rate-engine/rate-lookup.js';
-import { detectDuplicateInvoice } from './duplicate-invoice.js';
-import { resolveShipmentReferenceMatch } from './shipment-reference.js';
+import { resolveAndEvaluate } from './resolve-and-evaluate.js';
 import { z } from 'zod';
 import { deterministicAuditEventId, writeAuditEvent } from '../audit-ledger/write-audit-event.js';
 
@@ -224,19 +220,11 @@ export async function confirmInvoiceDraft(
     });
   }
 
-  let result: AuditResult;
-  const duplicateInvoice = await detectDuplicateInvoice(
-    client, input.clientId, finalInvoice.invoiceNumber, finalInvoice.transactionSet,
-  );
-  const shipmentReferenceMatch = await resolveShipmentReferenceMatch(client, input.clientId, finalInvoice.shipmentReferences);
-  let resolvedInputs: Record<string, unknown> = { duplicateInvoice, shipmentReferenceMatch };
-  if (input.contractVersionId) {
-    const rate = await lookupContractRate(client, input.contractVersionId, 'LINEHAUL');
-    resolvedInputs = { ...resolvedInputs, linehaulRate: rate };
-    result = evaluateInvoice(finalInvoice, CONTRACT_RUBRIC, { linehaulRate: rate, duplicateInvoice, shipmentReferenceMatch });
-  } else {
-    result = evaluateInvoice(finalInvoice, STANDARD_RUBRIC, { duplicateInvoice, shipmentReferenceMatch });
-  }
+  // Shared with ingestInvoice() via resolveAndEvaluate() (86e367qyq) -- both
+  // call sites resolve the same duplicateInvoice/shipmentReferenceMatch
+  // facts and branch on contractVersionId identically.
+  const { result, resolvedInputs }: { result: AuditResult; resolvedInputs: Record<string, unknown> } =
+    await resolveAndEvaluate(client, input.clientId, finalInvoice, input.contractVersionId);
 
   const persisted = await persistAuditRun(client, {
     clientId: input.clientId,

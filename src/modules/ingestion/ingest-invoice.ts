@@ -6,13 +6,9 @@ import { parse210 } from './parse-210.js';
 import { parse310 } from './parse-310.js';
 import { resolveChargeCode } from '../reference-data/crosswalk.js';
 import type { Categorize } from './charge-fact.js';
-import { evaluateInvoice, type AuditResult } from '../evaluator/evaluate-invoice.js';
-import { CONTRACT_RUBRIC } from '../rubric-resolver/contract-rubric.js';
-import { STANDARD_RUBRIC } from '../rubric-resolver/standard-rubric.js';
+import type { AuditResult } from '../evaluator/evaluate-invoice.js';
 import { persistAuditRun, type PersistedRun } from '../evaluator/persist.js';
-import { lookupContractRate } from '../rate-engine/rate-lookup.js';
-import { detectDuplicateInvoice } from './duplicate-invoice.js';
-import { resolveShipmentReferenceMatch } from './shipment-reference.js';
+import { resolveAndEvaluate } from './resolve-and-evaluate.js';
 import { deterministicAuditEventId, writeAuditEvent } from '../audit-ledger/write-audit-event.js';
 
 /**
@@ -179,20 +175,11 @@ export async function ingestInvoice(
   // miss (contractVersionId given but no matching contract_rate row) is
   // reported honestly as linehaulRate: null -- the evaluator turns that into
   // UNASSESSABLE, never a guessed/defaulted rate (rate-lookup.ts's own
-  // contract).
-  let result: AuditResult;
-  const duplicateInvoice = await detectDuplicateInvoice(
-    client, input.clientId, invoice.invoiceNumber, invoice.transactionSet,
-  );
-  const shipmentReferenceMatch = await resolveShipmentReferenceMatch(client, input.clientId, invoice.shipmentReferences);
-  let resolvedInputs: Record<string, unknown> = { duplicateInvoice, shipmentReferenceMatch };
-  if (input.contractVersionId) {
-    const rate = await lookupContractRate(client, input.contractVersionId, 'LINEHAUL');
-    resolvedInputs = { ...resolvedInputs, linehaulRate: rate };
-    result = evaluateInvoice(invoice, CONTRACT_RUBRIC, { linehaulRate: rate, duplicateInvoice, shipmentReferenceMatch });
-  } else {
-    result = evaluateInvoice(invoice, STANDARD_RUBRIC, { duplicateInvoice, shipmentReferenceMatch });
-  }
+  // contract). Shared with confirmInvoiceDraft() via resolveAndEvaluate()
+  // (86e367qyq) -- both call sites resolve the same duplicateInvoice/
+  // shipmentReferenceMatch facts and branch on contractVersionId identically.
+  const { result, resolvedInputs }: { result: AuditResult; resolvedInputs: Record<string, unknown> } =
+    await resolveAndEvaluate(client, input.clientId, invoice, input.contractVersionId);
 
   // 4. Persist (variance_finding derivation already lives inside
   // persistAuditRun, 86e2v17p5 -- this item only calls it, per its own

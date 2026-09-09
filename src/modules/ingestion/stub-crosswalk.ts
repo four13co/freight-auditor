@@ -1,14 +1,13 @@
 /**
  * 86e2xcnja: the one shared definition of the STUB charge-code crosswalk --
  * this is NOT the real DB-backed crosswalk (resolveChargeCode,
- * reference-data/crosswalk.ts), which has never been wired to any parser
- * call anywhere in this codebase (ingest-invoice.ts's own comment documents
- * that as a deliberate, separate, unscoped piece of work). This is the
- * minimal placeholder categorize map three call sites each redefined byte-
- * for-byte (or as an overlapping subset): ingest-invoice.ts's production
- * categorize callback, edi-golden.ts's test fixture, and
- * seed-fullstack-e2e-fixture.mjs's demo-data seed. LINEHAUL is the only
- * category CONTRACT.RATE_VARIANCE reads (fact-bundle.ts).
+ * reference-data/crosswalk.ts). 86e32tg6n wired resolveChargeCode into
+ * production: ingest-invoice.ts's resolveCategorizer now calls it directly
+ * for every EDI document it parses, and this stub map has zero production
+ * call sites left (verified via grep) -- it's used only by
+ * test/unit/stub-crosswalk.test.ts, test/fixtures/edi-golden.ts, and
+ * scripts/seed-fullstack-e2e-fixture.mjs's demo-data seed. LINEHAUL is the
+ * only category CONTRACT.RATE_VARIANCE reads (fact-bundle.ts).
  *
  * Named distinctly from "crosswalk" (the real DB-backed concept) so nothing
  * reads this as production charge-code resolution logic.

@@ -10,12 +10,12 @@ import type pg from 'pg';
  * audit_run; a caller wanting a per-invoice grouping does that itself.
  *
  * ruleDescription is deliberately omitted here (unlike list-findings.ts):
- * gate_failure.criterion_id is currently always NULL (persist.ts never calls
- * 86e2v2dh1's resolver -- confirmed empirically, same gap noted in PR #92),
- * so a criterion_version join would only ever resolve to null. defect/
- * citation already carry the human-readable explanation directly on the row
- * (persist.ts writes both verbatim from the evaluator's GateFailure), so
- * there's nothing a criterion join would add today.
+ * persist.ts now populates gate_failure.criterion_id via resolveCriterionIds
+ * (the query below does an INNER JOIN on criterion.id = gate_failure.criterion_id),
+ * but defect/citation already carry the human-readable explanation directly
+ * on the row (persist.ts writes both verbatim from the evaluator's
+ * GateFailure), so there's nothing a criterion_version join would add today
+ * beyond criterionKey, which the join already selects.
  */
 export interface GateFailureRow {
   id: string;

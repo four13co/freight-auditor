@@ -25,8 +25,22 @@ const MIGRATIONS_DIR = join(__dirname, '../../migrations');
  * unapplied migration on the next deploy and re-run its UP body against
  * objects that already exist -- a real deploy failure, not a hypothetical.
  * Grandfathered, not renumbered, for the identical reason 0019 was.
+ *
+ * 86e367r87: pinned to the EXACT already-known filenames per number, not the
+ * bare number -- a bare-number allowlist (the prior form of this check)
+ * silently cleared ANY count of files under 0019/0067 forever, including a
+ * brand-new file introduced later that happens to reuse one of those
+ * numbers. Confirmed as a real gap: adding a temp third 0019_*.sql file
+ * against the old bare-number check passed when it should have failed.
  */
-const GRANDFATHERED_DUPLICATE_NUMBERS = new Set(['0019', '0067']);
+const GRANDFATHERED_DUPLICATE_FILES: ReadonlyMap<string, ReadonlySet<string>> = new Map([
+  ['0019', new Set(['0019_audit_replay_manifest.sql', '0019_coverage_marker.sql'])],
+  ['0067', new Set([
+    '0067_discovery_rule_proposal_backtest.sql',
+    '0067_dispute_comm_dedupe_key.sql',
+    '0067_workflow_outbox_message_recovery.sql',
+  ])],
+]);
 
 /**
  * node-pg-migrate's checkOrder zips already-applied migration names against
@@ -37,22 +51,55 @@ const GRANDFATHERED_DUPLICATE_NUMBERS = new Set(['0019', '0067']);
  * is the one form of that collision this repo can catch statically, without
  * a real DB or knowledge of what's already applied in production.
  */
+export function findUnexpectedDuplicateNumbers(files: readonly string[]): [string, string[]][] {
+  const numbers = new Map<string, string[]>();
+  for (const file of files) {
+    const match = /^(\d+)_/.exec(file);
+    if (!match) continue;
+    const number = match[1]!;
+    const existing = numbers.get(number) ?? [];
+    existing.push(file);
+    numbers.set(number, existing);
+  }
+
+  return [...numbers.entries()].filter(([number, matchingFiles]) => {
+    if (matchingFiles.length <= 1) return false;
+    const grandfathered = GRANDFATHERED_DUPLICATE_FILES.get(number);
+    if (!grandfathered) return true;
+    // A file not in the exact known set is a NEW collision on top of an
+    // already-grandfathered number -- still a failure, not silently cleared.
+    return matchingFiles.some((f) => !grandfathered.has(f));
+  });
+}
+
 describe('migration file numbering', () => {
   it('has no new migration files claiming an already-used leading number', () => {
     const files = readdirSync(MIGRATIONS_DIR).filter((f) => f.endsWith('.sql'));
-    const numbers = new Map<string, string[]>();
-    for (const file of files) {
-      const match = /^(\d+)_/.exec(file);
-      if (!match) continue;
-      const number = match[1]!;
-      const existing = numbers.get(number) ?? [];
-      existing.push(file);
-      numbers.set(number, existing);
-    }
+    expect(findUnexpectedDuplicateNumbers(files)).toEqual([]);
+  });
 
-    const duplicates = [...numbers.entries()].filter(
-      ([number, matchingFiles]) => matchingFiles.length > 1 && !GRANDFATHERED_DUPLICATE_NUMBERS.has(number),
-    );
-    expect(duplicates).toEqual([]);
+  it('86e367r87: does not silently clear a NEW file that reuses an already-grandfathered number', () => {
+    const files = [
+      '0019_audit_replay_manifest.sql',
+      '0019_coverage_marker.sql',
+      '0019_zzz_new_intruder.sql',
+    ];
+    expect(findUnexpectedDuplicateNumbers(files)).toEqual([['0019', files]]);
+  });
+
+  it('still clears the exact known grandfathered 0019/0067 file sets unchanged', () => {
+    const files = [
+      '0019_audit_replay_manifest.sql',
+      '0019_coverage_marker.sql',
+      '0067_discovery_rule_proposal_backtest.sql',
+      '0067_dispute_comm_dedupe_key.sql',
+      '0067_workflow_outbox_message_recovery.sql',
+    ];
+    expect(findUnexpectedDuplicateNumbers(files)).toEqual([]);
+  });
+
+  it('still fails on a fresh, non-grandfathered duplicate number', () => {
+    const files = ['0099_a.sql', '0099_b.sql'];
+    expect(findUnexpectedDuplicateNumbers(files)).toEqual([['0099', files]]);
   });
 });

@@ -58,44 +58,47 @@ export async function registerDisputeReviewRoutes(routes: FastifyInstance): Prom
     return detail;
   });
 
-  routes.post('/api/disputes/:id/approve', async (request, reply) => {
-    const { id } = request.params as { id: string };
-    if (!isUuid(id)) {
-      await reply.code(400).send({ error: 'invalid dispute id: must be a well-formed UUID' });
-      return;
-    }
-    if (!request.actorUserId) {
-      await reply.code(401).send({ error: 'authenticated analyst identity required' });
-      return;
-    }
-
-    const result = await withTenantTx(request.tenantContext!, (client) =>
-      approveDispute(client, id, request.actorUserId!));
-    if (!result.found) {
-      await reply.code(409).send({ error: 'dispute not found or not in a draft state' });
-      return;
-    }
-    return { disputeId: id, status: 'sent' };
-  });
-
-  // P4.C.9: the carrier-response lifecycle after a dispute is sent --
-  // accepted/rejected/partial, then closed. Same actorUserId + isUuid
-  // guards as /approve above; each resolver in resolve-dispute.ts already
+  // P4.C.9: dispute approval + the carrier-response lifecycle after a
+  // dispute is sent -- accepted/rejected/partial, then closed. Each
+  // resolver (approveDispute/acceptDispute/rejectDispute/...) already
   // enforces its own from-state, so a 409 here means "not found, or not
   // currently in a state this transition accepts from" -- the caller
-  // cannot distinguish those two without leaking existence across tenants,
-  // matching approve's own 409 semantics.
+  // cannot distinguish those two without leaking existence across tenants.
   //
-  // 86e367qxx: these 4 record a CARRIER's response to a dispute (relayed by
-  // an internal analyst -- there is no carrier-facing portal) -- not a
+  // 86e367qxx (accept/reject/partial-accept/close) + 86e36a42c (approve,
+  // filed as a follow-up when approve's own larger blast radius -- it
+  // delivers to a real carrier -- was flagged out of 86e367qxx's original
+  // scope): these 5 all act on a CARRIER's dispute state (relayed by an
+  // internal analyst -- there is no carrier-facing portal), not a
   // client-portal user's own action on their own dispute. Own nested scope
   // + registerAnalystOnlyPreHandler (runs AFTER the tenant-auth preHandler
   // above, using the request.actorRole it already set) so a client_viewer/
   // client_admin membership -- which legitimately satisfies the read-side
   // tenant-auth check above for GET /api/disputes/:id -- is rejected here
-  // with 403 instead of being able to fabricate a carrier response.
+  // with 403 instead of being able to fabricate a carrier response or
+  // deliver one.
   await routes.register(async (mutationRoutes) => {
     await registerAnalystOnlyPreHandler(mutationRoutes);
+
+    mutationRoutes.post('/api/disputes/:id/approve', async (request, reply) => {
+      const { id } = request.params as { id: string };
+      if (!isUuid(id)) {
+        await reply.code(400).send({ error: 'invalid dispute id: must be a well-formed UUID' });
+        return;
+      }
+      if (!request.actorUserId) {
+        await reply.code(401).send({ error: 'authenticated analyst identity required' });
+        return;
+      }
+
+      const result = await withTenantTx(request.tenantContext!, (client) =>
+        approveDispute(client, id, request.actorUserId!));
+      if (!result.found) {
+        await reply.code(409).send({ error: 'dispute not found or not in a draft state' });
+        return;
+      }
+      return { disputeId: id, status: 'sent' };
+    });
 
     mutationRoutes.post('/api/disputes/:id/accept', async (request, reply) => {
       const { id } = request.params as { id: string };

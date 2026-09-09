@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { withTenantTx } from '../db/tenant-context.js';
-import { registerTenantAuthPreHandler } from '../modules/findings/tenant-auth.js';
+import { registerTenantAuthPreHandler, registerAnalystOnlyPreHandler } from '../modules/findings/tenant-auth.js';
 import { isUuid } from '../shared/request-validation.js';
 import { isPaymentAuthorizationAction, type PaymentAuthorizationAction } from '../modules/payments/payment-authorization-action.js';
 import { authorizePayment, AuthorizePaymentError } from '../modules/payments/authorize-payment.js';
@@ -37,79 +37,93 @@ export async function registerPaymentRoutes(paymentRoutes: FastifyInstance): Pro
     return { pending };
   });
 
-  paymentRoutes.post('/api/audit-runs/:id/payment-authorization', async (request, reply) => {
-    const { id } = request.params as { id: string };
-    const body = request.body as { action?: unknown; rationale?: unknown };
+  // 86e36beq2 + 86e367r9x: both routes below make or configure a payment
+  // decision for the tenant -- authorizePayment can approve/hold a real
+  // payment (authorize-payment.ts's own contract: "an authenticated human"
+  // analyst action, "no automatic payment approval"), and upsertPaymentPolicy
+  // configures the policy that decision-generation reads. Own nested scope
+  // + registerAnalystOnlyPreHandler (runs AFTER the tenant-auth preHandler
+  // above, using the request.actorRole it already set) so a client_viewer/
+  // client_admin membership is rejected with 403 instead of being able to
+  // self-approve their own payment or reconfigure the policy governing it --
+  // same pattern PR #336 established for the dispute/finding mutation routes.
+  await paymentRoutes.register(async (analystOnlyRoutes) => {
+    await registerAnalystOnlyPreHandler(analystOnlyRoutes);
 
-    if (!isUuid(id)) {
-      await reply.code(400).send({ error: 'invalid audit run id: must be a well-formed UUID' });
-      return;
-    }
-    if (!isPaymentAuthorizationAction(body.action)) {
-      await reply.code(400).send({ error: 'invalid action: must be approve or hold' });
-      return;
-    }
-    if (body.rationale !== undefined && typeof body.rationale !== 'string') {
-      await reply.code(400).send({ error: 'invalid rationale: must be a string' });
-      return;
-    }
-    if (!request.actorUserId) {
-      await reply.code(401).send({ error: 'authenticated analyst identity required' });
-      return;
-    }
-    const clientId = request.tenantContext!.clientIds?.[0];
-    if (!clientId) {
-      await reply.code(401).send({ error: 'unauthorized' });
-      return;
-    }
+    analystOnlyRoutes.post('/api/audit-runs/:id/payment-authorization', async (request, reply) => {
+      const { id } = request.params as { id: string };
+      const body = request.body as { action?: unknown; rationale?: unknown };
 
-    try {
-      const result = await withTenantTx(request.tenantContext!, (client) =>
-        authorizePayment(client, {
-          clientId,
-          auditRunId: id,
-          action: body.action as PaymentAuthorizationAction,
-          rationale: body.rationale as string | undefined,
-          actorUserId: request.actorUserId!,
-        }),
-      );
-      reply.code(result.created ? 201 : 200);
-      return { auditRunId: id, action: result.action, decisionId: result.decisionId };
-    } catch (error) {
-      if (error instanceof AuthorizePaymentError) {
-        await reply.code(404).send({ error: 'audit run not found' });
+      if (!isUuid(id)) {
+        await reply.code(400).send({ error: 'invalid audit run id: must be a well-formed UUID' });
         return;
       }
-      throw error;
-    }
-  });
-
-  // 86e367r9x: configuration write for the calling tenant's own payment
-  // policy. clientId/configuredBy are always server-derived (tenantContext /
-  // actorUserId), never taken from the body, so a caller can't write another
-  // client's policy or attribute the change to a different user.
-  paymentRoutes.put('/api/payment-policy', async (request, reply) => {
-    if (!request.actorUserId) {
-      await reply.code(401).send({ error: 'authenticated analyst identity required' });
-      return;
-    }
-    const clientId = request.tenantContext!.clientIds?.[0];
-    if (!clientId) {
-      await reply.code(401).send({ error: 'unauthorized' });
-      return;
-    }
-    const body = request.body as Record<string, unknown>;
-
-    try {
-      const policy = await withTenantTx(request.tenantContext!, (client) =>
-        upsertPaymentPolicy(client, { ...body, clientId, configuredBy: request.actorUserId }));
-      return policy;
-    } catch (error) {
-      if (error instanceof PaymentPolicyValidationError) {
-        await reply.code(400).send({ error: error.code, issues: error.issues });
+      if (!isPaymentAuthorizationAction(body.action)) {
+        await reply.code(400).send({ error: 'invalid action: must be approve or hold' });
         return;
       }
-      throw error;
-    }
+      if (body.rationale !== undefined && typeof body.rationale !== 'string') {
+        await reply.code(400).send({ error: 'invalid rationale: must be a string' });
+        return;
+      }
+      if (!request.actorUserId) {
+        await reply.code(401).send({ error: 'authenticated analyst identity required' });
+        return;
+      }
+      const clientId = request.tenantContext!.clientIds?.[0];
+      if (!clientId) {
+        await reply.code(401).send({ error: 'unauthorized' });
+        return;
+      }
+
+      try {
+        const result = await withTenantTx(request.tenantContext!, (client) =>
+          authorizePayment(client, {
+            clientId,
+            auditRunId: id,
+            action: body.action as PaymentAuthorizationAction,
+            rationale: body.rationale as string | undefined,
+            actorUserId: request.actorUserId!,
+          }),
+        );
+        reply.code(result.created ? 201 : 200);
+        return { auditRunId: id, action: result.action, decisionId: result.decisionId };
+      } catch (error) {
+        if (error instanceof AuthorizePaymentError) {
+          await reply.code(404).send({ error: 'audit run not found' });
+          return;
+        }
+        throw error;
+      }
+    });
+
+    // 86e367r9x: configuration write for the calling tenant's own payment
+    // policy. clientId/configuredBy are always server-derived (tenantContext /
+    // actorUserId), never taken from the body, so a caller can't write another
+    // client's policy or attribute the change to a different user.
+    analystOnlyRoutes.put('/api/payment-policy', async (request, reply) => {
+      if (!request.actorUserId) {
+        await reply.code(401).send({ error: 'authenticated analyst identity required' });
+        return;
+      }
+      const clientId = request.tenantContext!.clientIds?.[0];
+      if (!clientId) {
+        await reply.code(401).send({ error: 'unauthorized' });
+        return;
+      }
+      const body = request.body as Record<string, unknown>;
+
+      try {
+        const policy = await withTenantTx(request.tenantContext!, (client) =>
+          upsertPaymentPolicy(client, { ...body, clientId, configuredBy: request.actorUserId }));
+        return policy;
+      } catch (error) {
+        if (error instanceof PaymentPolicyValidationError) {
+          await reply.code(400).send({ error: error.code, issues: error.issues });
+          return;
+        }
+        throw error;
+      }
+    });
   });
 }

@@ -21,8 +21,13 @@ import { buildApp } from '../../src/server/app.js';
  * guard and reaches the route body, which then reports 409/404 for the
  * fabricated id -- proving the guard discriminated on the real resolved
  * role, not on the id being valid.
+ *
+ * 86e36a42c (dispute /approve) and 86e36beq2 (payment-authorization +
+ * payment-policy) extend this same real-Postgres proof to the 3 routes
+ * filed as follow-ups once #336 shipped -- same fabricated-id pattern:
+ * 403 before the route body runs, 409/404/400 (never 403) once it does.
  */
-describe('registerAnalystOnlyPreHandler (DB): dispute + finding mutation routes', () => {
+describe('registerAnalystOnlyPreHandler (DB): dispute, finding, and payment mutation routes', () => {
   let pool: pg.Pool;
   let app: FastifyInstance;
   let clientId: string;
@@ -64,6 +69,10 @@ describe('registerAnalystOnlyPreHandler (DB): dispute + finding mutation routes'
     await app.close();
     const owner = await pool.connect();
     try {
+      // 86e367r9x's PUT /api/payment-policy pass-through test (AC2) writes a
+      // real client_payment_policy row with configured_by = analystUserId --
+      // must clear before deleting the referenced app_user rows.
+      await owner.query(`DELETE FROM client_payment_policy WHERE client_id = $1`, [clientId]);
       await owner.query(`DELETE FROM membership WHERE client_id = $1`, [clientId]);
       await owner.query(`DELETE FROM app_user WHERE id = ANY($1)`, [[viewerUserId, adminUserId, analystUserId]]);
       await owner.query(`DELETE FROM client WHERE id = $1`, [clientId]);
@@ -106,5 +115,44 @@ describe('registerAnalystOnlyPreHandler (DB): dispute + finding mutation routes'
       payload: { caseFingerprint: 'x', assertedValue: 1 },
     });
     expect(res.statusCode).toBe(404);
+  });
+
+  it('86e36a42c AC1: a client_viewer is rejected with 403 on POST /api/disputes/:id/approve', async () => {
+    const res = await app.inject({ method: 'POST', url: `/api/disputes/${FAKE_ID}/approve`, headers: headersFor(viewerUserId), payload: {} });
+    expect(res.statusCode).toBe(403);
+  });
+
+  it('86e36a42c AC2: an analyst still reaches the route body (409, not 403) on POST /api/disputes/:id/approve', async () => {
+    const res = await app.inject({ method: 'POST', url: `/api/disputes/${FAKE_ID}/approve`, headers: headersFor(analystUserId), payload: {} });
+    expect(res.statusCode).toBe(409);
+  });
+
+  it('86e36beq2 AC1: a client_admin is rejected with 403 on POST /api/audit-runs/:id/payment-authorization', async () => {
+    const res = await app.inject({
+      method: 'POST', url: `/api/audit-runs/${FAKE_ID}/payment-authorization`, headers: headersFor(adminUserId),
+      payload: { action: 'approve' },
+    });
+    expect(res.statusCode).toBe(403);
+  });
+
+  it('86e36beq2 AC2: an analyst still reaches the route body (404, not 403) on POST /api/audit-runs/:id/payment-authorization', async () => {
+    const res = await app.inject({
+      method: 'POST', url: `/api/audit-runs/${FAKE_ID}/payment-authorization`, headers: headersFor(analystUserId),
+      payload: { action: 'approve' },
+    });
+    expect(res.statusCode).toBe(404);
+  });
+
+  it('86e367r9x AC1: a client_viewer is rejected with 403 on PUT /api/payment-policy', async () => {
+    const res = await app.inject({ method: 'PUT', url: '/api/payment-policy', headers: headersFor(viewerUserId), payload: {} });
+    expect(res.statusCode).toBe(403);
+  });
+
+  it('86e367r9x AC2: an analyst still reaches the route body (200, not 403) on PUT /api/payment-policy', async () => {
+    const res = await app.inject({
+      method: 'PUT', url: '/api/payment-policy', headers: headersFor(analystUserId),
+      payload: { holdThenApprove: true, shortPayEnabled: false, approvalExpiryHours: 72 },
+    });
+    expect(res.statusCode).toBe(200);
   });
 });

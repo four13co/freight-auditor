@@ -4,7 +4,14 @@ import {
   emptyClaimReconciliationAccumulator,
   finalizeClaimReconciliationTotals,
   type ClaimReconciliationAccumulator,
+  type ReconcilableClaimRow,
+  type ReconcilableRecoveryEventRow,
 } from './reconcile-claim-buckets.js';
+
+// Re-exported so existing callers/tests importing these types from this
+// module (rather than reconcile-claim-buckets.ts directly) keep working --
+// the declarations themselves now live in exactly one place (86e367r76).
+export type { ReconcilableClaimRow, ReconcilableRecoveryEventRow };
 
 /**
  * Pure reconciliation for portfolio-wide totals (P5.C.4). Buckets claim +
@@ -26,19 +33,6 @@ import {
  * re-derive, since that boolean is the entire point of a "reconcile
  * totals" item.
  */
-export interface ReconcilableClaimRow {
-  claimId: string;
-  amountClaimed: string;
-  currency: string | null;
-  status: string;
-}
-
-export interface ReconcilableRecoveryEventRow {
-  claimId: string;
-  amountRecovered: string;
-  currency: string | null;
-}
-
 export interface PortfolioReconciliationBucket {
   currency: string | null;
   claimed: string;

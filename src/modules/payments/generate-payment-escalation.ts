@@ -40,6 +40,18 @@ interface HoldRow {
  *
  * Idempotent via writeAuditEvent's deterministic-id + internal ON CONFLICT
  * DO NOTHING, same pattern as generateClaimEscalation/generateClaimFollowUp.
+ *
+ * 86e36ctpz: deliberately NOT auto-wired into persist.ts, same shape as
+ * generate-short-pay-decision.ts's own "deliberately not wired" note. This
+ * is a scheduled/grace-period check -- it re-evaluates whether enough time
+ * has passed since an EXISTING hold decision -- not a one-shot lifecycle
+ * transition triggered by a single audit run being persisted, so it doesn't
+ * fit persist.ts's call site (which only ever runs once, at initial
+ * persist time, when no grace period could plausibly have elapsed yet).
+ * Wiring this in requires a scheduled trigger point that doesn't yet exist
+ * -- a possible follow-up: a scheduled job calling this per pending hold,
+ * the same way src/jobs/claim-escalation-handler.ts drives
+ * generateClaimEscalation for the claims-side equivalent.
  */
 export async function generatePaymentEscalation(
   client: pg.PoolClient,

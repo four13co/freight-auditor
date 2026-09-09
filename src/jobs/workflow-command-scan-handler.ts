@@ -1,17 +1,11 @@
-import type PgBoss from 'pg-boss';
-import type pg from 'pg';
-import { withTenantTx, type TenantContext } from '../db/tenant-context.js';
+import { withTenantTx } from '../db/tenant-context.js';
 import { scheduleWorkflowCommandJobs, type ScheduleWorkflowCommandJobsResult } from '../modules/workflow/schedule-workflow-command-jobs.js';
 import { reclaimStaleWorkflowCommandsForActiveClients, type ReclaimStaleWorkflowCommandsResult } from '../modules/workflow/reclaim-stale-workflow-commands.js';
-import { parseJobPayload, JOB_NAMES } from './contracts.js';
+import { JOB_NAMES } from './contracts.js';
+import { makeReclaimAndScanJobHandler, type ReclaimAndScanJobDeps } from './make-reclaim-and-scan-job-handler.js';
 
 export type WorkflowCommandScanResult = ScheduleWorkflowCommandJobsResult & ReclaimStaleWorkflowCommandsResult;
-
-export interface WorkflowCommandScanDeps {
-  withTenantTx: (ctx: TenantContext, fn: (client: pg.PoolClient) => Promise<WorkflowCommandScanResult>) => Promise<WorkflowCommandScanResult>;
-  reclaim: typeof reclaimStaleWorkflowCommandsForActiveClients;
-  scan: typeof scheduleWorkflowCommandJobs;
-}
+export type WorkflowCommandScanDeps = ReclaimAndScanJobDeps<ScheduleWorkflowCommandJobsResult, ReclaimStaleWorkflowCommandsResult>;
 
 const defaultDeps: WorkflowCommandScanDeps = {
   withTenantTx,
@@ -27,18 +21,10 @@ const defaultDeps: WorkflowCommandScanDeps = {
  * command. Both run in the same internal transaction, mirroring
  * handleClaimAgingScanJob -- a scheduled scan, not a request on behalf of
  * one tenant -- so a row recovered back to 'pending' this tick is already
- * visible to the due-query claim that follows it.
+ * visible to the due-query claim that follows it. Shared handler shape
+ * lives in make-reclaim-and-scan-job-handler.ts (86e367r8f).
  */
-export async function handleWorkflowCommandScanJob(
-  boss: Pick<PgBoss, 'send'>,
-  untrustedPayload: unknown,
-  deps: WorkflowCommandScanDeps = defaultDeps,
-): Promise<WorkflowCommandScanResult> {
-  const payload = parseJobPayload(JOB_NAMES.SCAN_WORKFLOW_COMMANDS_V1, untrustedPayload);
-  const now = new Date(payload.requestedAt);
-  return deps.withTenantTx({ internal: true }, async (client) => {
-    const recovery = await deps.reclaim(client, now);
-    const scanResult = await deps.scan(client, boss, now);
-    return { ...scanResult, ...recovery };
-  });
-}
+export const handleWorkflowCommandScanJob = makeReclaimAndScanJobHandler<
+  ScheduleWorkflowCommandJobsResult,
+  ReclaimStaleWorkflowCommandsResult
+>(JOB_NAMES.SCAN_WORKFLOW_COMMANDS_V1, defaultDeps);

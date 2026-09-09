@@ -1,6 +1,7 @@
 import type pg from 'pg';
 import { z } from 'zod';
 import { deterministicAuditEventId, writeAuditEvent } from '../audit-ledger/write-audit-event.js';
+import { insertIdempotent } from '../../db/insert-idempotent.js';
 
 /**
  * P3.D.7: a human (analyst) may accept a discovery proposal with a pinned
@@ -35,31 +36,35 @@ export async function acceptDiscoveryRuleProposal(client: pg.PoolClient, untrust
   if (rule.rows[0]?.rule_type !== proposal.rule_type) throw new DiscoveryProposalAcceptanceError('RULE_CONFLICT');
   const provenance = { clientId: input.clientId, proposalId: proposal.id, proposalHash: proposal.proposal_hash,
     backtestId: backtest.id, acceptedBy: input.actorUserId };
-  const insertedVersion = await client.query<{ id: string }>(`INSERT INTO rule_version(rule_id,hardness,lifecycle_state,ast,ast_hash,
+  const shadowVersion = await insertIdempotent(client, {
+    insertSql: `INSERT INTO rule_version(rule_id,hardness,lifecycle_state,ast,ast_hash,
     expected_inputs,emits,provenance,source_discovery_rule_proposal_id,source_discovery_rule_proposal_backtest_id)
     VALUES($1,'AI_DOCS','SHADOW',$2::jsonb,$3,$4::jsonb,'PASS_FAIL',$5::jsonb,$6,$7)
-    ON CONFLICT(source_discovery_rule_proposal_id) WHERE source_discovery_rule_proposal_id IS NOT NULL DO NOTHING RETURNING id`,
-  [rule.rows[0]!.id, JSON.stringify(proposal.ast), proposal.ast_hash, JSON.stringify(proposal.expected_inputs),
-    JSON.stringify(provenance), proposal.id, backtest.id]);
-  let shadowId = insertedVersion.rows[0]?.id;
-  if (!shadowId) shadowId = (await client.query<{ id: string }>(`SELECT id FROM rule_version WHERE source_discovery_rule_proposal_id=$1
-    AND rule_id=$2 AND lifecycle_state='SHADOW' AND ast_hash=$3 AND source_discovery_rule_proposal_backtest_id=$4
-    AND provenance IS NOT DISTINCT FROM $5::jsonb`, [proposal.id, rule.rows[0]!.id, proposal.ast_hash, backtest.id,
-    JSON.stringify(provenance)])).rows[0]?.id;
-  if (!shadowId) throw new DiscoveryProposalAcceptanceError('ACCEPTANCE_CONFLICT');
-  const insertedAcceptance = await client.query<{ id: string }>(`INSERT INTO discovery_rule_proposal_acceptance
+    ON CONFLICT(source_discovery_rule_proposal_id) WHERE source_discovery_rule_proposal_id IS NOT NULL DO NOTHING`,
+    insertParams: [rule.rows[0]!.id, JSON.stringify(proposal.ast), proposal.ast_hash, JSON.stringify(proposal.expected_inputs),
+      JSON.stringify(provenance), proposal.id, backtest.id],
+    fallbackSql: `SELECT id FROM rule_version WHERE source_discovery_rule_proposal_id=$8
+    AND rule_id=$9 AND lifecycle_state='SHADOW' AND ast_hash=$10 AND source_discovery_rule_proposal_backtest_id=$11
+    AND provenance IS NOT DISTINCT FROM $12::jsonb`,
+    fallbackParams: [proposal.id, rule.rows[0]!.id, proposal.ast_hash, backtest.id, JSON.stringify(provenance)],
+  });
+  if (!shadowVersion) throw new DiscoveryProposalAcceptanceError('ACCEPTANCE_CONFLICT');
+  const shadowId = shadowVersion.id;
+  const acceptance = await insertIdempotent(client, {
+    insertSql: `INSERT INTO discovery_rule_proposal_acceptance
     (client_id,proposal_id,backtest_id,shadow_rule_version_id,accepted_by,rationale) VALUES($1,$2,$3,$4,$5,$6)
-    ON CONFLICT(client_id,proposal_id) DO NOTHING RETURNING id`, [input.clientId, proposal.id, backtest.id, shadowId,
-    input.actorUserId, input.rationale]);
-  let acceptanceId = insertedAcceptance.rows[0]?.id;
-  if (!acceptanceId) acceptanceId = (await client.query<{ id: string }>(`SELECT id FROM discovery_rule_proposal_acceptance
-    WHERE client_id=$1 AND proposal_id=$2 AND backtest_id=$3 AND shadow_rule_version_id=$4 AND accepted_by=$5 AND rationale=$6`,
-  [input.clientId, proposal.id, backtest.id, shadowId, input.actorUserId, input.rationale])).rows[0]?.id;
-  if (!acceptanceId) throw new DiscoveryProposalAcceptanceError('ACCEPTANCE_CONFLICT');
+    ON CONFLICT(client_id,proposal_id) DO NOTHING`,
+    insertParams: [input.clientId, proposal.id, backtest.id, shadowId, input.actorUserId, input.rationale],
+    fallbackSql: `SELECT id FROM discovery_rule_proposal_acceptance
+    WHERE client_id=$7 AND proposal_id=$8 AND backtest_id=$9 AND shadow_rule_version_id=$10 AND accepted_by=$11 AND rationale=$12`,
+    fallbackParams: [input.clientId, proposal.id, backtest.id, shadowId, input.actorUserId, input.rationale],
+  });
+  if (!acceptance) throw new DiscoveryProposalAcceptanceError('ACCEPTANCE_CONFLICT');
+  const acceptanceId = acceptance.id;
   await writeAuditEvent(client, { id: deterministicAuditEventId(input.clientId, proposal.id, backtest.id, 'discovery_rule_proposal.accepted'),
     clientId: input.clientId, entity: 'discovery_rule_proposal', entityId: proposal.id, event: 'accepted_to_shadow',
     actorKind: 'analyst', actorUserId: input.actorUserId, ruleVersionId: shadowId,
     detail: { acceptanceId, proposalHash: proposal.proposal_hash, astHash: proposal.ast_hash, backtestId: backtest.id,
       shadowRuleVersionId: shadowId, rationale: input.rationale } });
-  return { acceptanceId, shadowRuleVersionId: shadowId, created: Boolean(insertedAcceptance.rows[0]) };
+  return { acceptanceId, shadowRuleVersionId: shadowId, created: acceptance.created };
 }

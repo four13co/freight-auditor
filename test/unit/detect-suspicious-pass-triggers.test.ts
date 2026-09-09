@@ -11,11 +11,14 @@ function mockClient(opts: { markerRows?: Array<{ id: string; charge_index: numbe
   const query = vi.fn().mockImplementation(async (sql: string, values: unknown[]) => {
     if (sql.includes('FROM audit_run')) return { rows: [{}], rowCount: 1 };
     if (sql.includes('FROM coverage_marker')) return { rows: markerRows };
-    if (sql.startsWith('INSERT INTO suspicious_pass_trigger')) {
-      return inserted ? { rows: [{ id: `trigger-for-${(values as unknown[])[2]}` }] } : { rows: [] };
-    }
-    if (sql.startsWith('SELECT id FROM suspicious_pass_trigger')) {
-      return { rows: [{ id: `existing-for-${(values as unknown[])[1]}` }] };
+    // insertIdempotent() issues one combined WITH-CTE query (86e367r7f) --
+    // both the insert-succeeded and fallback-existing cases are simulated
+    // from this single branch now, keyed on the same coverage_marker_id param.
+    if (sql.includes('INSERT INTO suspicious_pass_trigger')) {
+      const markerIdParam = (values as unknown[])[2];
+      return inserted
+        ? { rows: [{ id: `trigger-for-${markerIdParam}`, created: true }] }
+        : { rows: [{ id: `existing-for-${markerIdParam}`, created: false }] };
     }
     if (sql.includes('audit_event')) return { rows: [{ id: 'audit-event-id', created: true }] };
     throw new Error(`unexpected query: ${sql}`);

@@ -1,6 +1,7 @@
 import type pg from 'pg';
 import { z } from 'zod';
 import { deterministicAuditEventId, writeAuditEvent } from '../audit-ledger/write-audit-event.js';
+import { insertIdempotent } from '../../db/insert-idempotent.js';
 
 const schema = z.object({ clientId: z.uuid(), auditRunId: z.uuid() }).strict();
 
@@ -46,21 +47,16 @@ export async function detectSuspiciousPassTriggers(
   let createdCount = 0;
   for (const row of rows) {
     const detail = { chargeIndex: row.charge_index, missingFields: row.missing_fields };
-    const inserted = await client.query<{ id: string }>(
-      `INSERT INTO suspicious_pass_trigger (client_id, audit_run_id, coverage_marker_id, marker_code, detail)
-       VALUES ($1, $2, $3, $4, $5::jsonb) ON CONFLICT DO NOTHING RETURNING id`,
-      [input.clientId, input.auditRunId, row.id, row.marker_code, JSON.stringify(detail)],
-    );
-    let id = inserted.rows[0]?.id;
-    if (id) createdCount++;
-    if (!id) {
-      id = (await client.query<{ id: string }>(
-        `SELECT id FROM suspicious_pass_trigger WHERE client_id = $1 AND coverage_marker_id = $2`,
-        [input.clientId, row.id],
-      )).rows[0]?.id;
-    }
-    if (!id) throw new SuspiciousPassTriggerError('TRIGGER_CONFLICT');
-    ids.push(id);
+    const result = await insertIdempotent(client, {
+      insertSql: `INSERT INTO suspicious_pass_trigger (client_id, audit_run_id, coverage_marker_id, marker_code, detail)
+       VALUES ($1, $2, $3, $4, $5::jsonb) ON CONFLICT DO NOTHING`,
+      insertParams: [input.clientId, input.auditRunId, row.id, row.marker_code, JSON.stringify(detail)],
+      fallbackSql: `SELECT id FROM suspicious_pass_trigger WHERE client_id = $6 AND coverage_marker_id = $7`,
+      fallbackParams: [input.clientId, row.id],
+    });
+    if (result?.created) createdCount++;
+    if (!result) throw new SuspiciousPassTriggerError('TRIGGER_CONFLICT');
+    ids.push(result.id);
   }
 
   await writeAuditEvent(client, {

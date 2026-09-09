@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
 import { fetchClientPortalFindingEvidence, type ClientPortalFindingEvidence } from '../lib/api.js';
 import { useFocusOnReady } from '../lib/use-focus-on-ready.js';
+import { useClientPortalResource } from '../lib/use-client-portal-resource.js';
 
 /**
  * Client-facing finding evidence/defensibility-chain detail (P6.B.2).
@@ -16,24 +16,10 @@ import { useFocusOnReady } from '../lib/use-focus-on-ready.js';
  * before any fetch is even attempted.
  */
 export function ClientFindingEvidenceView({ findingId }: { findingId: string | null }) {
-  const [chain, setChain] = useState<ClientPortalFindingEvidence | null>(null);
-  const [error, setError] = useState(false);
-
-  useEffect(() => {
-    if (findingId === null) {
-      setChain(null);
-      setError(false);
-      return;
-    }
-    let cancelled = false;
-    setChain(null);
-    setError(false);
-    fetchClientPortalFindingEvidence(findingId).then(
-      (data) => { if (!cancelled) setChain(data); },
-      () => { if (!cancelled) setError(true); },
-    );
-    return () => { cancelled = true; };
-  }, [findingId]);
+  const { data: chain, error } = useClientPortalResource<ClientPortalFindingEvidence>(
+    () => (findingId === null ? null : fetchClientPortalFindingEvidence(findingId)),
+    [findingId],
+  );
 
   const ready = findingId !== null && (chain !== null || error);
   const readyRef = useFocusOnReady<HTMLDivElement>(ready);

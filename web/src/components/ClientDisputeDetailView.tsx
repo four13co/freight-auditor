@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
 import { fetchClientPortalDispute, type ClientPortalDisputeDetail } from '../lib/api.js';
 import { useFocusOnReady } from '../lib/use-focus-on-ready.js';
+import { useClientPortalResource } from '../lib/use-client-portal-resource.js';
 
 function formatAmount(value: string | null, currency: string | null): string {
   if (value === null) return '—';
@@ -20,24 +20,10 @@ function formatAmount(value: string | null, currency: string | null): string {
  * from loading/error.
  */
 export function ClientDisputeDetailView({ disputeId }: { disputeId: string | null }) {
-  const [dispute, setDispute] = useState<ClientPortalDisputeDetail | null>(null);
-  const [error, setError] = useState(false);
-
-  useEffect(() => {
-    if (disputeId === null) {
-      setDispute(null);
-      setError(false);
-      return;
-    }
-    let cancelled = false;
-    setDispute(null);
-    setError(false);
-    fetchClientPortalDispute(disputeId).then(
-      (data) => { if (!cancelled) setDispute(data); },
-      () => { if (!cancelled) setError(true); },
-    );
-    return () => { cancelled = true; };
-  }, [disputeId]);
+  const { data: dispute, error } = useClientPortalResource<ClientPortalDisputeDetail>(
+    () => (disputeId === null ? null : fetchClientPortalDispute(disputeId)),
+    [disputeId],
+  );
 
   const ready = disputeId !== null && (dispute !== null || error);
   const readyRef = useFocusOnReady<HTMLDivElement>(ready);

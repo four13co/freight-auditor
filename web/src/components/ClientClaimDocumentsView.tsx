@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
 import { fetchClientPortalClaimDocuments, type ClientPortalClaimDocumentRef } from '../lib/api.js';
 import { useFocusOnReady } from '../lib/use-focus-on-ready.js';
+import { useClientPortalResource } from '../lib/use-client-portal-resource.js';
 
 /**
  * Client-facing claim evidence/document references (P6.B.4) -- reference
@@ -13,24 +13,10 @@ import { useFocusOnReady } from '../lib/use-focus-on-ready.js';
  * state, distinct from "claim selected but resolves zero documents yet".
  */
 export function ClientClaimDocumentsView({ claimId }: { claimId: string | null }) {
-  const [documents, setDocuments] = useState<ClientPortalClaimDocumentRef[] | null>(null);
-  const [error, setError] = useState(false);
-
-  useEffect(() => {
-    if (claimId === null) {
-      setDocuments(null);
-      setError(false);
-      return;
-    }
-    let cancelled = false;
-    setDocuments(null);
-    setError(false);
-    fetchClientPortalClaimDocuments(claimId).then(
-      (data) => { if (!cancelled) setDocuments(data); },
-      () => { if (!cancelled) setError(true); },
-    );
-    return () => { cancelled = true; };
-  }, [claimId]);
+  const { data: documents, error } = useClientPortalResource<ClientPortalClaimDocumentRef[]>(
+    () => (claimId === null ? null : fetchClientPortalClaimDocuments(claimId)),
+    [claimId],
+  );
 
   const ready = claimId !== null && (documents !== null || error);
   const readyRef = useFocusOnReady<HTMLDivElement>(ready);

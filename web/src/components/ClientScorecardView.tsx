@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
 import { fetchClientPortalAuditRunScorecard, type ClientPortalAuditRunScorecard } from '../lib/api.js';
+import { useClientPortalResource } from '../lib/use-client-portal-resource.js';
 
 function formatAmount(value: string, currency: string | null): string {
   const n = Number(value);
@@ -22,19 +22,10 @@ function formatAmount(value: string, currency: string | null): string {
  * same loading/error shape as the rest of this precedent.
  */
 export function ClientScorecardView({ auditRunId }: { auditRunId: string }) {
-  const [scorecard, setScorecard] = useState<ClientPortalAuditRunScorecard | null>(null);
-  const [error, setError] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-    setScorecard(null);
-    setError(false);
-    fetchClientPortalAuditRunScorecard(auditRunId).then(
-      (data) => { if (!cancelled) setScorecard(data); },
-      () => { if (!cancelled) setError(true); },
-    );
-    return () => { cancelled = true; };
-  }, [auditRunId]);
+  const { data: scorecard, error } = useClientPortalResource<ClientPortalAuditRunScorecard>(
+    () => fetchClientPortalAuditRunScorecard(auditRunId),
+    [auditRunId],
+  );
 
   return (
     <section data-testid="client-scorecard-view" className="border border-[rgba(32,30,29,.3)] bg-[#f3f2f2] p-3">

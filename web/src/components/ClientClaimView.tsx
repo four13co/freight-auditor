@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
 import { fetchClientPortalClaim, type ClientPortalClaimDetail } from '../lib/api.js';
 import { useFocusOnReady } from '../lib/use-focus-on-ready.js';
+import { useClientPortalResource } from '../lib/use-client-portal-resource.js';
 
 function formatAmount(value: string, currency: string | null): string {
   const n = Number(value);
@@ -22,24 +22,10 @@ function formatDate(value: string): string {
  * selected yet" is its own explicit empty state.
  */
 export function ClientClaimView({ claimId }: { claimId: string | null }) {
-  const [claim, setClaim] = useState<ClientPortalClaimDetail | null>(null);
-  const [error, setError] = useState(false);
-
-  useEffect(() => {
-    if (claimId === null) {
-      setClaim(null);
-      setError(false);
-      return;
-    }
-    let cancelled = false;
-    setClaim(null);
-    setError(false);
-    fetchClientPortalClaim(claimId).then(
-      (data) => { if (!cancelled) setClaim(data); },
-      () => { if (!cancelled) setError(true); },
-    );
-    return () => { cancelled = true; };
-  }, [claimId]);
+  const { data: claim, error } = useClientPortalResource<ClientPortalClaimDetail>(
+    () => (claimId === null ? null : fetchClientPortalClaim(claimId)),
+    [claimId],
+  );
 
   const ready = claimId !== null && (claim !== null || error);
   const readyRef = useFocusOnReady<HTMLDivElement>(ready);

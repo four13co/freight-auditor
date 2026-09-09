@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
 import { fetchClientPortalFindings, type ClientPortalFindingRow } from '../lib/api.js';
+import { useClientPortalResource } from '../lib/use-client-portal-resource.js';
 
 function formatAmount(value: string | null): string {
   if (value === null) return '—';
@@ -16,17 +16,10 @@ function formatAmount(value: string | null): string {
  * own fetch-on-mount shape.
  */
 export function ClientFindingsView() {
-  const [findings, setFindings] = useState<ClientPortalFindingRow[] | null>(null);
-  const [error, setError] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-    fetchClientPortalFindings().then(
-      (data) => { if (!cancelled) setFindings(data); },
-      () => { if (!cancelled) setError(true); },
-    );
-    return () => { cancelled = true; };
-  }, []);
+  const { data: findings, error } = useClientPortalResource<ClientPortalFindingRow[]>(
+    () => fetchClientPortalFindings(),
+    [],
+  );
 
   return (
     <section data-testid="client-findings-view" className="border border-[rgba(32,30,29,.3)] bg-[#f3f2f2] p-3">

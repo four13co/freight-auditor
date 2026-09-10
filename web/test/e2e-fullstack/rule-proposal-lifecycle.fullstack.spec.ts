@@ -260,3 +260,76 @@ test('AC (86e33t9n0): after ratifying, GET /api/rules/proposals no longer return
     await pool.query(`DELETE FROM rule WHERE id = $1`, [ghostRuleId]);
   }
 });
+
+// 86e36zket: the real corpus-runner for global/structural rule backtesting --
+// a curated, caller-supplied fixture set run through the rule's own AST at
+// /activate, satisfying the ACTIVE-transition evidence requirement on its
+// own. Full ratify -> corpus-backtest-activate flow through a real API call
+// (like the ghost-check test above, not a UI click -- the queue's Activate
+// button only carries a rationale field, no cases input), with a single
+// analyst (DEV_USER_ID) for both steps, proving no manual dual-control
+// second-analyst step and no manually-inserted rule_backtest row is needed.
+test('AC (86e36zket): a global rule activates via a passing corpus-backtest cases array, no dual control needed', async ({ request }) => {
+  const slug = `p7b5-corpus-backtest-${Date.now()}`;
+  const rule = await pool.query<{ id: string }>(`INSERT INTO rule (slug, rule_type) VALUES ($1, 'STRUCTURAL') RETURNING id`, [slug]);
+  const corpusRuleId = rule.rows[0]!.id;
+  const ast = { type: 'compare', op: 'gte', left: { type: 'fact', key: 'amount' }, right: { type: 'lit', value: 100 } };
+  const rv = await pool.query<{ id: string }>(
+    `INSERT INTO rule_version (rule_id, hardness, lifecycle_state, ast, ast_hash, expected_inputs, emits)
+     VALUES ($1, 'AI_CANON', 'PROPOSED', $2::jsonb, $3, $4::jsonb, 'PASS_FAIL') RETURNING id`,
+    [corpusRuleId, JSON.stringify(ast), slug.padEnd(64, '5').slice(0, 64), JSON.stringify(['amount'])],
+  );
+  const proposedId = rv.rows[0]!.id;
+
+  try {
+    const ratify = await request.post(`/api/rules/${proposedId}/ratify`, {
+      headers: { 'x-client-id': DEV_CLIENT_ID, 'x-user-id': DEV_USER_ID, 'content-type': 'application/json' },
+      data: { rationale: 'corpus-backtest e2e ratification' },
+    });
+    expect(ratify.status()).toBe(201);
+    const { ruleVersionId: shadowId } = (await ratify.json()) as { ruleVersionId: string };
+
+    const activate = await request.post(`/api/rules/${shadowId}/activate`, {
+      headers: { 'x-client-id': DEV_CLIENT_ID, 'x-user-id': DEV_USER_ID, 'content-type': 'application/json' },
+      data: {
+        rationale: 'corpus-backtest e2e activation',
+        cases: [
+          { id: 'above-threshold', facts: { amount: 150 }, expectedVerdict: 'PASS' },
+          { id: 'below-threshold', facts: { amount: 50 }, expectedVerdict: 'FAIL' },
+        ],
+      },
+    });
+    expect(activate.status()).toBe(201);
+    const { ruleVersionId: activeId } = (await activate.json()) as { ruleVersionId: string };
+
+    const activeRow = await pool.query<{ lifecycle_state: string }>(`SELECT lifecycle_state FROM rule_version WHERE id = $1`, [activeId]);
+    expect(activeRow.rows[0]!.lifecycle_state).toBe('ACTIVE');
+
+    // The evidentiary chain a real auditor would follow: promotion_event's own
+    // rule_backtest_id FK, not an assumption about which rule_version_id the
+    // backtest row carries. runAndPersistRuleActivationBacktest persists BEFORE
+    // transitionRuleLifecycle inserts the new ACTIVE row (this task's own
+    // Solution order), so rule_backtest.rule_version_id is the pre-promotion
+    // SHADOW id (shadowId) it was actually evaluated against -- the same
+    // "evidence computed against the pre-transition row" precedent
+    // acceptContractRuleProposal already establishes for the sibling flow.
+    const promotionRow = await pool.query<{ dual_control_analyst_id: string | null; rule_backtest_id: string | null }>(
+      `SELECT dual_control_analyst_id, rule_backtest_id FROM promotion_event WHERE rule_version_id = $1 AND to_lifecycle = 'ACTIVE'`, [activeId]);
+    expect(promotionRow.rows[0]!.dual_control_analyst_id).toBeNull();
+    const backtestId = promotionRow.rows[0]!.rule_backtest_id;
+    expect(backtestId).not.toBeNull();
+
+    const backtestRow = await pool.query<{ client_id: string | null; passed: boolean; rule_version_id: string }>(
+      `SELECT client_id, passed, rule_version_id FROM rule_backtest WHERE id = $1`, [backtestId]);
+    expect(backtestRow.rows).toHaveLength(1);
+    expect(backtestRow.rows[0]).toMatchObject({ client_id: null, passed: true, rule_version_id: shadowId });
+  } finally {
+    await pool.query(`DELETE FROM promotion_event WHERE rule_version_id IN (SELECT id FROM rule_version WHERE rule_id = $1)`, [corpusRuleId]);
+    await pool.query(`DELETE FROM audit_event WHERE entity = 'rule_version' AND entity_id IN (SELECT id FROM rule_version WHERE rule_id = $1)`, [corpusRuleId]);
+    await pool.query(`DELETE FROM rule_backtest_case WHERE backtest_id IN
+      (SELECT id FROM rule_backtest WHERE rule_version_id IN (SELECT id FROM rule_version WHERE rule_id = $1))`, [corpusRuleId]);
+    await pool.query(`DELETE FROM rule_backtest WHERE rule_version_id IN (SELECT id FROM rule_version WHERE rule_id = $1)`, [corpusRuleId]);
+    await pool.query(`DELETE FROM rule_version WHERE rule_id = $1`, [corpusRuleId]);
+    await pool.query(`DELETE FROM rule WHERE id = $1`, [corpusRuleId]);
+  }
+});

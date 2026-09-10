@@ -17,11 +17,15 @@ export function assertLifecycleTransition(from: RuleLifecycle, to: RuleLifecycle
 // threw. promoteShadowRule (the only to:'ACTIVE' caller) now gates ACTIVE
 // promotion itself via dual-control instead; this function stays a pure
 // lifecycle-FSM writer, only persisting whatever evidence its caller already
-// validated (dualControlAnalystId) rather than opining on it itself.
-// promotion_event's own active_promotion_requires_backtest CHECK constraint
-// (migration 0078) accepts this evidence as an alternative to a backtest id.
+// validated (dualControlAnalystId, ruleBacktestId) rather than opining on it
+// itself. promotion_event's own active_promotion_requires_backtest CHECK
+// constraint (migration 0078) accepts either as alternative evidence.
+// 86e36zket: ruleBacktestId is the additive corpus-backtest evidence path --
+// rule_backtest.client_id is nullable as of migration 0079, so a global rule
+// can now produce a real rule_backtest row via the /activate cases path.
 export async function transitionRuleLifecycle(client: pg.PoolClient, input: {
-  ruleVersionId: string; to: RuleLifecycle; rationale: string; dualControlAnalystId?: string | null;
+  ruleVersionId: string; to: RuleLifecycle; rationale: string;
+  dualControlAnalystId?: string | null; ruleBacktestId?: string | null;
 }): Promise<{ ruleVersionId: string; created: boolean }> {
   const current = (await client.query<{ lifecycle_state: RuleLifecycle }>(
     `SELECT lifecycle_state FROM rule_version WHERE id=$1`, [input.ruleVersionId])).rows[0];
@@ -40,12 +44,12 @@ export async function transitionRuleLifecycle(client: pg.PoolClient, input: {
     [input.ruleVersionId, input.to])).rows[0]?.id;
   if (!nextId) throw new Error('rule lifecycle retry could not be resolved');
   await client.query(`INSERT INTO promotion_event
-      (rule_version_id, from_hardness, to_hardness, from_lifecycle, to_lifecycle, direction, rationale, dual_control_analyst_id)
+      (rule_version_id, from_hardness, to_hardness, from_lifecycle, to_lifecycle, direction, rationale, dual_control_analyst_id, rule_backtest_id)
     SELECT $1, hardness, hardness, $2::rule_lifecycle, $3::rule_lifecycle,
-      $4::promotion_direction, $5, $6 FROM rule_version WHERE id=$1
+      $4::promotion_direction, $5, $6, $7 FROM rule_version WHERE id=$1
     ON CONFLICT (rule_version_id, from_lifecycle, to_lifecycle) DO NOTHING`,
   [nextId, current.lifecycle_state, input.to,
     input.to === 'DEPRECATED' || input.to === 'QUARANTINED' ? 'DEMOTE' : 'PROMOTE',
-    input.rationale, input.dualControlAnalystId ?? null]);
+    input.rationale, input.dualControlAnalystId ?? null, input.ruleBacktestId ?? null]);
   return { ruleVersionId: nextId, created: Boolean(created.rows[0]) };
 }

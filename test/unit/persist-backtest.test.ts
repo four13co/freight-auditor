@@ -13,4 +13,12 @@ describe('persistBacktest', () => {
     const query = vi.fn().mockResolvedValueOnce({ rows: [] }).mockResolvedValueOnce({ rows: [{ id: 'bt', passed: true, pass_count: 1, regression_count: 0 }] });
     await expect(persistBacktest({ query } as never, { clientId: 'c', ruleVersionId: 'rv', result })).rejects.toThrow('backtest evidence conflict');
   });
+  // 86e36zket: rule_backtest.client_id is nullable as of migration 0079 --
+  // a GLOBAL (client-less) rule's activation evidence has no single client
+  // to attribute to, so clientId: null must persist cleanly.
+  it('persists a global (client_id NULL) backtest row', async () => {
+    const query = vi.fn().mockResolvedValueOnce({ rows: [{ id: 'bt' }] }).mockResolvedValueOnce({ rows: [] });
+    await expect(persistBacktest({ query } as never, { clientId: null, ruleVersionId: 'rv', result })).resolves.toEqual({ id: 'bt', created: true });
+    expect(query).toHaveBeenNthCalledWith(1, expect.any(String), [null, 'rv', result.corpusHash, result.passed, result.passCount, result.regressionCount]);
+  });
 });

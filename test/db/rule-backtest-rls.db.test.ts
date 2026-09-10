@@ -3,7 +3,7 @@ import type pg from 'pg';
 import { makePool, withAppTx, withOwnerTx } from './helpers.js';
 import { setTenantTxScope, type TenantContext } from '../../src/db/tenant-context.js';
 import { persistBacktest } from '../../src/modules/rule-engine/persist-backtest.js';
-import { promoteShadowRule } from '../../src/modules/rule-engine/promote-shadow-rule.js';
+import { promoteShadowRule, DualControlRequiredError } from '../../src/modules/rule-engine/promote-shadow-rule.js';
 import { transitionRuleLifecycle } from '../../src/modules/rule-engine/transition-rule-lifecycle.js';
 
 /**
@@ -82,10 +82,12 @@ describe('rule_backtest / rule_backtest_case / charge_alignment_member RLS (86e3
     await pool.query(`DELETE FROM invoice WHERE client_id = ANY($1)`, [[clientId, otherClientId]]);
     await pool.query(`DELETE FROM carrier WHERE name=$1`, [tag]);
     await pool.query(`DELETE FROM promotion_event WHERE rule_version_id IN (SELECT id FROM rule_version WHERE rule_id=$1)`, [ruleId]);
+    await pool.query(`DELETE FROM audit_event WHERE entity='rule_version' AND rule_version_id IN (SELECT id FROM rule_version WHERE rule_id=$1)`, [ruleId]);
     await pool.query(`DELETE FROM rule_backtest_case WHERE client_id = ANY($1)`, [[clientId, otherClientId]]);
     await pool.query(`DELETE FROM rule_backtest WHERE client_id = ANY($1)`, [[clientId, otherClientId]]);
     await pool.query(`DELETE FROM rule_version WHERE rule_id=$1`, [ruleId]);
     await pool.query(`DELETE FROM rule WHERE id=$1`, [ruleId]);
+    await pool.query(`DELETE FROM app_user WHERE email = ANY($1)`, [[`${tag}-ratifier@example.com`, `${tag}-activator@example.com`]]);
     await pool.query(`DELETE FROM client WHERE id = ANY($1)`, [[clientId, otherClientId]]);
     await pool.end();
   });
@@ -119,9 +121,33 @@ describe('rule_backtest / rule_backtest_case / charge_alignment_member RLS (86e3
       (await client.query(`SELECT id FROM rule_backtest WHERE id=$1`, [persisted.id])).rows)).toEqual([]);
   });
 
-  it('promoteShadowRule, run through the real app-role tenant-context path, finds the passing backtest and does not throw BacktestRequiredError', async () => {
+  // 86e367r9q: promoteShadowRule no longer reads rule_backtest at all (the
+  // gate 86e32tfw8's RLS fix targeted is gone), so this no longer belongs to
+  // that RLS-predicate story. Replaced with a run through the real app-role
+  // tenant-context path against its actual replacement gate -- a
+  // promoted_to_shadow audit_event (client_id NULL, so visible under RLS's
+  // own "shared catalog row" clause regardless of tenant scope) -- proving
+  // both the same-actor rejection and the different-actor activation work
+  // end to end with no manually-inserted rule_backtest row anywhere.
+  it('promoteShadowRule, run through the real app-role tenant-context path, honors dual control off a real audit_event with no rule_backtest row', async () => {
+    const ratifierId = (await pool.query(
+      `INSERT INTO app_user(email, full_name, is_internal) VALUES ($1, 'RLS GUC Ratifier', true) RETURNING id`,
+      [`${tag}-ratifier@example.com`])).rows[0].id;
+    const activatorId = (await pool.query(
+      `INSERT INTO app_user(email, full_name, is_internal) VALUES ($1, 'RLS GUC Activator', true) RETURNING id`,
+      [`${tag}-activator@example.com`])).rows[0].id;
+    await pool.query(
+      `INSERT INTO audit_event (client_id, entity, entity_id, event, actor_kind, actor_user_id, rule_version_id)
+       VALUES (NULL, 'rule_version', $1, 'promoted_to_shadow', 'analyst', $2, $1)`,
+      [shadowVersionId, ratifierId],
+    );
+
+    await expect(committedAppTx({ clientIds: [clientId] }, (client) =>
+      promoteShadowRule(client, { ruleVersionId: shadowVersionId, rationale: 'same analyst tries again', actorUserId: ratifierId })))
+      .rejects.toThrow(DualControlRequiredError);
+
     const promotion = await committedAppTx({ clientIds: [clientId] }, (client) =>
-      promoteShadowRule(client, { ruleVersionId: shadowVersionId, rationale: 'passing backtest on file' }));
+      promoteShadowRule(client, { ruleVersionId: shadowVersionId, rationale: 'different analyst on file', actorUserId: activatorId }));
     expect(promotion.created).toBe(true);
     const activated = (await pool.query(`SELECT lifecycle_state FROM rule_version WHERE id=$1`, [promotion.ruleVersionId])).rows[0];
     expect(activated.lifecycle_state).toBe('ACTIVE');

@@ -6,24 +6,27 @@ const ALLOWED: Record<RuleLifecycle, readonly RuleLifecycle[]> = {
   ACTIVE: ['DEPRECATED', 'QUARANTINED'], QUARANTINED: ['SHADOW'], DEPRECATED: [],
 };
 export class InvalidLifecycleTransitionError extends Error { readonly code = 'INVALID_RULE_LIFECYCLE_TRANSITION'; }
-export class BacktestRequiredError extends Error { readonly code = 'PASSING_BACKTEST_REQUIRED'; }
 export function assertLifecycleTransition(from: RuleLifecycle, to: RuleLifecycle): void {
   if (!ALLOWED[from].includes(to)) throw new InvalidLifecycleTransitionError(`invalid rule lifecycle transition: ${from} -> ${to}`);
 }
 
+// 86e367r9q: this function used to hard-require a passing rule_backtest row
+// for any SHADOW->ACTIVE transition, but rule/rule_version are GLOBAL tables
+// (no client_id) and rule_backtest.client_id is NOT NULL -- nothing in the
+// real generic rule lifecycle could ever produce one, so every real call
+// threw. promoteShadowRule (the only to:'ACTIVE' caller) now gates ACTIVE
+// promotion itself via dual-control instead; this function stays a pure
+// lifecycle-FSM writer, only persisting whatever evidence its caller already
+// validated (dualControlAnalystId) rather than opining on it itself.
+// promotion_event's own active_promotion_requires_backtest CHECK constraint
+// (migration 0078) accepts this evidence as an alternative to a backtest id.
 export async function transitionRuleLifecycle(client: pg.PoolClient, input: {
-  ruleVersionId: string; to: RuleLifecycle; rationale: string; backtestRunId?: string | null; ruleBacktestId?: string | null;
+  ruleVersionId: string; to: RuleLifecycle; rationale: string; dualControlAnalystId?: string | null;
 }): Promise<{ ruleVersionId: string; created: boolean }> {
   const current = (await client.query<{ lifecycle_state: RuleLifecycle }>(
     `SELECT lifecycle_state FROM rule_version WHERE id=$1`, [input.ruleVersionId])).rows[0];
   if (!current) throw new Error(`rule version not found: ${input.ruleVersionId}`);
   assertLifecycleTransition(current.lifecycle_state, input.to);
-  if (input.to === 'ACTIVE') {
-    if (!input.ruleBacktestId) throw new BacktestRequiredError('SHADOW to ACTIVE requires a passing backtest');
-    const evidence = (await client.query<{ passed: boolean }>(
-      `SELECT passed FROM rule_backtest WHERE id=$1 AND rule_version_id=$2`, [input.ruleBacktestId, input.ruleVersionId])).rows[0];
-    if (!evidence?.passed) throw new BacktestRequiredError('SHADOW to ACTIVE requires a passing backtest');
-  }
   const created = await client.query<{ id: string }>(`INSERT INTO rule_version
       (rule_id, hardness, lifecycle_state, ast, ast_hash, expected_inputs, emits, provenance, clause_id,
        valid_from, valid_to, predecessor_rule_version_id)
@@ -37,12 +40,12 @@ export async function transitionRuleLifecycle(client: pg.PoolClient, input: {
     [input.ruleVersionId, input.to])).rows[0]?.id;
   if (!nextId) throw new Error('rule lifecycle retry could not be resolved');
   await client.query(`INSERT INTO promotion_event
-      (rule_version_id, from_hardness, to_hardness, from_lifecycle, to_lifecycle, direction, backtest_run_id, rule_backtest_id, rationale)
+      (rule_version_id, from_hardness, to_hardness, from_lifecycle, to_lifecycle, direction, rationale, dual_control_analyst_id)
     SELECT $1, hardness, hardness, $2::rule_lifecycle, $3::rule_lifecycle,
-      $4::promotion_direction, $5, $6, $7 FROM rule_version WHERE id=$1
+      $4::promotion_direction, $5, $6 FROM rule_version WHERE id=$1
     ON CONFLICT (rule_version_id, from_lifecycle, to_lifecycle) DO NOTHING`,
   [nextId, current.lifecycle_state, input.to,
     input.to === 'DEPRECATED' || input.to === 'QUARANTINED' ? 'DEMOTE' : 'PROMOTE',
-    input.backtestRunId ?? null, input.ruleBacktestId ?? null, input.rationale]);
+    input.rationale, input.dualControlAnalystId ?? null]);
   return { ruleVersionId: nextId, created: Boolean(created.rows[0]) };
 }

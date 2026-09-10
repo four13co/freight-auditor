@@ -128,7 +128,12 @@ test('AC1: a real client_admin session shows an Uploads nav item and reaches the
   await expect(page.getByRole('link', { name: 'Uploads' })).toBeVisible();
   await page.getByRole('link', { name: 'Uploads' }).click();
   await expect(page.getByTestId('client-uploads-view')).toBeVisible();
-  await expect(page.getByTestId('uploads-document-type-item')).toHaveText('Invoice');
+  // 86e36yrne landed the sibling Contract type in the same document-type
+  // list this task's own Solution anticipated ("even though only one type
+  // exists until the contract-upload sibling task lands") -- asserts
+  // Invoice is present and still the pre-selected first entry, not that
+  // it's the only one.
+  await expect(page.getByTestId('uploads-document-type-item')).toHaveText(['Invoice', 'Contract']);
 });
 
 test('AC2: a real client_viewer session shows no Uploads nav item', async ({ page }) => {

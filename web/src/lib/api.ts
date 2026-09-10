@@ -633,6 +633,77 @@ export async function fetchClientPortalAuditLog(limit: number, offset: number): 
   return (await res.json()) as ClientPortalAuditLogPage;
 }
 
+/**
+ * 86e36yj9d: the Uploads section's own invoice-draft flow -- POST/confirm/
+ * reject against portal-invoice-upload-routes.ts's client_admin-gated
+ * /api/portal/invoice-drafts surface, a distinct HTTP surface from the
+ * internal-facing invoice-drafts-routes.ts this shape otherwise mirrors.
+ * Types duplicated (not imported) from invoice-draft.ts/charge-fact.ts,
+ * same convention as every other Client Portal * type above.
+ */
+export interface PortalInvoiceDraftCharge {
+  code?: string;
+  x12Element?: string;
+  category?: string;
+  quarantined: boolean;
+  amount?: string;
+  currency: string;
+  basis?: string;
+  rate?: string;
+  rawDescription?: string;
+  sourceLoop?: string;
+}
+
+export interface PortalInvoiceDraftPayload {
+  transactionSet: 'PDF';
+  parserVersion: string;
+  invoiceNumber?: string;
+  headerCurrency?: string;
+  charges: PortalInvoiceDraftCharge[];
+  footing?: { declaredTotal?: string; lineSum: string };
+  quarantinedCodes: string[];
+}
+
+export interface PortalInvoiceDraft {
+  id: string;
+  status: 'extracted' | 'needs_carrier_review' | 'confirmed' | 'rejected';
+  extractedPayload: PortalInvoiceDraftPayload;
+  carrierCandidates: { carrierId: string; name: string }[];
+}
+
+/** Raw PDF bytes over the wire, same content-type-parser contract as invoice-drafts-routes.ts's own /api/invoice-drafts. */
+export async function uploadPortalInvoiceDraft(pdfBytes: ArrayBuffer): Promise<PortalInvoiceDraft> {
+  const res = await fetch('/api/portal/invoice-drafts', {
+    method: 'POST',
+    headers: { ...authHeaders(), 'content-type': 'application/pdf' },
+    body: pdfBytes,
+  });
+  if (!res.ok) throw new Error(`POST portal invoice draft failed: ${res.status}`);
+  return (await res.json()) as PortalInvoiceDraft;
+}
+
+export async function confirmPortalInvoiceDraft(
+  draftId: string,
+  correctedPayload: PortalInvoiceDraftPayload,
+  carrierId?: string,
+): Promise<{ auditRunId: string }> {
+  const res = await fetch(`/api/portal/invoice-drafts/${draftId}/confirm`, {
+    method: 'POST',
+    headers: { ...authHeaders(), 'content-type': 'application/json' },
+    body: JSON.stringify({ correctedPayload, ...(carrierId ? { carrierId } : {}) }),
+  });
+  if (!res.ok) throw new Error(`POST portal invoice draft confirm failed: ${res.status}`);
+  return (await res.json()) as { auditRunId: string };
+}
+
+export async function rejectPortalInvoiceDraft(draftId: string): Promise<void> {
+  const res = await fetch(`/api/portal/invoice-drafts/${draftId}/reject`, {
+    method: 'POST',
+    headers: authHeaders(),
+  });
+  if (!res.ok) throw new Error(`POST portal invoice draft reject failed: ${res.status}`);
+}
+
 export interface ClientRecoveryReportBucket {
   currency: string | null;
   claimed: string;

@@ -12,6 +12,7 @@ import { ClientClaimView } from './ClientClaimView.js';
 import { ClientClaimDocumentsView } from './ClientClaimDocumentsView.js';
 import { ClientRecoveryReport } from './ClientRecoveryReport.js';
 import { ClientAuditLogView } from './ClientAuditLogView.js';
+import { ClientUploadsView } from './ClientUploadsView.js';
 
 /**
  * Client portal shell + navigation (P6.A.1). The chrome portal members
@@ -46,6 +47,17 @@ const NAV_ITEMS: NavItem[] = [
   { path: '/audit-log', label: 'Audit log' },
 ];
 
+// 86e36yj9d: Uploads is client_admin-only (portal-invoice-upload-routes.ts's
+// registerClientAdminAuthPreHandler structurally rejects any other caller,
+// including client_viewer, with 401) -- the nav entry mirrors that at the UI
+// layer so a client_viewer never sees a link into a surface that would 401.
+// Prepended (not appended) to the existing PortalApp.test.tsx AC2 nav-order
+// assertion's 5 items -- that test renders <PortalApp /> with no `role` prop,
+// and `role` only ever equals 'client_admin' when App.tsx explicitly passes
+// the real actor's role, so that pre-existing test's exact-order expectation
+// is unaffected by this addition.
+const UPLOADS_NAV_ITEM: NavItem = { path: '/uploads', label: 'Uploads' };
+
 function ComingSoon({ label }: { label: string }) {
   return (
     <div data-testid="portal-placeholder" className="flex flex-1 items-center justify-center">
@@ -63,7 +75,8 @@ function ComingSoon({ label }: { label: string }) {
  * platform's own red, so an unbranded visit renders pixel-identical to
  * before.
  */
-function PortalNav({ branding }: { branding?: Branding | null }) {
+function PortalNav({ branding, role }: { branding?: Branding | null; role?: string | null }) {
+  const navItems = role === 'client_admin' ? [UPLOADS_NAV_ITEM, ...NAV_ITEMS] : NAV_ITEMS;
   return (
     <div className="flex w-[228px] flex-none flex-col bg-[#201e1d] text-[#f3f2f2]">
       <div className="flex h-16 flex-none items-center gap-2.5 border-b-2 border-[rgba(243,242,242,0.25)] px-[18px]">
@@ -73,7 +86,7 @@ function PortalNav({ branding }: { branding?: Branding | null }) {
         </div>
       </div>
       <div className="flex flex-col py-[18px]">
-        {NAV_ITEMS.map((item) => (
+        {navItems.map((item) => (
           <NavLink
             key={item.path}
             to={item.path}
@@ -216,12 +229,21 @@ function AuditLogSection() {
   );
 }
 
-function PortalShellInner({ branding }: { branding?: Branding | null }) {
+function UploadsSection() {
+  return (
+    <div className="flex flex-1 flex-col overflow-auto p-3">
+      <ClientUploadsView />
+    </div>
+  );
+}
+
+function PortalShellInner({ branding, role }: { branding?: Branding | null; role?: string | null }) {
   return (
     <div data-testid="portal-shell" className="flex h-screen">
-      <PortalNav branding={branding} />
+      <PortalNav branding={branding} role={role} />
       <div className="flex flex-1 flex-col">
         <Routes>
+          <Route path="/uploads" element={<UploadsSection />} />
           <Route path="/invoices" element={<InvoicesSection />} />
           <Route path="/findings" element={<FindingsSection />} />
           <Route path="/disputes" element={<DisputesSection />} />
@@ -234,10 +256,10 @@ function PortalShellInner({ branding }: { branding?: Branding | null }) {
   );
 }
 
-export function PortalApp({ branding }: { branding?: Branding | null } = {}) {
+export function PortalApp({ branding, role }: { branding?: Branding | null; role?: string | null } = {}) {
   return (
     <HashRouter>
-      <PortalShellInner branding={branding} />
+      <PortalShellInner branding={branding} role={role} />
     </HashRouter>
   );
 }

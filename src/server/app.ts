@@ -18,6 +18,7 @@ import { registerPortfolioRoutes } from './portfolio-routes.js';
 import { registerPortalContentRoutes } from './portal-content-routes.js';
 import { registerPortalAdminRoutes } from './portal-admin-routes.js';
 import { registerRecoveryReportRoutes } from './recovery-report-routes.js';
+import { registerPortalInvoiceUploadRoutes } from './portal-invoice-upload-routes.js';
 
 /**
  * Build the Fastify application instance.
@@ -121,6 +122,14 @@ export function buildApp(): FastifyInstance {
   // (unlike portfolio-routes.ts's internal-analyst-only gate) and reusing
   // getPortfolioReconciliation (P5.C.4) as-is.
   void app.register(registerRecoveryReportRoutes);
+
+  // Client portal Uploads section (86e36yj9d): browser-driven invoice-draft
+  // upload/confirm/reject, gated by client-admin-auth.ts's OWN preHandler
+  // (registerClientAdminAuthPreHandler) -- a second, client_admin-only HTTP
+  // surface onto invoice-draft.ts's domain functions, distinct from
+  // invoice-drafts-routes.ts's own /api/invoice-drafts (registered above,
+  // shared registerTenantAuthPreHandler, left unmodified).
+  void app.register(registerPortalInvoiceUploadRoutes);
 
   return app;
 }

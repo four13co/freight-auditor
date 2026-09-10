@@ -361,6 +361,14 @@ jobs:
       # ephemeral CI-only Postgres carve-out the job's other env vars above
       # already describe.
       PUBLIC_SIGNUP_ENABLED: '1'
+      # 86e36yj9d AC3: opens portal-upload-extraction-stub.ts's deterministic
+      # test double for the Uploads section's own POST /api/portal/invoice-
+      # drafts route only -- this job's server has no ANTHROPIC_API_KEY, and
+      # the real defaultExtractInvoiceFromText (pdf-extract.ts) has no other
+      # seam reachable from a real browser upload. Value must match a real
+      # carrier row so matchCarrierName resolves it -- seed:e2e-fullstack-
+      # fixture (below) seeds exactly this name against DEV_CLIENT_ID.
+      PORTAL_UPLOAD_EXTRACTION_STUB_CARRIER: 'E2E Fullstack Carrier'
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -395,6 +403,13 @@ jobs:
 
       - name: Seed e2e real-session portal-member user
         run: npm run seed:e2e-portal-user
+
+      # 86e36yj9d: the client_admin counterpart, needed by the Uploads
+      # section's own AC1/AC3/AC4/AC5 e2e (browser upload/confirm as
+      # client_admin, AC4's cross-session read as the client_viewer user
+      # seeded just above).
+      - name: Seed e2e real-session portal-admin user
+        run: npm run seed:e2e-portal-admin-user
 
       # No VITE_DEV_AUTH_HEADERS here (unlike web-fullstack's identical step)
       # -- this is the entire point of this job: App.tsx's

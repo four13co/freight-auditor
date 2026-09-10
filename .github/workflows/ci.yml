@@ -361,6 +361,12 @@ jobs:
       # ephemeral CI-only Postgres carve-out the job's other env vars above
       # already describe.
       PUBLIC_SIGNUP_ENABLED: '1'
+      # 86e36yj9d: the client-portal Uploads section's invoice-extraction call
+      # would otherwise reach the live Anthropic API on a real browser upload
+      # (no module-mocking seam is available to a Playwright-driven HTTP
+      # request) -- this swaps it for a deterministic double at server-boot
+      # time. See src/server/e2e-fake-extraction.ts and index.ts.
+      E2E_FAKE_INVOICE_EXTRACTION: '1'
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -395,6 +401,9 @@ jobs:
 
       - name: Seed e2e real-session portal-member user
         run: npm run seed:e2e-portal-user
+
+      - name: Seed e2e real-session portal-admin user
+        run: npm run seed:e2e-portal-admin-user
 
       # No VITE_DEV_AUTH_HEADERS here (unlike web-fullstack's identical step)
       # -- this is the entire point of this job: App.tsx's

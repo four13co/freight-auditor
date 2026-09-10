@@ -51,6 +51,13 @@ export default defineConfig({
         'src/modules/ingestion/invoice-draft.ts',
         'src/modules/ingestion/carrier-match.ts',
         'src/server/invoice-drafts-routes.ts',
+        // 86e36yj9d: the client-portal Uploads section's Invoice-type route --
+        // same DB-transaction-boundary shape as invoice-drafts-routes.ts above
+        // (reuses createInvoiceDraft/confirmInvoiceDraft/rejectInvoiceDraft
+        // unchanged), fully covered by test:db. Its request-validation and
+        // auth-gating logic have focused unit coverage in
+        // test/unit/portal-uploads-routes.test.ts.
+        'src/server/portal-uploads-routes.ts',
         // Evidence/governance handlers are DB transaction boundaries. Their
         // pure query/services and validation contracts have focused unit
         // coverage; authenticated RLS execution belongs to test:db, matching

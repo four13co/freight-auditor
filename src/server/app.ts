@@ -18,6 +18,13 @@ import { registerPortfolioRoutes } from './portfolio-routes.js';
 import { registerPortalContentRoutes } from './portal-content-routes.js';
 import { registerPortalAdminRoutes } from './portal-admin-routes.js';
 import { registerRecoveryReportRoutes } from './recovery-report-routes.js';
+import { registerPortalUploadsRoutes } from './portal-uploads-routes.js';
+import type { ExtractInvoiceFromTextImpl } from '../modules/ingestion/pdf-extract.js';
+
+export interface BuildAppOptions {
+  /** Test-only override for the client-portal invoice-upload extraction call. See e2e-fake-extraction.ts. */
+  invoiceExtractImpl?: ExtractInvoiceFromTextImpl;
+}
 
 /**
  * Build the Fastify application instance.
@@ -33,7 +40,7 @@ import { registerRecoveryReportRoutes } from './recovery-report-routes.js';
  * top-of-file seam). Each domain module now owns its own imports/consts
  * alongside its routes; app.ts only imports and registers them.
  */
-export function buildApp(): FastifyInstance {
+export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
   const app = Fastify({
     logger: process.env.NODE_ENV !== 'test',
     // 86e34cfpe: fastify's default forceCloseConnections:'idle' only takes
@@ -115,6 +122,14 @@ export function buildApp(): FastifyInstance {
   // membership roster + role management, the first consumers of
   // client-admin-auth.ts's/client-viewer-auth.ts's preHandlers.
   void app.register(registerPortalAdminRoutes);
+
+  // Client-portal Uploads section, Invoice type (86e36yj9d): its OWN
+  // preHandler (registerClientAdminAuthPreHandler, nested inside the route
+  // module's own register() scope) -- deliberately NOT a reuse of
+  // registerInvoiceDraftsRoutes above, which grants any membership role
+  // (including client_viewer) access. See portal-uploads-routes.ts's header
+  // comment.
+  void app.register(registerPortalUploadsRoutes(options.invoiceExtractImpl));
 
   // Client-level recovery reporting (P5.C.2): the single-tenant analog of
   // registerPortfolioRoutes above, gated by the shared registerTenantAuthPreHandler

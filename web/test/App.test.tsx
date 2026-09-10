@@ -34,7 +34,9 @@ vi.mock('../src/components/Dashboard.js', () => ({
 }));
 
 vi.mock('../src/components/PortalApp.js', () => ({
-  PortalApp: () => <div data-testid="portal-app-stub">portal</div>,
+  PortalApp: ({ role }: { role?: string | null }) => (
+    <div data-testid="portal-app-stub" data-role={role ?? ''}>portal</div>
+  ),
 }));
 
 describe('App (session gate)', () => {
@@ -111,6 +113,10 @@ describe('App (session gate)', () => {
     await waitFor(() => expect(screen.getByTestId('portal-app-stub')).toBeInTheDocument());
     expect(screen.queryByTestId('dashboard-stub')).not.toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: /sign in/i })).not.toBeInTheDocument();
+    // 86e36yj9d: PortalApp's own role-based nav filtering (proven in
+    // PortalApp.test.tsx) only works if App.tsx actually forwards the
+    // fetched actor role -- this is that wiring's own proof.
+    expect(screen.getByTestId('portal-app-stub')).toHaveAttribute('data-role', 'client_viewer');
   });
 
   it('86e2zfjmb AC1: still shows the dashboard (not the portal shell) for a real session belonging to an internal analyst', async () => {

@@ -31,6 +31,13 @@ import { defineConfig, devices } from '@playwright/test';
 // yourself before running seed:e2e-auth-user or this config). APP_URL must
 // match this config's baseURL exactly (scheme+host+port) -- better-auth
 // gates cookie issuance/origin checks on it.
+//
+// 86e36yj9d: the Uploads-section spec also needs seed:e2e-portal-admin-user
+// (a client_admin fixture, sibling to seed:e2e-portal-user's client_viewer)
+// and E2E_FAKE_INVOICE_EXTRACTION=1 exported before this config runs, so
+// dev:fullstack-auth-server's invoice-extraction call returns a canned
+// result instead of reaching the live Anthropic API -- see
+// src/server/e2e-fake-extraction.ts.
 export default defineConfig({
   testDir: './test/e2e-fullstack-auth',
   // Same shared-schema reasoning as playwright.fullstack.config.ts: one

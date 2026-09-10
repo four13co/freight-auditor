@@ -108,4 +108,33 @@ describe('PortalApp', () => {
     expect(screen.getByTestId('brand-mark-logo')).toHaveAttribute('src', 'https://cdn.example.com/bank-a/logo.png');
     expect(screen.queryByTestId('brand-mark-default')).not.toBeInTheDocument();
   });
+
+  // 86e36yj9d: the Uploads section is client_admin only -- both halves of
+  // AC2 (route rejects client_viewer, AND the nav entry itself is absent)
+  // need proving; the route-rejection half is covered server-side
+  // (test/db/portal-uploads-routes.db.test.ts), this proves the nav-absence
+  // half for both "no role known yet" (undefined, same as the no-role-prop
+  // AC2 test above) and an explicit client_viewer.
+  it('86e36yj9d AC2: the Uploads nav item is absent for a client_viewer (and when no role is known)', () => {
+    render(<PortalApp role="client_viewer" />);
+    expect(screen.queryByRole('link', { name: 'Uploads' })).not.toBeInTheDocument();
+  });
+
+  it('86e36yj9d AC1: a client_admin sees an Uploads nav item, and it renders the real view, never a blank screen', async () => {
+    render(<PortalApp role="client_admin" />);
+
+    const navItems = screen.getAllByTestId('portal-nav-item');
+    expect(navItems.map((el) => el.textContent)).toEqual([
+      'Invoices',
+      'Findings',
+      'Disputes',
+      'Claims & Recovery',
+      'Audit log',
+      'Uploads',
+    ]);
+
+    await userEvent.click(screen.getByRole('link', { name: 'Uploads' }));
+    expect(screen.queryByTestId('portal-placeholder')).not.toBeInTheDocument();
+    expect(screen.getByTestId('client-uploads-view')).toBeVisible();
+  });
 });

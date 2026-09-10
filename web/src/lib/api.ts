@@ -652,6 +652,89 @@ export async function fetchClientRecoveryReport(): Promise<ClientRecoveryReportB
 }
 
 /**
+ * 86e36yj9d: the client-portal Uploads section's Invoice-type surface. Mirrors
+ * NormalizedCharge/ParsedInvoice (src/modules/ingestion/charge-fact.ts) and
+ * DraftRecord (src/modules/ingestion/invoice-draft.ts) exactly, same
+ * mirroring convention as ClientPortalInvoiceRow etc. above. Hits
+ * /api/portal/invoice-drafts* (portal-uploads-routes.ts), gated by
+ * registerClientAdminAuthPreHandler -- deliberately NOT the pre-existing
+ * /api/invoice-drafts (any tenant role, including client_viewer).
+ */
+export interface PortalInvoiceCharge {
+  code?: string;
+  category?: string;
+  quarantined: boolean;
+  amount: string | undefined;
+  currency: string;
+  basis?: string;
+  rate?: string;
+  rawDescription?: string;
+}
+
+export interface PortalInvoicePayload {
+  transactionSet: 'PDF';
+  parserVersion: string;
+  invoiceNumber?: string;
+  headerCurrency?: string;
+  charges: PortalInvoiceCharge[];
+  footing?: { declaredTotal?: string; lineSum: string };
+  quarantinedCodes: string[];
+}
+
+export interface PortalInvoiceCarrierCandidate {
+  carrierId: string;
+  name: string;
+}
+
+export interface PortalInvoiceDraft {
+  id: string;
+  status: 'extracted' | 'needs_carrier_review' | 'confirmed' | 'rejected';
+  extractedPayload: PortalInvoicePayload;
+  carrierCandidates: PortalInvoiceCarrierCandidate[];
+}
+
+async function readErrorMessage(res: Response, fallback: string): Promise<string> {
+  try {
+    const body = (await res.json()) as { error?: string };
+    return body.error ?? fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+export async function uploadPortalInvoiceDraft(pdfBytes: ArrayBuffer): Promise<PortalInvoiceDraft> {
+  const res = await fetch('/api/portal/invoice-drafts', {
+    method: 'POST',
+    headers: { ...authHeaders(), 'content-type': 'application/pdf' },
+    body: pdfBytes,
+  });
+  if (!res.ok) throw new Error(await readErrorMessage(res, `upload failed: ${res.status}`));
+  return (await res.json()) as PortalInvoiceDraft;
+}
+
+export async function confirmPortalInvoiceDraft(
+  draftId: string,
+  input: { carrierId?: string; correctedPayload?: PortalInvoicePayload },
+): Promise<{ auditRunId: string }> {
+  const res = await fetch(`/api/portal/invoice-drafts/${draftId}/confirm`, {
+    method: 'POST',
+    headers: { ...authHeaders(), 'content-type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) throw new Error(await readErrorMessage(res, `confirm failed: ${res.status}`));
+  return (await res.json()) as { auditRunId: string };
+}
+
+export async function rejectPortalInvoiceDraft(draftId: string): Promise<{ id: string; status: string }> {
+  const res = await fetch(`/api/portal/invoice-drafts/${draftId}/reject`, {
+    method: 'POST',
+    headers: authHeaders(),
+  });
+  if (!res.ok) throw new Error(await readErrorMessage(res, `reject failed: ${res.status}`));
+  return (await res.json()) as { id: string; status: string };
+}
+
+/**
  * 86e320pkc: per-Customer white-labeling. No headers -- GET /api/branding is
  * unauthenticated and resolves purely from the request's own Host header
  * (the domain the browser is already showing), so this fires before any

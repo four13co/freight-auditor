@@ -94,5 +94,5 @@ export default function App() {
   if (isPending) return null;
   if (!session) return <LoginForm />;
   if (!clientIdReady || !actorContext) return null;
-  return actorContext.isInternal ? <Dashboard branding={branding} /> : <PortalApp branding={branding} />;
+  return actorContext.isInternal ? <Dashboard branding={branding} /> : <PortalApp branding={branding} role={actorContext.role} />;
 }

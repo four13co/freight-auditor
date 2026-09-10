@@ -117,6 +117,10 @@ export async function registerPortalInvoiceUploadRoutes(app: FastifyInstance): P
             correctedPayload: corrected?.data
               ? {
                   ...corrected.data,
+                  // Required to force each charge's optional `amount?: string` (Zod schema)
+                  // into NormalizedCharge's required-but-possibly-undefined `amount: string
+                  // | undefined` -- not a no-op despite the identical runtime value; removing
+                  // it breaks the `satisfies ParsedInvoice` typecheck below.
                   charges: corrected.data.charges.map((charge) => ({ ...charge, amount: charge.amount })),
                 } satisfies ParsedInvoice
               : undefined,

@@ -47,6 +47,30 @@ test('dashboard renders the 1B Console layout with real (mocked) API data', asyn
 });
 
 /**
+ * 86e36xk28 AC6: the sidebar's header/footer hairline borders render at the
+ * new 1px weight in a real browser, not just as a className assertion in
+ * jsdom -- computed styles are the only way to catch a Tailwind class that
+ * doesn't actually resolve to the intended width.
+ */
+test('sidebar header and footer borders render at 1px, not 2px', async ({ page }) => {
+  await page.route('**/api/findings**', (route) => route.fulfill({ json: { findings: ROWS } }));
+  await page.route('**/api/findings/summary', (route) => route.fulfill({ json: SUMMARY }));
+
+  await page.goto('/');
+
+  const header = page.getByTestId('sidebar-header');
+  const footer = page.getByTestId('sidebar-footer');
+  await expect(header).toBeVisible();
+  await expect(footer).toBeVisible();
+
+  const headerBorderWidth = await header.evaluate((el) => getComputedStyle(el).borderBottomWidth);
+  const footerBorderWidth = await footer.evaluate((el) => getComputedStyle(el).borderTopWidth);
+
+  expect(headerBorderWidth).toBe('1px');
+  expect(footerBorderWidth).toBe('1px');
+});
+
+/**
  * 86e2urn2t: the error state is new surface, not just a check that the
  * happy path is unbroken -- captured for the same perceptual-review reason
  * as the happy-path render above.

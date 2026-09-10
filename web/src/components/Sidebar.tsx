@@ -40,8 +40,11 @@ function SoonBadge() {
  */
 export function Sidebar({ branding }: { branding?: Branding | null } = {}) {
   return (
-    <div className="flex w-[228px] flex-none flex-col bg-[#201e1d] text-[#f3f2f2]">
-      <div className="flex h-16 flex-none items-center gap-2.5 border-b-2 border-[rgba(243,242,242,0.25)] px-[18px]">
+    <div className="flex w-[228px] flex-none flex-col bg-sidebar-bg text-sidebar-fg">
+      <div
+        data-testid="sidebar-header"
+        className="flex h-16 flex-none items-center gap-2.5 border-b border-sidebar-border px-[18px]"
+      >
         <BrandMark branding={branding} />
         <div className="text-[15px] font-extrabold tracking-[-0.015em]" style={{ color: 'var(--brand-secondary, #f3f2f2)' }}>
           Freight Auditor
@@ -49,12 +52,13 @@ export function Sidebar({ branding }: { branding?: Branding | null } = {}) {
       </div>
 
       <div className="flex flex-col py-[18px]">
-        <div className="px-[18px] pb-2 text-[11px] font-extrabold uppercase tracking-[0.1em] text-[rgba(243,242,242,0.5)]">
+        <div className="px-[18px] pb-2 text-[11px] font-extrabold uppercase tracking-[0.1em] text-sidebar-fg-50">
           Audit
         </div>
         <div
-          className="px-[18px] py-[9px] text-sm font-extrabold text-[#f3f2f2]"
-          style={{ backgroundColor: 'var(--brand-primary, #ec3013)' }}
+          data-testid="sidebar-active-item"
+          className="border-l-2 bg-sidebar-active px-[16px] py-[9px] text-sm font-medium text-sidebar-fg"
+          style={{ borderLeftColor: 'var(--brand-primary, #ec3013)' }}
         >
           Dashboard
         </div>
@@ -62,7 +66,7 @@ export function Sidebar({ branding }: { branding?: Branding | null } = {}) {
           type="button"
           disabled
           title="Coming soon"
-          className="flex cursor-not-allowed items-center justify-between px-[18px] py-[9px] text-left text-sm text-[rgba(243,242,242,0.85)] opacity-60"
+          className="flex cursor-not-allowed items-center justify-between px-[18px] py-[9px] text-left text-sm text-sidebar-fg-85 opacity-60"
         >
           <span>Discrepancies</span>
           <SoonBadge />
@@ -71,20 +75,20 @@ export function Sidebar({ branding }: { branding?: Branding | null } = {}) {
           type="button"
           disabled
           title="Coming soon"
-          className="flex cursor-not-allowed items-center justify-between px-[18px] py-[9px] text-left text-sm text-[rgba(243,242,242,0.85)] opacity-60"
+          className="flex cursor-not-allowed items-center justify-between px-[18px] py-[9px] text-left text-sm text-sidebar-fg-85 opacity-60"
         >
           <span>Invoices</span>
           <SoonBadge />
         </button>
 
-        <div className="px-[18px] pb-2 pt-[22px] text-[11px] font-extrabold uppercase tracking-[0.1em] text-[rgba(243,242,242,0.5)]">
+        <div className="px-[18px] pb-2 pt-[22px] text-[11px] font-extrabold uppercase tracking-[0.1em] text-sidebar-fg-50">
           Records
         </div>
         <button
           type="button"
           disabled
           title="Coming soon"
-          className="flex cursor-not-allowed items-center justify-between px-[18px] py-[9px] text-left text-sm text-[rgba(243,242,242,0.85)] opacity-60"
+          className="flex cursor-not-allowed items-center justify-between px-[18px] py-[9px] text-left text-sm text-sidebar-fg-85 opacity-60"
         >
           <span>Audit log</span>
           <SoonBadge />
@@ -93,21 +97,21 @@ export function Sidebar({ branding }: { branding?: Branding | null } = {}) {
           type="button"
           disabled
           title="Coming soon"
-          className="flex cursor-not-allowed items-center justify-between px-[18px] py-[9px] text-left text-sm text-[rgba(243,242,242,0.85)] opacity-60"
+          className="flex cursor-not-allowed items-center justify-between px-[18px] py-[9px] text-left text-sm text-sidebar-fg-85 opacity-60"
         >
           <span>Settings</span>
           <SoonBadge />
         </button>
 
-        <div className="mt-[22px] border-t-2 border-[rgba(243,242,242,0.25)] pt-3.5">
-          <div className="px-[18px] pb-2 text-[11px] font-extrabold uppercase tracking-[0.1em] text-[rgba(243,242,242,0.5)]">
+        <div className="mt-[22px] border-t border-sidebar-border pt-3.5">
+          <div className="px-[18px] pb-2 text-[11px] font-extrabold uppercase tracking-[0.1em] text-sidebar-fg-50">
             Saved views
           </div>
           <button
             type="button"
             disabled
             title="Coming soon"
-            className="flex w-full cursor-not-allowed items-center justify-between px-[18px] py-[7px] text-left text-[13px] text-[rgba(243,242,242,0.75)] opacity-60"
+            className="flex w-full cursor-not-allowed items-center justify-between px-[18px] py-[7px] text-left text-[13px] text-sidebar-fg-75 opacity-60"
           >
             <span>Mine, over $500</span>
             <SoonBadge />
@@ -116,7 +120,7 @@ export function Sidebar({ branding }: { branding?: Branding | null } = {}) {
             type="button"
             disabled
             title="Coming soon"
-            className="flex w-full cursor-not-allowed items-center justify-between px-[18px] py-[7px] text-left text-[13px] text-[rgba(243,242,242,0.75)] opacity-60"
+            className="flex w-full cursor-not-allowed items-center justify-between px-[18px] py-[7px] text-left text-[13px] text-sidebar-fg-75 opacity-60"
           >
             <span>Estes accessorials</span>
             <SoonBadge />
@@ -125,7 +129,7 @@ export function Sidebar({ branding }: { branding?: Branding | null } = {}) {
             type="button"
             disabled
             title="Coming soon"
-            className="flex w-full cursor-not-allowed items-center justify-between px-[18px] py-[7px] text-left text-[13px] text-[rgba(243,242,242,0.75)] opacity-60"
+            className="flex w-full cursor-not-allowed items-center justify-between px-[18px] py-[7px] text-left text-[13px] text-sidebar-fg-75 opacity-60"
           >
             <span>Aging &gt; 5 days</span>
             <SoonBadge />
@@ -133,9 +137,12 @@ export function Sidebar({ branding }: { branding?: Branding | null } = {}) {
         </div>
       </div>
 
-      <div className="mt-auto flex flex-col gap-0.5 border-t-2 border-[rgba(243,242,242,0.25)] px-[18px] py-3.5">
+      <div
+        data-testid="sidebar-footer"
+        className="mt-auto flex flex-col gap-0.5 border-t border-sidebar-border px-[18px] py-3.5"
+      >
         <span className="text-[13px] font-semibold">Dana Mercer</span>
-        <span className="text-[11px] text-[rgba(243,242,242,0.55)]">Ops analyst · Four13</span>
+        <span className="text-[11px] text-sidebar-fg-55">Ops analyst · Four13</span>
       </div>
     </div>
   );

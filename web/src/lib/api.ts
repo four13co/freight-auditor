@@ -704,6 +704,51 @@ export async function rejectPortalInvoiceDraft(draftId: string): Promise<void> {
   if (!res.ok) throw new Error(`POST portal invoice draft reject failed: ${res.status}`);
 }
 
+/**
+ * 86e36yrne: the Uploads section's Contract document type -- unlike Invoice,
+ * there is no extraction/review step: the client supplies metadata directly
+ * (mirroring ContractUploadMetadataSchema, upload-contract-document.ts) and
+ * the transport is raw bytes + query-string metadata (the same shape
+ * contracts-routes.ts's own internal /api/contracts already uses), not a
+ * JSON body.
+ */
+export interface PortalContractUploadMetadata {
+  carrierId: string;
+  name: string;
+  versionLabel?: string;
+  validFrom: string;
+  validTo?: string;
+}
+
+export interface PortalContractUploadResult {
+  contractId: string;
+  contractVersionId: string;
+  sourceDocumentId: string;
+  sha256: string;
+  created: boolean;
+}
+
+export async function uploadPortalContract(
+  bytes: ArrayBuffer,
+  contentType: string,
+  metadata: PortalContractUploadMetadata,
+): Promise<PortalContractUploadResult> {
+  const qs = new URLSearchParams({
+    carrier_id: metadata.carrierId,
+    name: metadata.name,
+    valid_from: metadata.validFrom,
+    ...(metadata.versionLabel ? { version_label: metadata.versionLabel } : {}),
+    ...(metadata.validTo ? { valid_to: metadata.validTo } : {}),
+  });
+  const res = await fetch(`/api/portal/contracts?${qs.toString()}`, {
+    method: 'POST',
+    headers: { ...authHeaders(), 'content-type': contentType },
+    body: bytes,
+  });
+  if (!res.ok) throw new Error(`POST portal contract upload failed: ${res.status}`);
+  return (await res.json()) as PortalContractUploadResult;
+}
+
 export interface ClientRecoveryReportBucket {
   currency: string | null;
   claimed: string;

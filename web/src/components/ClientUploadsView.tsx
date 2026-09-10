@@ -1,20 +1,23 @@
-import { useState, type ChangeEvent } from 'react';
+import { useState, type ChangeEvent, type FormEvent } from 'react';
 import {
   confirmPortalInvoiceDraft,
   rejectPortalInvoiceDraft,
   uploadPortalInvoiceDraft,
+  uploadPortalContract,
   type PortalInvoiceDraft,
   type PortalInvoiceDraftCharge,
   type PortalInvoiceDraftPayload,
 } from '../lib/api.js';
 
 /**
- * 86e36yj9d: the client portal's Uploads section -- a document-type list/
- * selector (currently just "Invoice"; the sibling contract-upload task adds
- * a second entry here without reworking this shell) plus, for the selected
- * type, the upload -> LLM-extracted review -> confirm/reject flow against
- * portal-invoice-upload-routes.ts's client_admin-gated
- * /api/portal/invoice-drafts.
+ * 86e36yj9d / 86e36yrne: the client portal's Uploads section -- a
+ * document-type list/selector (Invoice, Contract) plus, for the selected
+ * type, its own upload flow. Invoice goes through an LLM-extracted
+ * review -> confirm/reject flow against portal-invoice-upload-routes.ts's
+ * client_admin-gated /api/portal/invoice-drafts. Contract has no
+ * extraction step -- the client supplies metadata (carrier, name, version
+ * label, valid-from/to) directly in its own form, submitted straight to
+ * portal-contract-upload-routes.ts's /api/portal/contracts.
  *
  * No GET-driven list backs this section (the document-type list is a fixed,
  * known-small array, not fetched data), so useClientPortalResource's fetch/
@@ -24,10 +27,11 @@ import {
  * driven upload/review flow, not a mount-effect fetch).
  */
 
-type DocumentTypeId = 'invoice';
+type DocumentTypeId = 'invoice' | 'contract';
 
 const DOCUMENT_TYPES: Array<{ id: DocumentTypeId; label: string }> = [
   { id: 'invoice', label: 'Invoice' },
+  { id: 'contract', label: 'Contract' },
 ];
 
 type FlowState =
@@ -247,6 +251,174 @@ function InvoiceUploadPanel() {
   );
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const CONTRACT_ACCEPT = 'application/pdf,.pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,.xlsx';
+
+interface ContractFormFields {
+  carrierId: string;
+  name: string;
+  versionLabel: string;
+  validFrom: string;
+  validTo: string;
+}
+
+const EMPTY_CONTRACT_FORM: ContractFormFields = { carrierId: '', name: '', versionLabel: '', validFrom: '', validTo: '' };
+
+/**
+ * 86e36yrne AC4: required-field validation for the Contract form -- carrier,
+ * name, and validFrom are required (mirroring ContractUploadMetadataSchema,
+ * upload-contract-document.ts: versionLabel/validTo are `.optional()` there
+ * too), plus a file. Returns the first violation found, or null when the
+ * form is submittable -- never sends an incomplete payload to the server.
+ */
+function validateContractForm(fields: ContractFormFields, file: File | null): string | null {
+  if (!file) return 'Select a PDF or XLSX file to upload.';
+  if (!fields.carrierId.trim()) return 'Carrier is required.';
+  if (!UUID_RE.test(fields.carrierId.trim())) return 'Carrier must be a valid carrier ID (UUID).';
+  if (!fields.name.trim()) return 'Contract name is required.';
+  if (!fields.validFrom.trim()) return 'Valid-from date is required.';
+  if (!ISO_DATE_RE.test(fields.validFrom.trim())) return 'Valid-from date must be in YYYY-MM-DD format.';
+  if (fields.validTo.trim() && !ISO_DATE_RE.test(fields.validTo.trim())) return 'Valid-to date must be in YYYY-MM-DD format.';
+  if (fields.validTo.trim() && fields.validTo.trim() <= fields.validFrom.trim()) return 'Valid-to date must be after valid-from date.';
+  return null;
+}
+
+type ContractFlowState =
+  | { phase: 'idle' }
+  | { phase: 'submitting' }
+  | { phase: 'error'; message: string }
+  | { phase: 'success'; contractId: string };
+
+function ContractUploadPanel() {
+  const [fields, setFields] = useState<ContractFormFields>(EMPTY_CONTRACT_FORM);
+  const [file, setFile] = useState<File | null>(null);
+  const [state, setState] = useState<ContractFlowState>({ phase: 'idle' });
+
+  function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
+    setFile(event.target.files?.[0] ?? null);
+  }
+
+  function handleFieldChange(key: keyof ContractFormFields, value: string) {
+    setFields((prev) => ({ ...prev, [key]: value }));
+  }
+
+  function handleSubmit(event: FormEvent) {
+    event.preventDefault();
+    const validationError = validateContractForm(fields, file);
+    if (validationError) {
+      setState({ phase: 'error', message: validationError });
+      return;
+    }
+    setState({ phase: 'submitting' });
+    void file!.arrayBuffer().then(
+      (bytes) => uploadPortalContract(bytes, file!.type, {
+        carrierId: fields.carrierId.trim(),
+        name: fields.name.trim(),
+        versionLabel: fields.versionLabel.trim() || undefined,
+        validFrom: fields.validFrom.trim(),
+        validTo: fields.validTo.trim() || undefined,
+      }).then(
+        (result) => setState({ phase: 'success', contractId: result.contractId }),
+        () => setState({ phase: 'error', message: 'Upload failed. Check the file and metadata, then try again.' }),
+      ),
+      () => setState({ phase: 'error', message: 'Upload failed. Check the file and try again.' }),
+    );
+  }
+
+  const submitting = state.phase === 'submitting';
+
+  return (
+    <div data-testid="contract-upload-panel" className="border border-[rgba(32,30,29,.3)] bg-[#f3f2f2] p-3">
+      <form data-testid="contract-upload-form" className="flex flex-col gap-3" onSubmit={handleSubmit}>
+        <label className="flex flex-col text-xs font-semibold">
+          Carrier ID
+          <input
+            data-testid="contract-upload-carrier-input"
+            value={fields.carrierId}
+            disabled={submitting}
+            onChange={(e) => handleFieldChange('carrierId', e.target.value)}
+            className="border border-[rgba(32,30,29,.3)] px-2 py-1 text-xs font-normal"
+          />
+        </label>
+        <label className="flex flex-col text-xs font-semibold">
+          Contract name
+          <input
+            data-testid="contract-upload-name-input"
+            value={fields.name}
+            disabled={submitting}
+            onChange={(e) => handleFieldChange('name', e.target.value)}
+            className="border border-[rgba(32,30,29,.3)] px-2 py-1 text-xs font-normal"
+          />
+        </label>
+        <label className="flex flex-col text-xs font-semibold">
+          Version label (optional)
+          <input
+            data-testid="contract-upload-version-label-input"
+            value={fields.versionLabel}
+            disabled={submitting}
+            onChange={(e) => handleFieldChange('versionLabel', e.target.value)}
+            className="border border-[rgba(32,30,29,.3)] px-2 py-1 text-xs font-normal"
+          />
+        </label>
+        <div className="flex gap-3">
+          <label className="flex flex-1 flex-col text-xs font-semibold">
+            Valid from
+            <input
+              data-testid="contract-upload-valid-from-input"
+              value={fields.validFrom}
+              placeholder="YYYY-MM-DD"
+              disabled={submitting}
+              onChange={(e) => handleFieldChange('validFrom', e.target.value)}
+              className="border border-[rgba(32,30,29,.3)] px-2 py-1 text-xs font-normal"
+            />
+          </label>
+          <label className="flex flex-1 flex-col text-xs font-semibold">
+            Valid to (optional)
+            <input
+              data-testid="contract-upload-valid-to-input"
+              value={fields.validTo}
+              placeholder="YYYY-MM-DD"
+              disabled={submitting}
+              onChange={(e) => handleFieldChange('validTo', e.target.value)}
+              className="border border-[rgba(32,30,29,.3)] px-2 py-1 text-xs font-normal"
+            />
+          </label>
+        </div>
+        <label htmlFor="contract-upload-input" className="text-xs font-extrabold">Upload a contract (PDF or XLSX)</label>
+        <input
+          id="contract-upload-input"
+          data-testid="contract-upload-input"
+          type="file"
+          accept={CONTRACT_ACCEPT}
+          disabled={submitting}
+          onChange={handleFileChange}
+          className="text-xs"
+        />
+
+        {state.phase === 'error' && (
+          <span role="alert" data-testid="contract-upload-error" className="text-xs font-semibold text-[#7c1405]">{state.message}</span>
+        )}
+        {state.phase === 'success' && (
+          <span role="status" data-testid="contract-upload-success" className="text-xs font-semibold text-[#33705a]">
+            Contract created — {state.contractId}.
+          </span>
+        )}
+
+        <button
+          type="submit"
+          data-testid="contract-upload-submit-button"
+          disabled={submitting}
+          className="px-3 py-1 text-xs font-extrabold text-white disabled:cursor-not-allowed disabled:opacity-35"
+          style={{ backgroundColor: 'var(--brand-primary, #ec3013)' }}
+        >
+          {submitting ? 'Uploading…' : 'Upload contract'}
+        </button>
+      </form>
+    </div>
+  );
+}
+
 export function ClientUploadsView() {
   const [selectedType, setSelectedType] = useState<DocumentTypeId>('invoice');
 
@@ -269,6 +441,7 @@ export function ClientUploadsView() {
         ))}
       </div>
       {selectedType === 'invoice' && <InvoiceUploadPanel />}
+      {selectedType === 'contract' && <ContractUploadPanel />}
     </section>
   );
 }

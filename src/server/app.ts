@@ -19,6 +19,7 @@ import { registerPortalContentRoutes } from './portal-content-routes.js';
 import { registerPortalAdminRoutes } from './portal-admin-routes.js';
 import { registerRecoveryReportRoutes } from './recovery-report-routes.js';
 import { registerPortalInvoiceUploadRoutes } from './portal-invoice-upload-routes.js';
+import { registerPortalContractUploadRoutes } from './portal-contract-upload-routes.js';
 
 /**
  * Build the Fastify application instance.
@@ -130,6 +131,14 @@ export function buildApp(): FastifyInstance {
   // invoice-drafts-routes.ts's own /api/invoice-drafts (registered above,
   // shared registerTenantAuthPreHandler, left unmodified).
   void app.register(registerPortalInvoiceUploadRoutes);
+
+  // 86e36yrne: the Uploads section's second document type (Contract),
+  // same shape as the Invoice-type registration directly above -- a
+  // second, client_admin-only HTTP surface onto upload-contract-
+  // document.ts's uploadContractDocument, distinct from contracts-routes.ts's
+  // own /api/contracts (registered above, shared registerTenantAuthPreHandler,
+  // left unmodified).
+  void app.register(registerPortalContractUploadRoutes);
 
   return app;
 }

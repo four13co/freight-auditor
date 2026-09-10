@@ -108,4 +108,34 @@ describe('PortalApp', () => {
     expect(screen.getByTestId('brand-mark-logo')).toHaveAttribute('src', 'https://cdn.example.com/bank-a/logo.png');
     expect(screen.queryByTestId('brand-mark-default')).not.toBeInTheDocument();
   });
+
+  // 86e36yj9d AC1/AC2: Uploads is a client_admin-only nav entry -- absent for
+  // no role (the default, and by extension client_viewer, since 'client_viewer'
+  // !== 'client_admin' the same way undefined isn't), present and first for
+  // client_admin. Additive alongside the pre-existing "AC2: renders... for
+  // every B.1-B.7 section" test above (still asserting its original 5-item,
+  // no-role list unmodified) rather than folding Uploads into it.
+  it('86e36yj9d AC1: shows an Uploads nav item, first in the list, for a client_admin caller', () => {
+    render(<PortalApp role="client_admin" />);
+    const navItems = screen.getAllByTestId('portal-nav-item');
+    expect(navItems.map((el) => el.textContent)).toEqual([
+      'Uploads',
+      'Invoices',
+      'Findings',
+      'Disputes',
+      'Claims & Recovery',
+      'Audit log',
+    ]);
+  });
+
+  it('86e36yj9d AC2: shows no Uploads nav item for a client_viewer caller', () => {
+    render(<PortalApp role="client_viewer" />);
+    expect(screen.queryByText('Uploads')).not.toBeInTheDocument();
+  });
+
+  it('86e36yj9d: navigating to Uploads for a client_admin caller renders the real view', async () => {
+    render(<PortalApp role="client_admin" />);
+    await userEvent.click(screen.getByRole('link', { name: 'Uploads' }));
+    expect(screen.getByTestId('client-uploads-view')).toBeVisible();
+  });
 });

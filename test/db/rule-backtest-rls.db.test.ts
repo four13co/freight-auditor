@@ -83,8 +83,13 @@ describe('rule_backtest / rule_backtest_case / charge_alignment_member RLS (86e3
     await pool.query(`DELETE FROM carrier WHERE name=$1`, [tag]);
     await pool.query(`DELETE FROM promotion_event WHERE rule_version_id IN (SELECT id FROM rule_version WHERE rule_id=$1)`, [ruleId]);
     await pool.query(`DELETE FROM audit_event WHERE entity='rule_version' AND rule_version_id IN (SELECT id FROM rule_version WHERE rule_id=$1)`, [ruleId]);
-    await pool.query(`DELETE FROM rule_backtest_case WHERE client_id = ANY($1)`, [[clientId, otherClientId]]);
-    await pool.query(`DELETE FROM rule_backtest WHERE client_id = ANY($1)`, [[clientId, otherClientId]]);
+    // Scoped by rule_version_id (not just client_id) so this also catches the
+    // 86e36zket global (client_id NULL) row the tenant-isolation test below
+    // inserts -- a client_id-only filter would miss it and leave a dangling
+    // FK reference that fails the rule_version delete just below.
+    await pool.query(`DELETE FROM rule_backtest_case WHERE backtest_id IN
+      (SELECT id FROM rule_backtest WHERE rule_version_id IN (SELECT id FROM rule_version WHERE rule_id=$1))`, [ruleId]);
+    await pool.query(`DELETE FROM rule_backtest WHERE rule_version_id IN (SELECT id FROM rule_version WHERE rule_id=$1)`, [ruleId]);
     await pool.query(`DELETE FROM rule_version WHERE rule_id=$1`, [ruleId]);
     await pool.query(`DELETE FROM rule WHERE id=$1`, [ruleId]);
     await pool.query(`DELETE FROM app_user WHERE email = ANY($1)`, [[`${tag}-ratifier@example.com`, `${tag}-activator@example.com`]]);
@@ -119,6 +124,34 @@ describe('rule_backtest / rule_backtest_case / charge_alignment_member RLS (86e3
 
     expect(await withAppTx(pool, { clientIds: [otherClientId] }, async (client) =>
       (await client.query(`SELECT id FROM rule_backtest WHERE id=$1`, [persisted.id])).rows)).toEqual([]);
+  });
+
+  // 86e36zket: rule_backtest.client_id is nullable as of migration 0079 (a
+  // GLOBAL rule's corpus-backtest evidence has no single client to
+  // attribute to). Proves the NOT NULL relaxation didn't touch tenant
+  // isolation -- apply_tenant_rls's own "tenant column IS NULL" clause
+  // (0009) already covers a shared/global row; a client sees its own row
+  // and the global row, but never another client's row.
+  it('a client sees its own row and the shared global (client_id NULL) row, but never another client\'s row', async () => {
+    const makeResult = (tag: string) => ({
+      corpusHash: tag.padEnd(64, '0'), passed: true, passCount: 1, regressionCount: 0,
+      cases: [{ id: `${tag}-case`, passed: true, inputHash: '1'.repeat(64), expectedHash: '2'.repeat(64), actualHash: '2'.repeat(64), actual: { ok: true } }],
+    });
+    const own = await committedAppTx({ clientIds: [clientId] }, (client) =>
+      persistBacktest(client, { clientId, ruleVersionId: shadowVersionId, result: makeResult('own') }));
+    const other = await committedAppTx({ clientIds: [otherClientId] }, (client) =>
+      persistBacktest(client, { clientId: otherClientId, ruleVersionId: shadowVersionId, result: makeResult('other') }));
+    const global = await committedAppTx({ internal: true }, (client) =>
+      persistBacktest(client, { clientId: null, ruleVersionId: shadowVersionId, result: makeResult('global') }));
+    const allIds = [own.id, other.id, global.id];
+
+    const clientARows = await withAppTx(pool, { clientIds: [clientId] }, async (client) =>
+      (await client.query(`SELECT id FROM rule_backtest WHERE id = ANY($1)`, [allIds])).rows);
+    expect(clientARows.map((r: { id: string }) => r.id).sort()).toEqual([own.id, global.id].sort());
+
+    const clientBRows = await withAppTx(pool, { clientIds: [otherClientId] }, async (client) =>
+      (await client.query(`SELECT id FROM rule_backtest WHERE id = ANY($1)`, [allIds])).rows);
+    expect(clientBRows.map((r: { id: string }) => r.id).sort()).toEqual([other.id, global.id].sort());
   });
 
   // 86e367r9q: promoteShadowRule no longer reads rule_backtest at all (the

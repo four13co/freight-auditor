@@ -21,4 +21,18 @@ describe('rule lifecycle transitions', () => {
   // promotion on missing or failed evidence" test encoded exactly that broken
   // gate and has no successor here -- it's asserting the removed bug, not a
   // guarantee this fix preserves.
+
+  // 86e36zket: ruleBacktestId is the additive corpus-backtest evidence path
+  // (rule_backtest.client_id is nullable as of migration 0079) -- this proves
+  // it reaches the promotion_event insert alongside the existing
+  // dualControlAnalystId passthrough, not just that the call resolves.
+  it('threads ruleBacktestId into the promotion_event insert as evidence for the ACTIVE transition', async () => {
+    const query = vi.fn().mockResolvedValueOnce({ rows: [{ lifecycle_state: 'SHADOW' }] })
+      .mockResolvedValueOnce({ rows: [{ id: 'next' }] }).mockResolvedValueOnce({ rows: [] });
+    await expect(transitionRuleLifecycle({ query } as never, {
+      ruleVersionId: 'old', to: 'ACTIVE', rationale: 'corpus passed', ruleBacktestId: 'bt-1',
+    })).resolves.toEqual({ ruleVersionId: 'next', created: true });
+    expect(query).toHaveBeenNthCalledWith(3, expect.stringContaining('INSERT INTO promotion_event'),
+      ['next', 'SHADOW', 'ACTIVE', 'PROMOTE', 'corpus passed', null, 'bt-1']);
+  });
 });

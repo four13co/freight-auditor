@@ -1,6 +1,7 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 import { DualControlRequiredError } from '../../src/modules/rule-engine/promote-shadow-rule.js';
+import { RuleActivationBacktestRegressionError, activationCasesSchema } from '../../src/modules/rule-engine/rule-activation-backtest.js';
 
 /**
  * 86e32tfvq: POST /api/rules/:id/ratify and /activate act on the GLOBAL
@@ -76,6 +77,7 @@ describe('rule governance internal routes (unit, mocked withTenantTx + auth)', (
     vi.doUnmock('../../src/modules/findings/internal-analyst-auth.js');
     vi.doUnmock('../../src/modules/rule-engine/transition-rule-lifecycle.js');
     vi.doUnmock('../../src/modules/rule-engine/promote-shadow-rule.js');
+    vi.doUnmock('../../src/modules/rule-engine/rule-activation-backtest.js');
     vi.doUnmock('../../src/modules/audit-ledger/write-audit-event.js');
   });
 
@@ -202,6 +204,132 @@ describe('rule governance internal routes (unit, mocked withTenantTx + auth)', (
       expect(res.statusCode).toBe(409);
       expect(res.json()).toEqual({ error: 'DUAL_CONTROL_REQUIRED' });
       expect(writeAuditEvent).not.toHaveBeenCalled();
+    });
+
+    // 86e36zket AC1: a supplied `cases` array switches the route onto the
+    // corpus-backtest evidence path -- promoteShadowRule (dual control) is
+    // never invoked for this call, proving the two paths are alternatives.
+    it('runs the corpus-backtest path and promotes to ACTIVE via ruleBacktestId when cases pass, without invoking dual control', async () => {
+      mockAuth({ internal: true });
+      vi.doMock('../../src/db/tenant-context.js', () => ({
+        withTenantTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
+      }));
+      const runAndPersistRuleActivationBacktest = vi.fn().mockResolvedValue({
+        backtestId: 'bt-1', result: { corpusHash: 'h'.repeat(64), passed: true, passCount: 1, regressionCount: 0, cases: [] },
+      });
+      // Explicit object (not importOriginal) so RuleActivationBacktestRegressionError
+      // stays the SAME class reference this file imported statically at the top --
+      // importOriginal would re-execute the module fresh post-vi.resetModules() and
+      // produce a different class identity, breaking the route's own `instanceof` check.
+      vi.doMock('../../src/modules/rule-engine/rule-activation-backtest.js', () => ({
+        activationCasesSchema, runAndPersistRuleActivationBacktest, RuleActivationBacktestRegressionError,
+      }));
+      const promoteShadowRule = vi.fn();
+      vi.doMock('../../src/modules/rule-engine/promote-shadow-rule.js', () => ({ promoteShadowRule, DualControlRequiredError }));
+      const transitionRuleLifecycle = vi.fn().mockResolvedValue({ ruleVersionId: 'next-3', created: true });
+      vi.doMock('../../src/modules/rule-engine/transition-rule-lifecycle.js', () => ({ transitionRuleLifecycle }));
+      const writeAuditEvent = vi.fn().mockResolvedValue({ id: 'evt-3', created: true });
+      vi.doMock('../../src/modules/audit-ledger/write-audit-event.js', async (importOriginal) => ({
+        ...(await importOriginal<object>()), writeAuditEvent,
+      }));
+      const { buildApp } = await import('../../src/server/app.js');
+      app = buildApp();
+
+      const cases = [{ id: 'case-1', facts: { amount: 150 }, expectedVerdict: 'PASS' }];
+      const res = await app.inject({
+        method: 'POST', url: `/api/rules/${RULE_VERSION_ID}/activate`,
+        headers: { 'x-user-id': ACTOR_ID },
+        payload: { rationale: 'corpus backtest passed', cases },
+      });
+
+      expect(res.statusCode).toBe(201);
+      expect(res.json()).toEqual({ ruleVersionId: 'next-3', created: true });
+      expect(runAndPersistRuleActivationBacktest).toHaveBeenCalledWith({}, { ruleVersionId: RULE_VERSION_ID, cases });
+      expect(transitionRuleLifecycle).toHaveBeenCalledWith({}, {
+        ruleVersionId: RULE_VERSION_ID, to: 'ACTIVE', rationale: 'corpus backtest passed', ruleBacktestId: 'bt-1',
+      });
+      expect(promoteShadowRule).not.toHaveBeenCalled();
+      expect(writeAuditEvent).toHaveBeenCalledWith({}, expect.objectContaining({
+        clientId: null, entity: 'rule_version', entityId: RULE_VERSION_ID, event: 'promoted_to_active',
+        actorKind: 'analyst', actorUserId: ACTOR_ID, ruleVersionId: 'next-3',
+      }));
+    });
+
+    // 86e36zket AC2: a regressing corpus is rejected before anything is
+    // promoted or persisted -- no promotion_event row, no audit event.
+    it('replies 422 with regression detail when the supplied cases fail evaluation, and promotes nothing', async () => {
+      mockAuth({ internal: true });
+      vi.doMock('../../src/db/tenant-context.js', () => ({
+        withTenantTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
+      }));
+      const regression = new RuleActivationBacktestRegressionError({
+        corpusHash: 'h'.repeat(64), passed: false, passCount: 0, regressionCount: 1,
+        cases: [{ id: 'case-1', passed: false, inputHash: 'a'.repeat(64), expectedHash: 'b'.repeat(64), actualHash: 'c'.repeat(64), actual: 'FAIL' }],
+      });
+      const runAndPersistRuleActivationBacktest = vi.fn().mockRejectedValue(regression);
+      // Explicit object (not importOriginal) so RuleActivationBacktestRegressionError
+      // stays the SAME class reference this file imported statically at the top --
+      // importOriginal would re-execute the module fresh post-vi.resetModules() and
+      // produce a different class identity, breaking the route's own `instanceof` check.
+      vi.doMock('../../src/modules/rule-engine/rule-activation-backtest.js', () => ({
+        activationCasesSchema, runAndPersistRuleActivationBacktest, RuleActivationBacktestRegressionError,
+      }));
+      const transitionRuleLifecycle = vi.fn();
+      vi.doMock('../../src/modules/rule-engine/transition-rule-lifecycle.js', () => ({ transitionRuleLifecycle }));
+      const writeAuditEvent = vi.fn();
+      vi.doMock('../../src/modules/audit-ledger/write-audit-event.js', async (importOriginal) => ({
+        ...(await importOriginal<object>()), writeAuditEvent,
+      }));
+      const { buildApp } = await import('../../src/server/app.js');
+      app = buildApp();
+
+      const cases = [{ id: 'case-1', facts: { amount: 50 }, expectedVerdict: 'PASS' }];
+      const res = await app.inject({
+        method: 'POST', url: `/api/rules/${RULE_VERSION_ID}/activate`,
+        headers: { 'x-user-id': ACTOR_ID },
+        payload: { rationale: 'trying a failing corpus', cases },
+      });
+
+      expect(res.statusCode).toBe(422);
+      expect(res.json()).toEqual({ error: 'RULE_ACTIVATION_BACKTEST_REGRESSION', regressionCount: 1, caseIds: ['case-1'] });
+      expect(transitionRuleLifecycle).not.toHaveBeenCalled();
+      expect(writeAuditEvent).not.toHaveBeenCalled();
+    });
+
+    // 86e36zket AC3: omitting `cases` leaves the dual-control-only path
+    // (86e367r9q) completely untouched -- the corpus-backtest machinery is
+    // never invoked, proving the two paths are additive, not entangled.
+    it('never invokes the corpus-backtest path when cases are omitted', async () => {
+      mockAuth({ internal: true });
+      vi.doMock('../../src/db/tenant-context.js', () => ({
+        withTenantTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
+      }));
+      const runAndPersistRuleActivationBacktest = vi.fn();
+      // Explicit object (not importOriginal) so RuleActivationBacktestRegressionError
+      // stays the SAME class reference this file imported statically at the top --
+      // importOriginal would re-execute the module fresh post-vi.resetModules() and
+      // produce a different class identity, breaking the route's own `instanceof` check.
+      vi.doMock('../../src/modules/rule-engine/rule-activation-backtest.js', () => ({
+        activationCasesSchema, runAndPersistRuleActivationBacktest, RuleActivationBacktestRegressionError,
+      }));
+      const promoteShadowRule = vi.fn().mockResolvedValue({ ruleVersionId: 'next-4', created: true });
+      vi.doMock('../../src/modules/rule-engine/promote-shadow-rule.js', () => ({ promoteShadowRule, DualControlRequiredError }));
+      const writeAuditEvent = vi.fn().mockResolvedValue({ id: 'evt-4', created: true });
+      vi.doMock('../../src/modules/audit-ledger/write-audit-event.js', async (importOriginal) => ({
+        ...(await importOriginal<object>()), writeAuditEvent,
+      }));
+      const { buildApp } = await import('../../src/server/app.js');
+      app = buildApp();
+
+      const res = await app.inject({
+        method: 'POST', url: `/api/rules/${RULE_VERSION_ID}/activate`,
+        headers: { 'x-user-id': ACTOR_ID },
+        payload: { rationale: 'dual control path, unchanged' },
+      });
+
+      expect(res.statusCode).toBe(201);
+      expect(promoteShadowRule).toHaveBeenCalledWith({}, { ruleVersionId: RULE_VERSION_ID, rationale: 'dual control path, unchanged', actorUserId: ACTOR_ID });
+      expect(runAndPersistRuleActivationBacktest).not.toHaveBeenCalled();
     });
   });
 

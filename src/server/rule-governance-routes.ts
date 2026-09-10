@@ -1,10 +1,14 @@
 import type { FastifyInstance } from 'fastify';
+import type pg from 'pg';
 import { withTenantTx } from '../db/tenant-context.js';
 import { registerTenantAuthPreHandler } from '../modules/findings/tenant-auth.js';
 import { registerInternalAnalystAuthPreHandler } from '../modules/findings/internal-analyst-auth.js';
 import { transitionRuleLifecycle } from '../modules/rule-engine/transition-rule-lifecycle.js';
 import { isUuid } from '../shared/request-validation.js';
 import { promoteShadowRule, DualControlRequiredError } from '../modules/rule-engine/promote-shadow-rule.js';
+import {
+  activationCasesSchema, runAndPersistRuleActivationBacktest, RuleActivationBacktestRegressionError,
+} from '../modules/rule-engine/rule-activation-backtest.js';
 import { listContractRuleProposalPreviews } from '../modules/contracts/list-contract-rule-proposal-previews.js';
 import { acceptContractRuleProposal, ProposalAcceptanceError } from '../modules/contracts/accept-contract-rule-proposal.js';
 import { ratifyContractRuleProposal, ProposalRatificationError } from '../modules/contracts/ratify-contract-rule-proposal.js';
@@ -79,24 +83,55 @@ export async function registerRuleGovernanceRoutes(routes: FastifyInstance): Pro
       });
       return reply.code(201).send(result);
     });
+    // 86e36zket: an optional `cases` body array switches this route onto the
+    // corpus-backtest evidence path -- a curated, caller-supplied fixture set
+    // evaluated against this rule version's own AST. A fully-passing corpus
+    // satisfies the ACTIVE-transition evidence requirement on its own (no
+    // dual-control check for this call); a regressing corpus is rejected and
+    // nothing is promoted or persisted. Omitting `cases` leaves 86e367r9q's
+    // dual-control-only path completely unchanged -- additive, not a replacement.
     internalRoutes.post('/api/rules/:id/activate', async (request, reply) => {
       const { id } = request.params as { id: string }; if (!isUuid(id)) return reply.code(400).send({ error: 'invalid rule version id' });
-      const body = request.body as { rationale?: unknown };
+      const body = request.body as { rationale?: unknown; cases?: unknown };
       if (typeof body.rationale !== 'string' || !body.rationale.trim()) return reply.code(400).send({ error: 'rationale is required' });
+      const rationale = body.rationale;
       const actorUserId = request.actorUserId!;
+      const recordActivation = async (
+        client: pg.PoolClient, promotion: { ruleVersionId: string; created: boolean }, ruleBacktestId?: string,
+      ) => {
+        await writeAuditEvent(client, {
+          id: deterministicAuditEventId(id, promotion.ruleVersionId, 'rule_version.promoted_to_active'),
+          clientId: null, entity: 'rule_version', entityId: id, event: 'promoted_to_active',
+          actorKind: 'analyst', actorUserId, ruleVersionId: promotion.ruleVersionId,
+          detail: { rationale, fromRuleVersionId: id, ...(ruleBacktestId ? { ruleBacktestId } : {}) },
+        });
+        return promotion;
+      };
       try {
-        const result = await withTenantTx(request.tenantContext!, async (client) => {
-          const promotion = await promoteShadowRule(client, { ruleVersionId: id, rationale: body.rationale as string, actorUserId });
-          await writeAuditEvent(client, {
-            id: deterministicAuditEventId(id, promotion.ruleVersionId, 'rule_version.promoted_to_active'),
-            clientId: null, entity: 'rule_version', entityId: id, event: 'promoted_to_active',
-            actorKind: 'analyst', actorUserId, ruleVersionId: promotion.ruleVersionId,
-            detail: { rationale: body.rationale, fromRuleVersionId: id },
+        if (body.cases !== undefined) {
+          const parsed = activationCasesSchema.safeParse(body.cases);
+          if (!parsed.success) return reply.code(400).send({ error: 'invalid cases' });
+          const result = await withTenantTx(request.tenantContext!, async (client) => {
+            const backtest = await runAndPersistRuleActivationBacktest(client, { ruleVersionId: id, cases: parsed.data });
+            const transition = await transitionRuleLifecycle(client, {
+              ruleVersionId: id, to: 'ACTIVE', rationale, ruleBacktestId: backtest.backtestId,
+            });
+            return recordActivation(client, transition, backtest.backtestId);
           });
-          return promotion;
+          return reply.code(201).send(result);
+        }
+        const result = await withTenantTx(request.tenantContext!, async (client) => {
+          const promotion = await promoteShadowRule(client, { ruleVersionId: id, rationale, actorUserId });
+          return recordActivation(client, promotion);
         });
         return reply.code(201).send(result);
       } catch (error) {
+        if (error instanceof RuleActivationBacktestRegressionError) {
+          return reply.code(422).send({
+            error: error.code, regressionCount: error.result.regressionCount,
+            caseIds: error.result.cases.filter((c) => !c.passed).map((c) => c.id),
+          });
+        }
         if (error instanceof DualControlRequiredError) return reply.code(409).send({ error: error.code });
         throw error;
       }

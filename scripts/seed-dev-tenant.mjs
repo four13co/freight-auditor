@@ -24,6 +24,12 @@ import pg from 'pg';
 // mirror (its own comment documents the must-match requirement).
 export const DEV_CLIENT_ID = '11111111-1111-4111-8111-111111111111';
 export const DEV_USER_ID = '22222222-2222-4222-8222-222222222222';
+// 86e367r9q: a second internal analyst, distinct from DEV_USER_ID, so e2e
+// specs can exercise the rule-activation dual-control gate (ratify as one
+// analyst, activate as another) through the real ratify/activate routes.
+// No membership row needed -- registerInternalAnalystAuthPreHandler's
+// dev-header path only checks app_user.is_internal, not client membership.
+export const DEV_USER_ID_2 = '22222222-2222-4222-8222-222222222229';
 
 // 86e33trjc: the pre-86e33t12f sentinel ids. A persistent, non-ephemeral
 // deploy database (the dev Neon instance) already has 'dev-dashboard'
@@ -175,6 +181,14 @@ export async function seedDevTenant({ pool } = {}) {
       `INSERT INTO membership (user_id, client_id, role) VALUES ($1, $2, 'analyst')
        ON CONFLICT (user_id, client_id) DO UPDATE SET role = EXCLUDED.role`,
       [DEV_USER_ID, DEV_CLIENT_ID],
+    );
+    // 86e367r9q: second internal analyst identity for dual-control e2e specs
+    // (rule-proposal-lifecycle.fullstack.spec.ts) -- see DEV_USER_ID_2's own
+    // comment above for why no membership row is needed here.
+    await client.query(
+      `INSERT INTO app_user (id, email, full_name, is_internal) VALUES ($1, 'dev-dashboard-2@example.com', 'Dev Dashboard User 2', true)
+       ON CONFLICT (id) DO NOTHING`,
+      [DEV_USER_ID_2],
     );
   } finally {
     if (ownedPool) await client.end();

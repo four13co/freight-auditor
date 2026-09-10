@@ -4,7 +4,7 @@ import { registerTenantAuthPreHandler } from '../modules/findings/tenant-auth.js
 import { registerInternalAnalystAuthPreHandler } from '../modules/findings/internal-analyst-auth.js';
 import { transitionRuleLifecycle } from '../modules/rule-engine/transition-rule-lifecycle.js';
 import { isUuid } from '../shared/request-validation.js';
-import { promoteShadowRule } from '../modules/rule-engine/promote-shadow-rule.js';
+import { promoteShadowRule, DualControlRequiredError } from '../modules/rule-engine/promote-shadow-rule.js';
 import { listContractRuleProposalPreviews } from '../modules/contracts/list-contract-rule-proposal-previews.js';
 import { acceptContractRuleProposal, ProposalAcceptanceError } from '../modules/contracts/accept-contract-rule-proposal.js';
 import { ratifyContractRuleProposal, ProposalRatificationError } from '../modules/contracts/ratify-contract-rule-proposal.js';
@@ -84,17 +84,22 @@ export async function registerRuleGovernanceRoutes(routes: FastifyInstance): Pro
       const body = request.body as { rationale?: unknown };
       if (typeof body.rationale !== 'string' || !body.rationale.trim()) return reply.code(400).send({ error: 'rationale is required' });
       const actorUserId = request.actorUserId!;
-      const result = await withTenantTx(request.tenantContext!, async (client) => {
-        const promotion = await promoteShadowRule(client, { ruleVersionId: id, rationale: body.rationale as string });
-        await writeAuditEvent(client, {
-          id: deterministicAuditEventId(id, promotion.ruleVersionId, 'rule_version.promoted_to_active'),
-          clientId: null, entity: 'rule_version', entityId: id, event: 'promoted_to_active',
-          actorKind: 'analyst', actorUserId, ruleVersionId: promotion.ruleVersionId,
-          detail: { rationale: body.rationale, fromRuleVersionId: id },
+      try {
+        const result = await withTenantTx(request.tenantContext!, async (client) => {
+          const promotion = await promoteShadowRule(client, { ruleVersionId: id, rationale: body.rationale as string, actorUserId });
+          await writeAuditEvent(client, {
+            id: deterministicAuditEventId(id, promotion.ruleVersionId, 'rule_version.promoted_to_active'),
+            clientId: null, entity: 'rule_version', entityId: id, event: 'promoted_to_active',
+            actorKind: 'analyst', actorUserId, ruleVersionId: promotion.ruleVersionId,
+            detail: { rationale: body.rationale, fromRuleVersionId: id },
+          });
+          return promotion;
         });
-        return promotion;
-      });
-      return reply.code(201).send(result);
+        return reply.code(201).send(result);
+      } catch (error) {
+        if (error instanceof DualControlRequiredError) return reply.code(409).send({ error: error.code });
+        throw error;
+      }
     });
   });
 }

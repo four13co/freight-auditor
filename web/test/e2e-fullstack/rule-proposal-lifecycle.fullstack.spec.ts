@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import pg from 'pg';
-import { DEV_CLIENT_ID, DEV_USER_ID } from '../../../scripts/seed-dev-tenant.mjs';
+import { DEV_CLIENT_ID, DEV_USER_ID, DEV_USER_ID_2 } from '../../../scripts/seed-dev-tenant.mjs';
 
 // 86e33qz9j: full-stack e2e for RuleProposalQueue.tsx's real 2-stage
 // lifecycle (PROPOSED -> SHADOW -> ACTIVE) -- real Fastify server + real
@@ -33,6 +33,17 @@ import { DEV_CLIENT_ID, DEV_USER_ID } from '../../../scripts/seed-dev-tenant.mjs
 // been superseded, so the original PROPOSED row stayed visible forever as a
 // ghost duplicate after ratification. The two tests at the bottom of this
 // file prove both fixes directly, against the real route/DB.
+//
+// 86e367r9q: Activate (SHADOW -> ACTIVE) now requires dual control -- a
+// different analyst than whoever ratified the rule version -- instead of an
+// unreachable rule_backtest row (see promote-shadow-rule.ts's own comment).
+// The app's dev-header auth path sends a single fixed x-user-id
+// (DEV_USER_ID) for every request the browser makes, so a real UI click
+// alone can't vary the actor between Ratify and Activate; interceptRoleAs
+// below rewrites just the Activate POST's x-user-id header to DEV_USER_ID_2
+// (seeded by seed-dev-tenant.mjs) so the click genuinely runs as a second,
+// distinct internal analyst -- proving the dual-control round trip through
+// the real UI/route/DB with no manually-inserted rule_backtest row anywhere.
 
 const SLUG = `p7b5-test-rule-${Date.now()}`;
 
@@ -55,16 +66,22 @@ test.beforeAll(async () => {
 });
 
 test.afterAll(async () => {
-  // promotion_event references rule_backtest_id -- delete it first.
   await pool.query(`DELETE FROM promotion_event WHERE rule_version_id IN (SELECT id FROM rule_version WHERE rule_id = $1)`, [ruleId]);
-  await pool.query(`DELETE FROM rule_backtest WHERE rule_version_id IN (SELECT id FROM rule_version WHERE rule_id = $1)`, [ruleId]);
   await pool.query(`DELETE FROM audit_event WHERE entity = 'rule_version' AND entity_id IN (SELECT id FROM rule_version WHERE rule_id = $1)`, [ruleId]);
+  await pool.query(`DELETE FROM audit_event WHERE entity = 'rule_version' AND rule_version_id IN (SELECT id FROM rule_version WHERE rule_id = $1)`, [ruleId]);
   await pool.query(`DELETE FROM rule_version WHERE rule_id = $1`, [ruleId]);
   await pool.query(`DELETE FROM rule WHERE id = $1`, [ruleId]);
   await pool.end();
 });
 
 test.use({ viewport: { width: 1600, height: 1400 } });
+
+/** Rewrites x-user-id to a second seeded internal analyst on just the Activate POST, so the click runs as a genuinely different actor than whichever one ratified. */
+async function activateAsSecondAnalyst(page: import('@playwright/test').Page) {
+  await page.route('**/api/rules/*/activate', async (route) => {
+    await route.continue({ headers: { ...route.request().headers(), 'x-user-id': DEV_USER_ID_2 } });
+  });
+}
 
 test('AC1: a seeded PROPOSED rule proposal renders with its slug, rule type, hardness, and lifecycle state, and only a Ratify to shadow button', async ({ page }) => {
   await page.goto('/');
@@ -110,13 +127,12 @@ test('AC2: clicking Ratify to shadow moves the proposal to SHADOW and swaps in a
 });
 
 test('AC3: clicking Activate on a SHADOW proposal moves it to ACTIVE and it is no longer actionable from the queue', async ({ page }) => {
-  // promoteShadowRule requires a passing rule_backtest scoped to the REAL new
-  // SHADOW rule_version id from AC2, not the original PROPOSED id.
-  await pool.query(
-    `INSERT INTO rule_backtest (client_id, rule_version_id, corpus_hash, passed, pass_count, regression_count)
-     VALUES ($1, $2, $3, true, 1, 0)`,
-    [DEV_CLIENT_ID, shadowRuleVersionId, SLUG.padEnd(64, '1').slice(0, 64)],
-  );
+  // 86e367r9q: Activate now requires dual control -- a different analyst
+  // than whoever ratified this rule version (AC2 above ratified as
+  // DEV_USER_ID via the page's own fixed dev-header identity). Route the
+  // Activate POST through DEV_USER_ID_2 so this click is genuinely a
+  // different, seeded internal analyst.
+  await activateAsSecondAnalyst(page);
 
   await page.goto('/');
   const queue = page.getByTestId('rule-proposal-queue');
@@ -129,6 +145,10 @@ test('AC3: clicking Activate on a SHADOW proposal moves it to ACTIVE and it is n
   // 'SHADOW' string filter too.
   const shadowRow = queue.locator('div').filter({ hasText: SLUG }).filter({ hasText: /SHADOW/ });
   await expect(shadowRow).toBeVisible();
+
+  const rationaleInput = shadowRow.getByPlaceholder(/Activation rationale/);
+  await rationaleInput.click();
+  await rationaleInput.fill('Second analyst confirms activation');
 
   const activatePost = page.waitForResponse((res) => res.url().includes(`/api/rules/${shadowRuleVersionId}/activate`) && res.request().method() === 'POST');
   await shadowRow.getByRole('button', { name: 'Activate' }).click();
@@ -159,6 +179,11 @@ test('AC (86e33t9n0): clicking Activate immediately after Ratify targets the cor
   const proposedId = rv.rows[0]!.id;
 
   try {
+    // 86e367r9q: dual control means this click must run as a different
+    // analyst than the one who just ratified (the page's own fixed
+    // dev-header identity, DEV_USER_ID).
+    await activateAsSecondAnalyst(page);
+
     await page.goto('/');
     const queue = page.getByTestId('rule-proposal-queue');
     const row = queue.locator('div').filter({ hasText: slug });
@@ -171,13 +196,9 @@ test('AC (86e33t9n0): clicking Activate immediately after Ratify targets the cor
     expect(shadowId).not.toBe(proposedId);
     await expect(row.getByRole('button', { name: 'Activate' })).toBeVisible();
 
-    // promoteShadowRule requires a passing rule_backtest scoped to the real
-    // new SHADOW id -- only knowable after the ratify response above.
-    await pool.query(
-      `INSERT INTO rule_backtest (client_id, rule_version_id, corpus_hash, passed, pass_count, regression_count)
-       VALUES ($1, $2, $3, true, 1, 0)`,
-      [DEV_CLIENT_ID, shadowId, slug.padEnd(64, '4').slice(0, 64)],
-    );
+    const rationaleInput = row.getByPlaceholder(/Activation rationale/);
+    await rationaleInput.click();
+    await rationaleInput.fill('Second analyst confirms activation, no reload');
 
     // The bug: before the fix, this click would fire against the STALE
     // pre-ratify proposedId, not the real new shadowId -- the URL assertion
@@ -198,8 +219,8 @@ test('AC (86e33t9n0): clicking Activate immediately after Ratify targets the cor
     expect(activeRow.rows[0]!.lifecycle_state).toBe('ACTIVE');
   } finally {
     await pool.query(`DELETE FROM promotion_event WHERE rule_version_id IN (SELECT id FROM rule_version WHERE rule_id = $1)`, [noReloadRuleId]);
-    await pool.query(`DELETE FROM rule_backtest WHERE rule_version_id IN (SELECT id FROM rule_version WHERE rule_id = $1)`, [noReloadRuleId]);
     await pool.query(`DELETE FROM audit_event WHERE entity = 'rule_version' AND entity_id IN (SELECT id FROM rule_version WHERE rule_id = $1)`, [noReloadRuleId]);
+    await pool.query(`DELETE FROM audit_event WHERE entity = 'rule_version' AND rule_version_id IN (SELECT id FROM rule_version WHERE rule_id = $1)`, [noReloadRuleId]);
     await pool.query(`DELETE FROM rule_version WHERE rule_id = $1`, [noReloadRuleId]);
     await pool.query(`DELETE FROM rule WHERE id = $1`, [noReloadRuleId]);
   }

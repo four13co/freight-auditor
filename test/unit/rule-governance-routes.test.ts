@@ -1,5 +1,6 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import type { FastifyInstance } from 'fastify';
+import { DualControlRequiredError } from '../../src/modules/rule-engine/promote-shadow-rule.js';
 
 /**
  * 86e32tfvq: POST /api/rules/:id/ratify and /activate act on the GLOBAL
@@ -166,11 +167,41 @@ describe('rule governance internal routes (unit, mocked withTenantTx + auth)', (
 
       expect(res.statusCode).toBe(201);
       expect(res.json()).toEqual({ ruleVersionId: 'next-2', created: true });
-      expect(promoteShadowRule).toHaveBeenCalledWith({}, { ruleVersionId: RULE_VERSION_ID, rationale: 'promote it' });
+      expect(promoteShadowRule).toHaveBeenCalledWith({}, { ruleVersionId: RULE_VERSION_ID, rationale: 'promote it', actorUserId: ACTOR_ID });
       expect(writeAuditEvent).toHaveBeenCalledWith({}, expect.objectContaining({
         clientId: null, entity: 'rule_version', entityId: RULE_VERSION_ID, event: 'promoted_to_active',
         actorKind: 'analyst', actorUserId: ACTOR_ID, ruleVersionId: 'next-2',
       }));
+    });
+
+    // 86e367r9q: promoteShadowRule now rejects same-actor (or no-ratification-
+    // event) activation with DualControlRequiredError -- this proves the route
+    // surfaces that as a real, catchable 409, not the uncaught 500 an unmapped
+    // thrown error would otherwise produce (the same gap the pre-fix
+    // BacktestRequiredError had, per this task's own Problem statement).
+    it('replies 409 when promoteShadowRule rejects a dual-control violation', async () => {
+      mockAuth({ internal: true });
+      vi.doMock('../../src/db/tenant-context.js', () => ({
+        withTenantTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
+      }));
+      const promoteShadowRule = vi.fn().mockRejectedValue(new DualControlRequiredError('same analyst'));
+      vi.doMock('../../src/modules/rule-engine/promote-shadow-rule.js', () => ({ promoteShadowRule, DualControlRequiredError }));
+      const writeAuditEvent = vi.fn();
+      vi.doMock('../../src/modules/audit-ledger/write-audit-event.js', async (importOriginal) => ({
+        ...(await importOriginal<object>()), writeAuditEvent,
+      }));
+      const { buildApp } = await import('../../src/server/app.js');
+      app = buildApp();
+
+      const res = await app.inject({
+        method: 'POST', url: `/api/rules/${RULE_VERSION_ID}/activate`,
+        headers: { 'x-user-id': ACTOR_ID },
+        payload: { rationale: 'promote it' },
+      });
+
+      expect(res.statusCode).toBe(409);
+      expect(res.json()).toEqual({ error: 'DUAL_CONTROL_REQUIRED' });
+      expect(writeAuditEvent).not.toHaveBeenCalled();
     });
   });
 

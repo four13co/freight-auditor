@@ -71,6 +71,10 @@ describe('listFindings (DB)', () => {
       invoiceNumber?: string;
       carrierId?: string;
       criterionId?: string;
+      /** 86e37r2t7: charge_fact.category -- defaults to 'LINEHAUL' below, same as before this option existed. */
+      category?: string;
+      /** 86e37r2t6: backdates variance_finding.created_at so minAgeDays filtering has something to narrow on. */
+      createdAt?: string;
     },
   ): Promise<{ id: string; chargeFactId: string; auditRunId: string }> {
     const inv = await client.query(
@@ -93,21 +97,21 @@ describe('listFindings (DB)', () => {
 
     const cf = await client.query(
       `INSERT INTO charge_fact (client_id, invoice_id, code, category, amount, currency)
-       VALUES ($1, $2, '400', 'LINEHAUL', $3, 'USD') RETURNING id`,
-      [opts.clientId, invoiceId, opts.billed ?? '1000.0000'],
+       VALUES ($1, $2, '400', $3, $4, 'USD') RETURNING id`,
+      [opts.clientId, invoiceId, opts.category ?? 'LINEHAUL', opts.billed ?? '1000.0000'],
     );
     const chargeFactId = cf.rows[0].id;
 
     await client.query(
       `INSERT INTO expected_charge (client_id, audit_run_id, charge_fact_id, category, expected_amount, currency, created_at)
-       VALUES ($1, $2, $3, 'LINEHAUL', $4, 'USD', now() - interval '1 minute')`,
-      [opts.clientId, auditRunId, chargeFactId, opts.expected ?? '900.0000'],
+       VALUES ($1, $2, $3, $4, $5, 'USD', now() - interval '1 minute')`,
+      [opts.clientId, auditRunId, chargeFactId, opts.category ?? 'LINEHAUL', opts.expected ?? '900.0000'],
     );
 
     const vf = await client.query(
       `INSERT INTO variance_finding
-         (client_id, audit_run_id, charge_fact_id, criterion_id, rule_version_id, direction, variance_amount, currency, status, evaluated_expr)
-       SELECT $1, $2, $3, COALESCE($4::uuid, c.id), rv.id, $5, $6, 'USD', $7, '{}'::jsonb
+         (client_id, audit_run_id, charge_fact_id, criterion_id, rule_version_id, direction, variance_amount, currency, status, evaluated_expr, created_at)
+       SELECT $1, $2, $3, COALESCE($4::uuid, c.id), rv.id, $5, $6, 'USD', $7, '{}'::jsonb, COALESCE($8::timestamptz, now())
        FROM criterion c JOIN rule r ON r.slug = 'contract-rate_variance'
        JOIN rule_version rv ON rv.rule_id = r.id
        WHERE c.criterion_key = 'CONTRACT.RATE_VARIANCE' ORDER BY rv.recorded_at DESC LIMIT 1 RETURNING id`,
@@ -119,6 +123,7 @@ describe('listFindings (DB)', () => {
         opts.direction ?? 'OVERCHARGE',
         opts.variance ?? '100.0000',
         opts.status ?? 'open',
+        opts.createdAt ?? null,
       ],
     );
     return { id: vf.rows[0].id, chargeFactId, auditRunId };
@@ -626,6 +631,131 @@ describe('listFindings (DB)', () => {
       // numeric(18,4) round-trips as a 4-decimal string via pg, same as
       // every other variance_amount assertion in this file.
       expect(rows.map((r) => r.varianceAmount)).toEqual(['1.0000', '2.0000', '3.0000', '4.0000', '5.0000']);
+    });
+  });
+
+  // 86e37r2t6: "Aging > 5 days" saved view -- minAgeDays narrows to rows
+  // whose created_at is at least N days old.
+  describe('86e37r2t6: minAgeDays filter', () => {
+    it('AC1: only rows created at least minAgeDays days ago are returned', async () => {
+      const tenMinAgo = new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString();
+      const oneMinAgo = new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString();
+
+      const result = await withTenantTx({ clientIds: [clientAId], internal: true }, async (c) => {
+        await seedFinding(c, { clientId: clientAId, invoiceNumber: `INV-${tag}-age-old`, createdAt: tenMinAgo });
+        await seedFinding(c, { clientId: clientAId, invoiceNumber: `INV-${tag}-age-recent`, createdAt: oneMinAgo });
+        return listFindings(c, { clientIds: [clientAId], minAgeDays: 5, carrier: `Carrier-${tag}` });
+      });
+
+      const invoiceNumbers = result.map((r) => r.invoiceNumber);
+      expect(invoiceNumbers).toContain(`INV-${tag}-age-old`);
+      expect(invoiceNumbers).not.toContain(`INV-${tag}-age-recent`);
+    });
+
+    it('AC2: no minAgeDays leaves behavior unchanged -- both an old and a recent row are returned (regression)', async () => {
+      const tenMinAgo = new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString();
+      const oneMinAgo = new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString();
+
+      const result = await withTenantTx({ clientIds: [clientAId], internal: true }, async (c) => {
+        await seedFinding(c, { clientId: clientAId, invoiceNumber: `INV-${tag}-noage-old`, createdAt: tenMinAgo });
+        await seedFinding(c, { clientId: clientAId, invoiceNumber: `INV-${tag}-noage-recent`, createdAt: oneMinAgo });
+        return listFindings(c, { clientIds: [clientAId], carrier: `Carrier-${tag}` });
+      });
+
+      const invoiceNumbers = result.map((r) => r.invoiceNumber);
+      expect(invoiceNumbers).toContain(`INV-${tag}-noage-old`);
+      expect(invoiceNumbers).toContain(`INV-${tag}-noage-recent`);
+    });
+  });
+
+  // 86e37r2t7: "Estes accessorials" saved view -- category narrows to rows
+  // whose linked charge_fact.category matches, excluding NULL-charge_fact_id
+  // rows (nothing to categorize).
+  describe('86e37r2t7: category filter', () => {
+    it('AC1: only rows whose charge_fact.category matches are returned, and a NULL-charge_fact_id row is excluded', async () => {
+      const result = await withTenantTx({ clientIds: [clientAId], internal: true }, async (c) => {
+        await seedFinding(c, { clientId: clientAId, invoiceNumber: `INV-${tag}-cat-match`, category: 'accessorial' });
+        await seedFinding(c, { clientId: clientAId, invoiceNumber: `INV-${tag}-cat-other`, category: 'LINEHAUL' });
+
+        // A NULL-charge_fact_id (invoice-level) finding -- must be excluded
+        // once a category filter is set (86e2v17p5's relaxed JOIN otherwise
+        // surfaces it for unfiltered/other-filter queries).
+        const inv = await c.query(
+          `INSERT INTO invoice (client_id, carrier_id, transaction_set, invoice_number, currency, parser_version)
+           VALUES ($1, $2, '210', $3, 'USD', 'test') RETURNING id`,
+          [clientAId, carrierId, `INV-${tag}-cat-null-charge`],
+        );
+        const run = await c.query(
+          `INSERT INTO audit_run (client_id, invoice_id, engine_spec_version, outcome) VALUES ($1, $2, 'test', 'SCORED') RETURNING id`,
+          [clientAId, inv.rows[0].id],
+        );
+        await c.query(
+          `INSERT INTO variance_finding (client_id, audit_run_id, charge_fact_id, criterion_id, rule_version_id, direction, variance_amount, currency, status, evaluated_expr)
+           SELECT $1, $2, NULL, c.id, rv.id, 'OVERCHARGE', '75.0000', 'USD', 'open', '{}'::jsonb
+           FROM criterion c JOIN rule r ON r.slug = 'contract-rate_variance'
+           JOIN rule_version rv ON rv.rule_id = r.id
+           WHERE c.criterion_key = 'CONTRACT.RATE_VARIANCE' ORDER BY rv.recorded_at DESC LIMIT 1`,
+          [clientAId, run.rows[0].id],
+        );
+
+        return listFindings(c, { clientIds: [clientAId], category: 'accessorial', carrier: `Carrier-${tag}` });
+      });
+
+      const invoiceNumbers = result.map((r) => r.invoiceNumber);
+      expect(invoiceNumbers).toContain(`INV-${tag}-cat-match`);
+      expect(invoiceNumbers).not.toContain(`INV-${tag}-cat-other`);
+      expect(invoiceNumbers).not.toContain(`INV-${tag}-cat-null-charge`);
+    });
+
+    it('AC2: carrier and category together apply as AND', async () => {
+      const otherCarrier = await withTenantTx({ clientIds: [clientAId], internal: true }, async (c) => {
+        const oc = await c.query(`INSERT INTO carrier (name) VALUES ($1) RETURNING id`, [`Estes-${tag}`]);
+        return oc.rows[0].id as string;
+      });
+      extraCarrierIds.push(otherCarrier);
+
+      const result = await withTenantTx({ clientIds: [clientAId], internal: true }, async (c) => {
+        // Matches both carrier and category.
+        await seedFinding(c, {
+          clientId: clientAId,
+          invoiceNumber: `INV-${tag}-both-match`,
+          carrierId: otherCarrier,
+          category: 'accessorial',
+        });
+        // Right carrier, wrong category.
+        await seedFinding(c, {
+          clientId: clientAId,
+          invoiceNumber: `INV-${tag}-carrier-only`,
+          carrierId: otherCarrier,
+          category: 'LINEHAUL',
+        });
+        // Right category, wrong carrier.
+        await seedFinding(c, {
+          clientId: clientAId,
+          invoiceNumber: `INV-${tag}-category-only`,
+          carrierId,
+          category: 'accessorial',
+        });
+
+        return listFindings(c, { clientIds: [clientAId], carrier: `Estes-${tag}`, category: 'accessorial' });
+      });
+
+      const invoiceNumbers = result.map((r) => r.invoiceNumber);
+      expect(invoiceNumbers).toContain(`INV-${tag}-both-match`);
+      expect(invoiceNumbers).not.toContain(`INV-${tag}-carrier-only`);
+      expect(invoiceNumbers).not.toContain(`INV-${tag}-category-only`);
+    });
+
+    it('AC3: no category filter leaves behavior unchanged -- both categories are returned (regression)', async () => {
+      const result = await withTenantTx({ clientIds: [clientAId], internal: true }, async (c) => {
+        await seedFinding(c, { clientId: clientAId, invoiceNumber: `INV-${tag}-nocat-a`, category: 'accessorial' });
+        await seedFinding(c, { clientId: clientAId, invoiceNumber: `INV-${tag}-nocat-b`, category: 'LINEHAUL' });
+        return listFindings(c, { clientIds: [clientAId], carrier: `Carrier-${tag}` });
+      });
+
+      const invoiceNumbers = result.map((r) => r.invoiceNumber);
+      expect(invoiceNumbers).toContain(`INV-${tag}-nocat-a`);
+      expect(invoiceNumbers).toContain(`INV-${tag}-nocat-b`);
     });
   });
 });

@@ -826,3 +826,20 @@ export async function fetchBranding(): Promise<Branding> {
     return UNBRANDED;
   }
 }
+
+/** The write half of branding (86e37r2t4) -- PATCH /api/internal/branding, tenant + analyst-only gated. */
+export interface UpdateBrandingInput {
+  logoUrl: string;
+  primaryColor: string;
+  secondaryColor: string | null;
+}
+
+export async function updateBranding(input: UpdateBrandingInput): Promise<{ logoUrl: string; primaryColor: string; secondaryColor: string | null }> {
+  const res = await fetch('/api/internal/branding', {
+    method: 'PATCH',
+    headers: { ...authHeaders(), 'content-type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) throw new Error(`PATCH /api/internal/branding failed: ${res.status}`);
+  return (await res.json()) as { logoUrl: string; primaryColor: string; secondaryColor: string | null };
+}

@@ -169,6 +169,47 @@ test('86e37r2rv AC3: the "Audit log" sidebar link navigates to /#/audit-log and 
   await page.screenshot({ path: 'test-results/audit-log-full.png', fullPage: true });
 });
 
+/**
+ * 86e37r2t4 AC4: proves the real, built app renders the dedicated /settings
+ * route and that an edit+save round-trips through PATCH /api/internal/branding
+ * and persists across a reload -- a render test is part of the contract for
+ * any UI change, same as the rest of this file. GET /api/branding and PATCH
+ * /api/internal/branding are both intercepted against one mutable in-memory
+ * `branding` object (not two independent fixed fixtures), so a PATCH's effect
+ * is actually visible on the next GET -- the same "reload after save" this
+ * AC names, without requiring a live backend/DB.
+ */
+test('86e37r2t4 AC4: the "Settings" sidebar link navigates to /#/settings, and an edit+save persists across a reload', async ({ page }) => {
+  await page.route('**/api/findings**', (route) => route.fulfill({ json: { findings: ROWS } }));
+  await page.route('**/api/findings/summary', (route) => route.fulfill({ json: SUMMARY }));
+
+  let branding = { branded: true, logoUrl: 'https://cdn.example.com/logo.png', primaryColor: '#112233', secondaryColor: '#445566' };
+  await page.route('**/api/branding', (route) => route.fulfill({ json: branding }));
+  await page.route('**/api/internal/branding', (route) => {
+    const body = route.request().postDataJSON() as { logoUrl: string; primaryColor: string; secondaryColor: string | null };
+    branding = { branded: true, ...body };
+    return route.fulfill({ json: { logoUrl: body.logoUrl, primaryColor: body.primaryColor, secondaryColor: body.secondaryColor } });
+  });
+
+  await page.goto('/');
+  await expect(page.getByTestId('kpi-row')).toBeVisible();
+
+  await page.getByText('Settings').click();
+  await expect(page).toHaveURL(/\/#\/settings$/);
+  await expect(page.getByLabel('Primary color')).toHaveValue('#112233');
+
+  await page.getByLabel('Primary color').fill('#abcdef');
+  await page.getByRole('button', { name: 'Save' }).click();
+  await expect(page.getByTestId('settings-saved')).toBeVisible();
+
+  await page.screenshot({ path: 'test-results/settings-full.png', fullPage: true });
+
+  // HashRouter keeps '#/settings' across a reload -- the app re-mounts
+  // straight onto /settings, no click needed.
+  await page.reload();
+  await expect(page.getByLabel('Primary color')).toHaveValue('#abcdef');
+});
+
 test('analyst reviews an extraction abstention and records its answer source', async ({ page }) => {
   const documentId = '44444444-4444-4444-8444-444444444444';
   const questionId = '33333333-3333-4333-8333-333333333333';

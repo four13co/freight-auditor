@@ -34,11 +34,13 @@ describe('Sidebar', () => {
   it('86e36xk28 AC3: nav item and saved-view labels no longer carry font-extrabold', () => {
     render(<Sidebar />);
     expect(screen.getByTestId('sidebar-active-item')).not.toHaveClass('font-extrabold');
-    // 86e37r2rm: "Discrepancies" is now a real <a>, not a <button> -- checked
-    // via .closest('a') below, same guarantee, updated selector for the new
-    // DOM shape. The other 6 still-disabled items are unaffected.
+    // 86e37r2rm/86e37r2rt: "Discrepancies" and "Invoices" are now real <a>s,
+    // not <button>s -- checked via .closest('a') below, same guarantee,
+    // updated selector for the new DOM shape. The other 4 still-disabled
+    // items are unaffected.
     expect(screen.getByText('Discrepancies').closest('a')).not.toHaveClass('font-extrabold');
-    for (const label of ['Invoices', 'Audit log', 'Settings', 'Mine, over $500', 'Estes accessorials']) {
+    expect(screen.getByText('Invoices').closest('a')).not.toHaveClass('font-extrabold');
+    for (const label of ['Audit log', 'Settings', 'Mine, over $500', 'Estes accessorials']) {
       expect(screen.getByText(label).closest('button')).not.toHaveClass('font-extrabold');
     }
   });
@@ -76,6 +78,23 @@ describe('Sidebar', () => {
     render(<Sidebar currentPath="/discrepancies" />);
     const active = screen.getByTestId('sidebar-active-item');
     expect(active).toHaveTextContent('Discrepancies');
+    expect(screen.getByText('Dashboard')).not.toHaveClass('bg-sidebar-active');
+  });
+
+  it('86e37r2rt AC4: "Invoices" is a real link, not disabled, cursor-not-allowed, or Soon-badged', () => {
+    render(<Sidebar />);
+    const link = screen.getByText('Invoices').closest('a');
+    expect(link).not.toBeNull();
+    expect(link).toHaveAttribute('href', '#/invoices');
+    expect(link).not.toHaveAttribute('disabled');
+    expect(link?.className).not.toMatch(/cursor-not-allowed/);
+    expect(link?.querySelector('span')).toBeNull();
+  });
+
+  it('86e37r2rt: "Invoices" becomes the active item when currentPath is /invoices, and Dashboard is no longer active', () => {
+    render(<Sidebar currentPath="/invoices" />);
+    const active = screen.getByTestId('sidebar-active-item');
+    expect(active).toHaveTextContent('Invoices');
     expect(screen.getByText('Dashboard')).not.toHaveClass('bg-sidebar-active');
   });
 });

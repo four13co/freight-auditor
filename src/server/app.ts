@@ -15,6 +15,7 @@ import { registerClaimRecoveryRoutes } from './claim-recovery-routes.js';
 import { registerPaymentRoutes } from './payment-routes.js';
 import { registerDisputeReviewRoutes } from './dispute-review-routes.js';
 import { registerPortfolioRoutes } from './portfolio-routes.js';
+import { registerInvoicesRoutes } from './invoices-routes.js';
 import { registerPortalContentRoutes } from './portal-content-routes.js';
 import { registerPortalAdminRoutes } from './portal-admin-routes.js';
 import { registerRecoveryReportRoutes } from './recovery-report-routes.js';
@@ -106,6 +107,11 @@ export function buildApp(): FastifyInstance {
   // NOT the shared registerTenantAuthPreHandler every module above uses --
   // see portfolio-routes.ts's header comment for why.
   void app.register(registerPortfolioRoutes);
+
+  // Internal-analyst invoice list (86e37r2rt): the sidebar's "Invoices" nav
+  // item. Same registerInternalAnalystAuthPreHandler as registerPortfolioRoutes
+  // above -- cross-client, ops-facing, not the shared registerTenantAuthPreHandler.
+  void app.register(registerInvoicesRoutes);
 
   // Client portal content APIs (P6.B.1): invoice list + scorecard summary,
   // its OWN preHandler (registerClientViewerAuthPreHandler) -- deliberately

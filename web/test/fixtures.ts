@@ -1,4 +1,4 @@
-import type { FindingRow, FindingsSummary, GateFailureRow } from '../src/lib/api.js';
+import type { FindingRow, FindingsSummary, GateFailureRow, InvoiceRow } from '../src/lib/api.js';
 
 // Shared test fixtures (86e2v251x): previously each of Dashboard.test.tsx,
 // FindingsTable.test.tsx, and e2e/dashboard.spec.ts hand-defined its own
@@ -139,5 +139,39 @@ export const GATE_FAILURE_ROWS: GateFailureRow[] = [
     defect: 'Ocean invoices must state currency per charge.',
     citation: 'C3/L1-20 must be present.',
     recordedAt: '2026-08-13T00:00:00Z',
+  },
+];
+
+// 86e37r2rt: /api/invoices fixtures for InvoicesView/InvoicesTable.
+export const INVOICE_ROWS: InvoiceRow[] = [
+  {
+    id: 'inv1',
+    invoiceNumber: 'INV-90385',
+    carrierName: 'Saia LTL',
+    transactionSet: '210',
+    status: 'ingested',
+    currency: 'USD',
+    createdAt: '2026-08-14T00:00:00Z',
+    billedTotal: '1876.4000',
+  },
+  {
+    id: 'inv2',
+    invoiceNumber: 'INV-90408',
+    carrierName: 'Old Dominion',
+    transactionSet: '310',
+    status: 'reconciled',
+    currency: 'USD',
+    createdAt: '2026-08-12T00:00:00Z',
+    billedTotal: '5940.2000',
+  },
+  {
+    id: 'inv3',
+    invoiceNumber: 'INV-90331',
+    carrierName: 'XPO Logistics',
+    transactionSet: '210',
+    status: 'ingested',
+    currency: 'USD',
+    createdAt: '2026-08-11T00:00:00Z',
+    billedTotal: '0.0000',
   },
 ];

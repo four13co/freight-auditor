@@ -559,9 +559,9 @@ describe('Dashboard', () => {
     render(<Dashboard />);
     await waitFor(() => expect(screen.getAllByTestId('finding-row')).toHaveLength(3));
 
-    // 86e37r2rm: "Discrepancies" is no longer one of these disabled
-    // placeholders -- it's now a real link, covered by its own tests below.
-    expect(screen.getByText('Invoices').closest('button')).toBeDisabled();
+    // 86e37r2rm/86e37r2rt: "Discrepancies" and "Invoices" are no longer
+    // among these disabled placeholders -- both are now real links, covered
+    // by their own tests below.
     expect(screen.getByText('Audit log').closest('button')).toBeDisabled();
     expect(screen.getByText('Settings').closest('button')).toBeDisabled();
     expect(screen.getByText('Mine, over $500').closest('button')).toBeDisabled();
@@ -602,9 +602,8 @@ describe('Dashboard', () => {
     render(<Dashboard />);
     await waitFor(() => expect(screen.getAllByTestId('finding-row')).toHaveLength(3));
 
-    // 86e37r2rm: "Discrepancies" is no longer disabled/Soon-badged -- excluded here.
+    // 86e37r2rm/86e37r2rt: "Discrepancies" and "Invoices" are no longer disabled/Soon-badged -- excluded here.
     const disabledLabels = [
-      'Invoices',
       'Audit log',
       'Settings',
       'Mine, over $500',
@@ -754,6 +753,36 @@ describe('Dashboard', () => {
     // reuse "/"'s already-loaded rows, and it fetched no KPI summary (no
     // KPI row exists on this page).
     expect(fetchMock.mock.calls.some(([input]) => String(input).includes('/api/findings'))).toBe(true);
+    expect(screen.queryByTestId('kpi-row')).not.toBeInTheDocument();
+  });
+
+  it('86e37r2rt AC4: the "Invoices" sidebar item is a real link to /invoices, not a disabled button', async () => {
+    render(<Dashboard />);
+    await waitFor(() => expect(screen.getAllByTestId('finding-row')).toHaveLength(3));
+
+    const invoicesItem = screen.getByText('Invoices').closest('a');
+    expect(invoicesItem).not.toBeNull();
+    expect(invoicesItem).toHaveAttribute('href', '#/invoices');
+  });
+
+  it('86e37r2rt AC3: clicking "Invoices" navigates to /#/invoices and renders the invoices table there', async () => {
+    fetchMock.mockImplementation((input: string | URL | Request) => {
+      const url = input.toString();
+      if (url.includes('/api/invoices')) {
+        return Promise.resolve(new Response(JSON.stringify({ invoices: [] }), { status: 200 }));
+      }
+      return mockFetchOnce(url);
+    });
+
+    render(<Dashboard />);
+    await waitFor(() => expect(screen.getAllByTestId('finding-row')).toHaveLength(3));
+    fetchMock.mockClear();
+
+    fireEvent.click(screen.getByText('Invoices'));
+
+    await waitFor(() => expect(window.location.hash).toBe('#/invoices'));
+    await waitFor(() => expect(screen.getByTestId('empty-no-invoices-yet')).toBeInTheDocument());
+    expect(fetchMock.mock.calls.some(([input]) => String(input).includes('/api/invoices'))).toBe(true);
     expect(screen.queryByTestId('kpi-row')).not.toBeInTheDocument();
   });
 });

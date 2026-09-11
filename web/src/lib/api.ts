@@ -22,6 +22,18 @@ export interface FindingRow {
   ruleDescription: string | null;
 }
 
+/** Mirrors src/modules/invoices/list-invoices.ts's InvoiceRow -- the internal-analyst /api/invoices list (86e37r2rt), distinct from the client-portal ClientPortalInvoiceRow below. */
+export interface InvoiceRow {
+  id: string;
+  invoiceNumber: string | null;
+  carrierName: string | null;
+  transactionSet: string;
+  status: string;
+  currency: string | null;
+  createdAt: string;
+  billedTotal: string;
+}
+
 export interface InvoiceScorecard {
   audit_run_id: string; invoice_id: string; invoice_number: string | null; outcome: string;
   conformed_count: number | null; variance_count: number | null; unassessable_count: number | null;
@@ -245,6 +257,26 @@ export async function fetchFindings(params: FindingsListParams = {}): Promise<Fi
   if (!res.ok) throw new Error(`GET /api/findings failed: ${res.status}`);
   const body = (await res.json()) as { findings: FindingRow[] };
   return body.findings;
+}
+
+export interface InvoicesListParams {
+  carrier?: string;
+  status?: string;
+}
+
+function buildInvoicesQuery(params: InvoicesListParams): string {
+  const qs = new URLSearchParams();
+  if (params.carrier) qs.set('carrier', params.carrier);
+  if (params.status) qs.set('status', params.status);
+  const s = qs.toString();
+  return s ? `?${s}` : '';
+}
+
+export async function fetchInvoices(params: InvoicesListParams = {}): Promise<InvoiceRow[]> {
+  const res = await fetch(`/api/invoices${buildInvoicesQuery(params)}`, { headers: authHeaders() });
+  if (!res.ok) throw new Error(`GET /api/invoices failed: ${res.status}`);
+  const body = (await res.json()) as { invoices: InvoiceRow[] };
+  return body.invoices;
 }
 
 export async function fetchFindingsSummary(): Promise<FindingsSummary> {

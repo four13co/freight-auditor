@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { DASHBOARD_ROWS as ROWS, DASHBOARD_SUMMARY as SUMMARY } from '../fixtures.js';
+import { DASHBOARD_ROWS as ROWS, DASHBOARD_SUMMARY as SUMMARY, INVOICE_ROWS } from '../fixtures.js';
 
 /**
  * Renders the real dashboard page (Principle 1/7: a render test is part of
@@ -136,6 +136,29 @@ test('86e37r2rm AC1: the "Discrepancies" sidebar link navigates to /#/discrepanc
   await expect(page.getByTestId('kpi-row')).not.toBeVisible();
 
   await page.screenshot({ path: 'test-results/discrepancies-full.png', fullPage: true });
+});
+
+/**
+ * 86e37r2rt AC3: proves the real, built app renders the dedicated /invoices
+ * route -- same shape as the Discrepancies e2e test above (86e37r2rm), on
+ * the new route, with the invoices table (not the findings table) and no
+ * KPI row alongside it.
+ */
+test('86e37r2rt AC3: the "Invoices" sidebar link navigates to /#/invoices and renders the invoices table there', async ({ page }) => {
+  await page.route('**/api/findings**', (route) => route.fulfill({ json: { findings: ROWS } }));
+  await page.route('**/api/findings/summary', (route) => route.fulfill({ json: SUMMARY }));
+  await page.route('**/api/invoices**', (route) => route.fulfill({ json: { invoices: INVOICE_ROWS } }));
+
+  await page.goto('/');
+  await expect(page.getByTestId('kpi-row')).toBeVisible();
+
+  await page.getByText('Invoices').click();
+
+  await expect(page).toHaveURL(/\/#\/invoices$/);
+  await expect(page.getByTestId('invoice-row')).toHaveCount(3);
+  await expect(page.getByTestId('kpi-row')).not.toBeVisible();
+
+  await page.screenshot({ path: 'test-results/invoices-full.png', fullPage: true });
 });
 
 test('analyst reviews an extraction abstention and records its answer source', async ({ page }) => {

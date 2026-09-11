@@ -75,6 +75,8 @@ function NavAnchor({ href, path, currentPath, children }: { href: string; path: 
  * `currentPath` defaults to "/" so every existing standalone
  * `render(<Sidebar />)` call (no Router, no prop) still sees "Dashboard" as
  * the active item, unchanged.
+ *
+ * 86e37r2rt: "Invoices" gets the same NavAnchor treatment next.
  */
 export function Sidebar({ branding, currentPath = '/' }: { branding?: Branding | null; currentPath?: string } = {}) {
   return (
@@ -99,15 +101,9 @@ export function Sidebar({ branding, currentPath = '/' }: { branding?: Branding |
         <NavAnchor href="#/discrepancies" path="/discrepancies" currentPath={currentPath}>
           Discrepancies
         </NavAnchor>
-        <button
-          type="button"
-          disabled
-          title="Coming soon"
-          className="flex cursor-not-allowed items-center justify-between px-[18px] py-[9px] text-left text-sm text-sidebar-fg-85 opacity-60"
-        >
-          <span>Invoices</span>
-          <SoonBadge />
-        </button>
+        <NavAnchor href="#/invoices" path="/invoices" currentPath={currentPath}>
+          Invoices
+        </NavAnchor>
 
         <div className="px-[18px] pb-2 pt-[22px] text-[11px] font-extrabold uppercase tracking-[0.1em] text-sidebar-fg-50">
           Records

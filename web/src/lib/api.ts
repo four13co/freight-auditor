@@ -112,6 +112,10 @@ export interface FindingsListParams {
   minAmount?: string;
   /** 86e37r2t8: the only accepted value is 'me' -- resolved server-side to the caller's own user id, never an arbitrary user id. */
   assignee?: 'me';
+  /** 86e37r2t6: rows at least this many days old. */
+  minAgeDays?: number;
+  /** 86e37r2t7: charge_fact.category (e.g. 'accessorial'). */
+  category?: string;
   sort?: FindingsSortKey;
   sortDir?: FindingsSortDir;
 }
@@ -123,6 +127,9 @@ function buildQuery(params: FindingsListParams): string {
   // Backend reads this literally as 'min-amount' (kebab-case), not minAmount.
   if (params.minAmount) qs.set('min-amount', params.minAmount);
   if (params.assignee) qs.set('assignee', params.assignee);
+  // Same kebab-case convention as min-amount, per 86e37r2t6's own AC.
+  if (params.minAgeDays !== undefined) qs.set('min-age-days', String(params.minAgeDays));
+  if (params.category) qs.set('category', params.category);
   // 86e2v251e: sort is applied server-side (against the full filtered result
   // set, before LIMIT) -- see list-findings.ts's ORDER_COLUMNS. sortDir is
   // only meaningful alongside sort, but sending it standalone is harmless
@@ -878,4 +885,21 @@ export async function fetchBranding(): Promise<Branding> {
   } catch {
     return UNBRANDED;
   }
+}
+
+/** The write half of branding (86e37r2t4) -- PATCH /api/internal/branding, tenant + analyst-only gated. */
+export interface UpdateBrandingInput {
+  logoUrl: string;
+  primaryColor: string;
+  secondaryColor: string | null;
+}
+
+export async function updateBranding(input: UpdateBrandingInput): Promise<{ logoUrl: string; primaryColor: string; secondaryColor: string | null }> {
+  const res = await fetch('/api/internal/branding', {
+    method: 'PATCH',
+    headers: { ...authHeaders(), 'content-type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) throw new Error(`PATCH /api/internal/branding failed: ${res.status}`);
+  return (await res.json()) as { logoUrl: string; primaryColor: string; secondaryColor: string | null };
 }

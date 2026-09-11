@@ -22,11 +22,12 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-// 86e37r2t8: DiscrepanciesView now calls useSearchParams (it reads the
-// sidebar saved views' assignee/minAmount/carrier query params on mount),
-// which throws outside a Router -- every render below goes through a
-// MemoryRouter, defaulting to a bare /discrepancies (no query params) so
-// existing behavior is unaffected unless a test passes its own initialPath.
+// 86e37r2t8/86e37r2t6/86e37r2t7: DiscrepanciesView now calls useSearchParams
+// (it reads the sidebar saved views' assignee/minAmount/minAgeDays/category/
+// carrier query params on mount), which throws outside a Router -- every
+// render below goes through a MemoryRouter, defaulting to a bare
+// /discrepancies (no query params) so existing behavior is unaffected unless
+// a test passes its own initialPath.
 function renderView(initialPath = '/discrepancies') {
   return render(
     <MemoryRouter initialEntries={[initialPath]}>
@@ -118,11 +119,30 @@ describe('DiscrepanciesView (86e37r2rm)', () => {
     expect(String(calledUrl)).toContain('min-amount=500');
   });
 
-  it('no assignee param in the URL: behavior is unchanged from before assignee existed (regression)', async () => {
+  it('86e37r2t6 AC3: reads minAgeDays from the URL and fetches /api/findings with min-age-days', async () => {
+    renderView('/discrepancies?minAgeDays=5');
+    await waitFor(() => expect(screen.getAllByTestId('finding-row')).toHaveLength(3));
+
+    const calledUrl = fetchMock.mock.calls.find((c) => String(c[0]).includes('/api/findings?'))?.[0];
+    expect(String(calledUrl)).toContain('min-age-days=5');
+  });
+
+  it('86e37r2t7 AC4: reads carrier+category from the URL and fetches /api/findings with both filters', async () => {
+    renderView('/discrepancies?carrier=Estes&category=accessorial');
+    await waitFor(() => expect(screen.getAllByTestId('finding-row')).toHaveLength(3));
+
+    const calledUrl = fetchMock.mock.calls.find((c) => String(c[0]).includes('/api/findings?'))?.[0];
+    expect(String(calledUrl)).toContain('carrier=Estes');
+    expect(String(calledUrl)).toContain('category=accessorial');
+  });
+
+  it('no query params in the URL: behavior is unchanged from before assignee/minAgeDays/category existed (regression)', async () => {
     renderView('/discrepancies');
     await waitFor(() => expect(screen.getAllByTestId('finding-row')).toHaveLength(3));
 
     const calledUrl = fetchMock.mock.calls.find((c) => String(c[0]).includes('/api/findings'))?.[0];
     expect(String(calledUrl)).not.toContain('assignee');
+    expect(String(calledUrl)).not.toContain('min-age-days');
+    expect(String(calledUrl)).not.toContain('category');
   });
 });

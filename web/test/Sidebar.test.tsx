@@ -34,15 +34,21 @@ describe('Sidebar', () => {
   it('86e36xk28 AC3: nav item and saved-view labels no longer carry font-extrabold', () => {
     render(<Sidebar />);
     expect(screen.getByTestId('sidebar-active-item')).not.toHaveClass('font-extrabold');
-    // 86e37r2rm/86e37r2rv/86e37r2rt/86e37r2t8: "Discrepancies", "Audit log",
-    // "Invoices", and "Mine, over $500" are now real <a>s, not <button>s --
-    // checked via .closest('a') below, same guarantee, updated selector for
-    // the new DOM shape. The remaining still-disabled items are unaffected.
-    for (const label of ['Discrepancies', 'Audit log', 'Invoices', 'Mine, over $500']) {
+    // 86e37r2rm/86e37r2rv/86e37r2rt/86e37r2t4/86e37r2t6/86e37r2t7/86e37r2t8:
+    // "Discrepancies", "Audit log", "Invoices", "Settings", "Mine, over
+    // $500", "Aging > 5 days", and "Estes accessorials" are now real <a>s,
+    // not <button>s -- checked via .closest('a') below, same guarantee,
+    // updated selector for the new DOM shape.
+    for (const label of [
+      'Discrepancies',
+      'Audit log',
+      'Invoices',
+      'Settings',
+      'Mine, over $500',
+      'Aging > 5 days',
+      'Estes accessorials',
+    ]) {
       expect(screen.getByText(label).closest('a')).not.toHaveClass('font-extrabold');
-    }
-    for (const label of ['Settings', 'Estes accessorials']) {
-      expect(screen.getByText(label).closest('button')).not.toHaveClass('font-extrabold');
     }
   });
 
@@ -121,6 +127,43 @@ describe('Sidebar', () => {
     const link = screen.getByText('Mine, over $500').closest('a');
     expect(link).not.toBeNull();
     expect(link).toHaveAttribute('href', '#/discrepancies?assignee=me&minAmount=500');
+    expect(link).not.toHaveAttribute('disabled');
+    expect(link?.className).not.toMatch(/cursor-not-allowed/);
+    expect(link?.querySelector('span')).toBeNull();
+  });
+
+  it('86e37r2t4 AC5: "Settings" is a real link, not disabled, cursor-not-allowed, or Soon-badged', () => {
+    render(<Sidebar />);
+    const link = screen.getByText('Settings').closest('a');
+    expect(link).not.toBeNull();
+    expect(link).toHaveAttribute('href', '#/settings');
+    expect(link).not.toHaveAttribute('disabled');
+    expect(link?.className).not.toMatch(/cursor-not-allowed/);
+    expect(link?.querySelector('span')).toBeNull();
+  });
+
+  it('86e37r2t7 AC4: "Estes accessorials" is a real link to the carrier+category preset, not disabled, cursor-not-allowed, or Soon-badged', () => {
+    render(<Sidebar />);
+    const link = screen.getByText('Estes accessorials').closest('a');
+    expect(link).not.toBeNull();
+    expect(link).toHaveAttribute('href', '#/discrepancies?carrier=Estes&category=accessorial');
+    expect(link).not.toHaveAttribute('disabled');
+    expect(link?.className).not.toMatch(/cursor-not-allowed/);
+    expect(link?.querySelector('span')).toBeNull();
+  });
+
+  it('86e37r2t4: "Settings" becomes the active item when currentPath is /settings, and Dashboard is no longer active', () => {
+    render(<Sidebar currentPath="/settings" />);
+    const active = screen.getByTestId('sidebar-active-item');
+    expect(active).toHaveTextContent('Settings');
+    expect(screen.getByText('Dashboard')).not.toHaveClass('bg-sidebar-active');
+  });
+
+  it('86e37r2t6 AC4: "Aging > 5 days" is a real link to the minAgeDays preset, not disabled, cursor-not-allowed, or Soon-badged', () => {
+    render(<Sidebar />);
+    const link = screen.getByText('Aging > 5 days').closest('a');
+    expect(link).not.toBeNull();
+    expect(link).toHaveAttribute('href', '#/discrepancies?minAgeDays=5');
     expect(link).not.toHaveAttribute('disabled');
     expect(link?.className).not.toMatch(/cursor-not-allowed/);
     expect(link?.querySelector('span')).toBeNull();

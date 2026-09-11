@@ -43,6 +43,10 @@ export interface ListFindingsOptions {
    * user id, it just filters on whatever id it's given.
    */
   assignedToUserId?: string;
+  /** 86e37r2t6: rows at least this many days old (created_at <= NOW() - N days). */
+  minAgeDays?: number;
+  /** 86e37r2t7: charge_fact.category, joined via the existing (already-LEFT-JOINed) charge_fact -- a row with a NULL charge_fact_id has nothing to categorize and is excluded when this is set. */
+  category?: string;
   limit?: number;
   offset?: number;
   sort?: FindingsSortKey;
@@ -94,6 +98,17 @@ export async function listFindings(
   if (options.assignedToUserId) {
     params.push(options.assignedToUserId);
     conditions.push(`variance_finding.assigned_to_user_id = $${params.length}`);
+  }
+  if (options.minAgeDays !== undefined) {
+    params.push(options.minAgeDays);
+    conditions.push(`variance_finding.created_at <= NOW() - ($${params.length} || ' days')::interval`);
+  }
+  if (options.category) {
+    // charge_fact is already LEFT JOINed below (86e2v17p5) -- a row whose
+    // charge_fact_id is NULL has charge_fact.category = NULL here, which
+    // this equality condition correctly excludes (no charge to categorize).
+    params.push(options.category);
+    conditions.push(`charge_fact.category = $${params.length}`);
   }
 
   const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';

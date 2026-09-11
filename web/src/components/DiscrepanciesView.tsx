@@ -28,6 +28,14 @@ type LoadStatus = 'loading' | 'error' | 'ready';
  * only, no arbitrary-user filtering), read once and never exposed to
  * FindingsTable's controlled filter UI, unlike carrier/minAmount which stay
  * editable afterward.
+ *
+ * 86e37r2t6/86e37r2t7: carrier/minAgeDays/category also seed from the URL's
+ * query string on mount -- the "Aging > 5 days" and "Estes accessorials"
+ * sidebar saved views are plain links to /discrepancies?... (no client-side
+ * state passed between components), so this is the only place that link's
+ * query string can be read back into an actual filter. Fixed presets, not
+ * user-editable (per each item's own Rabbit holes), so minAgeDays/category
+ * are read once and never exposed to FindingsTable's controlled filter UI.
  */
 export function DiscrepanciesView() {
   const [searchParams] = useSearchParams();
@@ -36,6 +44,11 @@ export function DiscrepanciesView() {
   const [statusFilter, setStatusFilter] = useState('');
   const [minAmountFilter, setMinAmountFilter] = useState(() => searchParams.get('minAmount') ?? '');
   const [assignedToMe] = useState(() => searchParams.get('assignee') === 'me');
+  const [minAgeDaysFilter] = useState(() => {
+    const raw = searchParams.get('minAgeDays');
+    return raw ? Number(raw) : undefined;
+  });
+  const [categoryFilter] = useState(() => searchParams.get('category') ?? '');
   const [sort, setSort] = useState<{ key: FindingsSortKey; dir: FindingsSortDir } | null>(null);
   const [status, setStatus] = useState<LoadStatus>('loading');
 
@@ -46,6 +59,8 @@ export function DiscrepanciesView() {
       status: statusFilter || undefined,
       minAmount: minAmountFilter || undefined,
       assignee: assignedToMe ? 'me' : undefined,
+      minAgeDays: minAgeDaysFilter,
+      category: categoryFilter || undefined,
       sort: sort?.key,
       sortDir: sort?.dir,
     }).then(
@@ -57,7 +72,7 @@ export function DiscrepanciesView() {
         setStatus('error');
       },
     );
-  }, [carrierFilter, statusFilter, minAmountFilter, assignedToMe, sort]);
+  }, [carrierFilter, statusFilter, minAmountFilter, assignedToMe, minAgeDaysFilter, categoryFilter, sort]);
 
   function toggleSort(key: FindingsSortKey) {
     setSort((prev) => {

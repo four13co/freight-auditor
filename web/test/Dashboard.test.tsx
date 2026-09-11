@@ -721,4 +721,13 @@ describe('Dashboard', () => {
     const rowsAfter = screen.getAllByTestId('finding-row');
     expect(within(rowsAfter[0]!).getByText('In review')).toBeInTheDocument();
   });
+
+  it('86e37r2rb AC2: the "Dashboard" sidebar item is a real link to /, not a static div', async () => {
+    render(<Dashboard />);
+    await waitFor(() => expect(screen.getAllByTestId('finding-row')).toHaveLength(3));
+
+    const dashboardItem = screen.getByTestId('sidebar-active-item');
+    expect(dashboardItem.tagName).toBe('A');
+    expect(dashboardItem).toHaveAttribute('href', '#/');
+  });
 });

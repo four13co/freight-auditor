@@ -37,6 +37,15 @@ function SoonBadge() {
  * --brand-primary (App.tsx sets it once branding resolves) with a CSS
  * fallback to the platform's own red, so an unbranded visit renders
  * pixel-identical to before.
+ *
+ * 86e37r2rb: "Dashboard" is now a real `<a href="#/">` (Dashboard.tsx wraps
+ * its content in a HashRouter, and "/" is the only route so far), not a
+ * plain `<a>`-via-react-router NavLink -- a real anchor keeps this component
+ * renderable standalone with no Router ancestor, exactly as Sidebar.test.tsx
+ * already does. It stays permanently styled as the active item because,
+ * until a follow-up item wires one of the other 6 nav entries to a real
+ * route, "/" is the only route that exists -- there is no away-from-
+ * Dashboard state to render differently yet.
  */
 export function Sidebar({ branding }: { branding?: Branding | null } = {}) {
   return (
@@ -55,13 +64,14 @@ export function Sidebar({ branding }: { branding?: Branding | null } = {}) {
         <div className="px-[18px] pb-2 text-[11px] font-extrabold uppercase tracking-[0.1em] text-sidebar-fg-50">
           Audit
         </div>
-        <div
+        <a
+          href="#/"
           data-testid="sidebar-active-item"
           className="border-l-2 bg-sidebar-active px-[16px] py-[9px] text-sm font-medium text-sidebar-fg"
           style={{ borderLeftColor: 'var(--brand-primary, #ec3013)' }}
         >
           Dashboard
-        </div>
+        </a>
         <button
           type="button"
           disabled

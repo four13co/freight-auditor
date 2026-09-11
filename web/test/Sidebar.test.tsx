@@ -34,11 +34,14 @@ describe('Sidebar', () => {
   it('86e36xk28 AC3: nav item and saved-view labels no longer carry font-extrabold', () => {
     render(<Sidebar />);
     expect(screen.getByTestId('sidebar-active-item')).not.toHaveClass('font-extrabold');
-    // 86e37r2rm: "Discrepancies" is now a real <a>, not a <button> -- checked
-    // via .closest('a') below, same guarantee, updated selector for the new
-    // DOM shape. The other 6 still-disabled items are unaffected.
-    expect(screen.getByText('Discrepancies').closest('a')).not.toHaveClass('font-extrabold');
-    for (const label of ['Invoices', 'Audit log', 'Settings', 'Mine, over $500', 'Estes accessorials']) {
+    // 86e37r2rm/86e37r2rv: "Discrepancies" and "Audit log" are now real <a>s,
+    // not <button>s -- checked via .closest('a') below, same guarantee,
+    // updated selector for the new DOM shape. The remaining still-disabled
+    // items are unaffected.
+    for (const label of ['Discrepancies', 'Audit log']) {
+      expect(screen.getByText(label).closest('a')).not.toHaveClass('font-extrabold');
+    }
+    for (const label of ['Invoices', 'Settings', 'Mine, over $500', 'Estes accessorials']) {
       expect(screen.getByText(label).closest('button')).not.toHaveClass('font-extrabold');
     }
   });
@@ -76,6 +79,23 @@ describe('Sidebar', () => {
     render(<Sidebar currentPath="/discrepancies" />);
     const active = screen.getByTestId('sidebar-active-item');
     expect(active).toHaveTextContent('Discrepancies');
+    expect(screen.getByText('Dashboard')).not.toHaveClass('bg-sidebar-active');
+  });
+
+  it('86e37r2rv AC4: "Audit log" is a real link, not disabled, cursor-not-allowed, or Soon-badged', () => {
+    render(<Sidebar />);
+    const link = screen.getByText('Audit log').closest('a');
+    expect(link).not.toBeNull();
+    expect(link).toHaveAttribute('href', '#/audit-log');
+    expect(link).not.toHaveAttribute('disabled');
+    expect(link?.className).not.toMatch(/cursor-not-allowed/);
+    expect(link?.querySelector('span')).toBeNull();
+  });
+
+  it('86e37r2rv: "Audit log" becomes the active item when currentPath is /audit-log, and Dashboard is no longer active', () => {
+    render(<Sidebar currentPath="/audit-log" />);
+    const active = screen.getByTestId('sidebar-active-item');
+    expect(active).toHaveTextContent('Audit log');
     expect(screen.getByText('Dashboard')).not.toHaveClass('bg-sidebar-active');
   });
 });

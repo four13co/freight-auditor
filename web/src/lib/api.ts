@@ -633,6 +633,27 @@ export async function fetchClientPortalAuditLog(limit: number, offset: number): 
   return (await res.json()) as ClientPortalAuditLogPage;
 }
 
+/** Mirrors list-internal-audit-events.ts's InternalAuditEventRow shape exactly (86e37r2rv) -- same shape as ClientPortalAuditEventRow above, cross-client instead of single-tenant. */
+export interface AuditLogEventRow {
+  id: string;
+  entity: string;
+  entityId: string | null;
+  event: string;
+  actorKind: string;
+  recordedAt: string;
+}
+
+export interface AuditLogPage {
+  events: AuditLogEventRow[];
+}
+
+/** Internal-analyst-facing audit log (86e37r2rv), wired to the Sidebar/Dashboard /audit-log route. */
+export async function fetchAuditLog(limit: number, offset: number): Promise<AuditLogPage> {
+  const res = await fetch(`/api/internal/audit-log?limit=${limit}&offset=${offset}`, { headers: authHeaders() });
+  if (!res.ok) throw new Error(`GET internal audit log failed: ${res.status}`);
+  return (await res.json()) as AuditLogPage;
+}
+
 /**
  * 86e36yj9d: the Uploads section's own invoice-draft flow -- POST/confirm/
  * reject against portal-invoice-upload-routes.ts's client_admin-gated

@@ -48,3 +48,37 @@ test('AC1/AC2: dashboard loads findings and KPI values from the real API, no moc
   // loading/error placeholder.
   await expect(page.getByTestId('kpi-row')).toBeVisible();
 });
+
+/**
+ * 86e37r2rb AC1: Dashboard.tsx is now HashRouter-wrapped (matching
+ * PortalApp.tsx's own routing style) -- proves the real, built app is
+ * routing (the sidebar's "Dashboard" item is a real hash link that
+ * navigates, not a static div) and still renders its pre-existing content
+ * unchanged on "/", not that the mocked unit/e2e suites merely tolerate the
+ * new wrapper.
+ *
+ * A bare `/` load never gets an empty hash rewritten to "#/" in the address
+ * bar (HashRouter treats "" and "#/" as the same route without forcing a
+ * history write on initial mount -- confirmed against the real built app,
+ * not assumed) -- so this drives the actual real link click react-router
+ * listens for and asserts the resulting URL, rather than asserting a
+ * pre-navigation URL shape the router was never going to produce.
+ */
+test('86e37r2rb AC1: the sidebar "Dashboard" link navigates to /#/, and its content is pixel-identical to before', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.getByTestId('kpi-row')).toBeVisible();
+
+  await page.getByTestId('sidebar-active-item').click();
+
+  await expect(page).toHaveURL(/\/#\/$/);
+  await expect(page.getByText('Good morning, Dana')).toBeVisible();
+  await expect(page.getByTestId('kpi-row')).toBeVisible();
+  // Same two-filter combo as the AC1/AC2 test above -- a rerun without
+  // tearing down the DB can accumulate multiple rows sharing this invoice
+  // number (fixture seeding is idempotent per-row, not exclusive), so
+  // invoice number alone isn't a unique match.
+  const row = page.getByTestId('finding-row')
+    .filter({ hasText: FIXTURE_INVOICE_NUMBER })
+    .filter({ hasText: '$100.00' });
+  await expect(row.first()).toBeVisible();
+});

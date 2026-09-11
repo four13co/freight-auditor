@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { HashRouter, Route, Routes } from 'react-router-dom';
 import { Sidebar } from './Sidebar.js';
 import { Header } from './Header.js';
 import { PasskeyRegistration } from './PasskeyRegistration.js';
@@ -45,6 +46,14 @@ import {
  */
 type LoadStatus = 'loading' | 'error' | 'ready';
 
+/**
+ * 86e37r2rb: HashRouter-wrapped so the Dashboard shell (Sidebar + Header,
+ * persistent chrome) has somewhere to route Sidebar.tsx's other 6 nav items
+ * into once each is wired up in its own follow-up item. "/" is the only
+ * route today and renders exactly what this component rendered before this
+ * change -- a pure refactor, no visual/behavioral change on that route.
+ * Matches PortalApp.tsx's own HashRouter pattern for the client portal side.
+ */
 export function Dashboard({ branding }: { branding?: Branding | null } = {}) {
   const [summary, setSummary] = useState<FindingsSummary | null>(null);
   const [rows, setRows] = useState<FindingRow[]>([]);
@@ -120,71 +129,80 @@ export function Dashboard({ branding }: { branding?: Branding | null } = {}) {
   }, []);
 
   return (
-    <div className="flex h-screen w-full bg-[#eae9e9] text-[#201e1d]">
-      <Sidebar branding={branding} />
-      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-        <Header />
-        <PasskeyRegistration />
-        <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-6">
-          {status === 'loading' && (
-            <div data-testid="dashboard-loading" className="flex flex-1 items-center justify-center text-sm text-[rgba(32,30,29,0.6)]">
-              Loading…
-            </div>
-          )}
-          {status === 'error' && (
-            <div
-              data-testid="dashboard-error"
-              className="flex flex-1 flex-col items-center justify-center gap-3 text-sm text-[rgba(32,30,29,0.75)]"
-            >
-              <span>Something went wrong loading the dashboard.</span>
-              <button
-                type="button"
-                onClick={load}
-                className="h-9 border border-[rgba(32,30,29,0.4)] px-4 text-[13px] font-extrabold"
-              >
-                Retry
-              </button>
-            </div>
-          )}
-          {status === 'ready' && (
-            <>
-              {summary && <KpiRow summary={summary} />}
-              <ExtractionReview />
-              <GateFailuresPanel rows={gateFailures} />
-              <ReviewQueues queues={reviewQueues} />
-              <RubricConflictQueue rows={rubricConflicts} />
-              <RuleProposalQueue rows={ruleProposals} onRatified={(oldId, newId, lifecycle) => setRuleProposals((rows) => lifecycle === 'ACTIVE'
-                ? rows.filter((r) => r.id !== oldId) : rows.map((r) => r.id === oldId ? { ...r, id: newId, lifecycle_state: 'SHADOW' } : r))} />
-              <PaymentApprovalQueue rows={pendingPayments} onDecided={(auditRunId) =>
-                setPendingPayments((rows) => rows.filter((r) => r.auditRunId !== auditRunId))} />
-              <ContractRubricPreview rows={contractProposals} onAccepted={(id, shadowRuleVersionId, rationale) =>
-                setContractProposals((items) => items.map((item) => item.id === id ? { ...item, acceptance: {
-                  id: `accepted-${id}`, shadowRuleVersionId, acceptedBy: 'current analyst', rationale,
-                  recordedAt: new Date().toISOString() } } : item))} onRatified={(id,activeRuleVersionId,rationale)=>setContractProposals(items=>items.map(item=>item.id===id?{...item,ratification:{id:`ratified-${id}`,activeRuleVersionId,ratifiedBy:'current analyst',rationale,recordedAt:new Date().toISOString()}}:item))} />
-              <FindingsTable
-                rows={rows}
-                carrierFilter={carrierFilter}
-                statusFilter={statusFilter}
-                minAmountFilter={minAmountFilter}
-                onCarrierFilterChange={setCarrierFilter}
-                onStatusFilterChange={setStatusFilter}
-                onMinAmountFilterChange={setMinAmountFilter}
-                onRowStatusChange={(id, status) =>
-                  // 86e2v1xyr: patches the table's copy of the transitioned row so
-                  // it doesn't show a stale status until the next filter change
-                  // re-fetches. The KPI row is deliberately NOT recomputed here --
-                  // its aggregates (recoverableOpen etc.) are server-derived
-                  // (findings-summary.ts); re-deriving them client-side would
-                  // duplicate that logic and risk drifting from it silently.
-                  setRows((prev) => prev.map((r) => (r.id === id ? { ...r, status } : r)))
-                }
-                sort={sort}
-                onSortChange={toggleSort}
-              />
-            </>
-          )}
+    <HashRouter>
+      <div className="flex h-screen w-full bg-[#eae9e9] text-[#201e1d]">
+        <Sidebar branding={branding} />
+        <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+          <Header />
+          <PasskeyRegistration />
+          <Routes>
+            <Route
+              path="/"
+              element={
+                <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-6">
+                  {status === 'loading' && (
+                    <div data-testid="dashboard-loading" className="flex flex-1 items-center justify-center text-sm text-[rgba(32,30,29,0.6)]">
+                      Loading…
+                    </div>
+                  )}
+                  {status === 'error' && (
+                    <div
+                      data-testid="dashboard-error"
+                      className="flex flex-1 flex-col items-center justify-center gap-3 text-sm text-[rgba(32,30,29,0.75)]"
+                    >
+                      <span>Something went wrong loading the dashboard.</span>
+                      <button
+                        type="button"
+                        onClick={load}
+                        className="h-9 border border-[rgba(32,30,29,0.4)] px-4 text-[13px] font-extrabold"
+                      >
+                        Retry
+                      </button>
+                    </div>
+                  )}
+                  {status === 'ready' && (
+                    <>
+                      {summary && <KpiRow summary={summary} />}
+                      <ExtractionReview />
+                      <GateFailuresPanel rows={gateFailures} />
+                      <ReviewQueues queues={reviewQueues} />
+                      <RubricConflictQueue rows={rubricConflicts} />
+                      <RuleProposalQueue rows={ruleProposals} onRatified={(oldId, newId, lifecycle) => setRuleProposals((rows) => lifecycle === 'ACTIVE'
+                        ? rows.filter((r) => r.id !== oldId) : rows.map((r) => r.id === oldId ? { ...r, id: newId, lifecycle_state: 'SHADOW' } : r))} />
+                      <PaymentApprovalQueue rows={pendingPayments} onDecided={(auditRunId) =>
+                        setPendingPayments((rows) => rows.filter((r) => r.auditRunId !== auditRunId))} />
+                      <ContractRubricPreview rows={contractProposals} onAccepted={(id, shadowRuleVersionId, rationale) =>
+                        setContractProposals((items) => items.map((item) => item.id === id ? { ...item, acceptance: {
+                          id: `accepted-${id}`, shadowRuleVersionId, acceptedBy: 'current analyst', rationale,
+                          recordedAt: new Date().toISOString() } } : item))} onRatified={(id,activeRuleVersionId,rationale)=>setContractProposals(items=>items.map(item=>item.id===id?{...item,ratification:{id:`ratified-${id}`,activeRuleVersionId,ratifiedBy:'current analyst',rationale,recordedAt:new Date().toISOString()}}:item))} />
+                      <FindingsTable
+                        rows={rows}
+                        carrierFilter={carrierFilter}
+                        statusFilter={statusFilter}
+                        minAmountFilter={minAmountFilter}
+                        onCarrierFilterChange={setCarrierFilter}
+                        onStatusFilterChange={setStatusFilter}
+                        onMinAmountFilterChange={setMinAmountFilter}
+                        onRowStatusChange={(id, status) =>
+                          // 86e2v1xyr: patches the table's copy of the transitioned row so
+                          // it doesn't show a stale status until the next filter change
+                          // re-fetches. The KPI row is deliberately NOT recomputed here --
+                          // its aggregates (recoverableOpen etc.) are server-derived
+                          // (findings-summary.ts); re-deriving them client-side would
+                          // duplicate that logic and risk drifting from it silently.
+                          setRows((prev) => prev.map((r) => (r.id === id ? { ...r, status } : r)))
+                        }
+                        sort={sort}
+                        onSortChange={toggleSort}
+                      />
+                    </>
+                  )}
+                </div>
+              }
+            />
+          </Routes>
         </div>
       </div>
-    </div>
+    </HashRouter>
   );
 }

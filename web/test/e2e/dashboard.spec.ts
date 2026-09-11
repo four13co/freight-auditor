@@ -138,6 +138,37 @@ test('86e37r2rm AC1: the "Discrepancies" sidebar link navigates to /#/discrepanc
   await page.screenshot({ path: 'test-results/discrepancies-full.png', fullPage: true });
 });
 
+/**
+ * 86e37r2rv AC3: proves the real, built app renders the dedicated /audit-log
+ * route (a render test is part of the contract for any UI change, same as
+ * the rest of this file) -- the sidebar link navigates there and the
+ * internal audit-log endpoint's mocked rows render, paginated the same way
+ * the client portal's own view does.
+ */
+test('86e37r2rv AC3: the "Audit log" sidebar link navigates to /#/audit-log and renders the audit log table there', async ({ page }) => {
+  await page.route('**/api/findings**', (route) => route.fulfill({ json: { findings: ROWS } }));
+  await page.route('**/api/findings/summary', (route) => route.fulfill({ json: SUMMARY }));
+  await page.route('**/api/internal/audit-log**', (route) => route.fulfill({
+    json: {
+      events: [
+        { id: 'e-1', entity: 'dispute', entityId: null, event: 'created', actorKind: 'analyst', recordedAt: '2026-01-15T00:00:00Z' },
+        { id: 'e-2', entity: 'claim', entityId: null, event: 'opened', actorKind: 'system', recordedAt: '2026-01-16T00:00:00Z' },
+      ],
+    },
+  }));
+
+  await page.goto('/');
+  await expect(page.getByTestId('kpi-row')).toBeVisible();
+
+  await page.getByText('Audit log').click();
+
+  await expect(page).toHaveURL(/\/#\/audit-log$/);
+  await expect(page.getByTestId('audit-log-row')).toHaveCount(2);
+  await expect(page.getByTestId('kpi-row')).not.toBeVisible();
+
+  await page.screenshot({ path: 'test-results/audit-log-full.png', fullPage: true });
+});
+
 test('analyst reviews an extraction abstention and records its answer source', async ({ page }) => {
   const documentId = '44444444-4444-4444-8444-444444444444';
   const questionId = '33333333-3333-4333-8333-333333333333';

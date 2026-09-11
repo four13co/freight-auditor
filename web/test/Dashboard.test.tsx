@@ -36,6 +36,11 @@ function mockFetchOnce(url: string) {
   if (url.includes('/api/findings')) {
     return Promise.resolve(new Response(JSON.stringify({ findings: ROWS }), { status: 200 }));
   }
+  if (url.includes('/api/internal/audit-log')) {
+    return Promise.resolve(new Response(JSON.stringify({
+      events: [{ id: 'e-1', entity: 'dispute', entityId: null, event: 'created', actorKind: 'analyst', recordedAt: '2026-01-15T00:00:00Z' }],
+    }), { status: 200 }));
+  }
   throw new Error(`mockFetchOnce: unexpected URL ${url}`);
 }
 
@@ -559,10 +564,10 @@ describe('Dashboard', () => {
     render(<Dashboard />);
     await waitFor(() => expect(screen.getAllByTestId('finding-row')).toHaveLength(3));
 
-    // 86e37r2rm: "Discrepancies" is no longer one of these disabled
-    // placeholders -- it's now a real link, covered by its own tests below.
+    // 86e37r2rm/86e37r2rv: "Discrepancies" and "Audit log" are no longer
+    // among these disabled placeholders -- both are now real links, covered
+    // by their own tests below.
     expect(screen.getByText('Invoices').closest('button')).toBeDisabled();
-    expect(screen.getByText('Audit log').closest('button')).toBeDisabled();
     expect(screen.getByText('Settings').closest('button')).toBeDisabled();
     expect(screen.getByText('Mine, over $500').closest('button')).toBeDisabled();
     expect(screen.getByText('Estes accessorials').closest('button')).toBeDisabled();
@@ -602,10 +607,10 @@ describe('Dashboard', () => {
     render(<Dashboard />);
     await waitFor(() => expect(screen.getAllByTestId('finding-row')).toHaveLength(3));
 
-    // 86e37r2rm: "Discrepancies" is no longer disabled/Soon-badged -- excluded here.
+    // 86e37r2rm/86e37r2rv: "Discrepancies" and "Audit log" are no longer
+    // disabled/Soon-badged -- excluded here.
     const disabledLabels = [
       'Invoices',
-      'Audit log',
       'Settings',
       'Mine, over $500',
       'Estes accessorials',
@@ -754,6 +759,28 @@ describe('Dashboard', () => {
     // reuse "/"'s already-loaded rows, and it fetched no KPI summary (no
     // KPI row exists on this page).
     expect(fetchMock.mock.calls.some(([input]) => String(input).includes('/api/findings'))).toBe(true);
+    expect(screen.queryByTestId('kpi-row')).not.toBeInTheDocument();
+  });
+
+  it('86e37r2rv AC4: the "Audit log" sidebar item is a real link to /audit-log, not a disabled button', async () => {
+    render(<Dashboard />);
+    await waitFor(() => expect(screen.getAllByTestId('finding-row')).toHaveLength(3));
+
+    const auditLogItem = screen.getByText('Audit log').closest('a');
+    expect(auditLogItem).not.toBeNull();
+    expect(auditLogItem).toHaveAttribute('href', '#/audit-log');
+  });
+
+  it('86e37r2rv AC3: clicking "Audit log" navigates to /#/audit-log and renders the audit log table there', async () => {
+    render(<Dashboard />);
+    await waitFor(() => expect(screen.getAllByTestId('finding-row')).toHaveLength(3));
+    fetchMock.mockClear();
+
+    fireEvent.click(screen.getByText('Audit log'));
+
+    await waitFor(() => expect(window.location.hash).toBe('#/audit-log'));
+    await waitFor(() => expect(screen.getAllByTestId('audit-log-row')).toHaveLength(1));
+    expect(fetchMock.mock.calls.some(([input]) => String(input).includes('/api/internal/audit-log'))).toBe(true);
     expect(screen.queryByTestId('kpi-row')).not.toBeInTheDocument();
   });
 });

@@ -6,6 +6,7 @@ import { PasskeyRegistration } from './PasskeyRegistration.js';
 import { KpiRow } from './KpiRow.js';
 import { FindingsTable } from './FindingsTable.js';
 import { DiscrepanciesView } from './DiscrepanciesView.js';
+import { AuditLogView } from './AuditLogView.js';
 import { GateFailuresPanel } from './GateFailuresPanel.js';
 import { ReviewQueues } from './ReviewQueues.js';
 import { RubricConflictQueue } from './RubricConflictQueue.js';
@@ -214,6 +215,7 @@ export function Dashboard({ branding }: { branding?: Branding | null } = {}) {
               }
             />
             <Route path="/discrepancies" element={<DiscrepanciesView />} />
+            <Route path="/audit-log" element={<AuditLogView />} />
           </Routes>
         </div>
       </div>

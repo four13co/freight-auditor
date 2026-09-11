@@ -112,15 +112,9 @@ export function Sidebar({ branding, currentPath = '/' }: { branding?: Branding |
         <div className="px-[18px] pb-2 pt-[22px] text-[11px] font-extrabold uppercase tracking-[0.1em] text-sidebar-fg-50">
           Records
         </div>
-        <button
-          type="button"
-          disabled
-          title="Coming soon"
-          className="flex cursor-not-allowed items-center justify-between px-[18px] py-[9px] text-left text-sm text-sidebar-fg-85 opacity-60"
-        >
-          <span>Audit log</span>
-          <SoonBadge />
-        </button>
+        <NavAnchor href="#/audit-log" path="/audit-log" currentPath={currentPath}>
+          Audit log
+        </NavAnchor>
         <button
           type="button"
           disabled

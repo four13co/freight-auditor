@@ -570,16 +570,21 @@ describe('Dashboard', () => {
     expect(screen.queryByTestId('finding-detail')).not.toBeInTheDocument();
   });
 
-  it('86e2uutk8 AC4: sidebar entries are visibly non-interactive (disabled), not fake-clickable chrome', async () => {
+  it('86e37r2rm/86e37r2rv/86e37r2rt/86e37r2t4/86e37r2t6/86e37r2t7/86e37r2t8 AC4: no sidebar entry remains a disabled placeholder -- every nav item and saved view is now a real link, covered by its own test below', async () => {
     render(<Dashboard />);
     await waitFor(() => expect(screen.getAllByTestId('finding-row')).toHaveLength(3));
 
-    // 86e37r2rm/86e37r2rv/86e37r2rt/86e37r2t4/86e37r2t6/86e37r2t7:
-    // "Discrepancies", "Audit log", "Invoices", "Settings", "Aging > 5 days",
-    // and "Estes accessorials" are no longer among these disabled
-    // placeholders -- all six are now real links, covered by their own
-    // tests below.
-    expect(screen.getByText('Mine, over $500').closest('button')).toBeDisabled();
+    for (const label of [
+      'Discrepancies',
+      'Audit log',
+      'Invoices',
+      'Settings',
+      'Mine, over $500',
+      'Estes accessorials',
+      'Aging > 5 days',
+    ]) {
+      expect(screen.getByText(label).closest('button')).toBeNull();
+    }
   });
 
   it('86e2uv1r6 AC1: the header search field is a real disabled input, not an inert div', async () => {
@@ -611,22 +616,11 @@ describe('Dashboard', () => {
     expect(search.value).toBe('');
   });
 
-  it('86e2uv1ry AC1: every disabled sidebar entry has a visible "Soon" marker, not just opacity/hover', async () => {
+  it('86e37r2rm/86e37r2rv/86e37r2rt/86e37r2t4/86e37r2t6/86e37r2t7/86e37r2t8: no sidebar entry carries a "Soon" marker anymore -- every nav item and saved view is a real link', async () => {
     render(<Dashboard />);
     await waitFor(() => expect(screen.getAllByTestId('finding-row')).toHaveLength(3));
 
-    // 86e37r2rm/86e37r2rv/86e37r2rt/86e37r2t4/86e37r2t6/86e37r2t7:
-    // "Discrepancies", "Audit log", "Invoices", "Settings", "Aging > 5 days",
-    // and "Estes accessorials" are no longer disabled/Soon-badged -- excluded
-    // here.
-    const disabledLabels = [
-      'Mine, over $500',
-    ];
-    for (const label of disabledLabels) {
-      const button = screen.getByText(label).closest('button');
-      expect(button).not.toBeNull();
-      expect(within(button!).getByText('Soon')).toBeInTheDocument();
-    }
+    expect(screen.queryByText('Soon')).not.toBeInTheDocument();
   });
 
   it('86e2v17xn: renders zero rejected-invoices panel when the tenant has no gate failures', async () => {
@@ -819,6 +813,20 @@ describe('Dashboard', () => {
     await waitFor(() => expect(window.location.hash).toBe('#/invoices'));
     await waitFor(() => expect(screen.getAllByTestId('invoice-row')).toHaveLength(1));
     expect(fetchMock.mock.calls.some(([input]) => String(input).includes('/api/invoices'))).toBe(true);
+    expect(screen.queryByTestId('kpi-row')).not.toBeInTheDocument();
+  });
+
+  it('86e37r2t8 AC6: clicking "Mine, over $500" navigates to /#/discrepancies?assignee=me&minAmount=500 and requests both filters', async () => {
+    window.location.hash = '';
+    render(<Dashboard />);
+    await waitFor(() => expect(screen.getAllByTestId('finding-row')).toHaveLength(3));
+    fetchMock.mockClear();
+
+    fireEvent.click(screen.getByText('Mine, over $500'));
+
+    await waitFor(() => expect(window.location.hash).toBe('#/discrepancies?assignee=me&minAmount=500'));
+    await waitFor(() => expect(screen.getAllByTestId('finding-row')).toHaveLength(3));
+    expect(fetchMock.mock.calls.some(([input]) => String(input).includes('assignee=me') && String(input).includes('min-amount=500'))).toBe(true);
     expect(screen.queryByTestId('kpi-row')).not.toBeInTheDocument();
   });
 

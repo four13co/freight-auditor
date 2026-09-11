@@ -22,6 +22,7 @@ function mockRow() {
     status: 'open',
     created_at: new Date('2026-01-01T00:00:00Z'),
     rule_description: 'Duplicate invoice for the same PRO' as string | null,
+    assigned_to_user_id: null as string | null,
   };
 }
 
@@ -46,6 +47,7 @@ describe('listFindings (unit, mocked client)', () => {
         status: 'open',
         createdAt: new Date('2026-01-01T00:00:00Z'),
         ruleDescription: 'Duplicate invoice for the same PRO',
+        assignedToUserId: null,
       },
     ]);
   });
@@ -93,6 +95,32 @@ describe('listFindings (unit, mocked client)', () => {
       /carrier\.name = \$1 AND variance_finding\.status = \$2::variance_status AND variance_finding\.variance_amount >= \$3/,
     );
     expect(params).toEqual(['ACME', 'open', '100.00', 50, 0]);
+  });
+
+  // 86e37r2t8
+  it('adds an assignedToUserId condition and binds it positionally', async () => {
+    const { client, query } = mockClient([]);
+    const userId = '10000000-0000-4000-8000-000000000009';
+    await listFindings(client, { assignedToUserId: userId });
+    const [sql, params] = query.mock.calls[0] as [string, unknown[]];
+    expect(sql).toMatch(/variance_finding\.assigned_to_user_id = \$1/);
+    expect(params).toEqual([userId, 50, 0]);
+  });
+
+  it('omits the assignedToUserId condition when not given (regression)', async () => {
+    const { client, query } = mockClient([]);
+    await listFindings(client, {});
+    const [sql] = query.mock.calls[0] as [string, unknown[]];
+    expect(sql).not.toMatch(/assigned_to_user_id = /);
+  });
+
+  it('combines minAmount and assignedToUserId with AND, each at its own param index', async () => {
+    const { client, query } = mockClient([]);
+    const userId = '10000000-0000-4000-8000-000000000009';
+    await listFindings(client, { minAmount: '500', assignedToUserId: userId });
+    const [sql, params] = query.mock.calls[0] as [string, unknown[]];
+    expect(sql).toMatch(/variance_finding\.variance_amount >= \$1 AND variance_finding\.assigned_to_user_id = \$2/);
+    expect(params).toEqual(['500', userId, 50, 0]);
   });
 
   // 86e37r2t6

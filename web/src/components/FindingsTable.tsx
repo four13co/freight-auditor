@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import type { FindingRow, FindingsSortDir, FindingsSortKey } from '../lib/api.js';
+import { assignFinding } from '../lib/api.js';
 import { formatMoney, formatVariance, formatAge } from '../lib/format.js';
 import { getStatusDisplay } from '../lib/status-display.js';
 import { FindingDetail } from './FindingDetail.js';
@@ -28,6 +29,8 @@ interface FindingsTableProps {
   onMinAmountFilterChange: (value: string) => void;
   /** 86e2v1xyr: bubbled up from the drawer after a successful status PATCH, so the caller (Dashboard) can patch its own row list without a full refetch. */
   onRowStatusChange?: (id: string, status: string) => void;
+  /** 86e37r2t8: bubbled up after a successful assign/unassign PATCH, so the caller can patch its own row list without a full refetch. `assignedToUserId` is null on unassign, a truthy sentinel on assign (the real id is server-resolved -- see api.ts's assignFinding). */
+  onRowAssignChange?: (id: string, assignedToUserId: string | null) => void;
   // 86e2v251e: sort is now server-driven (Dashboard.tsx owns the state and
   // re-fetches) -- `rows` arrives pre-sorted, so this component only needs
   // the current sort (to render the ↑/↓ arrow) and a callback for clicks,
@@ -47,7 +50,7 @@ interface FindingsTableProps {
 // space rather than a fixed px like the other columns. Age fills the slot
 // the mockup gives "lane" alongside Carrier, since createdAt is available
 // and the mockup shows an age-like value there too.
-const COLUMNS = '36px 106px 1fr 138px 96px 96px 104px 88px 104px';
+const COLUMNS = '36px 106px 1fr 138px 96px 96px 104px 88px 104px 116px';
 
 export function FindingsTable({
   rows,
@@ -58,6 +61,7 @@ export function FindingsTable({
   onStatusFilterChange,
   onMinAmountFilterChange,
   onRowStatusChange,
+  onRowAssignChange,
   sort,
   onSortChange,
 }: FindingsTableProps) {
@@ -84,6 +88,16 @@ export function FindingsTable({
       else next.add(id);
       return next;
     });
+  }
+
+  // 86e37r2t8: self-assign/unassign only. `assign: true` sends a non-null
+  // sentinel -- the backend resolves the actual assignee server-side from
+  // the session (never trusts this string as the assignee id, see
+  // findings-routes.ts's own PATCH /assign comment), so any truthy string
+  // works; 'me' documents intent at the call site.
+  async function toggleAssign(id: string, assign: boolean) {
+    const { assignedToUserId } = await assignFinding(id, assign ? 'me' : null);
+    onRowAssignChange?.(id, assignedToUserId);
   }
 
   return (
@@ -198,6 +212,7 @@ export function FindingsTable({
           Age{sort?.key === 'age' ? (sort.dir === 'asc' ? ' ↑' : ' ↓') : ''}
         </button>
         <div className="text-right">Status</div>
+        <div className="text-right">Assignee</div>
       </div>
 
       <div className="flex-1 overflow-auto" data-testid="findings-rows" aria-label="Findings">
@@ -250,6 +265,18 @@ export function FindingsTable({
                   >
                     {display.label}
                   </span>
+                </div>
+                <div className="flex justify-end">
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      void toggleAssign(row.id, !row.assignedToUserId);
+                    }}
+                    className="text-[11px] font-extrabold uppercase tracking-[0.04em] text-[rgba(32,30,29,0.6)] underline decoration-dotted underline-offset-2 hover:text-[#201e1d]"
+                  >
+                    {row.assignedToUserId ? 'Unassign' : 'Assign to me'}
+                  </button>
                 </div>
               </div>
             );

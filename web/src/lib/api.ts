@@ -20,6 +20,8 @@ export interface FindingRow {
   status: string;
   createdAt: string;
   ruleDescription: string | null;
+  /** 86e37r2t8: self-assign/unassign only -- null until an internal analyst assigns it to themselves. */
+  assignedToUserId?: string | null;
 }
 
 export interface InvoiceScorecard {
@@ -108,6 +110,8 @@ export interface FindingsListParams {
   carrier?: string;
   status?: string;
   minAmount?: string;
+  /** 86e37r2t8: the only accepted value is 'me' -- resolved server-side to the caller's own user id, never an arbitrary user id. */
+  assignee?: 'me';
   /** 86e37r2t6: rows at least this many days old. */
   minAgeDays?: number;
   /** 86e37r2t7: charge_fact.category (e.g. 'accessorial'). */
@@ -122,6 +126,7 @@ function buildQuery(params: FindingsListParams): string {
   if (params.status) qs.set('status', params.status);
   // Backend reads this literally as 'min-amount' (kebab-case), not minAmount.
   if (params.minAmount) qs.set('min-amount', params.minAmount);
+  if (params.assignee) qs.set('assignee', params.assignee);
   // Same kebab-case convention as min-amount, per 86e37r2t6's own AC.
   if (params.minAgeDays !== undefined) qs.set('min-age-days', String(params.minAgeDays));
   if (params.category) qs.set('category', params.category);
@@ -335,6 +340,21 @@ export async function updateFindingStatus(id: string, status: string): Promise<v
     body: JSON.stringify({ status }),
   });
   if (!res.ok) throw new Error(`PATCH /api/findings/${id}/status failed: ${res.status}`);
+}
+/**
+ * 86e37r2t8: self-assign ("Assign to me") / unassign only. The `userId`
+ * sent here is NEVER what determines the assignee server-side (the backend
+ * always resolves to the caller's own session identity) -- passing the
+ * caller's own id vs. `null` only distinguishes assign from unassign.
+ */
+export async function assignFinding(id: string, userId: string | null): Promise<{ assignedToUserId: string | null }> {
+  const res = await fetch(`/api/findings/${id}/assign`, {
+    method: 'PATCH',
+    headers: { ...authHeaders(), 'content-type': 'application/json' },
+    body: JSON.stringify({ userId }),
+  });
+  if (!res.ok) throw new Error(`PATCH /api/findings/${id}/assign failed: ${res.status}`);
+  return (await res.json()) as { assignedToUserId: string | null };
 }
 export async function applyFindingAction(id: string, action: 'accept' | 'waive' | 'escalate'): Promise<{ status: string }> {
   const res = await fetch(`/api/findings/${id}/action`, { method: 'POST',

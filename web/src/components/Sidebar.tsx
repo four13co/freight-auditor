@@ -1,35 +1,13 @@
 /**
  * Nav sidebar matching the 1B Console mockup. "Dashboard" is the current
- * view (its red highlight isn't a dead link, it's active-state). Everything
- * else here has no real destination or filter behind it yet (86e2uutk8):
- * Discrepancies/Invoices/Audit log/Settings have no other route in this app,
- * and none of the three saved views maps onto an existing filter dimension
- * without inventing semantics the label doesn't actually mean ("Mine, over
- * $500" needs an assignee filter that doesn't exist; "Estes accessorials"
- * needs a charge-category filter, not just carrier; "Aging > 5 days" needs
- * an age filter that doesn't exist). Rather than wire a filter that doesn't
- * match its own label, or leave inert chrome that LOOKS clickable, these are
- * marked visibly non-interactive -- the same disabled/cursor-not-allowed/
- * "Coming soon" convention FindingsTable's bulk-action buttons already use.
- *
- * 86e2uv1ry: opacity-60 alone was confirmed (live, not just in code) to be
- * imperceptible against the dark sidebar background next to the surrounding
- * muted-gray nav items -- the ONLY prior signal was the title tooltip, which
- * requires a deliberate hover most viewers won't make. Each disabled entry
- * now also carries a visible "Soon" badge (the SoonBadge below), reusing the
- * app's existing pill/tag visual language (FindingsTable/FindingDetail's
- * status tags) so it reads as an established UI pattern, not a one-off.
+ * view (its red highlight isn't a dead link, it's active-state).
+ * Discrepancies/Invoices/Audit log/Settings have no other route in this app
+ * (86e2uutk8). All three saved views ("Mine, over $500", "Estes
+ * accessorials", "Aging > 5 days") are now real filtered links.
  */
 import type { ReactNode } from 'react';
 import type { Branding } from '../lib/api.js';
 import { BrandMark } from './BrandMark.js';
-
-const SOON_BADGE_CLASS =
-  'px-1 py-px text-[9px] font-extrabold uppercase tracking-[0.04em] bg-[rgba(243,242,242,0.16)] text-[rgba(243,242,242,0.75)]';
-
-function SoonBadge() {
-  return <span className={SOON_BADGE_CLASS}>Soon</span>;
-}
 
 /**
  * 86e37r2rm: a real, routed nav item (as opposed to the still-disabled
@@ -117,15 +95,12 @@ export function Sidebar({ branding, currentPath = '/' }: { branding?: Branding |
           <div className="px-[18px] pb-2 text-[11px] font-extrabold uppercase tracking-[0.1em] text-sidebar-fg-50">
             Saved views
           </div>
-          <button
-            type="button"
-            disabled
-            title="Coming soon"
-            className="flex w-full cursor-not-allowed items-center justify-between px-[18px] py-[7px] text-left text-[13px] text-sidebar-fg-75 opacity-60"
+          <a
+            href="#/discrepancies?assignee=me&minAmount=500"
+            className="flex w-full items-center px-[18px] py-[7px] text-left text-[13px] text-sidebar-fg-75"
           >
-            <span>Mine, over $500</span>
-            <SoonBadge />
-          </button>
+            Mine, over $500
+          </a>
           <a
             href="#/discrepancies?carrier=Estes&category=accessorial"
             className="flex w-full items-center px-[18px] py-[7px] text-left text-[13px] text-sidebar-fg-75"

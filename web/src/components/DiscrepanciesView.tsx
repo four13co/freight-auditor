@@ -19,6 +19,16 @@ type LoadStatus = 'loading' | 'error' | 'ready';
  * fetchFindingsSummary is deliberately not called here: nothing on this
  * page renders a KPI row, so there's no summary value to show.
  *
+ * 86e37r2t8: carrier/minAmount also seed from the URL's query string on
+ * mount -- the "Mine, over $500" sidebar saved view is a plain link to
+ * /discrepancies?assignee=me&minAmount=500 (no client-side state passed
+ * between components), so this is the only place that link's query string
+ * can be read back into actual filter state. `assignee` itself is fixed
+ * ("me" or absent, per this item's own Rabbit holes -- self-assign/unassign
+ * only, no arbitrary-user filtering), read once and never exposed to
+ * FindingsTable's controlled filter UI, unlike carrier/minAmount which stay
+ * editable afterward.
+ *
  * 86e37r2t6/86e37r2t7: carrier/minAgeDays/category also seed from the URL's
  * query string on mount -- the "Aging > 5 days" and "Estes accessorials"
  * sidebar saved views are plain links to /discrepancies?... (no client-side
@@ -32,7 +42,8 @@ export function DiscrepanciesView() {
   const [rows, setRows] = useState<FindingRow[]>([]);
   const [carrierFilter, setCarrierFilter] = useState(() => searchParams.get('carrier') ?? '');
   const [statusFilter, setStatusFilter] = useState('');
-  const [minAmountFilter, setMinAmountFilter] = useState('');
+  const [minAmountFilter, setMinAmountFilter] = useState(() => searchParams.get('minAmount') ?? '');
+  const [assignedToMe] = useState(() => searchParams.get('assignee') === 'me');
   const [minAgeDaysFilter] = useState(() => {
     const raw = searchParams.get('minAgeDays');
     return raw ? Number(raw) : undefined;
@@ -47,6 +58,7 @@ export function DiscrepanciesView() {
       carrier: carrierFilter || undefined,
       status: statusFilter || undefined,
       minAmount: minAmountFilter || undefined,
+      assignee: assignedToMe ? 'me' : undefined,
       minAgeDays: minAgeDaysFilter,
       category: categoryFilter || undefined,
       sort: sort?.key,
@@ -60,7 +72,7 @@ export function DiscrepanciesView() {
         setStatus('error');
       },
     );
-  }, [carrierFilter, statusFilter, minAmountFilter, minAgeDaysFilter, categoryFilter, sort]);
+  }, [carrierFilter, statusFilter, minAmountFilter, assignedToMe, minAgeDaysFilter, categoryFilter, sort]);
 
   function toggleSort(key: FindingsSortKey) {
     setSort((prev) => {
@@ -106,6 +118,9 @@ export function DiscrepanciesView() {
           onMinAmountFilterChange={setMinAmountFilter}
           onRowStatusChange={(id, newStatus) =>
             setRows((prev) => prev.map((r) => (r.id === id ? { ...r, status: newStatus } : r)))
+          }
+          onRowAssignChange={(id, assignedToUserId) =>
+            setRows((prev) => prev.map((r) => (r.id === id ? { ...r, assignedToUserId } : r)))
           }
           sort={sort}
           onSortChange={toggleSort}

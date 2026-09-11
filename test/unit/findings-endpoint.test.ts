@@ -228,6 +228,74 @@ describe('GET /api/findings (unit, mocked withTenantTx + tenant-auth)', () => {
       expect(res.statusCode).toBe(200);
       expect(listFindings).toHaveBeenCalledWith({}, expect.objectContaining({ minAmount: '250.50' }));
     });
+
+    // 86e37r2t6
+    it('returns 400 for a non-integer min-age-days, without ever calling listFindings', async () => {
+      mockAuthorized();
+      const listFindings = vi.fn();
+      vi.doMock('../../src/db/tenant-context.js', () => ({
+        withTenantTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
+      withTenantReadTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
+      }));
+      vi.doMock('../../src/modules/findings/list-findings.js', () => ({ listFindings }));
+      const { buildApp } = await import('../../src/server/app.js');
+      app = buildApp();
+
+      const res = await app.inject({
+        method: 'GET',
+        url: '/api/findings?min-age-days=not-a-number',
+        headers: { 'x-client-id': 'client-abc', 'x-user-id': 'user-1' },
+      });
+
+      expect(res.statusCode).toBe(400);
+      expect(res.json()).toEqual({ error: expect.stringContaining('invalid min-age-days') });
+      expect(listFindings).not.toHaveBeenCalled();
+    });
+
+    it('accepts a valid min-age-days and threads it through as a number, kebab-case query key', async () => {
+      mockAuthorized();
+      const listFindings = vi.fn().mockResolvedValue([]);
+      vi.doMock('../../src/db/tenant-context.js', () => ({
+        withTenantTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
+      withTenantReadTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
+      }));
+      vi.doMock('../../src/modules/findings/list-findings.js', () => ({ listFindings }));
+      const { buildApp } = await import('../../src/server/app.js');
+      app = buildApp();
+
+      const res = await app.inject({
+        method: 'GET',
+        url: '/api/findings?min-age-days=5',
+        headers: { 'x-client-id': 'client-abc', 'x-user-id': 'user-1' },
+      });
+
+      expect(res.statusCode).toBe(200);
+      expect(listFindings).toHaveBeenCalledWith({}, expect.objectContaining({ minAgeDays: 5 }));
+    });
+
+    // 86e37r2t7
+    it('passes the category query param through to listFindings alongside carrier', async () => {
+      mockAuthorized();
+      const listFindings = vi.fn().mockResolvedValue([]);
+      vi.doMock('../../src/db/tenant-context.js', () => ({
+        withTenantTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
+      withTenantReadTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
+      }));
+      vi.doMock('../../src/modules/findings/list-findings.js', () => ({ listFindings }));
+      const { buildApp } = await import('../../src/server/app.js');
+      app = buildApp();
+
+      await app.inject({
+        method: 'GET',
+        url: '/api/findings?carrier=Estes&category=accessorial',
+        headers: { 'x-client-id': 'client-abc', 'x-user-id': 'user-1' },
+      });
+
+      expect(listFindings).toHaveBeenCalledWith(
+        {},
+        expect.objectContaining({ carrier: 'Estes', category: 'accessorial' }),
+      );
+    });
   });
 
   describe('GET /api/gate-failures (86e2v17xn)', () => {

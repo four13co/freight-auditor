@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 import { DiscrepanciesView } from '../src/components/DiscrepanciesView.js';
 import { DASHBOARD_ROWS as ROWS } from './fixtures.js';
 
@@ -21,15 +22,28 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+// 86e37r2t6/86e37r2t7: DiscrepanciesView now calls useSearchParams (it reads
+// the sidebar saved views' minAgeDays/category/carrier query params on
+// mount), which throws outside a Router -- every render below goes through
+// a MemoryRouter, defaulting to a bare /discrepancies (no query params) so
+// existing behavior is unaffected unless a test passes its own initialPath.
+function renderView(initialPath = '/discrepancies') {
+  return render(
+    <MemoryRouter initialEntries={[initialPath]}>
+      <DiscrepanciesView />
+    </MemoryRouter>,
+  );
+}
+
 describe('DiscrepanciesView (86e37r2rm)', () => {
   it('AC1: fetches and renders findings via the existing FindingsTable component', async () => {
-    render(<DiscrepanciesView />);
+    renderView();
     await waitFor(() => expect(screen.getAllByTestId('finding-row')).toHaveLength(3));
     expect(screen.getByText('INV-90385')).toBeInTheDocument();
   });
 
   it('AC1: renders no KPI row, queues, or extraction-review/contract-preview panels -- full-page findings only', async () => {
-    render(<DiscrepanciesView />);
+    renderView();
     await waitFor(() => expect(screen.getAllByTestId('finding-row')).toHaveLength(3));
     expect(screen.queryByTestId('kpi-row')).not.toBeInTheDocument();
     expect(screen.queryByTestId('contract-rubric-preview')).not.toBeInTheDocument();
@@ -37,7 +51,7 @@ describe('DiscrepanciesView (86e37r2rm)', () => {
   });
 
   it('AC3: changing the carrier filter re-fetches /api/findings with the carrier query param', async () => {
-    render(<DiscrepanciesView />);
+    renderView();
     await waitFor(() => expect(screen.getAllByTestId('finding-row')).toHaveLength(3));
     fetchMock.mockClear();
 
@@ -50,7 +64,7 @@ describe('DiscrepanciesView (86e37r2rm)', () => {
   });
 
   it('AC3: changing the status filter re-fetches /api/findings with the status query param', async () => {
-    render(<DiscrepanciesView />);
+    renderView();
     await waitFor(() => expect(screen.getAllByTestId('finding-row')).toHaveLength(3));
     fetchMock.mockClear();
 
@@ -63,7 +77,7 @@ describe('DiscrepanciesView (86e37r2rm)', () => {
   });
 
   it('AC3: entering a min-amount value re-fetches /api/findings with the min-amount query param', async () => {
-    render(<DiscrepanciesView />);
+    renderView();
     await waitFor(() => expect(screen.getAllByTestId('finding-row')).toHaveLength(3));
     fetchMock.mockClear();
 
@@ -76,7 +90,7 @@ describe('DiscrepanciesView (86e37r2rm)', () => {
   });
 
   it('AC3: clicking the Variance column header re-fetches sorted by variance', async () => {
-    render(<DiscrepanciesView />);
+    renderView();
     await waitFor(() => expect(screen.getAllByTestId('finding-row')).toHaveLength(3));
     fetchMock.mockClear();
 
@@ -90,8 +104,34 @@ describe('DiscrepanciesView (86e37r2rm)', () => {
 
   it('shows a loading indicator before the fetch resolves, and a distinct error state on failure', async () => {
     fetchMock.mockImplementation(() => Promise.resolve(new Response('', { status: 500 })));
-    render(<DiscrepanciesView />);
+    renderView();
     await waitFor(() => expect(screen.getByTestId('discrepancies-error')).toBeInTheDocument());
     expect(screen.queryByTestId('finding-row')).not.toBeInTheDocument();
+  });
+
+  it('86e37r2t6 AC3: reads minAgeDays from the URL and fetches /api/findings with min-age-days', async () => {
+    renderView('/discrepancies?minAgeDays=5');
+    await waitFor(() => expect(screen.getAllByTestId('finding-row')).toHaveLength(3));
+
+    const calledUrl = fetchMock.mock.calls.find((c) => String(c[0]).includes('/api/findings?'))?.[0];
+    expect(String(calledUrl)).toContain('min-age-days=5');
+  });
+
+  it('86e37r2t7 AC4: reads carrier+category from the URL and fetches /api/findings with both filters', async () => {
+    renderView('/discrepancies?carrier=Estes&category=accessorial');
+    await waitFor(() => expect(screen.getAllByTestId('finding-row')).toHaveLength(3));
+
+    const calledUrl = fetchMock.mock.calls.find((c) => String(c[0]).includes('/api/findings?'))?.[0];
+    expect(String(calledUrl)).toContain('carrier=Estes');
+    expect(String(calledUrl)).toContain('category=accessorial');
+  });
+
+  it('no query params in the URL: behavior is unchanged from before minAgeDays/category existed (regression)', async () => {
+    renderView('/discrepancies');
+    await waitFor(() => expect(screen.getAllByTestId('finding-row')).toHaveLength(3));
+
+    const calledUrl = fetchMock.mock.calls.find((c) => String(c[0]).includes('/api/findings'))?.[0];
+    expect(String(calledUrl)).not.toContain('min-age-days');
+    expect(String(calledUrl)).not.toContain('category');
   });
 });

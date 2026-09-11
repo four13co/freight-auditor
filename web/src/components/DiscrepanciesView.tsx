@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { FindingsTable } from './FindingsTable.js';
 import {
   fetchFindings,
@@ -17,12 +18,26 @@ type LoadStatus = 'loading' | 'error' | 'ready';
  * extraction-review/contract-preview panels that only belong on "/".
  * fetchFindingsSummary is deliberately not called here: nothing on this
  * page renders a KPI row, so there's no summary value to show.
+ *
+ * 86e37r2t6/86e37r2t7: carrier/minAgeDays/category also seed from the URL's
+ * query string on mount -- the "Aging > 5 days" and "Estes accessorials"
+ * sidebar saved views are plain links to /discrepancies?... (no client-side
+ * state passed between components), so this is the only place that link's
+ * query string can be read back into an actual filter. Fixed presets, not
+ * user-editable (per each item's own Rabbit holes), so minAgeDays/category
+ * are read once and never exposed to FindingsTable's controlled filter UI.
  */
 export function DiscrepanciesView() {
+  const [searchParams] = useSearchParams();
   const [rows, setRows] = useState<FindingRow[]>([]);
-  const [carrierFilter, setCarrierFilter] = useState('');
+  const [carrierFilter, setCarrierFilter] = useState(() => searchParams.get('carrier') ?? '');
   const [statusFilter, setStatusFilter] = useState('');
   const [minAmountFilter, setMinAmountFilter] = useState('');
+  const [minAgeDaysFilter] = useState(() => {
+    const raw = searchParams.get('minAgeDays');
+    return raw ? Number(raw) : undefined;
+  });
+  const [categoryFilter] = useState(() => searchParams.get('category') ?? '');
   const [sort, setSort] = useState<{ key: FindingsSortKey; dir: FindingsSortDir } | null>(null);
   const [status, setStatus] = useState<LoadStatus>('loading');
 
@@ -32,6 +47,8 @@ export function DiscrepanciesView() {
       carrier: carrierFilter || undefined,
       status: statusFilter || undefined,
       minAmount: minAmountFilter || undefined,
+      minAgeDays: minAgeDaysFilter,
+      category: categoryFilter || undefined,
       sort: sort?.key,
       sortDir: sort?.dir,
     }).then(
@@ -43,7 +60,7 @@ export function DiscrepanciesView() {
         setStatus('error');
       },
     );
-  }, [carrierFilter, statusFilter, minAmountFilter, sort]);
+  }, [carrierFilter, statusFilter, minAmountFilter, minAgeDaysFilter, categoryFilter, sort]);
 
   function toggleSort(key: FindingsSortKey) {
     setSort((prev) => {

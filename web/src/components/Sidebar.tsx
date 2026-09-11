@@ -132,24 +132,18 @@ export function Sidebar({ branding, currentPath = '/' }: { branding?: Branding |
             <span>Mine, over $500</span>
             <SoonBadge />
           </button>
-          <button
-            type="button"
-            disabled
-            title="Coming soon"
-            className="flex w-full cursor-not-allowed items-center justify-between px-[18px] py-[7px] text-left text-[13px] text-sidebar-fg-75 opacity-60"
+          <a
+            href="#/discrepancies?carrier=Estes&category=accessorial"
+            className="flex w-full items-center px-[18px] py-[7px] text-left text-[13px] text-sidebar-fg-75"
           >
-            <span>Estes accessorials</span>
-            <SoonBadge />
-          </button>
-          <button
-            type="button"
-            disabled
-            title="Coming soon"
-            className="flex w-full cursor-not-allowed items-center justify-between px-[18px] py-[7px] text-left text-[13px] text-sidebar-fg-75 opacity-60"
+            Estes accessorials
+          </a>
+          <a
+            href="#/discrepancies?minAgeDays=5"
+            className="flex w-full items-center px-[18px] py-[7px] text-left text-[13px] text-sidebar-fg-75"
           >
-            <span>Aging &gt; 5 days</span>
-            <SoonBadge />
-          </button>
+            Aging &gt; 5 days
+          </a>
         </div>
       </div>
 

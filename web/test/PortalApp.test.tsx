@@ -138,4 +138,46 @@ describe('PortalApp', () => {
     await userEvent.click(screen.getByRole('link', { name: 'Uploads' }));
     expect(screen.getByTestId('client-uploads-view')).toBeVisible();
   });
+
+  // 86e37qt93: PortalNav brought up to Sidebar.tsx's modernized visual
+  // language (86e36xk28) -- these four ACs mirror Sidebar.test.tsx's own
+  // AC2-AC5 coverage for the same treatment, applied to the portal's nav.
+  it('86e37qt93 AC1: the header bottom border is 1px (no border-b-2)', () => {
+    render(<PortalApp />);
+    const header = screen.getByTestId('portal-nav-header');
+    expect(header).not.toHaveClass('border-b-2');
+    expect(header).toHaveClass('border-b');
+  });
+
+  it('86e37qt93 AC2: no nav item, active or inactive, carries font-extrabold or font-semibold', async () => {
+    render(<PortalApp />);
+    await userEvent.click(screen.getByRole('link', { name: 'Invoices' }));
+
+    for (const item of screen.getAllByTestId('portal-nav-item')) {
+      expect(item).not.toHaveClass('font-extrabold');
+      expect(item).not.toHaveClass('font-semibold');
+    }
+  });
+
+  it('86e37qt93 AC3: the active nav item exposes a left-border-accent + tinted background, not a full brand-color fill', async () => {
+    render(<PortalApp />);
+    await userEvent.click(screen.getByRole('link', { name: 'Invoices' }));
+
+    const active = screen.getByRole('link', { name: 'Invoices' });
+    expect(active.style.backgroundColor).not.toBe('var(--brand-primary, #ec3013)');
+    expect(active).toHaveClass('bg-sidebar-active');
+    expect(active.style.borderLeftColor).toBe('var(--brand-primary, #ec3013)');
+  });
+
+  it('86e37qt93 AC4: the active nav accent still resolves through var(--brand-primary, ...) when branding overrides it', async () => {
+    render(
+      <PortalApp
+        branding={{ branded: true, logoUrl: 'https://cdn.example.com/bank-a/logo.png', primaryColor: '#111111', secondaryColor: '#222222' }}
+      />,
+    );
+    await userEvent.click(screen.getByRole('link', { name: 'Invoices' }));
+
+    const active = screen.getByRole('link', { name: 'Invoices' });
+    expect(active.style.borderLeftColor).toBe('var(--brand-primary, #ec3013)');
+  });
 });

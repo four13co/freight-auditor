@@ -74,12 +74,20 @@ function ComingSoon({ label }: { label: string }) {
  * (App.tsx sets it once branding resolves) with a CSS fallback to the
  * platform's own red, so an unbranded visit renders pixel-identical to
  * before.
+ *
+ * 86e37qt93: brought up to the same sidebar.* tokens / border weight / label
+ * weight / left-border-accent treatment 86e36xk28 already established for
+ * Sidebar.tsx, so the Client Portal no longer looks visually stuck on the
+ * pre-modernization chrome internal analysts stopped seeing.
  */
 function PortalNav({ branding, role }: { branding?: Branding | null; role?: string | null }) {
   const navItems = role === 'client_admin' ? [UPLOADS_NAV_ITEM, ...NAV_ITEMS] : NAV_ITEMS;
   return (
-    <div className="flex w-[228px] flex-none flex-col bg-[#201e1d] text-[#f3f2f2]">
-      <div className="flex h-16 flex-none items-center gap-2.5 border-b-2 border-[rgba(243,242,242,0.25)] px-[18px]">
+    <div className="flex w-[228px] flex-none flex-col bg-sidebar-bg text-sidebar-fg">
+      <div
+        data-testid="portal-nav-header"
+        className="flex h-16 flex-none items-center gap-2.5 border-b border-sidebar-border px-[18px]"
+      >
         <BrandMark branding={branding} />
         <div className="text-[15px] font-extrabold tracking-[-0.015em]" style={{ color: 'var(--brand-secondary, #f3f2f2)' }}>
           Client Portal
@@ -92,11 +100,11 @@ function PortalNav({ branding, role }: { branding?: Branding | null; role?: stri
             to={item.path}
             data-testid="portal-nav-item"
             className={({ isActive }) =>
-              `px-[18px] py-[9px] text-sm ${
-                isActive ? 'font-extrabold text-[#f3f2f2]' : 'font-semibold text-[rgba(243,242,242,0.85)]'
+              `border-l-2 px-[16px] py-[9px] text-sm font-medium ${
+                isActive ? 'bg-sidebar-active text-sidebar-fg' : 'border-transparent text-sidebar-fg-85'
               }`
             }
-            style={({ isActive }) => (isActive ? { backgroundColor: 'var(--brand-primary, #ec3013)' } : undefined)}
+            style={({ isActive }) => (isActive ? { borderLeftColor: 'var(--brand-primary, #ec3013)' } : undefined)}
           >
             {item.label}
           </NavLink>

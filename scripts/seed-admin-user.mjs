@@ -63,6 +63,13 @@ export async function seedAdminUser({ pool, password } = {}) {
        ON CONFLICT (user_id, client_id) DO UPDATE SET role = EXCLUDED.role`,
       [userId, DEV_CLIENT_ID],
     );
+
+    // app_user.is_internal defaults to false (migrations/0003) and
+    // signUpEmail doesn't set it -- App.tsx routes purely on isInternal, not
+    // membership role, so without this an 'analyst' membership alone still
+    // lands this login in PortalApp instead of Dashboard. Same as
+    // seed-e2e-auth-user.mjs's own internal login.
+    await client.query(`UPDATE app_user SET is_internal = true WHERE id = $1`, [userId]);
   } finally {
     if (ownedPool) await client.end();
   }

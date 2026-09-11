@@ -4,6 +4,7 @@ import { registerAuthRoutes } from './auth-routes.js';
 import { registerStaticRoutes } from './static-routes.js';
 import { registerMetricsRoutes } from './metrics-routes.js';
 import { registerBrandingRoutes } from './branding-routes.js';
+import { registerInternalBrandingRoutes } from './internal-branding-routes.js';
 import { registerAuditRunsRoutes } from './audit-runs-routes.js';
 import { registerInvoicesRoutes } from './invoices-routes.js';
 import { registerInvoiceDraftsRoutes } from './invoice-drafts-routes.js';
@@ -62,6 +63,11 @@ export function buildApp(): FastifyInstance {
   // same posture as /health -- must be reachable before any session exists
   // (branding renders on the login page itself, not only after sign-in).
   void app.register(registerBrandingRoutes);
+
+  // The write half of branding (86e37r2t4): tenant-scoped + analyst-only,
+  // its own encapsulated plugin -- deliberately NOT registered alongside the
+  // unauthenticated GET above, whose contract this item leaves untouched.
+  void app.register(registerInternalBrandingRoutes);
 
   // Auth routes registered at top level -- must be reachable with only a
   // session cookie (or no session at all), before any tenant scope exists

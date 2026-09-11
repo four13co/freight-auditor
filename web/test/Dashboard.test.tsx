@@ -46,6 +46,11 @@ function mockFetchOnce(url: string) {
       invoices: [{ id: 'inv-1', invoiceNumber: 'INV-1', carrierName: 'Some Carrier', transactionSet: '210', status: 'ingested', currency: 'USD', createdAt: '2026-01-15T00:00:00Z', billedTotal: '100.0000' }],
     }), { status: 200 }));
   }
+  if (url.includes('/api/branding')) {
+    return Promise.resolve(new Response(JSON.stringify({
+      branded: true, logoUrl: 'https://cdn.example.com/logo.png', primaryColor: '#112233', secondaryColor: '#445566',
+    }), { status: 200 }));
+  }
   throw new Error(`mockFetchOnce: unexpected URL ${url}`);
 }
 
@@ -569,11 +574,11 @@ describe('Dashboard', () => {
     render(<Dashboard />);
     await waitFor(() => expect(screen.getAllByTestId('finding-row')).toHaveLength(3));
 
-    // 86e37r2rm/86e37r2rv/86e37r2rt/86e37r2t6/86e37r2t7: "Discrepancies",
-    // "Audit log", "Invoices", "Aging > 5 days", and "Estes accessorials" are
-    // no longer among these disabled placeholders -- all five are now real
-    // links, covered by their own tests below.
-    expect(screen.getByText('Settings').closest('button')).toBeDisabled();
+    // 86e37r2rm/86e37r2rv/86e37r2rt/86e37r2t4/86e37r2t6/86e37r2t7:
+    // "Discrepancies", "Audit log", "Invoices", "Settings", "Aging > 5 days",
+    // and "Estes accessorials" are no longer among these disabled
+    // placeholders -- all six are now real links, covered by their own
+    // tests below.
     expect(screen.getByText('Mine, over $500').closest('button')).toBeDisabled();
   });
 
@@ -610,11 +615,11 @@ describe('Dashboard', () => {
     render(<Dashboard />);
     await waitFor(() => expect(screen.getAllByTestId('finding-row')).toHaveLength(3));
 
-    // 86e37r2rm/86e37r2rv/86e37r2rt/86e37r2t6/86e37r2t7: "Discrepancies",
-    // "Audit log", "Invoices", "Aging > 5 days", and "Estes accessorials" are
-    // no longer disabled/Soon-badged -- excluded here.
+    // 86e37r2rm/86e37r2rv/86e37r2rt/86e37r2t4/86e37r2t6/86e37r2t7:
+    // "Discrepancies", "Audit log", "Invoices", "Settings", "Aging > 5 days",
+    // and "Estes accessorials" are no longer disabled/Soon-badged -- excluded
+    // here.
     const disabledLabels = [
-      'Settings',
       'Mine, over $500',
     ];
     for (const label of disabledLabels) {
@@ -814,6 +819,38 @@ describe('Dashboard', () => {
     await waitFor(() => expect(window.location.hash).toBe('#/invoices'));
     await waitFor(() => expect(screen.getAllByTestId('invoice-row')).toHaveLength(1));
     expect(fetchMock.mock.calls.some(([input]) => String(input).includes('/api/invoices'))).toBe(true);
+    expect(screen.queryByTestId('kpi-row')).not.toBeInTheDocument();
+  });
+
+  it('86e37r2t4 AC5: the "Settings" sidebar item is a real link to /settings, not a disabled button', async () => {
+    // 86e37r2t4: the preceding "Audit log" click test above leaves
+    // window.location.hash at '#/audit-log' -- HashRouter reads that at
+    // mount, so a fresh <Dashboard /> here would otherwise land back on
+    // /audit-log instead of "/" (same fix 86e37r2rt's own Invoices tests
+    // needed, since /settings renders a structurally distinct page, not one
+    // that coincidentally shares the "/" route's finding-row testid).
+    window.location.hash = '';
+    render(<Dashboard />);
+    await waitFor(() => expect(screen.getAllByTestId('finding-row')).toHaveLength(3));
+
+    const settingsItem = screen.getByText('Settings').closest('a');
+    expect(settingsItem).not.toBeNull();
+    expect(settingsItem).toHaveAttribute('href', '#/settings');
+  });
+
+  it('86e37r2t4 AC4: clicking "Settings" navigates to /#/settings and renders the settings form there, pre-filled from GET /api/branding', async () => {
+    window.location.hash = '';
+    render(<Dashboard />);
+    await waitFor(() => expect(screen.getAllByTestId('finding-row')).toHaveLength(3));
+    fetchMock.mockClear();
+
+    fireEvent.click(screen.getByText('Settings'));
+
+    await waitFor(() => expect(window.location.hash).toBe('#/settings'));
+    await waitFor(() => expect(screen.getByTestId('settings-form')).toBeInTheDocument());
+    expect(fetchMock.mock.calls.some(([input]) => String(input).includes('/api/branding'))).toBe(true);
+    expect(screen.getByLabelText('Logo URL')).toHaveValue('https://cdn.example.com/logo.png');
+    expect(screen.getByLabelText('Primary color')).toHaveValue('#112233');
     expect(screen.queryByTestId('kpi-row')).not.toBeInTheDocument();
   });
 

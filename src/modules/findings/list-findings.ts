@@ -22,6 +22,8 @@ export interface FindingRow {
   status: string;
   createdAt: Date;
   ruleDescription: string | null;
+  /** 86e37r2t8: self-assign/unassign only -- null until an internal analyst assigns it to themselves via PATCH /api/findings/:id/assign. */
+  assignedToUserId: string | null;
 }
 
 export type FindingsSortKey = 'variance' | 'age';
@@ -33,6 +35,14 @@ export interface ListFindingsOptions {
   carrier?: string;
   status?: string;
   minAmount?: string;
+  /**
+   * 86e37r2t8: a raw user id to filter assigned_to_user_id against. The
+   * route layer resolves the special "me" query-param value to the caller's
+   * OWN actorUserId before calling this function -- this function itself
+   * never sees or trusts a client-supplied "me" literal or an arbitrary
+   * user id, it just filters on whatever id it's given.
+   */
+  assignedToUserId?: string;
   limit?: number;
   offset?: number;
   sort?: FindingsSortKey;
@@ -81,6 +91,10 @@ export async function listFindings(
     params.push(options.minAmount);
     conditions.push(`variance_finding.variance_amount >= $${params.length}`);
   }
+  if (options.assignedToUserId) {
+    params.push(options.assignedToUserId);
+    conditions.push(`variance_finding.assigned_to_user_id = $${params.length}`);
+  }
 
   const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
   const limit = options.limit ?? DEFAULT_LIMIT;
@@ -113,6 +127,7 @@ export async function listFindings(
     status: string;
     created_at: Date;
     rule_description: string | null;
+    assigned_to_user_id: string | null;
   }>(
     `SELECT
        variance_finding.id,
@@ -126,7 +141,8 @@ export async function listFindings(
        variance_finding.direction,
        variance_finding.status,
        variance_finding.created_at,
-       criterion_version.description AS rule_description
+       criterion_version.description AS rule_description,
+       variance_finding.assigned_to_user_id
      FROM variance_finding
      -- 86e2v17p5 DECISION: charge_fact_id is nullable (an invoice-level
      -- finding attributed to no single charge, e.g. more than one LINEHAUL
@@ -192,5 +208,6 @@ export async function listFindings(
     status: row.status,
     createdAt: row.created_at,
     ruleDescription: row.rule_description,
+    assignedToUserId: row.assigned_to_user_id,
   }));
 }

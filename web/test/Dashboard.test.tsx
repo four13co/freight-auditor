@@ -569,11 +569,11 @@ describe('Dashboard', () => {
     render(<Dashboard />);
     await waitFor(() => expect(screen.getAllByTestId('finding-row')).toHaveLength(3));
 
-    // 86e37r2rm/86e37r2rv/86e37r2rt: "Discrepancies", "Audit log", and
-    // "Invoices" are no longer among these disabled placeholders -- all
-    // three are now real links, covered by their own tests below.
+    // 86e37r2rm/86e37r2rv/86e37r2rt/86e37r2t8: "Discrepancies", "Audit log",
+    // "Invoices", and "Mine, over $500" are no longer among these disabled
+    // placeholders -- all four are now real links, covered by their own
+    // tests below.
     expect(screen.getByText('Settings').closest('button')).toBeDisabled();
-    expect(screen.getByText('Mine, over $500').closest('button')).toBeDisabled();
     expect(screen.getByText('Estes accessorials').closest('button')).toBeDisabled();
     expect(screen.getByText('Aging > 5 days').closest('button')).toBeDisabled();
   });
@@ -611,11 +611,11 @@ describe('Dashboard', () => {
     render(<Dashboard />);
     await waitFor(() => expect(screen.getAllByTestId('finding-row')).toHaveLength(3));
 
-    // 86e37r2rm/86e37r2rv/86e37r2rt: "Discrepancies", "Audit log", and
-    // "Invoices" are no longer disabled/Soon-badged -- excluded here.
+    // 86e37r2rm/86e37r2rv/86e37r2rt/86e37r2t8: "Discrepancies", "Audit log",
+    // "Invoices", and "Mine, over $500" are no longer disabled/Soon-badged --
+    // excluded here.
     const disabledLabels = [
       'Settings',
-      'Mine, over $500',
       'Estes accessorials',
       'Aging > 5 days',
     ];
@@ -816,6 +816,20 @@ describe('Dashboard', () => {
     await waitFor(() => expect(window.location.hash).toBe('#/invoices'));
     await waitFor(() => expect(screen.getAllByTestId('invoice-row')).toHaveLength(1));
     expect(fetchMock.mock.calls.some(([input]) => String(input).includes('/api/invoices'))).toBe(true);
+    expect(screen.queryByTestId('kpi-row')).not.toBeInTheDocument();
+  });
+
+  it('86e37r2t8 AC6: clicking "Mine, over $500" navigates to /#/discrepancies?assignee=me&minAmount=500 and requests both filters', async () => {
+    window.location.hash = '';
+    render(<Dashboard />);
+    await waitFor(() => expect(screen.getAllByTestId('finding-row')).toHaveLength(3));
+    fetchMock.mockClear();
+
+    fireEvent.click(screen.getByText('Mine, over $500'));
+
+    await waitFor(() => expect(window.location.hash).toBe('#/discrepancies?assignee=me&minAmount=500'));
+    await waitFor(() => expect(screen.getAllByTestId('finding-row')).toHaveLength(3));
+    expect(fetchMock.mock.calls.some(([input]) => String(input).includes('assignee=me') && String(input).includes('min-amount=500'))).toBe(true);
     expect(screen.queryByTestId('kpi-row')).not.toBeInTheDocument();
   });
 });

@@ -19,6 +19,10 @@ function mockTenantAuth(resolvedContext: unknown) {
           return;
         }
         request.tenantContext = resolvedContext as FastifyRequest['tenantContext'];
+        // 86e37r2t8: matches the x-user-id header every test in this file
+        // already sends -- needed so GET /api/findings' assignee=me
+        // resolution (request.actorUserId) has a real value to resolve to.
+        request.actorUserId = 'user-1';
       });
     },
     registerAnalystOnlyPreHandler: async () => {},
@@ -228,6 +232,75 @@ describe('GET /api/findings (unit, mocked withTenantTx + tenant-auth)', () => {
       expect(res.statusCode).toBe(200);
       expect(listFindings).toHaveBeenCalledWith({}, expect.objectContaining({ minAmount: '250.50' }));
     });
+
+    // 86e37r2t8
+    it('returns 400 for an assignee value other than "me", without ever calling listFindings', async () => {
+      mockAuthorized();
+      const listFindings = vi.fn();
+      vi.doMock('../../src/db/tenant-context.js', () => ({
+        withTenantTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
+      withTenantReadTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
+      }));
+      vi.doMock('../../src/modules/findings/list-findings.js', () => ({ listFindings }));
+      const { buildApp } = await import('../../src/server/app.js');
+      app = buildApp();
+
+      const res = await app.inject({
+        method: 'GET',
+        url: '/api/findings?assignee=some-other-user-id',
+        headers: { 'x-client-id': 'client-abc', 'x-user-id': 'user-1' },
+      });
+
+      expect(res.statusCode).toBe(400);
+      expect(res.json()).toEqual({ error: expect.stringContaining('invalid assignee') });
+      expect(listFindings).not.toHaveBeenCalled();
+    });
+
+    it('AC2: resolves assignee=me to the caller\'s OWN actorUserId server-side, regardless of any other value a client might send', async () => {
+      mockAuthorized();
+      const listFindings = vi.fn().mockResolvedValue([]);
+      vi.doMock('../../src/db/tenant-context.js', () => ({
+        withTenantTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
+      withTenantReadTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
+      }));
+      vi.doMock('../../src/modules/findings/list-findings.js', () => ({ listFindings }));
+      const { buildApp } = await import('../../src/server/app.js');
+      app = buildApp();
+
+      const res = await app.inject({
+        method: 'GET',
+        url: '/api/findings?assignee=me',
+        // x-user-id is 'user-1' -- mockAuthorized's tenant-auth mock resolves
+        // actorUserId to 'user-1' regardless of this header's own value, same
+        // as the real registerTenantAuthPreHandler does (membership-derived,
+        // not header-echoed) -- this proves the route reads actorUserId, not
+        // a raw query/header value, for "me".
+        headers: { 'x-client-id': 'client-abc', 'x-user-id': 'user-1' },
+      });
+
+      expect(res.statusCode).toBe(200);
+      expect(listFindings).toHaveBeenCalledWith({}, expect.objectContaining({ assignedToUserId: 'user-1' }));
+    });
+
+    it('omits assignedToUserId when no assignee param is given (regression)', async () => {
+      mockAuthorized();
+      const listFindings = vi.fn().mockResolvedValue([]);
+      vi.doMock('../../src/db/tenant-context.js', () => ({
+        withTenantTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
+      withTenantReadTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
+      }));
+      vi.doMock('../../src/modules/findings/list-findings.js', () => ({ listFindings }));
+      const { buildApp } = await import('../../src/server/app.js');
+      app = buildApp();
+
+      await app.inject({
+        method: 'GET',
+        url: '/api/findings',
+        headers: { 'x-client-id': 'client-abc', 'x-user-id': 'user-1' },
+      });
+
+      expect(listFindings).toHaveBeenCalledWith({}, expect.objectContaining({ assignedToUserId: undefined }));
+    });
   });
 
   describe('GET /api/gate-failures (86e2v17xn)', () => {
@@ -425,7 +498,7 @@ describe('GET /api/findings (unit, mocked withTenantTx + tenant-auth)', () => {
 
       expect(res.statusCode).toBe(200);
       expect(res.json()).toEqual({ id: '11111111-1111-1111-1111-111111111111', status: 'in_review' });
-      expect(updateFindingStatus).toHaveBeenCalledWith({}, '11111111-1111-1111-1111-111111111111', 'in_review', undefined, undefined);
+      expect(updateFindingStatus).toHaveBeenCalledWith({}, '11111111-1111-1111-1111-111111111111', 'in_review', undefined, 'user-1');
     });
 
     it('returns 404 without calling reply with a 200 when the finding is not found for this tenant', async () => {
@@ -556,7 +629,7 @@ describe('GET /api/findings (unit, mocked withTenantTx + tenant-auth)', () => {
         headers: { 'x-client-id': 'client-abc', 'x-user-id': 'user-1', 'content-type': 'application/json' },
         payload: { status: 'closed', note: 'analyst note' },
       });
-      expect(updateFindingStatus).toHaveBeenCalledWith({}, '11111111-1111-1111-1111-111111111111', 'closed', 'analyst note', undefined);
+      expect(updateFindingStatus).toHaveBeenCalledWith({}, '11111111-1111-1111-1111-111111111111', 'closed', 'analyst note', 'user-1');
     });
   });
 

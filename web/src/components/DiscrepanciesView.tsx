@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { FindingsTable } from './FindingsTable.js';
 import {
   fetchFindings,
@@ -17,12 +18,24 @@ type LoadStatus = 'loading' | 'error' | 'ready';
  * extraction-review/contract-preview panels that only belong on "/".
  * fetchFindingsSummary is deliberately not called here: nothing on this
  * page renders a KPI row, so there's no summary value to show.
+ *
+ * 86e37r2t8: carrier/minAmount also seed from the URL's query string on
+ * mount -- the "Mine, over $500" sidebar saved view is a plain link to
+ * /discrepancies?assignee=me&minAmount=500 (no client-side state passed
+ * between components), so this is the only place that link's query string
+ * can be read back into actual filter state. `assignee` itself is fixed
+ * ("me" or absent, per this item's own Rabbit holes -- self-assign/unassign
+ * only, no arbitrary-user filtering), read once and never exposed to
+ * FindingsTable's controlled filter UI, unlike carrier/minAmount which stay
+ * editable afterward.
  */
 export function DiscrepanciesView() {
+  const [searchParams] = useSearchParams();
   const [rows, setRows] = useState<FindingRow[]>([]);
-  const [carrierFilter, setCarrierFilter] = useState('');
+  const [carrierFilter, setCarrierFilter] = useState(() => searchParams.get('carrier') ?? '');
   const [statusFilter, setStatusFilter] = useState('');
-  const [minAmountFilter, setMinAmountFilter] = useState('');
+  const [minAmountFilter, setMinAmountFilter] = useState(() => searchParams.get('minAmount') ?? '');
+  const [assignedToMe] = useState(() => searchParams.get('assignee') === 'me');
   const [sort, setSort] = useState<{ key: FindingsSortKey; dir: FindingsSortDir } | null>(null);
   const [status, setStatus] = useState<LoadStatus>('loading');
 
@@ -32,6 +45,7 @@ export function DiscrepanciesView() {
       carrier: carrierFilter || undefined,
       status: statusFilter || undefined,
       minAmount: minAmountFilter || undefined,
+      assignee: assignedToMe ? 'me' : undefined,
       sort: sort?.key,
       sortDir: sort?.dir,
     }).then(
@@ -43,7 +57,7 @@ export function DiscrepanciesView() {
         setStatus('error');
       },
     );
-  }, [carrierFilter, statusFilter, minAmountFilter, sort]);
+  }, [carrierFilter, statusFilter, minAmountFilter, assignedToMe, sort]);
 
   function toggleSort(key: FindingsSortKey) {
     setSort((prev) => {
@@ -89,6 +103,9 @@ export function DiscrepanciesView() {
           onMinAmountFilterChange={setMinAmountFilter}
           onRowStatusChange={(id, newStatus) =>
             setRows((prev) => prev.map((r) => (r.id === id ? { ...r, status: newStatus } : r)))
+          }
+          onRowAssignChange={(id, assignedToUserId) =>
+            setRows((prev) => prev.map((r) => (r.id === id ? { ...r, assignedToUserId } : r)))
           }
           sort={sort}
           onSortChange={toggleSort}

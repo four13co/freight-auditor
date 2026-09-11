@@ -200,6 +200,78 @@ test('86e37r2rt AC3: the "Invoices" sidebar link navigates to /#/invoices and re
   await page.screenshot({ path: 'test-results/invoices-full.png', fullPage: true });
 });
 
+/**
+ * 86e37r2t8 AC6: proves the real, built app renders /discrepancies with the
+ * assignee=me + minAmount presets applied when reached via the "Mine, over
+ * $500" saved view -- URL round-trip + the request actually carrying both
+ * filters through to the backend (the server-side filtering itself is
+ * covered by assign-finding.db.test.ts; this only proves the sidebar link
+ * -> URL -> request wiring, same convention as the other two saved views).
+ */
+test('86e37r2t8 AC6: the "Mine, over $500" saved view navigates to /#/discrepancies?assignee=me&minAmount=500 and requests both filters', async ({ page }) => {
+  let requestedUrl = '';
+  await page.route('**/api/findings**', (route) => {
+    requestedUrl = route.request().url();
+    return route.fulfill({ json: { findings: ROWS } });
+  });
+  await page.route('**/api/findings/summary', (route) => route.fulfill({ json: SUMMARY }));
+
+  await page.goto('/');
+  await expect(page.getByTestId('kpi-row')).toBeVisible();
+
+  await page.getByText('Mine, over $500').click();
+
+  await expect(page).toHaveURL(/\/#\/discrepancies\?assignee=me&minAmount=500$/);
+  await expect(page.getByTestId('finding-row')).toHaveCount(3);
+  await expect(page.getByTestId('kpi-row')).not.toBeVisible();
+  await expect.poll(() => requestedUrl).toContain('assignee=me');
+  await expect.poll(() => requestedUrl).toContain('min-amount=500');
+
+  await page.screenshot({ path: 'test-results/mine-saved-view-full.png', fullPage: true });
+});
+
+/**
+ * 86e37r2t8 AC5: an internal analyst assigns a finding to themselves from
+ * the real table, then clicking "Mine, over $500" surfaces it -- proves the
+ * whole self-assign loop end to end (button -> PATCH -> re-render ->
+ * saved-view filter), not just the individual pieces the unit/db tests
+ * already cover. Unassigning afterward is proven separately in
+ * FindingsTable.test.tsx (it patches local row state without a refetch,
+ * same convention as onRowStatusChange -- so it's a jsdom-level, not
+ * real-browser, concern).
+ */
+test('86e37r2t8 AC5: assigning a finding to self then clicking "Mine, over $500" surfaces it', async ({ page }) => {
+  let assignedToUserId: string | null = null;
+  await page.route('**/api/findings**', (route) => {
+    const url = route.request().url();
+    const withAssignee = ROWS.map((r) => (r.id === 'f1' ? { ...r, assignedToUserId } : r));
+    const findings = url.includes('assignee=me')
+      ? withAssignee.filter((r) => r.id === 'f1' && assignedToUserId !== null)
+      : withAssignee;
+    return route.fulfill({ json: { findings } });
+  });
+  await page.route('**/api/findings/summary', (route) => route.fulfill({ json: SUMMARY }));
+  await page.route('**/api/findings/f1/assign', (route) => {
+    const body = route.request().postDataJSON() as { userId: string | null };
+    assignedToUserId = body.userId === null ? null : 'user-1';
+    return route.fulfill({ json: { assignedToUserId } });
+  });
+
+  await page.goto('/');
+  await expect(page.getByTestId('finding-row')).toHaveCount(3);
+
+  const firstRow = page.getByTestId('finding-row').first();
+  await firstRow.getByText('Assign to me').click();
+  await expect(firstRow.getByText('Unassign')).toBeVisible();
+
+  await page.getByText('Mine, over $500').click();
+  await expect(page).toHaveURL(/\/#\/discrepancies\?assignee=me&minAmount=500$/);
+  await expect(page.getByTestId('finding-row')).toHaveCount(1);
+  await expect(page.getByTestId('finding-row').first().getByText('Unassign')).toBeVisible();
+
+  await page.screenshot({ path: 'test-results/mine-assigned-full.png', fullPage: true });
+});
+
 test('analyst reviews an extraction abstention and records its answer source', async ({ page }) => {
   const documentId = '44444444-4444-4444-8444-444444444444';
   const questionId = '33333333-3333-4333-8333-333333333333';

@@ -123,15 +123,12 @@ export function Sidebar({ branding, currentPath = '/' }: { branding?: Branding |
           <div className="px-[18px] pb-2 text-[11px] font-extrabold uppercase tracking-[0.1em] text-sidebar-fg-50">
             Saved views
           </div>
-          <button
-            type="button"
-            disabled
-            title="Coming soon"
-            className="flex w-full cursor-not-allowed items-center justify-between px-[18px] py-[7px] text-left text-[13px] text-sidebar-fg-75 opacity-60"
+          <a
+            href="#/discrepancies?assignee=me&minAmount=500"
+            className="flex w-full items-center px-[18px] py-[7px] text-left text-[13px] text-sidebar-fg-75"
           >
-            <span>Mine, over $500</span>
-            <SoonBadge />
-          </button>
+            Mine, over $500
+          </a>
           <button
             type="button"
             disabled

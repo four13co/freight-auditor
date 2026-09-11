@@ -207,6 +207,9 @@ export function Dashboard({ branding }: { branding?: Branding | null } = {}) {
                           // duplicate that logic and risk drifting from it silently.
                           setRows((prev) => prev.map((r) => (r.id === id ? { ...r, status } : r)))
                         }
+                        onRowAssignChange={(id, assignedToUserId) =>
+                          setRows((prev) => prev.map((r) => (r.id === id ? { ...r, assignedToUserId } : r)))
+                        }
                         sort={sort}
                         onSortChange={toggleSort}
                       />

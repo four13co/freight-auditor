@@ -1,6 +1,6 @@
 import type React from 'react';
-import { describe, it, expect, vi } from 'vitest';
-import { render, screen, within, fireEvent } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { render, screen, within, fireEvent, waitFor } from '@testing-library/react';
 import { FindingsTable } from '../src/components/FindingsTable.js';
 import { SORTABLE_ROWS as ROWS } from './fixtures.js';
 
@@ -214,5 +214,68 @@ describe('FindingsTable selection count/total sync on rows change (86e2v250p)', 
     );
     fireEvent.click(screen.getByLabelText('Select finding INV-A'));
     expect(screen.getByText(/1 selected/)).toBeInTheDocument();
+  });
+});
+
+// 86e37r2t8
+describe('FindingsTable per-row assign/unassign', () => {
+  let fetchMock: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('shows "Assign to me" for an unassigned row', () => {
+    renderTable({ rows: [{ ...ROWS[0]!, assignedToUserId: null }] });
+    expect(within(screen.getByTestId('finding-row')).getByText('Assign to me')).toBeInTheDocument();
+  });
+
+  it('shows "Unassign" for an already-assigned row', () => {
+    renderTable({ rows: [{ ...ROWS[0]!, assignedToUserId: 'some-user-id' }] });
+    expect(within(screen.getByTestId('finding-row')).getByText('Unassign')).toBeInTheDocument();
+  });
+
+  it('clicking "Assign to me" PATCHes the assign endpoint with a non-null userId and reports the result upward', async () => {
+    fetchMock.mockResolvedValue(new Response(JSON.stringify({ assignedToUserId: 'user-1' }), { status: 200 }));
+    const onRowAssignChange = vi.fn();
+    renderTable({ rows: [{ ...ROWS[0]!, assignedToUserId: null }], onRowAssignChange });
+
+    fireEvent.click(screen.getByText('Assign to me'));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(
+      `/api/findings/${ROWS[0]!.id}/assign`,
+      expect.objectContaining({ method: 'PATCH' }),
+    ));
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const body = JSON.parse(init.body as string) as { userId: string | null };
+    expect(body.userId).not.toBeNull();
+    await waitFor(() => expect(onRowAssignChange).toHaveBeenCalledWith(ROWS[0]!.id, 'user-1'));
+  });
+
+  it('clicking "Unassign" PATCHes the assign endpoint with userId: null', async () => {
+    fetchMock.mockResolvedValue(new Response(JSON.stringify({ assignedToUserId: null }), { status: 200 }));
+    const onRowAssignChange = vi.fn();
+    renderTable({ rows: [{ ...ROWS[0]!, assignedToUserId: 'user-1' }], onRowAssignChange });
+
+    fireEvent.click(screen.getByText('Unassign'));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(init.body as string)).toEqual({ userId: null });
+    await waitFor(() => expect(onRowAssignChange).toHaveBeenCalledWith(ROWS[0]!.id, null));
+  });
+
+  it('clicking the assign button does not open the row detail view (stopPropagation, same convention as the selection checkbox)', () => {
+    fetchMock.mockResolvedValue(new Response(JSON.stringify({ assignedToUserId: 'user-1' }), { status: 200 }));
+    renderTable({ rows: [{ ...ROWS[0]!, assignedToUserId: null }] });
+
+    fireEvent.click(screen.getByText('Assign to me'));
+
+    expect(screen.queryByLabelText('Finding status')).not.toBeInTheDocument();
   });
 });

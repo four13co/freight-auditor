@@ -4,6 +4,7 @@ import { listFindings, type FindingsSortKey } from '../modules/findings/list-fin
 import { getFindingsSummary } from '../modules/findings/findings-summary.js';
 import { listGateFailures } from '../modules/findings/list-gate-failures.js';
 import { updateFindingStatus } from '../modules/findings/update-finding-status.js';
+import { assignFinding } from '../modules/findings/assign-finding.js';
 import { registerTenantAuthPreHandler, registerAnalystOnlyPreHandler } from '../modules/findings/tenant-auth.js';
 import { ALL_VARIANCE_STATUSES, WRITABLE_VARIANCE_STATUSES } from '../shared/variance-status.js';
 import { isUuid } from '../shared/request-validation.js';
@@ -66,6 +67,7 @@ export async function registerFindingsRoutes(findingsRoutes: FastifyInstance): P
       carrier?: string;
       status?: string;
       'min-amount'?: string;
+      assignee?: string;
       sort?: string;
       sortDir?: string;
     };
@@ -88,6 +90,16 @@ export async function registerFindingsRoutes(findingsRoutes: FastifyInstance): P
       await reply.code(400).send({ error: 'invalid min-amount: must be numeric' });
       return;
     }
+    // 86e37r2t8: "me" is the only accepted value -- the "mine" saved view is
+    // self-assign/unassign only, so nothing in this app ever needs to filter
+    // by an arbitrary OTHER user's id, and accepting anything but the
+    // literal "me" would open exactly the spoofing vector this item's own
+    // Rabbit holes warn against. Resolved to the caller's own actorUserId
+    // below -- never a client-supplied id.
+    if (query.assignee !== undefined && query.assignee !== 'me') {
+      await reply.code(400).send({ error: 'invalid assignee: must be "me"' });
+      return;
+    }
     // sort/sortDir feed an ORDER BY, which can't be parameter-bound like a
     // WHERE value -- this allowlist check IS the injection boundary (see
     // list-findings.ts's ORDER_COLUMNS comment), not just input hygiene.
@@ -108,6 +120,7 @@ export async function registerFindingsRoutes(findingsRoutes: FastifyInstance): P
         carrier: query.carrier,
         status: query.status,
         minAmount: query['min-amount'],
+        assignedToUserId: query.assignee === 'me' ? request.actorUserId : undefined,
         sort: query.sort as FindingsSortKey | undefined,
         sortDir: query.sortDir as 'asc' | 'desc' | undefined,
       }),
@@ -234,6 +247,36 @@ export async function registerFindingsRoutes(findingsRoutes: FastifyInstance): P
   // satisfies GET /api/findings reads -- is rejected here with 403.
   await findingsRoutes.register(async (reverseRoutes) => {
     await registerAnalystOnlyPreHandler(reverseRoutes);
+
+    // 86e37r2t8: self-assign/unassign only, gated the same way /reverse
+    // above is (registerTenantAuthPreHandler already ran above this nested
+    // scope; registerAnalystOnlyPreHandler rejects a client_viewer/
+    // client_admin membership with 403 before this handler ever runs).
+    //
+    // body.userId's STRING VALUE is never used as the assignee -- only its
+    // presence/absence (string vs. null) is read, to decide assign-vs-
+    // unassign. The assignee is ALWAYS request.actorUserId (the session's
+    // own resolved user id, set by registerTenantAuthPreHandler), matching
+    // this item's own Rabbit holes: "the assigning user IS the session's
+    // own user id, full stop." A client sending someone else's id here
+    // cannot assign the finding to that other person -- it still assigns to
+    // themselves.
+    reverseRoutes.patch('/api/findings/:id/assign', async (request, reply) => {
+      const { id } = request.params as { id: string };
+      if (!isUuid(id)) return reply.code(400).send({ error: 'invalid finding id: must be a well-formed UUID' });
+
+      const body = request.body as { userId?: unknown };
+      if (body.userId !== null && typeof body.userId !== 'string') {
+        return reply.code(400).send({ error: 'invalid userId: must be a string or null' });
+      }
+
+      const assigneeUserId = body.userId === null ? null : (request.actorUserId ?? null);
+      const result = await withTenantTx(request.tenantContext!, (client) =>
+        assignFinding(client, id, assigneeUserId, request.actorUserId),
+      );
+      if (!result.found) return reply.code(404).send({ error: 'finding not found' });
+      return { id, assignedToUserId: assigneeUserId };
+    });
 
     reverseRoutes.post('/api/findings/:id/reverse', async (request, reply) => {
       const { id } = request.params as { id: string };

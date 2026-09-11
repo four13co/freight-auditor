@@ -574,13 +574,12 @@ describe('Dashboard', () => {
     render(<Dashboard />);
     await waitFor(() => expect(screen.getAllByTestId('finding-row')).toHaveLength(3));
 
-    // 86e37r2rm/86e37r2rv/86e37r2rt/86e37r2t4: "Discrepancies", "Audit log",
-    // "Invoices", and "Settings" are no longer among these disabled
-    // placeholders -- all four are now real links, covered by their own
+    // 86e37r2rm/86e37r2rv/86e37r2rt/86e37r2t4/86e37r2t6/86e37r2t7:
+    // "Discrepancies", "Audit log", "Invoices", "Settings", "Aging > 5 days",
+    // and "Estes accessorials" are no longer among these disabled
+    // placeholders -- all six are now real links, covered by their own
     // tests below.
     expect(screen.getByText('Mine, over $500').closest('button')).toBeDisabled();
-    expect(screen.getByText('Estes accessorials').closest('button')).toBeDisabled();
-    expect(screen.getByText('Aging > 5 days').closest('button')).toBeDisabled();
   });
 
   it('86e2uv1r6 AC1: the header search field is a real disabled input, not an inert div', async () => {
@@ -616,13 +615,12 @@ describe('Dashboard', () => {
     render(<Dashboard />);
     await waitFor(() => expect(screen.getAllByTestId('finding-row')).toHaveLength(3));
 
-    // 86e37r2rm/86e37r2rv/86e37r2rt/86e37r2t4: "Discrepancies", "Audit log",
-    // "Invoices", and "Settings" are no longer disabled/Soon-badged --
-    // excluded here.
+    // 86e37r2rm/86e37r2rv/86e37r2rt/86e37r2t4/86e37r2t6/86e37r2t7:
+    // "Discrepancies", "Audit log", "Invoices", "Settings", "Aging > 5 days",
+    // and "Estes accessorials" are no longer disabled/Soon-badged -- excluded
+    // here.
     const disabledLabels = [
       'Mine, over $500',
-      'Estes accessorials',
-      'Aging > 5 days',
     ];
     for (const label of disabledLabels) {
       const button = screen.getByText(label).closest('button');
@@ -853,6 +851,34 @@ describe('Dashboard', () => {
     expect(fetchMock.mock.calls.some(([input]) => String(input).includes('/api/branding'))).toBe(true);
     expect(screen.getByLabelText('Logo URL')).toHaveValue('https://cdn.example.com/logo.png');
     expect(screen.getByLabelText('Primary color')).toHaveValue('#112233');
+    expect(screen.queryByTestId('kpi-row')).not.toBeInTheDocument();
+  });
+
+  it('86e37r2t6 AC3: clicking "Aging > 5 days" navigates to /#/discrepancies?minAgeDays=5 and requests min-age-days=5', async () => {
+    window.location.hash = '';
+    render(<Dashboard />);
+    await waitFor(() => expect(screen.getAllByTestId('finding-row')).toHaveLength(3));
+    fetchMock.mockClear();
+
+    fireEvent.click(screen.getByText('Aging > 5 days'));
+
+    await waitFor(() => expect(window.location.hash).toBe('#/discrepancies?minAgeDays=5'));
+    await waitFor(() => expect(screen.getAllByTestId('finding-row')).toHaveLength(3));
+    expect(fetchMock.mock.calls.some(([input]) => String(input).includes('min-age-days=5'))).toBe(true);
+    expect(screen.queryByTestId('kpi-row')).not.toBeInTheDocument();
+  });
+
+  it('86e37r2t7 AC4: clicking "Estes accessorials" navigates to /#/discrepancies?carrier=Estes&category=accessorial and requests both filters', async () => {
+    window.location.hash = '';
+    render(<Dashboard />);
+    await waitFor(() => expect(screen.getAllByTestId('finding-row')).toHaveLength(3));
+    fetchMock.mockClear();
+
+    fireEvent.click(screen.getByText('Estes accessorials'));
+
+    await waitFor(() => expect(window.location.hash).toBe('#/discrepancies?carrier=Estes&category=accessorial'));
+    await waitFor(() => expect(screen.getAllByTestId('finding-row')).toHaveLength(3));
+    expect(fetchMock.mock.calls.some(([input]) => String(input).includes('carrier=Estes') && String(input).includes('category=accessorial'))).toBe(true);
     expect(screen.queryByTestId('kpi-row')).not.toBeInTheDocument();
   });
 });

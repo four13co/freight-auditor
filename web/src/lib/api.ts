@@ -108,6 +108,10 @@ export interface FindingsListParams {
   carrier?: string;
   status?: string;
   minAmount?: string;
+  /** 86e37r2t6: rows at least this many days old. */
+  minAgeDays?: number;
+  /** 86e37r2t7: charge_fact.category (e.g. 'accessorial'). */
+  category?: string;
   sort?: FindingsSortKey;
   sortDir?: FindingsSortDir;
 }
@@ -118,6 +122,9 @@ function buildQuery(params: FindingsListParams): string {
   if (params.status) qs.set('status', params.status);
   // Backend reads this literally as 'min-amount' (kebab-case), not minAmount.
   if (params.minAmount) qs.set('min-amount', params.minAmount);
+  // Same kebab-case convention as min-amount, per 86e37r2t6's own AC.
+  if (params.minAgeDays !== undefined) qs.set('min-age-days', String(params.minAgeDays));
+  if (params.category) qs.set('category', params.category);
   // 86e2v251e: sort is applied server-side (against the full filtered result
   // set, before LIMIT) -- see list-findings.ts's ORDER_COLUMNS. sortDir is
   // only meaningful alongside sort, but sending it standalone is harmless

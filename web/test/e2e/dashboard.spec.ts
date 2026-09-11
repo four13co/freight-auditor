@@ -242,6 +242,63 @@ test('86e37r2t4 AC4: the "Settings" sidebar link navigates to /#/settings, and a
   await expect(page.getByLabel('Primary color')).toHaveValue('#abcdef');
 });
 
+/**
+ * 86e37r2t6 AC3: proves the real, built app renders /discrepancies with the
+ * minAgeDays preset applied when reached via the "Aging > 5 days" saved
+ * view -- URL round-trip + the request actually carrying min-age-days
+ * through to the backend (the filtering itself is covered server-side by
+ * list-findings.db.test.ts; this only proves the sidebar link -> URL ->
+ * request wiring).
+ */
+test('86e37r2t6 AC3: the "Aging > 5 days" saved view navigates to /#/discrepancies?minAgeDays=5 and requests min-age-days=5', async ({ page }) => {
+  let requestedUrl = '';
+  await page.route('**/api/findings**', (route) => {
+    requestedUrl = route.request().url();
+    return route.fulfill({ json: { findings: ROWS } });
+  });
+  await page.route('**/api/findings/summary', (route) => route.fulfill({ json: SUMMARY }));
+
+  await page.goto('/');
+  await expect(page.getByTestId('kpi-row')).toBeVisible();
+
+  await page.getByText('Aging > 5 days').click();
+
+  await expect(page).toHaveURL(/\/#\/discrepancies\?minAgeDays=5$/);
+  await expect(page.getByTestId('finding-row')).toHaveCount(3);
+  await expect(page.getByTestId('kpi-row')).not.toBeVisible();
+  await expect.poll(() => requestedUrl).toContain('min-age-days=5');
+
+  await page.screenshot({ path: 'test-results/aging-saved-view-full.png', fullPage: true });
+});
+
+/**
+ * 86e37r2t7 AC4: proves the real, built app renders /discrepancies with
+ * both the carrier and category presets applied when reached via the
+ * "Estes accessorials" saved view -- same URL/request-wiring proof as
+ * above, both filters combined.
+ */
+test('86e37r2t7 AC4: the "Estes accessorials" saved view navigates to /#/discrepancies?carrier=Estes&category=accessorial and requests both filters', async ({ page }) => {
+  let requestedUrl = '';
+  await page.route('**/api/findings**', (route) => {
+    requestedUrl = route.request().url();
+    return route.fulfill({ json: { findings: ROWS } });
+  });
+  await page.route('**/api/findings/summary', (route) => route.fulfill({ json: SUMMARY }));
+
+  await page.goto('/');
+  await expect(page.getByTestId('kpi-row')).toBeVisible();
+
+  await page.getByText('Estes accessorials').click();
+
+  await expect(page).toHaveURL(/\/#\/discrepancies\?carrier=Estes&category=accessorial$/);
+  await expect(page.getByTestId('finding-row')).toHaveCount(3);
+  await expect(page.getByTestId('kpi-row')).not.toBeVisible();
+  await expect.poll(() => requestedUrl).toContain('carrier=Estes');
+  await expect.poll(() => requestedUrl).toContain('category=accessorial');
+
+  await page.screenshot({ path: 'test-results/estes-saved-view-full.png', fullPage: true });
+});
+
 test('analyst reviews an extraction abstention and records its answer source', async ({ page }) => {
   const documentId = '44444444-4444-4444-8444-444444444444';
   const questionId = '33333333-3333-4333-8333-333333333333';

@@ -95,6 +95,46 @@ describe('listFindings (unit, mocked client)', () => {
     expect(params).toEqual(['ACME', 'open', '100.00', 50, 0]);
   });
 
+  // 86e37r2t6
+  it('adds a minAgeDays condition and binds it positionally', async () => {
+    const { client, query } = mockClient([]);
+    await listFindings(client, { minAgeDays: 5 });
+    const [sql, params] = query.mock.calls[0] as [string, unknown[]];
+    expect(sql).toMatch(/variance_finding\.created_at <= NOW\(\) - \(\$1 \|\| ' days'\)::interval/);
+    expect(params).toEqual([5, 50, 0]);
+  });
+
+  it('omits the minAgeDays condition when not given (regression)', async () => {
+    const { client, query } = mockClient([]);
+    await listFindings(client, {});
+    const [sql] = query.mock.calls[0] as [string, unknown[]];
+    expect(sql).not.toMatch(/created_at <= NOW\(\)/);
+  });
+
+  // 86e37r2t7
+  it('adds a category condition against charge_fact.category and binds it positionally', async () => {
+    const { client, query } = mockClient([]);
+    await listFindings(client, { category: 'accessorial' });
+    const [sql, params] = query.mock.calls[0] as [string, unknown[]];
+    expect(sql).toMatch(/charge_fact\.category = \$1/);
+    expect(params).toEqual(['accessorial', 50, 0]);
+  });
+
+  it('omits the category condition when not given (regression)', async () => {
+    const { client, query } = mockClient([]);
+    await listFindings(client, {});
+    const [sql] = query.mock.calls[0] as [string, unknown[]];
+    expect(sql).not.toMatch(/charge_fact\.category = /);
+  });
+
+  it('combines carrier and category with AND, each at its own param index', async () => {
+    const { client, query } = mockClient([]);
+    await listFindings(client, { carrier: 'Estes', category: 'accessorial' });
+    const [sql, params] = query.mock.calls[0] as [string, unknown[]];
+    expect(sql).toMatch(/carrier\.name = \$1 AND charge_fact\.category = \$2/);
+    expect(params).toEqual(['Estes', 'accessorial', 50, 0]);
+  });
+
   it('honors explicit limit and offset', async () => {
     const { client, query } = mockClient([]);
     await listFindings(client, { limit: 10, offset: 20 });

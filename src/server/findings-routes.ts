@@ -31,6 +31,9 @@ const WRITABLE_STATUS_VALUES = new Set<string>(WRITABLE_VARIANCE_STATUSES);
 // 0, Number('0x10') is 16, and Number('Infinity') is finite per isNaN, all of
 // which would wrongly pass a naive check and still reach Postgres unvalidated.
 const NUMERIC_STRING = /^-?\d+(\.\d+)?$/;
+// 86e37r2t6: a day count -- non-negative integer only, same rationale as
+// NUMERIC_STRING above (never let Number()/isNaN's edge cases reach Postgres).
+const NON_NEGATIVE_INTEGER_STRING = /^\d+$/;
 
 // P6.C.1: /api/gate-failures had no limit/offset wiring at all before this --
 // mirrors claim-recovery-routes.ts's own MAX_LIMIT/DEFAULT_LIMIT convention.
@@ -66,6 +69,8 @@ export async function registerFindingsRoutes(findingsRoutes: FastifyInstance): P
       carrier?: string;
       status?: string;
       'min-amount'?: string;
+      'min-age-days'?: string;
+      category?: string;
       sort?: string;
       sortDir?: string;
     };
@@ -88,6 +93,10 @@ export async function registerFindingsRoutes(findingsRoutes: FastifyInstance): P
       await reply.code(400).send({ error: 'invalid min-amount: must be numeric' });
       return;
     }
+    if (query['min-age-days'] !== undefined && !NON_NEGATIVE_INTEGER_STRING.test(query['min-age-days'])) {
+      await reply.code(400).send({ error: 'invalid min-age-days: must be a non-negative integer' });
+      return;
+    }
     // sort/sortDir feed an ORDER BY, which can't be parameter-bound like a
     // WHERE value -- this allowlist check IS the injection boundary (see
     // list-findings.ts's ORDER_COLUMNS comment), not just input hygiene.
@@ -108,6 +117,8 @@ export async function registerFindingsRoutes(findingsRoutes: FastifyInstance): P
         carrier: query.carrier,
         status: query.status,
         minAmount: query['min-amount'],
+        minAgeDays: query['min-age-days'] !== undefined ? Number(query['min-age-days']) : undefined,
+        category: query.category,
         sort: query.sort as FindingsSortKey | undefined,
         sortDir: query.sortDir as 'asc' | 'desc' | undefined,
       }),

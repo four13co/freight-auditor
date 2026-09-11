@@ -20,6 +20,7 @@
  * app's existing pill/tag visual language (FindingsTable/FindingDetail's
  * status tags) so it reads as an established UI pattern, not a one-off.
  */
+import type { ReactNode } from 'react';
 import type { Branding } from '../lib/api.js';
 import { BrandMark } from './BrandMark.js';
 
@@ -31,6 +32,31 @@ function SoonBadge() {
 }
 
 /**
+ * 86e37r2rm: a real, routed nav item (as opposed to the still-disabled
+ * placeholder buttons below) -- a plain `<a>`, not react-router's NavLink,
+ * for the same reason 86e37r2rb chose one for "Dashboard": Sidebar.test.tsx
+ * renders `<Sidebar />` standalone with no Router ancestor, and NavLink
+ * throws outside one. `currentPath` (passed down by whatever has Router
+ * context -- Dashboard.tsx via useLocation) drives the same active-state
+ * styling "Dashboard" already had, now conditional instead of permanent.
+ */
+function NavAnchor({ href, path, currentPath, children }: { href: string; path: string; currentPath: string; children: ReactNode }) {
+  const active = currentPath === path;
+  return (
+    <a
+      href={href}
+      data-testid={active ? 'sidebar-active-item' : undefined}
+      className={`border-l-2 px-[16px] py-[9px] text-sm font-medium ${
+        active ? 'bg-sidebar-active text-sidebar-fg' : 'border-transparent text-sidebar-fg-85'
+      }`}
+      style={active ? { borderLeftColor: 'var(--brand-primary, #ec3013)' } : undefined}
+    >
+      {children}
+    </a>
+  );
+}
+
+/**
  * 86e320pkc: the logo swatch and "Dashboard" active-item background are this
  * chrome's own branding surface -- BrandMark swaps the swatch for a
  * Customer's logo when configured, and the active background reads
@@ -39,15 +65,18 @@ function SoonBadge() {
  * pixel-identical to before.
  *
  * 86e37r2rb: "Dashboard" is now a real `<a href="#/">` (Dashboard.tsx wraps
- * its content in a HashRouter, and "/" is the only route so far), not a
- * plain `<a>`-via-react-router NavLink -- a real anchor keeps this component
- * renderable standalone with no Router ancestor, exactly as Sidebar.test.tsx
- * already does. It stays permanently styled as the active item because,
- * until a follow-up item wires one of the other 6 nav entries to a real
- * route, "/" is the only route that exists -- there is no away-from-
- * Dashboard state to render differently yet.
+ * its content in a HashRouter), not a plain `<a>`-via-react-router NavLink --
+ * a real anchor keeps this component renderable standalone with no Router
+ * ancestor, exactly as Sidebar.test.tsx already does.
+ *
+ * 86e37r2rm: "Discrepancies" is the first follow-up to get the same
+ * treatment (see NavAnchor above) -- active styling is now conditional on
+ * `currentPath` rather than permanent, since there are two real routes.
+ * `currentPath` defaults to "/" so every existing standalone
+ * `render(<Sidebar />)` call (no Router, no prop) still sees "Dashboard" as
+ * the active item, unchanged.
  */
-export function Sidebar({ branding }: { branding?: Branding | null } = {}) {
+export function Sidebar({ branding, currentPath = '/' }: { branding?: Branding | null; currentPath?: string } = {}) {
   return (
     <div className="flex w-[228px] flex-none flex-col bg-sidebar-bg text-sidebar-fg">
       <div
@@ -64,23 +93,12 @@ export function Sidebar({ branding }: { branding?: Branding | null } = {}) {
         <div className="px-[18px] pb-2 text-[11px] font-extrabold uppercase tracking-[0.1em] text-sidebar-fg-50">
           Audit
         </div>
-        <a
-          href="#/"
-          data-testid="sidebar-active-item"
-          className="border-l-2 bg-sidebar-active px-[16px] py-[9px] text-sm font-medium text-sidebar-fg"
-          style={{ borderLeftColor: 'var(--brand-primary, #ec3013)' }}
-        >
+        <NavAnchor href="#/" path="/" currentPath={currentPath}>
           Dashboard
-        </a>
-        <button
-          type="button"
-          disabled
-          title="Coming soon"
-          className="flex cursor-not-allowed items-center justify-between px-[18px] py-[9px] text-left text-sm text-sidebar-fg-85 opacity-60"
-        >
-          <span>Discrepancies</span>
-          <SoonBadge />
-        </button>
+        </NavAnchor>
+        <NavAnchor href="#/discrepancies" path="/discrepancies" currentPath={currentPath}>
+          Discrepancies
+        </NavAnchor>
         <button
           type="button"
           disabled

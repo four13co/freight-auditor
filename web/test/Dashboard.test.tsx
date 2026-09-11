@@ -559,7 +559,8 @@ describe('Dashboard', () => {
     render(<Dashboard />);
     await waitFor(() => expect(screen.getAllByTestId('finding-row')).toHaveLength(3));
 
-    expect(screen.getByText('Discrepancies').closest('button')).toBeDisabled();
+    // 86e37r2rm: "Discrepancies" is no longer one of these disabled
+    // placeholders -- it's now a real link, covered by its own tests below.
     expect(screen.getByText('Invoices').closest('button')).toBeDisabled();
     expect(screen.getByText('Audit log').closest('button')).toBeDisabled();
     expect(screen.getByText('Settings').closest('button')).toBeDisabled();
@@ -601,8 +602,8 @@ describe('Dashboard', () => {
     render(<Dashboard />);
     await waitFor(() => expect(screen.getAllByTestId('finding-row')).toHaveLength(3));
 
+    // 86e37r2rm: "Discrepancies" is no longer disabled/Soon-badged -- excluded here.
     const disabledLabels = [
-      'Discrepancies',
       'Invoices',
       'Audit log',
       'Settings',
@@ -729,5 +730,30 @@ describe('Dashboard', () => {
     const dashboardItem = screen.getByTestId('sidebar-active-item');
     expect(dashboardItem.tagName).toBe('A');
     expect(dashboardItem).toHaveAttribute('href', '#/');
+  });
+
+  it('86e37r2rm AC2: the "Discrepancies" sidebar item is a real link to /discrepancies, not a disabled button', async () => {
+    render(<Dashboard />);
+    await waitFor(() => expect(screen.getAllByTestId('finding-row')).toHaveLength(3));
+
+    const discrepanciesItem = screen.getByText('Discrepancies').closest('a');
+    expect(discrepanciesItem).not.toBeNull();
+    expect(discrepanciesItem).toHaveAttribute('href', '#/discrepancies');
+  });
+
+  it('86e37r2rm AC1: clicking "Discrepancies" navigates to /#/discrepancies and renders the findings table there', async () => {
+    render(<Dashboard />);
+    await waitFor(() => expect(screen.getAllByTestId('finding-row')).toHaveLength(3));
+    fetchMock.mockClear();
+
+    fireEvent.click(screen.getByText('Discrepancies'));
+
+    await waitFor(() => expect(window.location.hash).toBe('#/discrepancies'));
+    await waitFor(() => expect(screen.getAllByTestId('finding-row')).toHaveLength(3));
+    // The Discrepancies route re-fetched its own findings -- it does not
+    // reuse "/"'s already-loaded rows, and it fetched no KPI summary (no
+    // KPI row exists on this page).
+    expect(fetchMock.mock.calls.some(([input]) => String(input).includes('/api/findings'))).toBe(true);
+    expect(screen.queryByTestId('kpi-row')).not.toBeInTheDocument();
   });
 });

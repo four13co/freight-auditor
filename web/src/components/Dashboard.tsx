@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
-import { HashRouter, Route, Routes } from 'react-router-dom';
+import { HashRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { Sidebar } from './Sidebar.js';
 import { Header } from './Header.js';
 import { PasskeyRegistration } from './PasskeyRegistration.js';
 import { KpiRow } from './KpiRow.js';
 import { FindingsTable } from './FindingsTable.js';
+import { DiscrepanciesView } from './DiscrepanciesView.js';
 import { GateFailuresPanel } from './GateFailuresPanel.js';
 import { ReviewQueues } from './ReviewQueues.js';
 import { RubricConflictQueue } from './RubricConflictQueue.js';
@@ -45,6 +46,18 @@ import {
  * that point.
  */
 type LoadStatus = 'loading' | 'error' | 'ready';
+
+/**
+ * 86e37r2rm: Sidebar must stay renderable standalone with no Router ancestor
+ * (Sidebar.test.tsx's bare `render(<Sidebar />)`), so it can't call
+ * useLocation itself -- this thin wrapper is the seam that does, since it's
+ * rendered inside HashRouter (a sibling of <Routes>, same as Sidebar was),
+ * and passes the current path down as a plain prop instead.
+ */
+function SidebarWithRoute({ branding }: { branding?: Branding | null }) {
+  const location = useLocation();
+  return <Sidebar branding={branding} currentPath={location.pathname} />;
+}
 
 /**
  * 86e37r2rb: HashRouter-wrapped so the Dashboard shell (Sidebar + Header,
@@ -131,7 +144,7 @@ export function Dashboard({ branding }: { branding?: Branding | null } = {}) {
   return (
     <HashRouter>
       <div className="flex h-screen w-full bg-[#eae9e9] text-[#201e1d]">
-        <Sidebar branding={branding} />
+        <SidebarWithRoute branding={branding} />
         <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
           <Header />
           <PasskeyRegistration />
@@ -200,6 +213,7 @@ export function Dashboard({ branding }: { branding?: Branding | null } = {}) {
                 </div>
               }
             />
+            <Route path="/discrepancies" element={<DiscrepanciesView />} />
           </Routes>
         </div>
       </div>

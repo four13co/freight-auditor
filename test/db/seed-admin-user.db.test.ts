@@ -61,6 +61,15 @@ describe('seedAdminUser (DB)', () => {
     expect(membership.rows[0].role).toBe('analyst');
   });
 
+  it('marks the account internal so App.tsx routes it to Dashboard, not the client portal', async () => {
+    const pool = getPool();
+    await seedAdminUser({ pool, password });
+
+    const user = await pool.query(`SELECT is_internal FROM app_user WHERE email = $1`, [ADMIN_EMAIL]);
+    expect(user.rowCount).toBe(1);
+    expect(user.rows[0].is_internal).toBe(true);
+  });
+
   it('is idempotent: running it twice does not error or duplicate the account/membership', async () => {
     const pool = getPool();
     await seedAdminUser({ pool, password });

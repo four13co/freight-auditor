@@ -6,6 +6,7 @@ import { PasskeyRegistration } from './PasskeyRegistration.js';
 import { KpiRow } from './KpiRow.js';
 import { FindingsTable } from './FindingsTable.js';
 import { DiscrepanciesView } from './DiscrepanciesView.js';
+import { InvoicesView } from './InvoicesView.js';
 import { AuditLogView } from './AuditLogView.js';
 import { SettingsView } from './SettingsView.js';
 import { GateFailuresPanel } from './GateFailuresPanel.js';
@@ -216,6 +217,7 @@ export function Dashboard({ branding }: { branding?: Branding | null } = {}) {
               }
             />
             <Route path="/discrepancies" element={<DiscrepanciesView />} />
+            <Route path="/invoices" element={<InvoicesView />} />
             <Route path="/audit-log" element={<AuditLogView />} />
             <Route path="/settings" element={<SettingsView />} />
           </Routes>

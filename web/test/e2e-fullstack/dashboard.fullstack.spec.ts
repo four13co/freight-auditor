@@ -103,3 +103,25 @@ test('86e37r2rm AC1: the sidebar "Discrepancies" link navigates to /#/discrepanc
   await expect(row.first()).toBeVisible();
   await expect(row.first()).toContainText(FIXTURE_CARRIER_NAME);
 });
+
+/**
+ * 86e37r2rt AC3: proves the real, built app -- not just the mocked unit/e2e
+ * suites -- routes to /invoices and renders live data from the real
+ * GET /api/invoices, behind the real tenant-auth + analyst-only preHandlers,
+ * same as this file's other tests. Deliberately does not assert an exact
+ * billedTotal figure -- unlike the fixture's single variance_finding (whose
+ * $100.00 billed amount comes from one specific charge_fact row), this
+ * invoice's summed billedTotal reflects EVERY charge_fact row the ingestion
+ * pipeline attached to it, which this suite doesn't pin to one value.
+ */
+test('86e37r2rt AC3: the sidebar "Invoices" link navigates to /#/invoices and renders live invoice data', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.getByTestId('kpi-row')).toBeVisible();
+
+  await page.getByText('Invoices').click();
+
+  await expect(page).toHaveURL(/\/#\/invoices$/);
+  const row = page.getByTestId('invoice-row').filter({ hasText: FIXTURE_INVOICE_NUMBER });
+  await expect(row.first()).toBeVisible();
+  await expect(row.first()).toContainText(FIXTURE_CARRIER_NAME);
+});

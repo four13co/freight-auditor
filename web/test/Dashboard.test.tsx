@@ -41,6 +41,11 @@ function mockFetchOnce(url: string) {
       events: [{ id: 'e-1', entity: 'dispute', entityId: null, event: 'created', actorKind: 'analyst', recordedAt: '2026-01-15T00:00:00Z' }],
     }), { status: 200 }));
   }
+  if (url.includes('/api/invoices')) {
+    return Promise.resolve(new Response(JSON.stringify({
+      invoices: [{ id: 'inv-1', invoiceNumber: 'INV-1', carrierName: 'Some Carrier', transactionSet: '210', status: 'ingested', currency: 'USD', createdAt: '2026-01-15T00:00:00Z', billedTotal: '100.0000' }],
+    }), { status: 200 }));
+  }
   if (url.includes('/api/branding')) {
     return Promise.resolve(new Response(JSON.stringify({
       branded: true, logoUrl: 'https://cdn.example.com/logo.png', primaryColor: '#112233', secondaryColor: '#445566',
@@ -569,10 +574,10 @@ describe('Dashboard', () => {
     render(<Dashboard />);
     await waitFor(() => expect(screen.getAllByTestId('finding-row')).toHaveLength(3));
 
-    // 86e37r2rm/86e37r2rv/86e37r2t4: "Discrepancies", "Audit log", and
-    // "Settings" are no longer among these disabled placeholders -- all
-    // three are now real links, covered by their own tests below.
-    expect(screen.getByText('Invoices').closest('button')).toBeDisabled();
+    // 86e37r2rm/86e37r2rv/86e37r2rt/86e37r2t4: "Discrepancies", "Audit log",
+    // "Invoices", and "Settings" are no longer among these disabled
+    // placeholders -- all four are now real links, covered by their own
+    // tests below.
     expect(screen.getByText('Mine, over $500').closest('button')).toBeDisabled();
     expect(screen.getByText('Estes accessorials').closest('button')).toBeDisabled();
     expect(screen.getByText('Aging > 5 days').closest('button')).toBeDisabled();
@@ -611,10 +616,10 @@ describe('Dashboard', () => {
     render(<Dashboard />);
     await waitFor(() => expect(screen.getAllByTestId('finding-row')).toHaveLength(3));
 
-    // 86e37r2rm/86e37r2rv/86e37r2t4: "Discrepancies", "Audit log", and
-    // "Settings" are no longer disabled/Soon-badged -- excluded here.
+    // 86e37r2rm/86e37r2rv/86e37r2rt/86e37r2t4: "Discrepancies", "Audit log",
+    // "Invoices", and "Settings" are no longer disabled/Soon-badged --
+    // excluded here.
     const disabledLabels = [
-      'Invoices',
       'Mine, over $500',
       'Estes accessorials',
       'Aging > 5 days',
@@ -784,6 +789,38 @@ describe('Dashboard', () => {
     await waitFor(() => expect(window.location.hash).toBe('#/audit-log'));
     await waitFor(() => expect(screen.getAllByTestId('audit-log-row')).toHaveLength(1));
     expect(fetchMock.mock.calls.some(([input]) => String(input).includes('/api/internal/audit-log'))).toBe(true);
+    expect(screen.queryByTestId('kpi-row')).not.toBeInTheDocument();
+  });
+
+  it('86e37r2rt AC4: the "Invoices" sidebar item is a real link to /invoices, not a disabled button', async () => {
+    // 86e37r2rt: the preceding "Audit log" click test above leaves
+    // window.location.hash at '#/audit-log' -- HashRouter reads that at
+    // mount, so a fresh <Dashboard /> here would otherwise land back on
+    // /audit-log instead of "/". The Discrepancies/Audit-log tests never hit
+    // this because DiscrepanciesView reuses FindingsTable's own 'finding-row'
+    // testid, so their identical wait-for assertion passes on either route by
+    // coincidence; /invoices renders a structurally different table, so this
+    // needs an explicit reset to be order-independent.
+    window.location.hash = '';
+    render(<Dashboard />);
+    await waitFor(() => expect(screen.getAllByTestId('finding-row')).toHaveLength(3));
+
+    const invoicesItem = screen.getByText('Invoices').closest('a');
+    expect(invoicesItem).not.toBeNull();
+    expect(invoicesItem).toHaveAttribute('href', '#/invoices');
+  });
+
+  it('86e37r2rt AC3: clicking "Invoices" navigates to /#/invoices and renders the invoice table there', async () => {
+    window.location.hash = '';
+    render(<Dashboard />);
+    await waitFor(() => expect(screen.getAllByTestId('finding-row')).toHaveLength(3));
+    fetchMock.mockClear();
+
+    fireEvent.click(screen.getByText('Invoices'));
+
+    await waitFor(() => expect(window.location.hash).toBe('#/invoices'));
+    await waitFor(() => expect(screen.getAllByTestId('invoice-row')).toHaveLength(1));
+    expect(fetchMock.mock.calls.some(([input]) => String(input).includes('/api/invoices'))).toBe(true);
     expect(screen.queryByTestId('kpi-row')).not.toBeInTheDocument();
   });
 

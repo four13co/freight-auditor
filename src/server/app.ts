@@ -6,6 +6,7 @@ import { registerMetricsRoutes } from './metrics-routes.js';
 import { registerBrandingRoutes } from './branding-routes.js';
 import { registerInternalBrandingRoutes } from './internal-branding-routes.js';
 import { registerAuditRunsRoutes } from './audit-runs-routes.js';
+import { registerInvoicesRoutes } from './invoices-routes.js';
 import { registerInvoiceDraftsRoutes } from './invoice-drafts-routes.js';
 import { registerEvidenceRoutes } from './evidence-routes.js';
 import { registerRuleGovernanceRoutes } from './rule-governance-routes.js';
@@ -83,6 +84,12 @@ export function buildApp(): FastifyInstance {
   // resource with its own raw-body content-type parser scoped to this
   // plugin only.
   void app.register(registerAuditRunsRoutes);
+
+  // Internal-analyst-facing invoice list (86e37r2rt): same tenant-auth +
+  // analyst-only preHandler pair as dispute-review-routes.ts's mutation
+  // sub-scope, applied at the top level here since every route in this file
+  // (there's only the one) must reject a portal session.
+  void app.register(registerInvoicesRoutes);
 
   // Invoice-drafts routes (86e2xb911): the PDF-upload draft/confirm flow,
   // additive alongside audit-runs-routes.ts's raw-EDI path -- same

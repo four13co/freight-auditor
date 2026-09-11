@@ -654,6 +654,39 @@ export async function fetchAuditLog(limit: number, offset: number): Promise<Audi
   return (await res.json()) as AuditLogPage;
 }
 
+/** Mirrors list-invoices.ts's InvoiceRow shape exactly (86e37r2rt): camelCase keys, billedTotal a string (pg numeric) or null when no charges exist. */
+export interface InvoiceRow {
+  id: string;
+  invoiceNumber: string | null;
+  carrierName: string | null;
+  transactionSet: string;
+  status: string;
+  currency: string | null;
+  createdAt: string;
+  billedTotal: string | null;
+}
+
+export interface InvoicesListParams {
+  carrier?: string;
+  status?: string;
+  limit?: number;
+  offset?: number;
+}
+
+/** Internal-analyst-facing invoice list (86e37r2rt), wired to the Sidebar/Dashboard /invoices route. */
+export async function fetchInvoices(params: InvoicesListParams = {}): Promise<InvoiceRow[]> {
+  const qs = new URLSearchParams();
+  if (params.carrier) qs.set('carrier', params.carrier);
+  if (params.status) qs.set('status', params.status);
+  if (params.limit !== undefined) qs.set('limit', String(params.limit));
+  if (params.offset !== undefined) qs.set('offset', String(params.offset));
+  const query = qs.toString();
+  const res = await fetch(`/api/invoices${query ? `?${query}` : ''}`, { headers: authHeaders() });
+  if (!res.ok) throw new Error(`GET /api/invoices failed: ${res.status}`);
+  const body = (await res.json()) as { invoices: InvoiceRow[] };
+  return body.invoices;
+}
+
 /**
  * 86e36yj9d: the Uploads section's own invoice-draft flow -- POST/confirm/
  * reject against portal-invoice-upload-routes.ts's client_admin-gated

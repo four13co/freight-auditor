@@ -82,3 +82,24 @@ test('86e37r2rb AC1: the sidebar "Dashboard" link navigates to /#/, and its cont
     .filter({ hasText: '$100.00' });
   await expect(row.first()).toBeVisible();
 });
+
+/**
+ * 86e37r2rm AC1: proves the real, built app -- not just the mocked unit/e2e
+ * suites -- routes to /discrepancies and renders live data from the real
+ * GET /api/findings, behind the real tenant-auth preHandler, same as this
+ * file's other tests. Deliberately does NOT assert on the KPI row (that
+ * guarantee belongs to the "/" tests above); this one is about the new route.
+ */
+test('86e37r2rm AC1: the sidebar "Discrepancies" link navigates to /#/discrepancies and renders live findings data', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.getByTestId('kpi-row')).toBeVisible();
+
+  await page.getByText('Discrepancies').click();
+
+  await expect(page).toHaveURL(/\/#\/discrepancies$/);
+  const row = page.getByTestId('finding-row')
+    .filter({ hasText: FIXTURE_INVOICE_NUMBER })
+    .filter({ hasText: '$100.00' });
+  await expect(row.first()).toBeVisible();
+  await expect(row.first()).toContainText(FIXTURE_CARRIER_NAME);
+});

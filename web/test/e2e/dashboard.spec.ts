@@ -116,6 +116,28 @@ test('clicking a finding row opens its detail view; Escape closes it', async ({ 
   await expect(detail).not.toBeVisible();
 });
 
+/**
+ * 86e37r2rm: proves the real, built app renders the dedicated /discrepancies
+ * route (a render test is part of the contract for any UI change, same as
+ * the rest of this file) -- reuses the same mocked /api/findings response as
+ * the happy-path test above, on the new route, with no KPI row alongside it.
+ */
+test('86e37r2rm AC1: the "Discrepancies" sidebar link navigates to /#/discrepancies and renders the findings table there', async ({ page }) => {
+  await page.route('**/api/findings**', (route) => route.fulfill({ json: { findings: ROWS } }));
+  await page.route('**/api/findings/summary', (route) => route.fulfill({ json: SUMMARY }));
+
+  await page.goto('/');
+  await expect(page.getByTestId('kpi-row')).toBeVisible();
+
+  await page.getByText('Discrepancies').click();
+
+  await expect(page).toHaveURL(/\/#\/discrepancies$/);
+  await expect(page.getByTestId('finding-row')).toHaveCount(3);
+  await expect(page.getByTestId('kpi-row')).not.toBeVisible();
+
+  await page.screenshot({ path: 'test-results/discrepancies-full.png', fullPage: true });
+});
+
 test('analyst reviews an extraction abstention and records its answer source', async ({ page }) => {
   const documentId = '44444444-4444-4444-8444-444444444444';
   const questionId = '33333333-3333-4333-8333-333333333333';

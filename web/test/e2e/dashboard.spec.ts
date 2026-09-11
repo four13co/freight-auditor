@@ -169,6 +169,37 @@ test('86e37r2rv AC3: the "Audit log" sidebar link navigates to /#/audit-log and 
   await page.screenshot({ path: 'test-results/audit-log-full.png', fullPage: true });
 });
 
+/**
+ * 86e37r2rt AC3: proves the real, built app renders the dedicated /invoices
+ * route (a render test is part of the contract for any UI change, same as
+ * the rest of this file) -- the sidebar link navigates there and the
+ * invoice list endpoint's mocked rows render, with billedTotal formatted the
+ * same way FindingsTable's own money columns are.
+ */
+test('86e37r2rt AC3: the "Invoices" sidebar link navigates to /#/invoices and renders the invoice table there', async ({ page }) => {
+  await page.route('**/api/findings**', (route) => route.fulfill({ json: { findings: ROWS } }));
+  await page.route('**/api/findings/summary', (route) => route.fulfill({ json: SUMMARY }));
+  await page.route('**/api/invoices**', (route) => route.fulfill({
+    json: {
+      invoices: [
+        { id: 'inv-1', invoiceNumber: 'INV-1', carrierName: 'Saia LTL', transactionSet: '210', status: 'ingested', currency: 'USD', createdAt: '2026-01-15T00:00:00Z', billedTotal: '1250.5000' },
+        { id: 'inv-2', invoiceNumber: 'INV-2', carrierName: 'Estes', transactionSet: '210', status: 'ingested', currency: 'USD', createdAt: '2026-01-16T00:00:00Z', billedTotal: null },
+      ],
+    },
+  }));
+
+  await page.goto('/');
+  await expect(page.getByTestId('kpi-row')).toBeVisible();
+
+  await page.getByText('Invoices').click();
+
+  await expect(page).toHaveURL(/\/#\/invoices$/);
+  await expect(page.getByTestId('invoice-row')).toHaveCount(2);
+  await expect(page.getByTestId('kpi-row')).not.toBeVisible();
+
+  await page.screenshot({ path: 'test-results/invoices-full.png', fullPage: true });
+});
+
 test('analyst reviews an extraction abstention and records its answer source', async ({ page }) => {
   const documentId = '44444444-4444-4444-8444-444444444444';
   const questionId = '33333333-3333-4333-8333-333333333333';

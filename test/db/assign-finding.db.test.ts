@@ -42,6 +42,7 @@ describe('assignFinding (DB)', () => {
     const owner = await pool.connect();
     try {
       await owner.query(`DELETE FROM audit_event WHERE client_id IN ($1, $2)`, [clientAId, clientBId]);
+      await owner.query(`DELETE FROM finding_assignment_event WHERE client_id IN ($1, $2)`, [clientAId, clientBId]);
       await owner.query(`DELETE FROM variance_finding WHERE client_id IN ($1, $2)`, [clientAId, clientBId]);
       await owner.query(`DELETE FROM charge_fact WHERE client_id IN ($1, $2)`, [clientAId, clientBId]);
       await owner.query(`DELETE FROM payment_gate_decision WHERE client_id IN ($1, $2)`, [clientAId, clientBId]);
@@ -174,6 +175,27 @@ describe('assignFinding (DB)', () => {
       const mineIds = mine.map((r) => r.id);
       expect(mineIds).toContain(assignedId);
       expect(mineIds).not.toContain(unassignedId);
+    });
+  });
+
+  it('Review fix (86e37r2t8): an assign/unassign/assign/unassign toggle writes 4 distinct audit_event rows, none dropped by ON CONFLICT', async () => {
+    await withTenantTx({ clientIds: [clientAId], internal: true }, async (c) => {
+      const id = await seedFinding(c, { clientId: clientAId });
+
+      await assignFinding(c, id, analystUserId, analystUserId);
+      await assignFinding(c, id, null, analystUserId);
+      await assignFinding(c, id, analystUserId, analystUserId);
+      await assignFinding(c, id, null, analystUserId);
+
+      const ledger = await c.query(
+        `SELECT id, event FROM audit_event WHERE entity = 'variance_finding' AND entity_id = $1`,
+        [id],
+      );
+      expect(ledger.rows).toHaveLength(4);
+      const ids = ledger.rows.map((r) => r.id);
+      expect(new Set(ids).size).toBe(4);
+      expect(ledger.rows.filter((r) => r.event === 'finding.assigned')).toHaveLength(2);
+      expect(ledger.rows.filter((r) => r.event === 'finding.unassigned')).toHaveLength(2);
     });
   });
 

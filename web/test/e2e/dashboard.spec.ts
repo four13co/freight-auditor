@@ -201,6 +201,51 @@ test('86e37r2rt AC3: the "Invoices" sidebar link navigates to /#/invoices and re
 });
 
 /**
+ * 86e387qpv AC1/AC2: proves the real, built app renders the /claims route --
+ * the sidebar link navigates there, the claims list endpoint's mocked rows
+ * render, and clicking a row opens the existing, already-tested ClaimDetail
+ * drawer (P5.B.5) with that row's real detail -- the fix for the "orphaned
+ * component" problem this item exists to close (86e387gmj gap 1).
+ */
+test('86e387qpv AC1/AC2: the "Claims" sidebar link navigates to /#/claims, renders the claims table, and a row click opens ClaimDetail', async ({ page }) => {
+  await page.route('**/api/findings**', (route) => route.fulfill({ json: { findings: ROWS } }));
+  await page.route('**/api/findings/summary', (route) => route.fulfill({ json: SUMMARY }));
+  const CLAIM_ID = '30000000-0000-4000-8000-000000000001';
+  await page.route('**/api/claims/**', (route) => route.fulfill({
+    json: {
+      id: CLAIM_ID,
+      disputeId: null,
+      amountClaimed: '1876.4000',
+      currency: 'USD',
+      status: 'open',
+      openedAt: '2026-08-01T00:00:00.000Z',
+      agingDeadlineAt: '2026-08-15T00:00:00.000Z',
+      recoveryEvents: [],
+      cumulativeRecovered: '0.0000',
+    },
+  }));
+  await page.route('**/api/claims?**', (route) => route.fulfill({
+    json: { claims: [{ id: CLAIM_ID, disputeId: null, amountClaimed: '1876.4000', currency: 'USD', status: 'open', openedAt: '2026-08-01T00:00:00.000Z', agingDeadlineAt: '2026-08-15T00:00:00.000Z' }] },
+  }));
+
+  await page.goto('/');
+  await expect(page.getByTestId('kpi-row')).toBeVisible();
+
+  await page.getByText('Claims').click();
+
+  await expect(page).toHaveURL(/\/#\/claims$/);
+  await expect(page.getByTestId('claim-row')).toHaveCount(1);
+  await expect(page.getByTestId('kpi-row')).not.toBeVisible();
+
+  await page.getByTestId('claim-row').click();
+  const drawer = page.getByTestId('claim-detail');
+  await expect(drawer).toBeVisible();
+  await expect(drawer.getByText('$1,876.40')).toBeVisible();
+
+  await page.screenshot({ path: 'test-results/claims-full.png', fullPage: true });
+});
+
+/**
 /**
  * 86e37r2t8 AC6: proves the real, built app renders /discrepancies with the
  * assignee=me + minAmount presets applied when reached via the "Mine, over

@@ -43,6 +43,7 @@ describe('Sidebar', () => {
       'Discrepancies',
       'Audit log',
       'Invoices',
+      'Claims',
       'Settings',
       'Mine, over $500',
       'Aging > 5 days',
@@ -85,6 +86,23 @@ describe('Sidebar', () => {
     render(<Sidebar currentPath="/discrepancies" />);
     const active = screen.getByTestId('sidebar-active-item');
     expect(active).toHaveTextContent('Discrepancies');
+    expect(screen.getByText('Dashboard')).not.toHaveClass('bg-sidebar-active');
+  });
+
+  it('86e387qpv AC3: "Claims" is a real link, not disabled, cursor-not-allowed, or Soon-badged', () => {
+    render(<Sidebar />);
+    const link = screen.getByText('Claims').closest('a');
+    expect(link).not.toBeNull();
+    expect(link).toHaveAttribute('href', '#/claims');
+    expect(link).not.toHaveAttribute('disabled');
+    expect(link?.className).not.toMatch(/cursor-not-allowed/);
+    expect(link?.querySelector('span')).toBeNull();
+  });
+
+  it('86e387qpv: "Claims" becomes the active item when currentPath is /claims, and Dashboard is no longer active', () => {
+    render(<Sidebar currentPath="/claims" />);
+    const active = screen.getByTestId('sidebar-active-item');
+    expect(active).toHaveTextContent('Claims');
     expect(screen.getByText('Dashboard')).not.toHaveClass('bg-sidebar-active');
   });
 

@@ -402,3 +402,168 @@ test('analyst reviews an extraction abstention and records its answer source', a
   expect(submitted).toEqual({ answer: 'USD', answer_source: 'carrier_confirmed' });
   await page.screenshot({ path: 'test-results/extraction-review-answered.png', fullPage: true });
 });
+
+/**
+ * 86e387gmj gap3: each sub-page's own loading/error UI (RTL-tested via
+ * *.test.tsx, never hit by Playwright before this) -- a gated route holds
+ * the fetch open long enough to observe the real loading testid, then
+ * resolves it as a 500 to prove the distinct error testid, mirroring the
+ * home Dashboard's own page.route(..., () => route.fulfill({ status: 500 }))
+ * pattern one level down. findings/summary are mocked in every case (same
+ * convention as the existing /discrepancies /invoices /audit-log render
+ * tests above) since Dashboard's own top-level fetch runs unconditionally
+ * regardless of route.
+ */
+test('86e387gmj gap3: /discrepancies shows its loading state, then its own distinct error state on fetch failure', async ({ page }) => {
+  await page.route('**/api/findings/summary', (route) => route.fulfill({ json: SUMMARY }));
+
+  let resolveGate: () => void;
+  const gate = new Promise<void>((resolve) => { resolveGate = resolve; });
+  await page.route('**/api/findings**', async (route) => {
+    await gate;
+    return route.fulfill({ status: 500, body: '' });
+  });
+
+  await page.goto('/#/discrepancies');
+  await expect(page.getByTestId('discrepancies-loading')).toBeVisible();
+
+  resolveGate!();
+  await expect(page.getByTestId('discrepancies-error')).toBeVisible();
+  await expect(page.getByTestId('discrepancies-loading')).not.toBeVisible();
+});
+
+test('86e387gmj gap3: /invoices shows its loading state, then its own distinct error state on fetch failure', async ({ page }) => {
+  await page.route('**/api/findings**', (route) => route.fulfill({ json: { findings: ROWS } }));
+  await page.route('**/api/findings/summary', (route) => route.fulfill({ json: SUMMARY }));
+
+  let resolveGate: () => void;
+  const gate = new Promise<void>((resolve) => { resolveGate = resolve; });
+  await page.route('**/api/invoices**', async (route) => {
+    await gate;
+    return route.fulfill({ status: 500, body: '' });
+  });
+
+  await page.goto('/#/invoices');
+  await expect(page.getByTestId('invoices-loading')).toBeVisible();
+
+  resolveGate!();
+  await expect(page.getByTestId('invoices-error')).toBeVisible();
+  await expect(page.getByTestId('invoices-loading')).not.toBeVisible();
+});
+
+test('86e387gmj gap3: /audit-log shows its loading state, then its own distinct error state on fetch failure', async ({ page }) => {
+  await page.route('**/api/findings**', (route) => route.fulfill({ json: { findings: ROWS } }));
+  await page.route('**/api/findings/summary', (route) => route.fulfill({ json: SUMMARY }));
+
+  let resolveGate: () => void;
+  const gate = new Promise<void>((resolve) => { resolveGate = resolve; });
+  await page.route('**/api/internal/audit-log**', async (route) => {
+    await gate;
+    return route.fulfill({ status: 500, body: '' });
+  });
+
+  await page.goto('/#/audit-log');
+  await expect(page.getByTestId('audit-log-loading')).toBeVisible();
+
+  resolveGate!();
+  await expect(page.getByTestId('audit-log-error')).toBeVisible();
+  await expect(page.getByTestId('audit-log-loading')).not.toBeVisible();
+});
+
+/**
+ * 86e387gmj gap3: Settings has no load-error state (fetchBranding() fails
+ * closed to UNBRANDED rather than rejecting -- see SettingsView.tsx's own
+ * header comment), so its real failure surface is a save error: the PATCH
+ * to /api/internal/branding failing after a valid edit, distinct from the
+ * GET-failure pattern the other three sub-pages use. Still proves the
+ * loading testid first, same as the other three.
+ */
+test('86e387gmj gap3: /settings shows its loading state, then a save-failure error when the branding PATCH fails', async ({ page }) => {
+  await page.route('**/api/findings**', (route) => route.fulfill({ json: { findings: ROWS } }));
+  await page.route('**/api/findings/summary', (route) => route.fulfill({ json: SUMMARY }));
+
+  let resolveGate: () => void;
+  const gate = new Promise<void>((resolve) => { resolveGate = resolve; });
+  await page.route('**/api/branding', async (route) => {
+    await gate;
+    return route.fulfill({ json: { branded: true, logoUrl: 'https://cdn.example.com/logo.png', primaryColor: '#112233', secondaryColor: null } });
+  });
+  await page.route('**/api/internal/branding', (route) => route.fulfill({ status: 500, body: '' }));
+
+  await page.goto('/#/settings');
+  await expect(page.getByTestId('settings-loading')).toBeVisible();
+
+  resolveGate!();
+  await expect(page.getByLabel('Primary color')).toHaveValue('#112233');
+
+  await page.getByRole('button', { name: 'Save' }).click();
+  await expect(page.getByTestId('settings-save-error')).toBeVisible();
+});
+
+/**
+ * 86e387gmj gap4: closes 86e37r2t8's own self-flagged uncertainty ("not
+ * verified beyond the e2e/screenshot's default viewport") -- the identical
+ * assign-to-me -> Unassign flow, at a narrow (375px) viewport, proving the
+ * Assignee column and its action button still work there. FindingsTable.tsx's
+ * grid has no responsive column-hiding class -- at 375px the row's fixed-width
+ * columns (~984px) overflow the sidebar-narrowed content area, so the
+ * Assignee column is reached by horizontal scroll, not by fitting on-screen.
+ * That's the same desktop-first, horizontally-scrollable-table pattern this
+ * component already uses at any width (no mobile redesign is in this item's
+ * scope -- No-gos: test-only). Viewport height is taller than a real phone's
+ * (375x1400, not 375x800): Dashboard's home route stacks several analyst
+ * panels above FindingsTable, and a short viewport squeezes FindingsTable's
+ * own flex-1 box down to a sliver where even a scrolled-into-view row is
+ * still vertically clipped by its overflow-hidden ancestor -- confirmed by
+ * comparing elementFromPoint at both heights during investigation. 375x1400
+ * isolates the width-only behavior this gap is actually about; a real user
+ * would scroll the page down first, same effect. explicit
+ * scrollIntoViewIfNeeded() (rather than relying on click()'s own
+ * auto-scroll) is what actually moves the container's scrollLeft here.
+ */
+test('86e387gmj gap4: assigning a finding to self still works at a narrow (375px) viewport, reached via horizontal scroll', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 1400 });
+
+  let assignedToUserId: string | null = null;
+  await page.route('**/api/findings**', (route) => {
+    const withAssignee = ROWS.map((r) => (r.id === 'f1' ? { ...r, assignedToUserId } : r));
+    return route.fulfill({ json: { findings: withAssignee } });
+  });
+  await page.route('**/api/findings/summary', (route) => route.fulfill({ json: SUMMARY }));
+  await page.route('**/api/findings/f1/assign', (route) => {
+    const body = route.request().postDataJSON() as { userId: string | null };
+    assignedToUserId = body.userId === null ? null : 'user-1';
+    return route.fulfill({ json: { assignedToUserId } });
+  });
+
+  await page.goto('/');
+  await expect(page.getByTestId('finding-row')).toHaveCount(3);
+
+  const firstRow = page.getByTestId('finding-row').first();
+  const assignButton = firstRow.getByText('Assign to me');
+  await assignButton.scrollIntoViewIfNeeded();
+  await expect(assignButton).toBeVisible();
+  await assignButton.click();
+
+  await expect(firstRow.getByText('Unassign')).toBeVisible();
+
+  await page.screenshot({ path: 'test-results/narrow-viewport-assign.png', fullPage: true });
+});
+
+/**
+ * 86e387gmj gap5: Header.tsx's search/Export/New-audit-run controls are
+ * real disabled form elements (86e2uv1r6), previously asserted only via RTL
+ * (Dashboard.test.tsx AC1-AC3) -- toBeDisabled() only passes on a true
+ * `disabled` attribute, which is the whole point of proving it in a real
+ * browser rather than jsdom.
+ */
+test('86e387gmj gap5: the header search input, Export, and New audit run controls are really disabled in a real browser', async ({ page }) => {
+  await page.route('**/api/findings**', (route) => route.fulfill({ json: { findings: ROWS } }));
+  await page.route('**/api/findings/summary', (route) => route.fulfill({ json: SUMMARY }));
+
+  await page.goto('/');
+
+  await expect(page.getByPlaceholder('Search invoice, PRO, or claim ID')).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Export' })).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'New audit run' })).toBeDisabled();
+});

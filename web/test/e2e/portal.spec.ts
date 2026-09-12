@@ -169,3 +169,115 @@ test('AC3: audit log pagination keeps the same live-region node and updates its 
   const afterHandle = await liveRegion.elementHandle();
   expect(await page.evaluate(([a, b]) => a === b, [beforeHandle, afterHandle])).toBe(true);
 });
+
+/**
+ * 86e387gmj gap2: AC1's "does it mount" check proves ClientFindingsView's
+ * container renders; this goes past that to its actual real-browser
+ * behavior -- real row content, and its own explicit empty state (not a
+ * ComingSoon placeholder, not the loading span) when the portal API
+ * resolves zero findings.
+ */
+test('86e387gmj gap2: ClientFindingsView renders real finding rows from /api/portal/findings', async ({ page }) => {
+  await page.route('**/api/portal/findings', (route) => route.fulfill({ json: { findings: [
+    {
+      id: 'f-1', auditRunId: 'ar-1', invoiceId: 'inv-1', invoiceNumber: 'INV-1', carrierName: 'Saia LTL',
+      billed: '1250.5000', expected: '1000.0000', varianceAmount: '250.5000', direction: 'OVERCHARGE',
+      status: 'open', createdAt: '2026-01-15T00:00:00Z', ruleDescription: null,
+    },
+  ] } }));
+
+  await page.goto('/#/findings');
+
+  await expect(page.getByTestId('client-findings-row')).toHaveCount(1);
+  const row = page.getByTestId('client-findings-row');
+  await expect(row.getByText('INV-1')).toBeVisible();
+  await expect(row.getByText('Saia LTL')).toBeVisible();
+});
+
+test('86e387gmj gap2: ClientFindingsView shows its own empty state, not the table, with zero findings', async ({ page }) => {
+  await page.route('**/api/portal/findings', (route) => route.fulfill({ json: { findings: [] } }));
+
+  await page.goto('/#/findings');
+
+  await expect(page.getByTestId('client-findings-empty')).toBeVisible();
+  await expect(page.getByTestId('client-findings-table')).not.toBeVisible();
+});
+
+/**
+ * 86e387gmj gap2: ClientClaimDocumentsView, driven by ClaimsSection's own
+ * "Documents claim ID" picker (portal-claim-documents-picker) -- scoped by
+ * the picker's testid throughout, since "Claim ID" and "Documents claim ID"
+ * would otherwise collide under substring name matching (portal.spec.ts's
+ * own existing dispute-picker convention).
+ */
+test('86e387gmj gap2: selecting a claim in the Documents picker renders its real document rows', async ({ page }) => {
+  await page.route('**/api/portal/claims/c-1/documents', (route) => route.fulfill({ json: { documents: [
+    { id: 'doc-1', sha256: 'a'.repeat(64), storageUri: 's3://bucket/doc-1.pdf' },
+  ] } }));
+
+  await page.goto('/#/claims');
+  await expect(page.getByTestId('client-claim-documents-not-selected')).toBeVisible();
+
+  await page.getByTestId('portal-claim-documents-picker').getByRole('textbox', { name: 'Documents claim ID' }).fill('c-1');
+  await page.getByTestId('portal-claim-documents-picker').getByRole('button', { name: 'View' }).click();
+
+  const content = page.getByTestId('client-claim-documents-content');
+  await expect(content).toBeVisible();
+  await expect(content.getByTestId('client-claim-documents-row')).toHaveCount(1);
+  await expect(content).toBeFocused();
+});
+
+test('86e387gmj gap2: an empty claim documents result shows the empty state, not the table', async ({ page }) => {
+  await page.route('**/api/portal/claims/c-2/documents', (route) => route.fulfill({ json: { documents: [] } }));
+
+  await page.goto('/#/claims');
+  await page.getByTestId('portal-claim-documents-picker').getByRole('textbox', { name: 'Documents claim ID' }).fill('c-2');
+  await page.getByTestId('portal-claim-documents-picker').getByRole('button', { name: 'View' }).click();
+
+  await expect(page.getByTestId('client-claim-documents-empty')).toBeVisible();
+  await expect(page.getByTestId('client-claim-documents-table')).not.toBeVisible();
+});
+
+/**
+ * 86e387gmj gap2: ClientFindingEvidenceView, driven by FindingsSection's own
+ * "Finding ID" picker (portal-finding-evidence-picker) -- real detail-chain
+ * render, plus the error state on a failed evidence fetch (never exercised
+ * beyond AC1's mount check before this).
+ */
+test('86e387gmj gap2: selecting a finding in the evidence picker renders its real defensibility-chain detail', async ({ page }) => {
+  await page.route('**/api/portal/findings', (route) => route.fulfill({ json: { findings: [] } }));
+  await page.route('**/api/portal/findings/f-1/evidence', (route) => route.fulfill({ json: {
+    finding: { id: 'f-1', auditRunId: 'ar-1', classification: 'variance', varianceAmount: '20.0000', currency: 'USD', evaluatedExpr: {} },
+    criterion: { id: 'crit-1', key: 'CONTRACT.RATE_VARIANCE' },
+    ruleVersion: { id: 'rv-1', astHash: 'hash' },
+    clause: { id: 'cl-1', reference: 'Clause 4.2', page: '3' },
+    rateCell: { id: 'rc-1', reference: 'Lane ABC' },
+    sourceDocument: null,
+    transportDocument: { id: 'td-1', number: 'PRO-123', type: 'BOL', sourceDocumentId: null },
+    contributors: { billedChargeFactIds: [], expectedChargeIds: [] },
+  } }));
+
+  await page.goto('/#/findings');
+  await expect(page.getByTestId('client-finding-evidence-empty')).toBeVisible();
+
+  await page.getByTestId('portal-finding-evidence-picker').getByRole('textbox', { name: 'Finding ID' }).fill('f-1');
+  await page.getByTestId('portal-finding-evidence-picker').getByRole('button', { name: 'View' }).click();
+
+  const detail = page.getByTestId('client-finding-evidence-detail');
+  await expect(detail).toBeVisible();
+  await expect(detail.getByText('CONTRACT.RATE_VARIANCE')).toBeVisible();
+  await expect(detail.getByText('Clause 4.2')).toBeVisible();
+  await expect(detail.getByText('PRO-123')).toBeVisible();
+  await expect(detail).toBeFocused();
+});
+
+test('86e387gmj gap2: a failed evidence fetch shows the evidence error state', async ({ page }) => {
+  await page.route('**/api/portal/findings', (route) => route.fulfill({ json: { findings: [] } }));
+  await page.route('**/api/portal/findings/f-2/evidence', (route) => route.fulfill({ status: 500, body: '' }));
+
+  await page.goto('/#/findings');
+  await page.getByTestId('portal-finding-evidence-picker').getByRole('textbox', { name: 'Finding ID' }).fill('f-2');
+  await page.getByTestId('portal-finding-evidence-picker').getByRole('button', { name: 'View' }).click();
+
+  await expect(page.getByTestId('client-finding-evidence-error')).toBeVisible();
+});

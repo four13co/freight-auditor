@@ -84,6 +84,9 @@ export function Sidebar({ branding, currentPath = '/' }: { branding?: Branding |
         <div className="px-[18px] pb-2 pt-[22px] text-[11px] font-extrabold uppercase tracking-[0.1em] text-sidebar-fg-50">
           Records
         </div>
+        <NavAnchor href="#/claims" path="/claims" currentPath={currentPath}>
+          Claims
+        </NavAnchor>
         <NavAnchor href="#/audit-log" path="/audit-log" currentPath={currentPath}>
           Audit log
         </NavAnchor>

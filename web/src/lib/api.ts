@@ -427,6 +427,36 @@ export async function fetchClaimDetail(id: string): Promise<ClaimDetail> {
   return (await res.json()) as ClaimDetail;
 }
 
+/** Mirrors list-claims.ts's ClaimRow shape exactly (86e387qpv): camelCase keys, money fields as strings (pg numeric), openedAt/agingDeadlineAt as ISO strings over the wire. */
+export interface ClaimListRow {
+  id: string;
+  disputeId: string | null;
+  amountClaimed: string;
+  currency: string | null;
+  status: string;
+  openedAt: string;
+  agingDeadlineAt: string | null;
+}
+
+export interface ClaimsListParams {
+  status?: string;
+  limit?: number;
+  offset?: number;
+}
+
+/** Internal-analyst-facing claims list (86e387qpv), wired to the Sidebar/Dashboard /claims route -- gives ClaimDetail (P5.B.5) a real caller. */
+export async function fetchClaims(params: ClaimsListParams = {}): Promise<ClaimListRow[]> {
+  const qs = new URLSearchParams();
+  if (params.status) qs.set('status', params.status);
+  if (params.limit !== undefined) qs.set('limit', String(params.limit));
+  if (params.offset !== undefined) qs.set('offset', String(params.offset));
+  const query = qs.toString();
+  const res = await fetch(`/api/claims${query ? `?${query}` : ''}`, { headers: authHeaders() });
+  if (!res.ok) throw new Error(`GET /api/claims failed: ${res.status}`);
+  const body = (await res.json()) as { claims: ClaimListRow[] };
+  return body.claims;
+}
+
 /** Mirrors get-dispute-detail.ts's DisputeDetail shape exactly: camelCase keys, money fields as strings, createdAt as an ISO string over the wire. */
 export interface DisputeLineRow {
   id: string;

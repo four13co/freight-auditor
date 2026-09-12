@@ -8,6 +8,7 @@ import { FindingsTable } from './FindingsTable.js';
 import { DiscrepanciesView } from './DiscrepanciesView.js';
 import { InvoicesView } from './InvoicesView.js';
 import { AuditLogView } from './AuditLogView.js';
+import { ClaimsView } from './ClaimsView.js';
 import { SettingsView } from './SettingsView.js';
 import { GateFailuresPanel } from './GateFailuresPanel.js';
 import { ReviewQueues } from './ReviewQueues.js';
@@ -221,6 +222,7 @@ export function Dashboard({ branding }: { branding?: Branding | null } = {}) {
             />
             <Route path="/discrepancies" element={<DiscrepanciesView />} />
             <Route path="/invoices" element={<InvoicesView />} />
+            <Route path="/claims" element={<ClaimsView />} />
             <Route path="/audit-log" element={<AuditLogView />} />
             <Route path="/settings" element={<SettingsView />} />
           </Routes>

@@ -23,6 +23,7 @@ import { registerPortalAdminRoutes } from './portal-admin-routes.js';
 import { registerRecoveryReportRoutes } from './recovery-report-routes.js';
 import { registerPortalInvoiceUploadRoutes } from './portal-invoice-upload-routes.js';
 import { registerPortalContractUploadRoutes } from './portal-contract-upload-routes.js';
+import { registerTenantAdminRoutes } from './tenant-admin-routes.js';
 
 /**
  * Build the Fastify application instance.
@@ -159,6 +160,12 @@ export function buildApp(): FastifyInstance {
   // own /api/contracts (registered above, shared registerTenantAuthPreHandler,
   // left unmodified).
   void app.register(registerPortalContractUploadRoutes);
+
+  // Tenant lifecycle admin (86e38rdnm): create tenants, configure branding,
+  // assign users -- own preHandler (tenant-admin-auth.ts), a genuinely
+  // cross-client surface distinct from every registerTenantAuthPreHandler
+  // consumer above.
+  void app.register(registerTenantAdminRoutes);
 
   return app;
 }

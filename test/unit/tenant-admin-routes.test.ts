@@ -4,6 +4,7 @@ import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest }
 const INTERNAL_USER_ID = '33333333-3333-4333-8333-333333333333';
 const TENANT_ID = '11111111-1111-4111-8111-111111111111';
 const MEMBERSHIP_ID = '44444444-4444-4444-8444-444444444444';
+const INVALID_ID = 'not-a-uuid';
 
 function mockAuth(isInternal: boolean) {
   vi.doMock('../../src/modules/identity/tenant-admin-auth.js', () => ({
@@ -56,6 +57,7 @@ describe('tenant-admin-routes', () => {
     vi.doUnmock('../../src/modules/identity/get-client-detail.js');
     vi.doUnmock('../../src/modules/identity/update-client.js');
     vi.doUnmock('../../src/modules/identity/create-customer-branding.js');
+    vi.doUnmock('../../src/modules/identity/update-customer-branding.js');
     vi.doUnmock('../../src/modules/identity/create-membership.js');
     vi.doUnmock('../../src/modules/identity/list-tenant-members.js');
     vi.doUnmock('../../src/modules/identity/remove-membership.js');
@@ -113,6 +115,30 @@ describe('tenant-admin-routes', () => {
     expect(response.statusCode).toBe(400);
   });
 
+  it('rejects tenant creation with 400 on a missing name', async () => {
+    mockAuth(true);
+    mockTx();
+    const { registerTenantAdminRoutes } = await import('../../src/server/tenant-admin-routes.js');
+    app = Fastify();
+    await app.register(registerTenantAdminRoutes);
+    await app.ready();
+
+    const response = await app.inject({ method: 'POST', url: '/api/internal/tenants', payload: { slug: 'acme' } });
+    expect(response.statusCode).toBe(400);
+  });
+
+  it('GET /api/internal/tenants/:id rejects an invalid id with 400', async () => {
+    mockAuth(true);
+    mockTx();
+    const { registerTenantAdminRoutes } = await import('../../src/server/tenant-admin-routes.js');
+    app = Fastify();
+    await app.register(registerTenantAdminRoutes);
+    await app.ready();
+
+    const response = await app.inject({ method: 'GET', url: `/api/internal/tenants/${INVALID_ID}` });
+    expect(response.statusCode).toBe(400);
+  });
+
   it('returns 409 when the slug already exists', async () => {
     mockAuth(true);
     mockTx();
@@ -131,6 +157,45 @@ describe('tenant-admin-routes', () => {
       method: 'POST', url: '/api/internal/tenants', payload: { name: 'Acme', slug: 'acme' },
     });
     expect(response.statusCode).toBe(409);
+  });
+
+  it('propagates an unexpected (non-unique-violation) tenant creation error', async () => {
+    mockAuth(true);
+    mockTx();
+    vi.doMock('../../src/modules/identity/onboarding.js', () => ({
+      createClient: vi.fn(async () => {
+        throw new Error('connection reset');
+      }),
+    }));
+    const { registerTenantAdminRoutes } = await import('../../src/server/tenant-admin-routes.js');
+    app = Fastify();
+    await app.register(registerTenantAdminRoutes);
+    await app.ready();
+
+    const response = await app.inject({
+      method: 'POST', url: '/api/internal/tenants', payload: { name: 'Acme', slug: 'acme' },
+    });
+    expect(response.statusCode).toBe(500);
+  });
+
+  it.each([
+    ['limit too low', { limit: '0' }],
+    ['limit not an integer', { limit: 'abc' }],
+    ['limit too high', { limit: '9999' }],
+    ['offset negative', { offset: '-1' }],
+    ['offset not an integer', { offset: 'abc' }],
+    ['cursor combined with offset', { cursor: 'abc', offset: '0' }],
+    ['invalid cursor', { cursor: 'not-a-valid-cursor' }],
+  ])('GET /api/internal/tenants rejects with 400: %s', async (_label, query) => {
+    mockAuth(true);
+    mockTx();
+    const { registerTenantAdminRoutes } = await import('../../src/server/tenant-admin-routes.js');
+    app = Fastify();
+    await app.register(registerTenantAdminRoutes);
+    await app.ready();
+
+    const response = await app.inject({ method: 'GET', url: '/api/internal/tenants', query });
+    expect(response.statusCode).toBe(400);
   });
 
   it('GET /api/internal/tenants lists tenants', async () => {
@@ -200,6 +265,46 @@ describe('tenant-admin-routes', () => {
     expect(response.json().isActive).toBe(false);
   });
 
+  it('PATCH /api/internal/tenants/:id rejects an invalid tenant id with 400', async () => {
+    mockAuth(true);
+    mockTx();
+    const { registerTenantAdminRoutes } = await import('../../src/server/tenant-admin-routes.js');
+    app = Fastify();
+    await app.register(registerTenantAdminRoutes);
+    await app.ready();
+
+    const response = await app.inject({ method: 'PATCH', url: `/api/internal/tenants/${INVALID_ID}`, payload: { isActive: false } });
+    expect(response.statusCode).toBe(400);
+  });
+
+  it.each([
+    ['empty name', { name: '' }],
+    ['non-boolean isActive', { isActive: 'yes' }],
+  ])('PATCH /api/internal/tenants/:id rejects with 400: %s', async (_label, payload) => {
+    mockAuth(true);
+    mockTx();
+    const { registerTenantAdminRoutes } = await import('../../src/server/tenant-admin-routes.js');
+    app = Fastify();
+    await app.register(registerTenantAdminRoutes);
+    await app.ready();
+
+    const response = await app.inject({ method: 'PATCH', url: `/api/internal/tenants/${TENANT_ID}`, payload });
+    expect(response.statusCode).toBe(400);
+  });
+
+  it('PATCH /api/internal/tenants/:id returns 404 when the tenant does not exist', async () => {
+    mockAuth(true);
+    mockTx();
+    vi.doMock('../../src/modules/identity/update-client.js', () => ({ updateClient: vi.fn(async () => null) }));
+    const { registerTenantAdminRoutes } = await import('../../src/server/tenant-admin-routes.js');
+    app = Fastify();
+    await app.register(registerTenantAdminRoutes);
+    await app.ready();
+
+    const response = await app.inject({ method: 'PATCH', url: `/api/internal/tenants/${TENANT_ID}`, payload: { isActive: false } });
+    expect(response.statusCode).toBe(404);
+  });
+
   it('AC2: POST .../branding creates a branding row (201) on a fresh tenant', async () => {
     mockAuth(true);
     mockTx();
@@ -244,10 +349,46 @@ describe('tenant-admin-routes', () => {
     expect(response.statusCode).toBe(409);
   });
 
+  it('POST .../branding rejects an invalid tenant id with 400', async () => {
+    mockAuth(true);
+    mockTx();
+    const { registerTenantAdminRoutes } = await import('../../src/server/tenant-admin-routes.js');
+    app = Fastify();
+    await app.register(registerTenantAdminRoutes);
+    await app.ready();
+
+    const response = await app.inject({
+      method: 'POST', url: `/api/internal/tenants/${INVALID_ID}/branding`,
+      payload: { domain: 'acme.example.com', logoUrl: 'https://cdn.example.com/logo.png', primaryColor: '#112233' },
+    });
+    expect(response.statusCode).toBe(400);
+  });
+
+  it('POST .../branding propagates an unexpected (non-unique-violation) error', async () => {
+    mockAuth(true);
+    mockTx();
+    vi.doMock('../../src/modules/identity/create-customer-branding.js', () => ({
+      createCustomerBranding: vi.fn(async () => {
+        throw new Error('connection reset');
+      }),
+    }));
+    const { registerTenantAdminRoutes } = await import('../../src/server/tenant-admin-routes.js');
+    app = Fastify();
+    await app.register(registerTenantAdminRoutes);
+    await app.ready();
+
+    const response = await app.inject({
+      method: 'POST', url: `/api/internal/tenants/${TENANT_ID}/branding`,
+      payload: { domain: 'acme.example.com', logoUrl: 'https://cdn.example.com/logo.png', primaryColor: '#112233' },
+    });
+    expect(response.statusCode).toBe(500);
+  });
+
   it.each([
     ['missing domain', { logoUrl: 'https://cdn.example.com/logo.png', primaryColor: '#112233' }],
     ['invalid logoUrl', { domain: 'acme.example.com', logoUrl: 'not-a-url', primaryColor: '#112233' }],
     ['invalid primaryColor', { domain: 'acme.example.com', logoUrl: 'https://cdn.example.com/logo.png', primaryColor: 'red' }],
+    ['invalid secondaryColor', { domain: 'acme.example.com', logoUrl: 'https://cdn.example.com/logo.png', primaryColor: '#112233', secondaryColor: 'blue' }],
   ])('POST .../branding rejects with 400: %s', async (_label, payload) => {
     mockAuth(true);
     mockTx();
@@ -257,6 +398,91 @@ describe('tenant-admin-routes', () => {
     await app.ready();
 
     const response = await app.inject({ method: 'POST', url: `/api/internal/tenants/${TENANT_ID}/branding`, payload });
+    expect(response.statusCode).toBe(400);
+  });
+
+  it('AC3: PATCH .../branding updates an existing branding row (200)', async () => {
+    mockAuth(true);
+    mockTx();
+    const updateCustomerBranding = vi.fn(async () => ({
+      found: true,
+      branding: { logoUrl: 'https://cdn.example.com/new.png', primaryColor: '#445566', secondaryColor: null },
+    }));
+    vi.doMock('../../src/modules/identity/update-customer-branding.js', () => ({ updateCustomerBranding }));
+    const { registerTenantAdminRoutes } = await import('../../src/server/tenant-admin-routes.js');
+    app = Fastify();
+    await app.register(registerTenantAdminRoutes);
+    await app.ready();
+
+    const response = await app.inject({
+      method: 'PATCH', url: `/api/internal/tenants/${TENANT_ID}/branding`,
+      payload: { logoUrl: 'https://cdn.example.com/new.png', primaryColor: '#445566' },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ logoUrl: 'https://cdn.example.com/new.png', primaryColor: '#445566', secondaryColor: null });
+    expect(updateCustomerBranding).toHaveBeenCalledWith({}, TENANT_ID, {
+      logoUrl: 'https://cdn.example.com/new.png', primaryColor: '#445566', secondaryColor: null,
+    });
+  });
+
+  it('PATCH .../branding returns 404 when no branding row exists yet', async () => {
+    mockAuth(true);
+    mockTx();
+    vi.doMock('../../src/modules/identity/update-customer-branding.js', () => ({
+      updateCustomerBranding: vi.fn(async () => ({ found: false })),
+    }));
+    const { registerTenantAdminRoutes } = await import('../../src/server/tenant-admin-routes.js');
+    app = Fastify();
+    await app.register(registerTenantAdminRoutes);
+    await app.ready();
+
+    const response = await app.inject({
+      method: 'PATCH', url: `/api/internal/tenants/${TENANT_ID}/branding`,
+      payload: { logoUrl: 'https://cdn.example.com/new.png', primaryColor: '#445566' },
+    });
+    expect(response.statusCode).toBe(404);
+  });
+
+  it('PATCH .../branding rejects an invalid tenant id with 400', async () => {
+    mockAuth(true);
+    mockTx();
+    const { registerTenantAdminRoutes } = await import('../../src/server/tenant-admin-routes.js');
+    app = Fastify();
+    await app.register(registerTenantAdminRoutes);
+    await app.ready();
+
+    const response = await app.inject({
+      method: 'PATCH', url: `/api/internal/tenants/${INVALID_ID}/branding`,
+      payload: { logoUrl: 'https://cdn.example.com/new.png', primaryColor: '#445566' },
+    });
+    expect(response.statusCode).toBe(400);
+  });
+
+  it.each([
+    ['invalid logoUrl', { logoUrl: 'not-a-url', primaryColor: '#445566' }],
+    ['invalid primaryColor', { logoUrl: 'https://cdn.example.com/new.png', primaryColor: 'red' }],
+    ['invalid secondaryColor', { logoUrl: 'https://cdn.example.com/new.png', primaryColor: '#445566', secondaryColor: 'blue' }],
+  ])('PATCH .../branding rejects with 400: %s', async (_label, payload) => {
+    mockAuth(true);
+    mockTx();
+    const { registerTenantAdminRoutes } = await import('../../src/server/tenant-admin-routes.js');
+    app = Fastify();
+    await app.register(registerTenantAdminRoutes);
+    await app.ready();
+
+    const response = await app.inject({ method: 'PATCH', url: `/api/internal/tenants/${TENANT_ID}/branding`, payload });
+    expect(response.statusCode).toBe(400);
+  });
+
+  it('GET .../members rejects an invalid tenant id with 400', async () => {
+    mockAuth(true);
+    mockTx();
+    const { registerTenantAdminRoutes } = await import('../../src/server/tenant-admin-routes.js');
+    app = Fastify();
+    await app.register(registerTenantAdminRoutes);
+    await app.ready();
+
+    const response = await app.inject({ method: 'GET', url: `/api/internal/tenants/${INVALID_ID}/members` });
     expect(response.statusCode).toBe(400);
   });
 
@@ -311,6 +537,51 @@ describe('tenant-admin-routes', () => {
     expect(response.statusCode).toBe(400);
   });
 
+  it('POST .../members rejects an invalid tenant id with 400', async () => {
+    mockAuth(true);
+    mockTx();
+    const { registerTenantAdminRoutes } = await import('../../src/server/tenant-admin-routes.js');
+    app = Fastify();
+    await app.register(registerTenantAdminRoutes);
+    await app.ready();
+
+    const response = await app.inject({
+      method: 'POST', url: `/api/internal/tenants/${INVALID_ID}/members`,
+      payload: { email: 'new@example.com', role: 'analyst' },
+    });
+    expect(response.statusCode).toBe(400);
+  });
+
+  it('POST .../members rejects a missing email with 400', async () => {
+    mockAuth(true);
+    mockTx();
+    const { registerTenantAdminRoutes } = await import('../../src/server/tenant-admin-routes.js');
+    app = Fastify();
+    await app.register(registerTenantAdminRoutes);
+    await app.ready();
+
+    const response = await app.inject({
+      method: 'POST', url: `/api/internal/tenants/${TENANT_ID}/members`,
+      payload: { role: 'analyst' },
+    });
+    expect(response.statusCode).toBe(400);
+  });
+
+  it('POST .../members rejects a non-string fullName with 400', async () => {
+    mockAuth(true);
+    mockTx();
+    const { registerTenantAdminRoutes } = await import('../../src/server/tenant-admin-routes.js');
+    app = Fastify();
+    await app.register(registerTenantAdminRoutes);
+    await app.ready();
+
+    const response = await app.inject({
+      method: 'POST', url: `/api/internal/tenants/${TENANT_ID}/members`,
+      payload: { email: 'new@example.com', role: 'analyst', fullName: 123 },
+    });
+    expect(response.statusCode).toBe(400);
+  });
+
   it('GET .../members lists members', async () => {
     mockAuth(true);
     mockTx();
@@ -342,6 +613,18 @@ describe('tenant-admin-routes', () => {
     const response = await app.inject({ method: 'DELETE', url: `/api/internal/tenants/${TENANT_ID}/members/${MEMBERSHIP_ID}` });
     expect(response.statusCode).toBe(204);
     expect(removeMembership).toHaveBeenCalledWith({}, TENANT_ID, MEMBERSHIP_ID);
+  });
+
+  it('DELETE .../members/:membershipId rejects an invalid id with 400', async () => {
+    mockAuth(true);
+    mockTx();
+    const { registerTenantAdminRoutes } = await import('../../src/server/tenant-admin-routes.js');
+    app = Fastify();
+    await app.register(registerTenantAdminRoutes);
+    await app.ready();
+
+    const response = await app.inject({ method: 'DELETE', url: `/api/internal/tenants/${INVALID_ID}/members/${MEMBERSHIP_ID}` });
+    expect(response.statusCode).toBe(400);
   });
 
   it('DELETE .../members/:membershipId returns 404 when not found', async () => {

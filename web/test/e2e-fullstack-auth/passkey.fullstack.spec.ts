@@ -95,8 +95,22 @@ test('AC1/AC2: register a passkey while logged in, then sign in using ONLY the p
   await loginViaForm(page, PASSKEY_TEST_EMAIL, PASSKEY_TEST_PASSWORD);
   await expect(page.getByTestId('kpi-row')).toBeVisible();
 
+  // 86e38pz8e: "Register a passkey" moved from Dashboard's top header bar
+  // into the new /#/profile page's Security section (ProfileView.tsx) --
+  // navigate there via the sidebar's user menu, same as a real user would.
+  await page.getByTestId('user-menu-trigger').click();
+  await page.getByRole('menuitem', { name: 'Profile' }).click();
+  await expect(page).toHaveURL(/\/#\/profile$/);
+
   await page.getByRole('button', { name: 'Register a passkey' }).click();
   await expect(page.getByText('Passkey registered.')).toBeVisible();
+
+  // Back to the root route before clearing the session -- the browser's
+  // #/profile hash is part of the URL, not React state, so it would
+  // otherwise survive the reload below and land the post-passkey-login
+  // Dashboard back on /#/profile instead of /#/ (where kpi-row/finding-row
+  // actually render).
+  await page.goto('/');
 
   // Clear the session (cookie + the client_id sessionStorage entry
   // 86e2wb92b's fetchAndStoreClientId() populated) so the next login can

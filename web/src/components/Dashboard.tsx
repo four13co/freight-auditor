@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { HashRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { Sidebar } from './Sidebar.js';
 import { Header } from './Header.js';
-import { PasskeyRegistration } from './PasskeyRegistration.js';
+import { ProfileView } from './ProfileView.js';
 import { KpiRow } from './KpiRow.js';
 import { FindingsTable } from './FindingsTable.js';
 import { DiscrepanciesView } from './DiscrepanciesView.js';
@@ -151,7 +151,6 @@ export function Dashboard({ branding }: { branding?: Branding | null } = {}) {
         <SidebarWithRoute branding={branding} />
         <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
           <Header />
-          <PasskeyRegistration />
           <Routes>
             <Route
               path="/"
@@ -225,6 +224,7 @@ export function Dashboard({ branding }: { branding?: Branding | null } = {}) {
             <Route path="/claims" element={<ClaimsView />} />
             <Route path="/audit-log" element={<AuditLogView />} />
             <Route path="/settings" element={<SettingsView />} />
+            <Route path="/profile" element={<ProfileView />} />
           </Routes>
         </div>
       </div>

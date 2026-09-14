@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { fetchFindings, fetchFindingsSummary, fetchAndStoreClientId, fetchBranding } from '../src/lib/api.js';
+import { fetchFindings, fetchFindingsSummary, fetchAndStoreClientId, fetchBranding, fetchActorContext, updateProfile } from '../src/lib/api.js';
 
 /**
  * 86e2urebj: the dashboard broke on Development because fetchFindings/
@@ -271,5 +271,66 @@ describe('fetchBranding', () => {
     const result = await fetchBranding();
 
     expect(result.secondaryColor).toBeNull();
+  });
+});
+
+describe('fetchActorContext', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('86e38pz8e: returns clientName alongside isInternal/role for a portal member', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(new Response(JSON.stringify({ clientIds: ['c1'], isInternal: false, role: 'client_admin', clientName: 'Acme Corp' }), { status: 200 })),
+    );
+
+    const result = await fetchActorContext();
+
+    expect(result).toEqual({ isInternal: false, role: 'client_admin', clientName: 'Acme Corp' });
+  });
+
+  it('returns clientName: null for an internal analyst', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(new Response(JSON.stringify({ clientIds: [], isInternal: true, role: null, clientName: null }), { status: 200 })),
+    );
+
+    const result = await fetchActorContext();
+
+    expect(result).toEqual({ isInternal: true, role: null, clientName: null });
+  });
+
+  it('fails closed to clientName: null (alongside isInternal:false/role:null) on a non-ok response', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(null, { status: 401 })));
+
+    await expect(fetchActorContext()).resolves.toEqual({ isInternal: false, role: null, clientName: null });
+  });
+});
+
+describe('updateProfile', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('86e38pz8e AC3: PATCHes /api/profile with the given name and returns the updated fields', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ name: 'New Name', email: 'a@example.com', image: null }), { status: 200 }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await updateProfile({ name: 'New Name' });
+
+    expect(fetchMock).toHaveBeenCalledWith('/api/profile', expect.objectContaining({
+      method: 'PATCH',
+      body: JSON.stringify({ name: 'New Name' }),
+    }));
+    expect(result).toEqual({ name: 'New Name', email: 'a@example.com', image: null });
+  });
+
+  it('throws on a non-ok response', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ error: 'invalid name' }), { status: 400 })));
+
+    await expect(updateProfile({ name: '' })).rejects.toThrow('PATCH /api/profile failed: 400');
   });
 });

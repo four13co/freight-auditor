@@ -73,8 +73,20 @@ export default function App() {
     });
   }, []);
 
+  // 86e38pz8e: keyed on the user id, not the whole `session` object --
+  // ProfileView.tsx's identity save calls useSession()'s refetch() (the same
+  // mechanism the passkey plugin's own client uses internally) so the nav
+  // UserMenu picks up a new name/image, which gives `session` a new object
+  // identity for the SAME user. Depending on the whole object here re-ran
+  // this effect on every such refetch, blanking clientIdReady/actorContext
+  // and unmounting/remounting the entire Dashboard/PortalApp tree for a
+  // change that never affects which client_id or actor type this user has.
+  // The user id is the only thing this effect's own lookups actually depend
+  // on; a sign-out -> sign-in as someone else is the one case that must
+  // still re-run it, and that always changes the id.
+  const sessionUserId = session?.user?.id;
   useEffect(() => {
-    if (devHeaderPathActive() || !session) return;
+    if (devHeaderPathActive() || !sessionUserId) return;
     setClientIdReady(false);
     setActorContext(null);
     // 86e2wb92b's fetchAndStoreClientId() has no internal try/catch around
@@ -88,7 +100,7 @@ export default function App() {
       setActorContext(ctx);
       setClientIdReady(true);
     });
-  }, [session]);
+  }, [sessionUserId]);
 
   if (devHeaderPathActive()) return <Dashboard branding={branding} />;
   if (isPending) return null;

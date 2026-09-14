@@ -23,6 +23,7 @@ import { registerPortalAdminRoutes } from './portal-admin-routes.js';
 import { registerRecoveryReportRoutes } from './recovery-report-routes.js';
 import { registerPortalInvoiceUploadRoutes } from './portal-invoice-upload-routes.js';
 import { registerPortalContractUploadRoutes } from './portal-contract-upload-routes.js';
+import { registerProfileRoutes } from './profile-routes.js';
 
 /**
  * Build the Fastify application instance.
@@ -159,6 +160,12 @@ export function buildApp(): FastifyInstance {
   // own /api/contracts (registered above, shared registerTenantAuthPreHandler,
   // left unmodified).
   void app.register(registerPortalContractUploadRoutes);
+
+  // User profile (86e38pz8e): any authenticated user editing only their own
+  // app_user row (name/avatar) -- shared registerTenantAuthPreHandler, not
+  // an analyst-only gate (see profile-routes.ts's header comment for why a
+  // portal member editing their own profile is the intended caller here).
+  void app.register(registerProfileRoutes);
 
   return app;
 }

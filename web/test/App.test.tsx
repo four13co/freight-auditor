@@ -78,6 +78,30 @@ describe('App (session gate)', () => {
     expect(global.fetch).toHaveBeenCalledWith('/api/auth/memberships');
   });
 
+  it('86e38pz8e: a session refetch for the SAME user (e.g. after a profile-name save) does not re-blank/remount the dashboard or re-fetch client_id/actor-type', async () => {
+    vi.stubEnv('DEV', false);
+    useSessionMock.mockReturnValue({
+      data: { user: { id: 'u1', email: 'a@example.com', name: 'Original Name' } },
+      isPending: false,
+    });
+    const { default: App } = await import('../src/App.js');
+    const { rerender } = render(<App />);
+    await waitFor(() => expect(screen.getByTestId('dashboard-stub')).toBeInTheDocument());
+    const fetchCallsAfterMount = (global.fetch as ReturnType<typeof vi.fn>).mock.calls.length;
+
+    // Same user id, different data -- exactly what useSession()'s refetch()
+    // produces after ProfileView.tsx's PATCH /api/profile + session refetch.
+    useSessionMock.mockReturnValue({
+      data: { user: { id: 'u1', email: 'a@example.com', name: 'New Name' } },
+      isPending: false,
+    });
+    rerender(<App />);
+
+    // Still mounted throughout -- never transiently unmounted for a same-user update.
+    expect(screen.getByTestId('dashboard-stub')).toBeInTheDocument();
+    expect(global.fetch).toHaveBeenCalledTimes(fetchCallsAfterMount);
+  });
+
   it('86e2wb92b: shows neither the login form nor the dashboard while the client_id lookup is still in flight', async () => {
     vi.stubEnv('DEV', false);
     useSessionMock.mockReturnValue({

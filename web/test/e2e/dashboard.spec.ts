@@ -612,3 +612,80 @@ test('86e387gmj gap5: the header search input, Export, and New audit run control
   await expect(page.getByRole('button', { name: 'Export' })).toBeDisabled();
   await expect(page.getByRole('button', { name: 'New audit run' })).toBeDisabled();
 });
+
+/**
+ * 86e38pz8e: the sidebar footer's real user menu, against a real (mocked)
+ * resolved better-auth session -- this file's own beforeEach already mocks
+ * GET /api/auth/get-session (Dana Mercer / dana@example.com), which
+ * UserMenu.tsx's useSession() call now reads. A render test in a real
+ * browser, not just the RTL/jsdom coverage in Sidebar.test.tsx.
+ */
+test('86e38pz8e AC1: the sidebar footer shows the real session\'s name/email, and the dropdown opens Profile + Sign out', async ({ page }) => {
+  await page.route('**/api/findings**', (route) => route.fulfill({ json: { findings: ROWS } }));
+  await page.route('**/api/findings/summary', (route) => route.fulfill({ json: SUMMARY }));
+
+  await page.goto('/');
+  await expect(page.getByTestId('kpi-row')).toBeVisible();
+
+  await expect(page.getByText('Dana Mercer')).toBeVisible();
+  await expect(page.getByText('dana@example.com')).toBeVisible();
+
+  await page.getByTestId('user-menu-trigger').click();
+  await expect(page.getByRole('menu')).toBeVisible();
+  await expect(page.getByRole('menuitem', { name: 'Profile' })).toHaveAttribute('href', '#/profile');
+  await expect(page.getByRole('menuitem', { name: 'Sign out' })).toBeVisible();
+
+  await page.screenshot({ path: 'test-results/dashboard-user-menu-open.png', fullPage: true });
+});
+
+/**
+ * 86e38pz8e AC2: proves the real, built app renders the dedicated /profile
+ * route -- name/email/role/org resolve from the same mocked
+ * get-session/memberships endpoints this file's beforeEach already sets up
+ * for the internal-analyst case.
+ */
+test('86e38pz8e AC2: the "Profile" menu item navigates to /#/profile and renders name/email/role', async ({ page }) => {
+  await page.route('**/api/findings**', (route) => route.fulfill({ json: { findings: ROWS } }));
+  await page.route('**/api/findings/summary', (route) => route.fulfill({ json: SUMMARY }));
+  await page.route('**/api/auth/passkey/list-user-passkeys', (route) => route.fulfill({ json: [] }));
+
+  await page.goto('/');
+  await expect(page.getByTestId('kpi-row')).toBeVisible();
+
+  await page.getByTestId('user-menu-trigger').click();
+  await page.getByRole('menuitem', { name: 'Profile' }).click();
+
+  await expect(page).toHaveURL(/\/#\/profile$/);
+  await expect(page.getByTestId('profile-email')).toHaveText('dana@example.com');
+  await expect(page.getByTestId('profile-role')).toHaveText('Internal analyst');
+  await expect(page.getByLabel('Display name')).toHaveValue('Dana Mercer');
+
+  await page.screenshot({ path: 'test-results/profile-view-dashboard.png', fullPage: true });
+});
+
+/**
+ * 86e38pz8e AC1: sign-out destroys the mocked session (via a route override
+ * after the initial resolved-session mock) and redirects to the login form
+ * -- App.tsx's useSession() re-resolving to null is what drives the
+ * redirect, proven here in a real browser rather than only via
+ * Sidebar.test.tsx's mocked-signOut unit coverage.
+ */
+test('86e38pz8e AC1: signing out from the Dashboard redirects to the login form', async ({ page }) => {
+  await page.route('**/api/findings**', (route) => route.fulfill({ json: { findings: ROWS } }));
+  await page.route('**/api/findings/summary', (route) => route.fulfill({ json: SUMMARY }));
+
+  await page.goto('/');
+  await expect(page.getByTestId('kpi-row')).toBeVisible();
+
+  // Once signOut() posts, subsequent get-session polls must resolve to "no
+  // session" so useSession()'s reactive state actually flips -- overriding
+  // the beforeEach's resolved-session route for every request from here on.
+  await page.route('**/api/auth/sign-out', (route) => route.fulfill({ json: { success: true } }));
+  await page.route('**/api/auth/get-session', (route) => route.fulfill({ json: null }));
+
+  await page.getByTestId('user-menu-trigger').click();
+  await page.getByRole('menuitem', { name: 'Sign out' }).click();
+
+  await expect(page.getByRole('heading', { name: 'Sign in' })).toBeVisible();
+  await expect(page.getByTestId('kpi-row')).not.toBeVisible();
+});

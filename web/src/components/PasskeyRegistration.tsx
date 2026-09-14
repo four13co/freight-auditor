@@ -18,7 +18,7 @@ import { devHeaderPathActive } from '../lib/dev-auth.js';
  * sets this repo's precedent for why a non-functional control must not
  * render as if it works.
  */
-export function PasskeyRegistration() {
+export function PasskeyRegistration({ onRegistered }: { onRegistered?: () => void } = {}) {
   const [status, setStatus] = useState<'idle' | 'pending' | 'done' | 'error'>('idle');
   const [error, setError] = useState<string | null>(null);
 
@@ -34,6 +34,12 @@ export function PasskeyRegistration() {
       return;
     }
     setStatus('done');
+    // 86e38pz8e: ProfileView.tsx's passkey list has no other signal that a
+    // new one just landed (better-auth's own atomListeners refresh ITS
+    // internal $listPasskeys atom on this same event, but that's a
+    // different subscription than this component's own plain useState) --
+    // this optional callback is how ProfileView refetches its list.
+    onRegistered?.();
   }
 
   return (

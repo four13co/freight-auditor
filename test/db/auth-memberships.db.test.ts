@@ -105,7 +105,7 @@ describe('GET /api/auth/memberships (DB, e2e)', () => {
 
     const res = await app.inject({ method: 'GET', url: '/api/auth/memberships', headers: { cookie: cookieHeader } });
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual({ clientIds: [clientAId], isInternal: false, role: 'client_viewer' });
+    expect(res.json()).toEqual({ clientIds: [clientAId], isInternal: false, role: 'client_viewer', clientName: 'AuthMem A' });
     const ledger = await pool.query(
       `SELECT actor_user_id, detail FROM audit_event WHERE event = 'authorization.memberships.granted' ORDER BY recorded_at DESC LIMIT 1`,
     );
@@ -121,7 +121,7 @@ describe('GET /api/auth/memberships (DB, e2e)', () => {
 
     const res = await app.inject({ method: 'GET', url: '/api/auth/memberships', headers: { cookie: cookieHeader } });
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual({ clientIds: [], isInternal: false, role: null });
+    expect(res.json()).toEqual({ clientIds: [], isInternal: false, role: null, clientName: null });
   });
 
   it('86e2zfjmb AC4: returns isInternal:true and role:null for an internal analyst (no membership rows)', async () => {
@@ -137,7 +137,7 @@ describe('GET /api/auth/memberships (DB, e2e)', () => {
 
     const res = await app.inject({ method: 'GET', url: '/api/auth/memberships', headers: { cookie: cookieHeader } });
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual({ clientIds: [], isInternal: true, role: null });
+    expect(res.json()).toEqual({ clientIds: [], isInternal: true, role: null, clientName: null });
   });
 
   it('86e2zfjmb AC4: returns isInternal:false and the membership role for a portal member', async () => {
@@ -157,7 +157,7 @@ describe('GET /api/auth/memberships (DB, e2e)', () => {
 
     const res = await app.inject({ method: 'GET', url: '/api/auth/memberships', headers: { cookie: cookieHeader } });
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual({ clientIds: [clientAId], isInternal: false, role: 'client_admin' });
+    expect(res.json()).toEqual({ clientIds: [clientAId], isInternal: false, role: 'client_admin', clientName: 'AuthMem A' });
   });
 
   it('returns every client_id for a user with more than one membership row', async () => {

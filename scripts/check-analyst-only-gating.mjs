@@ -62,6 +62,7 @@ export const ALLOW_LISTED_ROUTES = [
   { file: 'invoice-drafts-routes.ts', method: 'post', path: '/api/invoice-drafts', reason: "a tenant submitting their own invoice draft" },
   { file: 'invoice-drafts-routes.ts', method: 'post', path: '/api/invoice-drafts/:id/confirm', reason: "a tenant confirming their own invoice draft" },
   { file: 'invoice-drafts-routes.ts', method: 'post', path: '/api/invoice-drafts/:id/reject', reason: "a tenant rejecting their own invoice draft" },
+  { file: 'profile-routes.ts', method: 'patch', path: '/api/profile', reason: "any authenticated user editing only their own profile row (name/avatar), scoped by the verified session's actorUserId -- never a tenant-resource mutation" },
 ];
 
 /** @param {string} file @param {string} method @param {string} path */

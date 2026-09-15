@@ -95,6 +95,13 @@ export function Sidebar({ branding, currentPath = '/' }: { branding?: Branding |
           Settings
         </NavAnchor>
 
+        <div className="px-[18px] pb-2 pt-[22px] text-[11px] font-extrabold uppercase tracking-[0.1em] text-sidebar-fg-50">
+          Admin
+        </div>
+        <NavAnchor href="#/tenants" path="/tenants" currentPath={currentPath}>
+          Tenants
+        </NavAnchor>
+
         <div className="mt-[22px] border-t border-sidebar-border pt-3.5">
           <div className="px-[18px] pb-2 text-[11px] font-extrabold uppercase tracking-[0.1em] text-sidebar-fg-50">
             Saved views

@@ -959,3 +959,116 @@ export async function updateBranding(input: UpdateBrandingInput): Promise<{ logo
   if (!res.ok) throw new Error(`PATCH /api/internal/branding failed: ${res.status}`);
   return (await res.json()) as { logoUrl: string; primaryColor: string; secondaryColor: string | null };
 }
+
+/** Tenant Admin (86e38rdnm): tenant CRUD + branding CREATE + member assignment, /api/internal/tenants*. */
+export interface TenantRow {
+  id: string;
+  name: string;
+  slug: string;
+  isActive: boolean;
+  createdAt: string;
+}
+
+export interface TenantBranding {
+  domain: string;
+  logoUrl: string;
+  primaryColor: string;
+  secondaryColor: string | null;
+}
+
+export interface TenantDetail {
+  id: string;
+  name: string;
+  slug: string;
+  isActive: boolean;
+  createdAt: string;
+  branding: TenantBranding | null;
+  memberCount: number;
+}
+
+export interface TenantMemberRow {
+  id: string;
+  userId: string;
+  email: string;
+  fullName: string | null;
+  role: string;
+  createdAt: string;
+}
+
+export async function fetchTenants(): Promise<TenantRow[]> {
+  const res = await fetch('/api/internal/tenants', { headers: authHeaders() });
+  if (!res.ok) throw new Error(`GET /api/internal/tenants failed: ${res.status}`);
+  const body = (await res.json()) as { tenants: TenantRow[] };
+  return body.tenants;
+}
+
+export async function createTenant(input: { name: string; slug: string }): Promise<TenantRow> {
+  const res = await fetch('/api/internal/tenants', {
+    method: 'POST',
+    headers: { ...authHeaders(), 'content-type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) throw new Error(`POST /api/internal/tenants failed: ${res.status}`);
+  return (await res.json()) as TenantRow;
+}
+
+export async function fetchTenantDetail(id: string): Promise<TenantDetail> {
+  const res = await fetch(`/api/internal/tenants/${id}`, { headers: authHeaders() });
+  if (!res.ok) throw new Error(`GET tenant detail failed: ${res.status}`);
+  return (await res.json()) as TenantDetail;
+}
+
+export async function updateTenant(id: string, input: { name?: string; isActive?: boolean }): Promise<TenantRow> {
+  const res = await fetch(`/api/internal/tenants/${id}`, {
+    method: 'PATCH',
+    headers: { ...authHeaders(), 'content-type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) throw new Error(`PATCH tenant failed: ${res.status}`);
+  return (await res.json()) as TenantRow;
+}
+
+export async function createTenantBranding(id: string, input: { domain: string; logoUrl: string; primaryColor: string; secondaryColor: string | null }): Promise<TenantBranding> {
+  const res = await fetch(`/api/internal/tenants/${id}/branding`, {
+    method: 'POST',
+    headers: { ...authHeaders(), 'content-type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) throw new Error(`POST tenant branding failed: ${res.status}`);
+  return (await res.json()) as TenantBranding;
+}
+
+export async function updateTenantBranding(id: string, input: { logoUrl: string; primaryColor: string; secondaryColor: string | null }): Promise<Omit<TenantBranding, 'domain'>> {
+  const res = await fetch(`/api/internal/tenants/${id}/branding`, {
+    method: 'PATCH',
+    headers: { ...authHeaders(), 'content-type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) throw new Error(`PATCH tenant branding failed: ${res.status}`);
+  return (await res.json()) as Omit<TenantBranding, 'domain'>;
+}
+
+export async function fetchTenantMembers(id: string): Promise<TenantMemberRow[]> {
+  const res = await fetch(`/api/internal/tenants/${id}/members`, { headers: authHeaders() });
+  if (!res.ok) throw new Error(`GET tenant members failed: ${res.status}`);
+  const body = (await res.json()) as { members: TenantMemberRow[] };
+  return body.members;
+}
+
+export async function addTenantMember(id: string, input: { email: string; fullName?: string | null; role: string }): Promise<{ membershipId: string; userId: string; isNewUser: boolean; role: string }> {
+  const res = await fetch(`/api/internal/tenants/${id}/members`, {
+    method: 'POST',
+    headers: { ...authHeaders(), 'content-type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) throw new Error(`POST tenant member failed: ${res.status}`);
+  return (await res.json()) as { membershipId: string; userId: string; isNewUser: boolean; role: string };
+}
+
+export async function removeTenantMember(id: string, membershipId: string): Promise<void> {
+  const res = await fetch(`/api/internal/tenants/${id}/members/${membershipId}`, {
+    method: 'DELETE',
+    headers: authHeaders(),
+  });
+  if (!res.ok) throw new Error(`DELETE tenant member failed: ${res.status}`);
+}

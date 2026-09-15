@@ -10,6 +10,8 @@ import { InvoicesView } from './InvoicesView.js';
 import { AuditLogView } from './AuditLogView.js';
 import { ClaimsView } from './ClaimsView.js';
 import { SettingsView } from './SettingsView.js';
+import { TenantAdminView } from './TenantAdminView.js';
+import { TenantDetailView } from './TenantDetailView.js';
 import { GateFailuresPanel } from './GateFailuresPanel.js';
 import { ReviewQueues } from './ReviewQueues.js';
 import { RubricConflictQueue } from './RubricConflictQueue.js';
@@ -225,6 +227,8 @@ export function Dashboard({ branding }: { branding?: Branding | null } = {}) {
             <Route path="/audit-log" element={<AuditLogView />} />
             <Route path="/settings" element={<SettingsView />} />
             <Route path="/profile" element={<ProfileView />} />
+            <Route path="/tenants" element={<TenantAdminView />} />
+            <Route path="/tenants/:id" element={<TenantDetailView />} />
           </Routes>
         </div>
       </div>

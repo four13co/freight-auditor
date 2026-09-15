@@ -239,17 +239,43 @@ export async function fetchAndStoreClientId(): Promise<void> {
 export interface ActorContext {
   isInternal: boolean;
   role: string | null;
+  // 86e38pz8e: the profile page's org/tenant name field -- null for an
+  // internal analyst (no client membership to name) or on any lookup
+  // failure, same fail-closed contract as isInternal/role above.
+  clientName: string | null;
 }
 
 export async function fetchActorContext(): Promise<ActorContext> {
   const res = await fetch('/api/auth/memberships');
-  if (!res.ok) return { isInternal: false, role: null };
+  if (!res.ok) return { isInternal: false, role: null, clientName: null };
   try {
-    const body = (await res.json()) as { isInternal?: boolean; role?: string | null };
-    return { isInternal: body.isInternal === true, role: body.role ?? null };
+    const body = (await res.json()) as { isInternal?: boolean; role?: string | null; clientName?: string | null };
+    return { isInternal: body.isInternal === true, role: body.role ?? null, clientName: body.clientName ?? null };
   } catch {
-    return { isInternal: false, role: null };
+    return { isInternal: false, role: null, clientName: null };
   }
+}
+
+export interface ProfileFields {
+  name: string | null;
+  email: string;
+  image: string | null;
+}
+
+/**
+ * 86e38pz8e: PATCH /api/profile -- updates the caller's own display
+ * name/avatar (never role/tenant fields, which the backend rejects
+ * outright). `image: null` explicitly clears the avatar; omitting it
+ * leaves the existing image untouched.
+ */
+export async function updateProfile(input: { name?: string; image?: string | null }): Promise<ProfileFields> {
+  const res = await fetch('/api/profile', {
+    method: 'PATCH',
+    headers: { ...authHeaders(), 'content-type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) throw new Error(`PATCH /api/profile failed: ${res.status}`);
+  return (await res.json()) as ProfileFields;
 }
 
 export async function fetchFindings(params: FindingsListParams = {}): Promise<FindingRow[]> {

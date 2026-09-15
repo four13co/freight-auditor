@@ -100,6 +100,28 @@ export async function listMembershipClientIds(userId: string): Promise<string[]>
  * comment) -- a portal user with more than one membership row gets an
  * arbitrary one of their roles back, not a list.
  */
+/**
+ * 86e38pz8e: the profile page's "org/tenant name" field -- GET
+ * /api/auth/memberships already resolves a portal member's client_id
+ * (listMembershipClientIds above); this is the same single-membership-per-
+ * user lookup, widened to also return that client's display name, for
+ * showing "Acme Corp" rather than a bare UUID. Same internal-scoped-
+ * transaction shape as its neighbors above -- client carries no RLS of its
+ * own to bypass, but membership (the join needed to find WHICH client) does.
+ * Returns null for an internal analyst (no clientId to look up) or a user
+ * with no membership row, rather than throwing -- the profile page simply
+ * omits the org name in either case.
+ */
+export async function lookupClientName(userId: string): Promise<string | null> {
+  return withTenantTx({ internal: true }, async (client) => {
+    const result = await client.query<{ name: string }>(
+      `SELECT c.name FROM membership m JOIN client c ON c.id = m.client_id WHERE m.user_id = $1 LIMIT 1`,
+      [userId],
+    );
+    return result.rows[0]?.name ?? null;
+  });
+}
+
 export async function lookupActorType(userId: string): Promise<{ isInternal: boolean; role: string | null }> {
   return withTenantTx({ internal: true }, async (client) => {
     const userResult = await client.query<{ is_internal: boolean }>(

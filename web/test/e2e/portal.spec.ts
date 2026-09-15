@@ -281,3 +281,64 @@ test('86e387gmj gap2: a failed evidence fetch shows the evidence error state', a
 
   await expect(page.getByTestId('client-finding-evidence-error')).toBeVisible();
 });
+
+/**
+ * 86e38pz8e: PortalNav had no user/account section at all before this item
+ * -- against a real (mocked) resolved better-auth session, same shape as
+ * dashboard.spec.ts's own new user-menu coverage.
+ */
+test('86e38pz8e AC1: PortalNav shows the real session\'s name/email, and the dropdown opens Profile + Sign out', async ({ page }) => {
+  await page.goto('/');
+
+  await expect(page.getByText('Chris Client')).toBeVisible();
+  await expect(page.getByText('client@example.com')).toBeVisible();
+
+  await page.getByTestId('user-menu-trigger').click();
+  await expect(page.getByRole('menu')).toBeVisible();
+  await expect(page.getByRole('menuitem', { name: 'Profile' })).toHaveAttribute('href', '#/profile');
+  await expect(page.getByRole('menuitem', { name: 'Sign out' })).toBeVisible();
+
+  await page.screenshot({ path: 'test-results/portal-user-menu-open.png', fullPage: true });
+});
+
+/**
+ * 86e38pz8e AC2: proves the real, built app renders /#/profile inside the
+ * client portal shell too -- role/org resolve from this file's own
+ * client_viewer memberships mock (no clientName in that mock, so
+ * Organization correctly shows the "—" fallback rather than a stale value).
+ */
+test('86e38pz8e AC2: the "Profile" menu item navigates to /#/profile inside the portal shell', async ({ page }) => {
+  await page.route('**/api/auth/passkey/list-user-passkeys', (route) => route.fulfill({ json: [] }));
+
+  await page.goto('/');
+
+  await page.getByTestId('user-menu-trigger').click();
+  await page.getByRole('menuitem', { name: 'Profile' }).click();
+
+  await expect(page).toHaveURL(/\/#\/profile$/);
+  await expect(page.getByTestId('profile-email')).toHaveText('client@example.com');
+  await expect(page.getByTestId('profile-role')).toHaveText('client_viewer');
+  await expect(page.getByLabel('Display name')).toHaveValue('Chris Client');
+
+  await page.screenshot({ path: 'test-results/profile-view-portal.png', fullPage: true });
+});
+
+/**
+ * 86e38pz8e AC1: repeats dashboard.spec.ts's sign-out proof for the portal
+ * shell -- App.tsx's session-driven redirect to the login form is shared
+ * code, but this proves it fires from the portal's own UserMenu instance
+ * too, not just the Dashboard's.
+ */
+test('86e38pz8e AC1: signing out from the Portal redirects to the login form', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.getByTestId('portal-shell')).toBeVisible();
+
+  await page.route('**/api/auth/sign-out', (route) => route.fulfill({ json: { success: true } }));
+  await page.route('**/api/auth/get-session', (route) => route.fulfill({ json: null }));
+
+  await page.getByTestId('user-menu-trigger').click();
+  await page.getByRole('menuitem', { name: 'Sign out' }).click();
+
+  await expect(page.getByRole('heading', { name: 'Sign in' })).toBeVisible();
+  await expect(page.getByTestId('portal-shell')).not.toBeVisible();
+});

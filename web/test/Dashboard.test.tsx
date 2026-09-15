@@ -5,6 +5,16 @@ import { Dashboard } from '../src/components/Dashboard.js';
 import type { FindingRow } from '../src/lib/api.js';
 import { DASHBOARD_ROWS as ROWS, DASHBOARD_SUMMARY as SUMMARY } from './fixtures.js';
 
+// 86e38pz8e: Sidebar's footer now renders UserMenu, which calls
+// useSession()/signOut() directly -- mocked here (same pattern as
+// Sidebar.test.tsx/App.test.tsx) so this file's ~30 pre-existing tests,
+// none of which touch session data, never trigger a real network fetch
+// mockFetchOnce below doesn't know about (it throws on any unmapped URL).
+vi.mock('../src/lib/auth-client.js', () => ({
+  useSession: () => ({ data: null, isPending: false }),
+  signOut: () => Promise.resolve({ error: null }),
+}));
+
 let fetchMock: ReturnType<typeof vi.fn>;
 
 // 86e2v17xn: explicit branch per endpoint -- a fallback "anything else gets

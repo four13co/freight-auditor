@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { getAuth } from '../auth/better-auth.js';
-import { listMembershipClientIds, lookupActorType, toFetchHeaders } from '../modules/findings/tenant-auth.js';
+import { listMembershipClientIds, lookupActorType, lookupClientName, toFetchHeaders } from '../modules/findings/tenant-auth.js';
 import { authenticationAction, writeSecurityEvent } from '../modules/audit-ledger/security-events.js';
 
 /**
@@ -109,9 +109,13 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
       await reply.code(401).send({ error: 'unauthorized' });
       return;
     }
-    const [clientIds, actorType] = await Promise.all([
+    const [clientIds, actorType, clientName] = await Promise.all([
       listMembershipClientIds(session.user.id),
       lookupActorType(session.user.id),
+      // 86e38pz8e: additive -- the profile page's org/tenant name field.
+      // Fails closed to null on no membership (same "degrade, don't throw"
+      // contract as actorType/clientIds above), never blocking this response.
+      lookupClientName(session.user.id),
     ]);
     await writeSecurityEvent({
       request,
@@ -119,6 +123,6 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
       actorUserId: session.user.id,
       detail: { membershipCount: clientIds.length },
     });
-    return { clientIds, isInternal: actorType.isInternal, role: actorType.role };
+    return { clientIds, isInternal: actorType.isInternal, role: actorType.role, clientName };
   });
 }

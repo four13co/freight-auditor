@@ -1,8 +1,34 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { Sidebar } from '../src/components/Sidebar.js';
 
+/**
+ * 86e38pz8e: the footer's UserMenu calls useSession()/signOut() directly --
+ * mocked here (same pattern as App.test.tsx) so the pre-existing tests below
+ * (none of which touch session data) never trigger a real network fetch.
+ * devHeaderPathActive() defaults to true under Vitest (import.meta.env.DEV),
+ * which is exactly the "no real session" state these pre-existing tests
+ * implicitly render under -- unaffected by this mock either way.
+ */
+const useSessionMock = vi.fn().mockReturnValue({ data: null, isPending: false });
+const signOutMock = vi.fn().mockResolvedValue({ error: null });
+vi.mock('../src/lib/auth-client.js', () => ({
+  useSession: () => useSessionMock(),
+  signOut: () => signOutMock(),
+}));
+
 describe('Sidebar', () => {
+  beforeEach(() => {
+    useSessionMock.mockReturnValue({ data: null, isPending: false });
+    signOutMock.mockReset().mockResolvedValue({ error: null });
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    sessionStorage.clear();
+  });
+
   it('AC2: renders the default platform swatch, not a Customer logo, when no branding is configured', () => {
     render(<Sidebar />);
     expect(screen.getByTestId('brand-mark-default')).toBeInTheDocument();
@@ -185,5 +211,76 @@ describe('Sidebar', () => {
     expect(link).not.toHaveAttribute('disabled');
     expect(link?.className).not.toMatch(/cursor-not-allowed/);
     expect(link?.querySelector('span')).toBeNull();
+  });
+
+  it('86e38pz8e: the footer no longer shows the hardcoded "Dana Mercer" placeholder', () => {
+    render(<Sidebar />);
+    expect(screen.queryByText('Dana Mercer')).not.toBeInTheDocument();
+    expect(screen.queryByText('Ops analyst · Four13')).not.toBeInTheDocument();
+  });
+
+  it('86e38pz8e: with no session (e.g. dev-header path), the user menu still renders with a generic identity and a working trigger', () => {
+    render(<Sidebar />);
+    expect(screen.getByTestId('user-menu-trigger')).toBeInTheDocument();
+    expect(screen.getByText('Account')).toBeInTheDocument();
+    expect(screen.getByTestId('user-menu-initials')).toHaveTextContent('?');
+  });
+
+  it('86e38pz8e: shows the real session\'s name/email and initials when DEV is stubbed off', () => {
+    vi.stubEnv('DEV', false);
+    useSessionMock.mockReturnValue({ data: { user: { id: 'u1', name: 'Dana Mercer', email: 'dana@example.com', image: null } }, isPending: false });
+
+    render(<Sidebar />);
+
+    expect(screen.getByText('Dana Mercer')).toBeInTheDocument();
+    expect(screen.getByText('dana@example.com')).toBeInTheDocument();
+    expect(screen.getByTestId('user-menu-initials')).toHaveTextContent('DM');
+  });
+
+  it('86e38pz8e: renders the session\'s avatar image instead of initials when one is set', () => {
+    vi.stubEnv('DEV', false);
+    useSessionMock.mockReturnValue({ data: { user: { id: 'u1', name: 'Dana Mercer', email: 'dana@example.com', image: 'https://cdn.example.com/avatar.png' } }, isPending: false });
+
+    render(<Sidebar />);
+
+    expect(screen.queryByTestId('user-menu-initials')).not.toBeInTheDocument();
+    expect(screen.getByTestId('user-menu-avatar')).toHaveAttribute('src', 'https://cdn.example.com/avatar.png');
+  });
+
+  it('86e38pz8e AC1: clicking the trigger opens a dropdown with Profile (-> #/profile) and Sign out', async () => {
+    const user = userEvent.setup();
+    render(<Sidebar />);
+
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+    await user.click(screen.getByTestId('user-menu-trigger'));
+
+    expect(screen.getByRole('menu')).toBeInTheDocument();
+    const profileLink = screen.getByRole('menuitem', { name: 'Profile' });
+    expect(profileLink).toHaveAttribute('href', '#/profile');
+    expect(screen.getByRole('menuitem', { name: 'Sign out' })).toBeInTheDocument();
+  });
+
+  it('86e38pz8e AC1: clicking Sign out calls signOut() and clears the stored client_id on success', async () => {
+    sessionStorage.setItem('freight-auditor:client-id', 'c1');
+    const user = userEvent.setup();
+    render(<Sidebar />);
+
+    await user.click(screen.getByTestId('user-menu-trigger'));
+    await user.click(screen.getByRole('menuitem', { name: 'Sign out' }));
+
+    expect(signOutMock).toHaveBeenCalledTimes(1);
+    expect(sessionStorage.getItem('freight-auditor:client-id')).toBeNull();
+  });
+
+  it('86e38pz8e: does not clear the stored client_id when signOut() itself errors', async () => {
+    signOutMock.mockResolvedValue({ error: { message: 'network error' } });
+    sessionStorage.setItem('freight-auditor:client-id', 'c1');
+    const user = userEvent.setup();
+    render(<Sidebar />);
+
+    await user.click(screen.getByTestId('user-menu-trigger'));
+    await user.click(screen.getByRole('menuitem', { name: 'Sign out' }));
+
+    expect(sessionStorage.getItem('freight-auditor:client-id')).toBe('c1');
   });
 });

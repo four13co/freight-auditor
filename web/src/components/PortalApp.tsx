@@ -13,6 +13,8 @@ import { ClientClaimDocumentsView } from './ClientClaimDocumentsView.js';
 import { ClientRecoveryReport } from './ClientRecoveryReport.js';
 import { ClientAuditLogView } from './ClientAuditLogView.js';
 import { ClientUploadsView } from './ClientUploadsView.js';
+import { UserMenu } from './UserMenu.js';
+import { ProfileView } from './ProfileView.js';
 
 /**
  * Client portal shell + navigation (P6.A.1). The chrome portal members
@@ -109,6 +111,13 @@ function PortalNav({ branding, role }: { branding?: Branding | null; role?: stri
             {item.label}
           </NavLink>
         ))}
+      </div>
+
+      {/* 86e38pz8e: PortalNav had no user/account section at all before this
+          -- see UserMenu.tsx for the real-session identity/dropdown logic
+          shared with Sidebar.tsx's own footer. */}
+      <div data-testid="portal-nav-footer" className="mt-auto border-t border-sidebar-border px-[18px] py-3.5">
+        <UserMenu />
       </div>
     </div>
   );
@@ -257,6 +266,7 @@ function PortalShellInner({ branding, role }: { branding?: Branding | null; role
           <Route path="/disputes" element={<DisputesSection />} />
           <Route path="/claims" element={<ClaimsSection />} />
           <Route path="/audit-log" element={<AuditLogSection />} />
+          <Route path="/profile" element={<ProfileView />} />
           <Route path="*" element={<ComingSoon label="Overview" />} />
         </Routes>
       </div>

@@ -8,6 +8,7 @@
 import type { ReactNode } from 'react';
 import type { Branding } from '../lib/api.js';
 import { BrandMark } from './BrandMark.js';
+import { UserMenu } from './UserMenu.js';
 
 /**
  * 86e37r2rm: a real, routed nav item (as opposed to the still-disabled
@@ -126,12 +127,14 @@ export function Sidebar({ branding, currentPath = '/' }: { branding?: Branding |
         </div>
       </div>
 
+      {/* 86e38pz8e: replaces the hardcoded "Dana Mercer" / "Ops analyst ·
+          Four13" placeholder -- see UserMenu.tsx for the real-session
+          identity/dropdown logic. */}
       <div
         data-testid="sidebar-footer"
-        className="mt-auto flex flex-col gap-0.5 border-t border-sidebar-border px-[18px] py-3.5"
+        className="mt-auto border-t border-sidebar-border px-[18px] py-3.5"
       >
-        <span className="text-[13px] font-semibold">Dana Mercer</span>
-        <span className="text-[11px] text-sidebar-fg-55">Ops analyst · Four13</span>
+        <UserMenu />
       </div>
     </div>
   );

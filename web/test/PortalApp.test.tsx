@@ -3,6 +3,18 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { PortalApp } from '../src/components/PortalApp.js';
 
+// 86e38pz8e: PortalNav now renders UserMenu, which calls useSession()/
+// signOut() directly -- mocked here (same pattern as Sidebar.test.tsx/
+// Dashboard.test.tsx) so this file's pre-existing tests never trigger a
+// real network fetch. Individual tests further down override useSessionMock
+// to exercise the real-session display/sign-out behavior.
+const useSessionMock = vi.fn().mockReturnValue({ data: null, isPending: false });
+const signOutMock = vi.fn().mockResolvedValue({ error: null });
+vi.mock('../src/lib/auth-client.js', () => ({
+  useSession: () => useSessionMock(),
+  signOut: () => signOutMock(),
+}));
+
 /**
  * 86e2zfjmb: the client portal shell + navigation itself (App.tsx's own
  * tests cover WHICH actors land here, not what's rendered once they do).
@@ -17,10 +29,14 @@ describe('PortalApp', () => {
   // covers.
   beforeEach(() => {
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('network error')));
+    useSessionMock.mockReturnValue({ data: null, isPending: false });
+    signOutMock.mockReset().mockResolvedValue({ error: null });
   });
 
   afterEach(() => {
     vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
+    sessionStorage.clear();
   });
 
   it('AC2: renders the portal shell with a nav item for every B.1-B.7 section', () => {
@@ -179,5 +195,44 @@ describe('PortalApp', () => {
 
     const active = screen.getByRole('link', { name: 'Invoices' });
     expect(active.style.borderLeftColor).toBe('var(--brand-primary, #ec3013)');
+  });
+
+  it('86e38pz8e: PortalNav now has a user menu section (previously none at all)', () => {
+    render(<PortalApp />);
+    expect(screen.getByTestId('portal-nav-footer')).toBeInTheDocument();
+    expect(screen.getByTestId('user-menu-trigger')).toBeInTheDocument();
+  });
+
+  it('86e38pz8e: shows the real session\'s name/email when DEV is stubbed off', () => {
+    vi.stubEnv('DEV', false);
+    useSessionMock.mockReturnValue({ data: { user: { id: 'u1', name: 'Cam Client', email: 'cam@example.com', image: null } }, isPending: false });
+
+    render(<PortalApp />);
+
+    expect(screen.getByText('Cam Client')).toBeInTheDocument();
+    expect(screen.getByText('cam@example.com')).toBeInTheDocument();
+  });
+
+  it('86e38pz8e AC1: clicking the trigger opens a dropdown with Profile (-> #/profile) and Sign out', async () => {
+    const user = userEvent.setup();
+    render(<PortalApp />);
+
+    await user.click(screen.getByTestId('user-menu-trigger'));
+
+    expect(screen.getByRole('menu')).toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: 'Profile' })).toHaveAttribute('href', '#/profile');
+    expect(screen.getByRole('menuitem', { name: 'Sign out' })).toBeInTheDocument();
+  });
+
+  it('86e38pz8e AC1: clicking Sign out calls signOut() and clears the stored client_id on success', async () => {
+    sessionStorage.setItem('freight-auditor:client-id', 'c1');
+    const user = userEvent.setup();
+    render(<PortalApp />);
+
+    await user.click(screen.getByTestId('user-menu-trigger'));
+    await user.click(screen.getByRole('menuitem', { name: 'Sign out' }));
+
+    expect(signOutMock).toHaveBeenCalledTimes(1);
+    expect(sessionStorage.getItem('freight-auditor:client-id')).toBeNull();
   });
 });

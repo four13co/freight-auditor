@@ -337,6 +337,44 @@ describe('lookupActorType', () => {
 });
 
 /**
+ * 86e38pz8e: unit coverage of lookupClientName itself, with withTenantTx
+ * mocked -- no live DB. The real query against real client/membership rows
+ * is covered by test/db/auth-memberships.db.test.ts.
+ */
+describe('lookupClientName', () => {
+  afterEach(() => {
+    vi.doUnmock('../../src/db/tenant-context.js');
+    vi.resetModules();
+  });
+
+  it('runs the query in an internal-scoped transaction and returns the joined client name', async () => {
+    const query = vi.fn().mockResolvedValue({ rows: [{ name: 'Acme Corp' }] });
+    const withTenantTx = vi.fn(async (ctx: unknown, fn: (client: { query: typeof query }) => unknown) => {
+      expect(ctx).toEqual({ internal: true });
+      return fn({ query });
+    });
+    vi.doMock('../../src/db/tenant-context.js', () => ({ withTenantTx }));
+    const { lookupClientName } = await import('../../src/modules/findings/tenant-auth.js');
+
+    const result = await lookupClientName('user-1');
+
+    expect(result).toBe('Acme Corp');
+    expect(query).toHaveBeenCalledWith(expect.stringContaining('membership'), ['user-1']);
+  });
+
+  it('returns null for a user with no membership row (e.g. an internal analyst)', async () => {
+    const query = vi.fn().mockResolvedValue({ rows: [] });
+    const withTenantTx = vi.fn(async (_ctx: unknown, fn: (client: { query: typeof query }) => unknown) => fn({ query }));
+    vi.doMock('../../src/db/tenant-context.js', () => ({ withTenantTx }));
+    const { lookupClientName } = await import('../../src/modules/findings/tenant-auth.js');
+
+    const result = await lookupClientName('user-2');
+
+    expect(result).toBeNull();
+  });
+});
+
+/**
  * 86e2xcna3: registerTenantAuthPreHandler is a genuinely new export -- every
  * other unit test file that touches it (findings-endpoint.test.ts,
  * audit-runs-endpoint.test.ts) mocks it wholesale for their own route-level

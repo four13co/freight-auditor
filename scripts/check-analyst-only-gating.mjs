@@ -36,6 +36,7 @@ export const ROLE_SCOPED_PREHANDLERS = [
   'registerInternalAnalystAuthPreHandler',
   'registerClientAdminAuthPreHandler',
   'registerClientViewerAuthPreHandler',
+  'registerTenantAdminAuthPreHandler',
 ];
 
 /**

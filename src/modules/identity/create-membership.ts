@@ -1,4 +1,5 @@
 import type pg from 'pg';
+import { insertIdempotent } from '../../db/insert-idempotent.js';
 
 export interface CreateMembershipInput {
   clientId: string;
@@ -47,13 +48,14 @@ export async function createMembership(
     isNewUser = true;
   }
 
-  const membership = await client.query<{ id: string }>(
-    `INSERT INTO membership (user_id, client_id, role) VALUES ($1, $2, $3::membership_role)
-     ON CONFLICT (user_id, client_id) DO NOTHING
-     RETURNING id`,
-    [userId, input.clientId, input.role],
-  );
+  const membership = await insertIdempotent(client, {
+    insertSql: `INSERT INTO membership (user_id, client_id, role) VALUES ($1, $2, $3::membership_role)
+      ON CONFLICT (user_id, client_id) DO NOTHING`,
+    insertParams: [userId, input.clientId, input.role],
+    fallbackSql: `SELECT id FROM membership WHERE user_id = $4 AND client_id = $5`,
+    fallbackParams: [userId, input.clientId],
+  });
 
-  if (!membership.rows[0]) return { created: false, reason: 'already_member' };
-  return { created: true, membershipId: membership.rows[0].id, userId, isNewUser };
+  if (!membership || !membership.created) return { created: false, reason: 'already_member' };
+  return { created: true, membershipId: membership.id, userId, isNewUser };
 }

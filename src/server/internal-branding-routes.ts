@@ -3,17 +3,7 @@ import { withTenantTx } from '../db/tenant-context.js';
 import { registerTenantAuthPreHandler, registerAnalystOnlyPreHandler } from '../modules/findings/tenant-auth.js';
 import { requireSingleClientId } from '../modules/ingestion/raw-upload-route.js';
 import { updateCustomerBranding } from '../modules/identity/update-customer-branding.js';
-
-const HEX_COLOR_PATTERN = /^#[0-9a-fA-F]{6}$/;
-
-function isValidHttpUrl(value: string): boolean {
-  try {
-    const url = new URL(value);
-    return url.protocol === 'http:' || url.protocol === 'https:';
-  } catch {
-    return false;
-  }
-}
+import { validateBrandingFields } from '../shared/request-validation.js';
 
 /**
  * 86e37r2t4: PATCH /api/internal/branding -- the write half of per-Customer
@@ -52,20 +42,9 @@ export async function registerInternalBrandingRoutes(routes: FastifyInstance): P
     analystOnlyRoutes.patch('/api/internal/branding', async (request, reply) => {
       const body = request.body as { logoUrl?: unknown; primaryColor?: unknown; secondaryColor?: unknown };
 
-      if (typeof body.logoUrl !== 'string' || !isValidHttpUrl(body.logoUrl)) {
-        await reply.code(400).send({ error: 'invalid logoUrl: must be a valid http(s) URL' });
-        return;
-      }
-      if (typeof body.primaryColor !== 'string' || !HEX_COLOR_PATTERN.test(body.primaryColor)) {
-        await reply.code(400).send({ error: 'invalid primaryColor: must be a hex color like #112233' });
-        return;
-      }
-      if (
-        body.secondaryColor !== undefined &&
-        body.secondaryColor !== null &&
-        (typeof body.secondaryColor !== 'string' || !HEX_COLOR_PATTERN.test(body.secondaryColor))
-      ) {
-        await reply.code(400).send({ error: 'invalid secondaryColor: must be a hex color like #112233, or null' });
+      const validationError = validateBrandingFields(body);
+      if (validationError) {
+        await reply.code(400).send({ error: validationError });
         return;
       }
 

@@ -10,23 +10,13 @@ import { updateCustomerBranding } from '../modules/identity/update-customer-bran
 import { createMembership } from '../modules/identity/create-membership.js';
 import { listTenantMembers } from '../modules/identity/list-tenant-members.js';
 import { removeMembership } from '../modules/identity/remove-membership.js';
-import { isUuid } from '../shared/request-validation.js';
+import { isUuid, validateBrandingFields } from '../shared/request-validation.js';
 import { decodeCursor, paginateKeyset } from '../shared/cursor-pagination.js';
 import { parseLimitOffset } from '../shared/parse-limit-offset.js';
 
-const HEX_COLOR_PATTERN = /^#[0-9a-fA-F]{6}$/;
 const MEMBERSHIP_ROLES = new Set(['analyst', 'lead', 'client_viewer', 'client_admin']);
 const MAX_LIMIT = 200;
 const DEFAULT_LIMIT = 50;
-
-function isValidHttpUrl(value: string): boolean {
-  try {
-    const url = new URL(value);
-    return url.protocol === 'http:' || url.protocol === 'https:';
-  } catch {
-    return false;
-  }
-}
 
 function isUniqueViolation(err: unknown): boolean {
   return typeof err === 'object' && err !== null && (err as { code?: string }).code === '23505';
@@ -165,20 +155,9 @@ export async function registerTenantAdminRoutes(routes: FastifyInstance): Promis
         await reply.code(400).send({ error: 'invalid domain: must be a non-empty string' });
         return;
       }
-      if (typeof body.logoUrl !== 'string' || !isValidHttpUrl(body.logoUrl)) {
-        await reply.code(400).send({ error: 'invalid logoUrl: must be a valid http(s) URL' });
-        return;
-      }
-      if (typeof body.primaryColor !== 'string' || !HEX_COLOR_PATTERN.test(body.primaryColor)) {
-        await reply.code(400).send({ error: 'invalid primaryColor: must be a hex color like #112233' });
-        return;
-      }
-      if (
-        body.secondaryColor !== undefined &&
-        body.secondaryColor !== null &&
-        (typeof body.secondaryColor !== 'string' || !HEX_COLOR_PATTERN.test(body.secondaryColor))
-      ) {
-        await reply.code(400).send({ error: 'invalid secondaryColor: must be a hex color like #112233, or null' });
+      const createValidationError = validateBrandingFields(body);
+      if (createValidationError) {
+        await reply.code(400).send({ error: createValidationError });
         return;
       }
 
@@ -218,20 +197,9 @@ export async function registerTenantAdminRoutes(routes: FastifyInstance): Promis
       }
 
       const body = request.body as { logoUrl?: unknown; primaryColor?: unknown; secondaryColor?: unknown };
-      if (typeof body.logoUrl !== 'string' || !isValidHttpUrl(body.logoUrl)) {
-        await reply.code(400).send({ error: 'invalid logoUrl: must be a valid http(s) URL' });
-        return;
-      }
-      if (typeof body.primaryColor !== 'string' || !HEX_COLOR_PATTERN.test(body.primaryColor)) {
-        await reply.code(400).send({ error: 'invalid primaryColor: must be a hex color like #112233' });
-        return;
-      }
-      if (
-        body.secondaryColor !== undefined &&
-        body.secondaryColor !== null &&
-        (typeof body.secondaryColor !== 'string' || !HEX_COLOR_PATTERN.test(body.secondaryColor))
-      ) {
-        await reply.code(400).send({ error: 'invalid secondaryColor: must be a hex color like #112233, or null' });
+      const updateValidationError = validateBrandingFields(body);
+      if (updateValidationError) {
+        await reply.code(400).send({ error: updateValidationError });
         return;
       }
 

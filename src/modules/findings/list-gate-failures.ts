@@ -1,4 +1,5 @@
 import type pg from 'pg';
+import { buildKeysetAnchorFrom, buildKeysetTieBreak, buildLimitOffsetClause } from '../../shared/cursor-pagination.js';
 
 /**
  * One row of the gate-failures list (86e2v17xn). A REJECTED_REWORK audit
@@ -76,31 +77,18 @@ export async function listGateFailures(
 
   let cursorAnchorFrom = '';
   if (options.cursor) {
-    params.push(options.cursor.id);
-    const cursorIdIdx = params.length;
     // cursor_anchor re-reads the anchor row's OWN recorded_at from the DB
     // (see ListGateFailuresOptions.cursor's comment for why); RLS alone
     // scopes it, matching this function's existing convention (no explicit
     // client_id predicate elsewhere in this query either).
-    cursorAnchorFrom = `, (
-      SELECT recorded_at AS anchor_recorded_at, id AS anchor_id
-        FROM gate_failure AS cursor_row
-       WHERE cursor_row.id = $${cursorIdIdx}
-    ) cursor_anchor`;
-    conditions.push('(gate_failure.recorded_at < cursor_anchor.anchor_recorded_at OR (gate_failure.recorded_at = cursor_anchor.anchor_recorded_at AND gate_failure.id > cursor_anchor.anchor_id))');
+    const anchor = buildKeysetAnchorFrom(params, { table: 'gate_failure', tsColumn: 'recorded_at', cursorId: options.cursor.id });
+    cursorAnchorFrom = anchor.fromClauseAddition;
+    conditions.push(buildKeysetTieBreak('gate_failure.recorded_at', 'gate_failure.id', anchor.anchorTsAlias));
   }
 
   const where = `WHERE ${conditions.join(' AND ')}`;
   const limit = options.limit ?? DEFAULT_LIMIT;
-  let limitOffsetClause: string;
-  if (options.cursor) {
-    params.push(limit);
-    limitOffsetClause = `LIMIT $${params.length}`;
-  } else {
-    const offset = options.offset ?? 0;
-    params.push(limit, offset);
-    limitOffsetClause = `LIMIT $${params.length - 1} OFFSET $${params.length}`;
-  }
+  const limitOffsetClause = buildLimitOffsetClause(params, { limit, offset: options.offset, hasCursor: Boolean(options.cursor) });
 
   const result = await client.query<{
     id: string;

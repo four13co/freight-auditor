@@ -1,4 +1,5 @@
 import type pg from 'pg';
+import { buildKeysetAnchorFrom, buildKeysetTieBreak, buildLimitOffsetClause } from '../../shared/cursor-pagination.js';
 
 /**
  * One row of the claims list (P5.B.4). Runs inside the caller's
@@ -60,29 +61,21 @@ export async function listClaims(
 
   let fromClause = 'FROM claim';
   if (options.cursor) {
-    params.push(options.cursor.id);
-    const cursorIdIdx = params.length;
     // cursor_anchor re-reads the anchor row's OWN opened_at from the DB
     // (see ListClaimsOptions.cursor's comment for why) -- gated by the same
     // explicit client_id predicate as the outer query, not RLS alone.
-    fromClause = `FROM claim, (
-      SELECT opened_at AS anchor_opened_at, id AS anchor_id
-        FROM claim AS cursor_row
-       WHERE cursor_row.id = $${cursorIdIdx} AND cursor_row.client_id = $1
-    ) cursor_anchor`;
-    conditions.push('(opened_at < cursor_anchor.anchor_opened_at OR (opened_at = cursor_anchor.anchor_opened_at AND id > cursor_anchor.anchor_id))');
+    const anchor = buildKeysetAnchorFrom(params, {
+      table: 'claim',
+      tsColumn: 'opened_at',
+      cursorId: options.cursor.id,
+      extraAnchorPredicate: 'cursor_row.client_id = $1',
+    });
+    fromClause = `FROM claim${anchor.fromClauseAddition}`;
+    conditions.push(buildKeysetTieBreak('opened_at', 'id', anchor.anchorTsAlias));
   }
 
   const limit = options.limit ?? DEFAULT_LIMIT;
-  let limitOffsetClause: string;
-  if (options.cursor) {
-    params.push(limit);
-    limitOffsetClause = `LIMIT $${params.length}`;
-  } else {
-    const offset = options.offset ?? 0;
-    params.push(limit, offset);
-    limitOffsetClause = `LIMIT $${params.length - 1} OFFSET $${params.length}`;
-  }
+  const limitOffsetClause = buildLimitOffsetClause(params, { limit, offset: options.offset, hasCursor: Boolean(options.cursor) });
 
   const { rows } = await client.query<{
     id: string; dispute_id: string | null; amount_claimed: string; currency: string | null;

@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useState } from 'react';
 import { fetchInvoices, type InvoiceRow } from '../lib/api.js';
 import { formatMoney, formatAge } from '../lib/format.js';
+import { useClientPortalResource } from '../lib/use-client-portal-resource.js';
 
 const PAGE_SIZE = 50;
 
@@ -9,34 +10,26 @@ const PAGE_SIZE = 50;
  * Sidebar item to get a real page (86e37r2rm's Discrepancies was the first).
  * Carrier/status filters mirror FindingsTable.tsx's own filter markup;
  * limit/offset pagination mirrors AuditLogView.tsx's loading/error/retry/
- * prev-next shape, since this endpoint pages the same way
- * (GET /api/gate-failures's limit/offset convention) rather than
- * GET /api/findings' single-page-with-sort shape.
+ * prev-next shape, via the shared useClientPortalResource hook (86e39qa7c),
+ * since this endpoint pages the same way (GET /api/gate-failures's
+ * limit/offset convention) rather than GET /api/findings' single-page-with-
+ * sort shape.
  */
 export function InvoicesView() {
-  const [rows, setRows] = useState<InvoiceRow[] | null>(null);
-  const [error, setError] = useState(false);
   const [carrierFilter, setCarrierFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [page, setPage] = useState(0);
 
-  const load = useCallback(() => {
-    setError(false);
-    setRows(null);
-    fetchInvoices({
-      carrier: carrierFilter || undefined,
-      status: statusFilter || undefined,
-      limit: PAGE_SIZE,
-      offset: page * PAGE_SIZE,
-    }).then(
-      (result) => setRows(result),
-      () => setError(true),
-    );
-  }, [carrierFilter, statusFilter, page]);
-
-  useEffect(() => {
-    load();
-  }, [load]);
+  const { data: rows, error, reload } = useClientPortalResource<InvoiceRow[]>(
+    () =>
+      fetchInvoices({
+        carrier: carrierFilter || undefined,
+        status: statusFilter || undefined,
+        limit: PAGE_SIZE,
+        offset: page * PAGE_SIZE,
+      }),
+    [carrierFilter, statusFilter, page],
+  );
 
   const hasActiveFilter = carrierFilter !== '' || statusFilter !== '';
   const hasMore = rows !== null && rows.length === PAGE_SIZE;
@@ -84,7 +77,7 @@ export function InvoicesView() {
           <span>Something went wrong loading invoices.</span>
           <button
             type="button"
-            onClick={load}
+            onClick={reload}
             className="h-9 border border-[rgba(32,30,29,0.4)] px-4 text-[13px] font-extrabold"
           >
             Retry

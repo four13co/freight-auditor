@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useState } from 'react';
 import { fetchAuditLog, type AuditLogEventRow } from '../lib/api.js';
+import { useClientPortalResource } from '../lib/use-client-portal-resource.js';
 
 const PAGE_SIZE = 50;
 
@@ -8,27 +9,15 @@ const PAGE_SIZE = 50;
  * counterpart to ClientAuditLogView.tsx (client portal) -- same paginated
  * shape (event, entity, actor, timestamp), same has-more-from-full-page
  * pagination signal, pointed at /api/internal/audit-log instead. Fetches
- * on mount and on page change, matching DiscrepanciesView.tsx's
- * loading/error/retry shape (rather than ClientAuditLogView's
- * useClientPortalResource hook, which is portal-only).
+ * on mount and on page change via the shared useClientPortalResource hook
+ * (86e39qa7c), same as ClientAuditLogView.tsx -- it isn't portal-only.
  */
 export function AuditLogView() {
   const [page, setPage] = useState(0);
-  const [events, setEvents] = useState<AuditLogEventRow[] | null>(null);
-  const [error, setError] = useState(false);
-
-  const load = useCallback(() => {
-    setError(false);
-    setEvents(null);
-    fetchAuditLog(PAGE_SIZE, page * PAGE_SIZE).then(
-      (data) => setEvents(data.events),
-      () => setError(true),
-    );
-  }, [page]);
-
-  useEffect(() => {
-    load();
-  }, [load]);
+  const { data: events, error, reload } = useClientPortalResource<AuditLogEventRow[]>(
+    () => fetchAuditLog(PAGE_SIZE, page * PAGE_SIZE).then((data) => data.events),
+    [page],
+  );
 
   const hasMore = events !== null && events.length === PAGE_SIZE;
 
@@ -43,7 +32,7 @@ export function AuditLogView() {
           <span>Something went wrong loading the audit log.</span>
           <button
             type="button"
-            onClick={load}
+            onClick={reload}
             className="h-9 border border-[rgba(32,30,29,0.4)] px-4 text-[13px] font-extrabold"
           >
             Retry

@@ -14,6 +14,7 @@
 // tenant data -- seeding dev fixtures there would be the wrong layer.
 
 import pg from 'pg';
+import { upsertAnalystMembership } from './seed-membership.mjs';
 
 // 86e33t12f: these must be real RFC4122 v4 UUIDs (variant nibble [89ab]) --
 // the original all-repeated-digit sentinels failed zod's strict z.uuid(),
@@ -174,14 +175,7 @@ export async function seedDevTenant({ pool } = {}) {
     // despite this row's own is_internal=true representing an internal
     // analyst, not a portal member. registerAnalystOnlyPreHandler now reads
     // it, so it must actually say what this identity has always been.
-    // DO UPDATE (not DO NOTHING) so a persistent, already-seeded DB (the
-    // dev Neon instance) picks up the corrected role on the next deploy --
-    // an INSERT-only upsert would leave 'client_admin' there forever.
-    await client.query(
-      `INSERT INTO membership (user_id, client_id, role) VALUES ($1, $2, 'analyst')
-       ON CONFLICT (user_id, client_id) DO UPDATE SET role = EXCLUDED.role`,
-      [DEV_USER_ID, DEV_CLIENT_ID],
-    );
+    await upsertAnalystMembership(client, { userId: DEV_USER_ID, clientId: DEV_CLIENT_ID });
     // 86e367r9q: second internal analyst identity for dual-control e2e specs
     // (rule-proposal-lifecycle.fullstack.spec.ts) -- see DEV_USER_ID_2's own
     // comment above for why no membership row is needed here.

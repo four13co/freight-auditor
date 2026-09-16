@@ -11,18 +11,10 @@ import {
   type TenantDetail,
   type TenantMemberRow,
 } from '../lib/api.js';
+import { validateBrandingFields, type BrandingFieldErrors } from '../lib/validation.js';
+import { BrandingForm, type BrandingSaveStatus } from './BrandingForm.js';
 
-const HEX_COLOR_PATTERN = /^#[0-9a-fA-F]{6}$/;
 const MEMBERSHIP_ROLES = ['analyst', 'lead', 'client_viewer', 'client_admin'] as const;
-
-function isValidHttpUrl(value: string): boolean {
-  try {
-    const url = new URL(value);
-    return url.protocol === 'http:' || url.protocol === 'https:';
-  } catch {
-    return false;
-  }
-}
 
 type Tab = 'info' | 'branding' | 'members';
 
@@ -174,21 +166,15 @@ function BrandingTab({ detail, onSaved }: { detail: TenantDetail; onSaved: (deta
   const [logoUrl, setLogoUrl] = useState(detail.branding?.logoUrl ?? '');
   const [primaryColor, setPrimaryColor] = useState(detail.branding?.primaryColor ?? '');
   const [secondaryColor, setSecondaryColor] = useState(detail.branding?.secondaryColor ?? '');
-  const [errors, setErrors] = useState<{ domain?: string; logoUrl?: string; primaryColor?: string; secondaryColor?: string }>({});
-  const [status, setStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
-
-  function validate() {
-    const next: typeof errors = {};
-    if (isCreate && domain.trim() === '') next.domain = 'Enter a domain.';
-    if (!logoUrl.trim() || !isValidHttpUrl(logoUrl)) next.logoUrl = 'Enter a valid http(s) URL.';
-    if (!primaryColor.trim() || !HEX_COLOR_PATTERN.test(primaryColor)) next.primaryColor = 'Enter a valid hex color, e.g. #112233.';
-    if (secondaryColor.trim() !== '' && !HEX_COLOR_PATTERN.test(secondaryColor)) next.secondaryColor = 'Enter a valid hex color, e.g. #112233, or leave blank.';
-    return next;
-  }
+  const [errors, setErrors] = useState<BrandingFieldErrors>({});
+  const [status, setStatus] = useState<BrandingSaveStatus>('idle');
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
-    const fieldErrors = validate();
+    const fieldErrors = validateBrandingFields(
+      { domain, logoUrl, primaryColor, secondaryColor },
+      { requireDomain: isCreate },
+    );
     setErrors(fieldErrors);
     if (Object.keys(fieldErrors).length > 0) return;
 
@@ -207,108 +193,22 @@ function BrandingTab({ detail, onSaved }: { detail: TenantDetail; onSaved: (deta
   }
 
   return (
-    <form
-      data-testid="tenant-branding-form"
+    <BrandingForm
+      testIdPrefix="tenant-branding"
+      domain={{ value: domain, onChange: setDomain, disabled: !isCreate }}
+      logoUrl={logoUrl}
+      onLogoUrlChange={setLogoUrl}
+      primaryColor={primaryColor}
+      onPrimaryColorChange={setPrimaryColor}
+      secondaryColor={secondaryColor}
+      onSecondaryColorChange={setSecondaryColor}
+      errors={errors}
+      saveStatus={status}
+      submitLabel={isCreate ? 'Create branding' : 'Save'}
       onSubmit={(e) => {
         void handleSubmit(e);
       }}
-      className="flex max-w-md flex-col gap-4 px-5"
-    >
-      <div className="flex flex-col gap-1.5">
-        <label htmlFor="tenant-branding-domain" className="text-[13px] font-semibold text-[#201e1d]">
-          Domain
-        </label>
-        <input
-          id="tenant-branding-domain"
-          aria-label="Domain"
-          value={domain}
-          onChange={(e) => setDomain(e.target.value)}
-          disabled={!isCreate}
-          className="h-9 border border-[rgba(32,30,29,0.4)] px-2.5 text-sm outline-none disabled:opacity-60"
-        />
-        {errors.domain && (
-          <span data-testid="tenant-branding-domain-error" role="alert" className="text-[12px] text-[#c0290f]">
-            {errors.domain}
-          </span>
-        )}
-      </div>
-
-      <div className="flex flex-col gap-1.5">
-        <label htmlFor="tenant-branding-logo-url" className="text-[13px] font-semibold text-[#201e1d]">
-          Logo URL
-        </label>
-        <input
-          id="tenant-branding-logo-url"
-          aria-label="Logo URL"
-          value={logoUrl}
-          onChange={(e) => setLogoUrl(e.target.value)}
-          className="h-9 border border-[rgba(32,30,29,0.4)] px-2.5 text-sm outline-none"
-        />
-        {errors.logoUrl && (
-          <span data-testid="tenant-branding-logo-url-error" role="alert" className="text-[12px] text-[#c0290f]">
-            {errors.logoUrl}
-          </span>
-        )}
-      </div>
-
-      <div className="flex flex-col gap-1.5">
-        <label htmlFor="tenant-branding-primary-color" className="text-[13px] font-semibold text-[#201e1d]">
-          Primary color
-        </label>
-        <div className="flex items-center gap-2">
-          <span data-testid="tenant-branding-primary-swatch" className="h-6 w-6 flex-none border border-[rgba(32,30,29,0.3)]" style={{ background: HEX_COLOR_PATTERN.test(primaryColor) ? primaryColor : 'transparent' }} />
-          <input
-            id="tenant-branding-primary-color"
-            aria-label="Primary color"
-            value={primaryColor}
-            onChange={(e) => setPrimaryColor(e.target.value)}
-            className="h-9 flex-1 border border-[rgba(32,30,29,0.4)] px-2.5 text-sm outline-none"
-          />
-        </div>
-        {errors.primaryColor && (
-          <span data-testid="tenant-branding-primary-color-error" role="alert" className="text-[12px] text-[#c0290f]">
-            {errors.primaryColor}
-          </span>
-        )}
-      </div>
-
-      <div className="flex flex-col gap-1.5">
-        <label htmlFor="tenant-branding-secondary-color" className="text-[13px] font-semibold text-[#201e1d]">
-          Secondary color
-        </label>
-        <div className="flex items-center gap-2">
-          <span data-testid="tenant-branding-secondary-swatch" className="h-6 w-6 flex-none border border-[rgba(32,30,29,0.3)]" style={{ background: HEX_COLOR_PATTERN.test(secondaryColor) ? secondaryColor : 'transparent' }} />
-          <input
-            id="tenant-branding-secondary-color"
-            aria-label="Secondary color"
-            value={secondaryColor}
-            onChange={(e) => setSecondaryColor(e.target.value)}
-            className="h-9 flex-1 border border-[rgba(32,30,29,0.4)] px-2.5 text-sm outline-none"
-          />
-        </div>
-        {errors.secondaryColor && (
-          <span data-testid="tenant-branding-secondary-color-error" role="alert" className="text-[12px] text-[#c0290f]">
-            {errors.secondaryColor}
-          </span>
-        )}
-      </div>
-
-      <div className="flex items-center gap-3">
-        <button type="submit" disabled={status === 'saving'} className="flex h-9 items-center bg-[#ec3013] px-4 text-[13px] font-extrabold text-[#f3f2f2] disabled:opacity-60">
-          {status === 'saving' ? 'Saving…' : isCreate ? 'Create branding' : 'Save'}
-        </button>
-        {status === 'saved' && (
-          <span data-testid="tenant-branding-saved" role="status" className="text-[13px] font-semibold text-[#1a7f37]">
-            Saved
-          </span>
-        )}
-        {status === 'error' && (
-          <span data-testid="tenant-branding-error" role="alert" className="text-[13px] font-semibold text-[#c0290f]">
-            Save failed. Try again.
-          </span>
-        )}
-      </div>
-    </form>
+    />
   );
 }
 

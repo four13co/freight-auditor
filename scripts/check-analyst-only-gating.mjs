@@ -64,6 +64,7 @@ export const ALLOW_LISTED_ROUTES = [
   { file: 'invoice-drafts-routes.ts', method: 'post', path: '/api/invoice-drafts/:id/confirm', reason: "a tenant confirming their own invoice draft" },
   { file: 'invoice-drafts-routes.ts', method: 'post', path: '/api/invoice-drafts/:id/reject', reason: "a tenant rejecting their own invoice draft" },
   { file: 'profile-routes.ts', method: 'patch', path: '/api/profile', reason: "any authenticated user editing only their own profile row (name/avatar), scoped by the verified session's actorUserId -- never a tenant-resource mutation" },
+  { file: 'auth-routes.ts', method: 'all', path: '/api/auth/*', reason: 'the better-auth mount itself -- must be reachable with only a session cookie (or no session at all, for sign-up/sign-in) before any tenant scope exists; gating it behind tenant-auth would be circular' },
 ];
 
 /** @param {string} file @param {string} method @param {string} path */
@@ -138,11 +139,43 @@ export function findRegisterBlocks(content) {
 const MUTATING_CALL = /(\w+)\.(post|put|patch|delete)\(\s*(['"`])((?:(?!\3)[^\\]|\\.)*)\3/g;
 
 /**
+ * `<scope>.all(path, ...)` registers a handler for every HTTP method,
+ * including the mutating ones -- reported as method 'all' so it can be
+ * allow-listed distinctly from a literal verb call (86e39qa6p).
+ */
+const ALL_CALL = /(\w+)\.all\(\s*(['"`])((?:(?!\2)[^\\]|\\.)*)\2/g;
+
+/**
+ * Fastify's generic `<scope>.route({ method: 'POST', url: '/x', ... })` form
+ * (86e39qa6p) -- the literal-verb regex above never matches this shape, so a
+ * route registered this way bypassed detection entirely.
+ */
+const ROUTE_CALL = /(\w+)\.route\(\s*\{/g;
+const ROUTE_METHOD_KEY = /\bmethod\s*:\s*(\[[^\]]*\]|['"`][A-Za-z]+['"`])/;
+const ROUTE_URL_KEY = /\b(?:url|path)\s*:\s*(['"`])((?:(?!\1)[^\\]|\\.)*)\1/;
+
+/** @param {string} objText @returns {string[]} lowercase mutating HTTP methods found in a `method:` key */
+function extractRouteMethods(objText) {
+  const m = objText.match(ROUTE_METHOD_KEY);
+  if (!m) return [];
+  return [...m[1].matchAll(/['"`]([A-Za-z]+)['"`]/g)]
+    .map((t) => t[1].toLowerCase())
+    .filter((method) => MUTATING_METHODS.has(method));
+}
+
+/** @param {string} objText @returns {string | null} */
+function extractRouteUrl(objText) {
+  const m = objText.match(ROUTE_URL_KEY);
+  return m ? m[2] : null;
+}
+
+/**
  * @param {string} content
  * @returns {{ scopeVar: string, method: string, path: string, index: number }[]}
  */
 export function findMutatingRouteCalls(content) {
   const calls = [];
+
   MUTATING_CALL.lastIndex = 0;
   let m;
   while ((m = MUTATING_CALL.exec(content))) {
@@ -150,6 +183,27 @@ export function findMutatingRouteCalls(content) {
     if (!MUTATING_METHODS.has(method)) continue;
     calls.push({ scopeVar, method, path, index: m.index });
   }
+
+  ALL_CALL.lastIndex = 0;
+  while ((m = ALL_CALL.exec(content))) {
+    const [, scopeVar, , path] = m;
+    calls.push({ scopeVar, method: 'all', path, index: m.index });
+  }
+
+  ROUTE_CALL.lastIndex = 0;
+  while ((m = ROUTE_CALL.exec(content))) {
+    const scopeVar = m[1];
+    const openIndex = m.index + m[0].length - 1;
+    const end = findMatchingBrace(content, openIndex);
+    if (end === -1) continue;
+    const objText = content.slice(openIndex, end);
+    const path = extractRouteUrl(objText);
+    if (!path) continue;
+    for (const method of extractRouteMethods(objText)) {
+      calls.push({ scopeVar, method, path, index: m.index });
+    }
+  }
+
   return calls;
 }
 

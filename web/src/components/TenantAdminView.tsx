@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useState, type FormEvent } from 'react';
+import { useState, type FormEvent } from 'react';
 import { fetchTenants, createTenant, type TenantRow } from '../lib/api.js';
+import { useClientPortalResource } from '../lib/use-client-portal-resource.js';
 
 /**
  * 86e38rdnm: tenant list + create form -- the entry point of the Tenant
@@ -9,25 +10,11 @@ import { fetchTenants, createTenant, type TenantRow } from '../lib/api.js';
  * ancestor this component doesn't control in isolation).
  */
 export function TenantAdminView() {
-  const [rows, setRows] = useState<TenantRow[] | null>(null);
-  const [error, setError] = useState(false);
+  const { data: rows, error, reload } = useClientPortalResource<TenantRow[]>(() => fetchTenants(), []);
   const [name, setName] = useState('');
   const [slug, setSlug] = useState('');
   const [createError, setCreateError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
-
-  const load = useCallback(() => {
-    setError(false);
-    setRows(null);
-    fetchTenants().then(
-      (result) => setRows(result),
-      () => setError(true),
-    );
-  }, []);
-
-  useEffect(() => {
-    load();
-  }, [load]);
 
   async function handleCreate(e: FormEvent) {
     e.preventDefault();
@@ -41,7 +28,7 @@ export function TenantAdminView() {
       await createTenant({ name: name.trim(), slug: slug.trim() });
       setName('');
       setSlug('');
-      load();
+      reload();
     } catch {
       setCreateError('Could not create tenant. The slug may already be in use.');
     } finally {
@@ -107,7 +94,7 @@ export function TenantAdminView() {
           className="flex flex-1 flex-col items-center justify-center gap-3 text-sm text-[rgba(32,30,29,0.75)]"
         >
           <span>Something went wrong loading tenants.</span>
-          <button type="button" onClick={load} className="h-9 border border-[rgba(32,30,29,0.4)] px-4 text-[13px] font-extrabold">
+          <button type="button" onClick={reload} className="h-9 border border-[rgba(32,30,29,0.4)] px-4 text-[13px] font-extrabold">
             Retry
           </button>
         </div>

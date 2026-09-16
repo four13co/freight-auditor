@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useState } from 'react';
 import { fetchClaims, type ClaimListRow } from '../lib/api.js';
 import { formatMoney } from '../lib/format.js';
 import { titleCase } from '../lib/status-display.js';
 import { ClaimDetail } from './ClaimDetail.js';
+import { useClientPortalResource } from '../lib/use-client-portal-resource.js';
 
 const PAGE_SIZE = 50;
 
@@ -15,28 +16,18 @@ function formatDate(iso: string | null): string {
  * 86e387qpv: internal-analyst-facing claims list -- gives ClaimDetail.tsx
  * (P5.B.5, real and tested but never mounted anywhere) a real caller.
  * Loading/error/empty/pagination shape mirrors InvoicesView.tsx/
- * AuditLogView.tsx exactly (offset/limit, has-more-from-full-page signal).
- * Row click opens ClaimDetail as a drawer, same pattern as FindingsTable's
- * own row-click -> detail-drawer wiring.
+ * AuditLogView.tsx exactly (offset/limit, has-more-from-full-page signal),
+ * via the shared useClientPortalResource hook (86e39qa7c). Row click opens
+ * ClaimDetail as a drawer, same pattern as FindingsTable's own row-click ->
+ * detail-drawer wiring.
  */
 export function ClaimsView() {
-  const [rows, setRows] = useState<ClaimListRow[] | null>(null);
-  const [error, setError] = useState(false);
   const [page, setPage] = useState(0);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-
-  const load = useCallback(() => {
-    setError(false);
-    setRows(null);
-    fetchClaims({ limit: PAGE_SIZE, offset: page * PAGE_SIZE }).then(
-      (result) => setRows(result),
-      () => setError(true),
-    );
-  }, [page]);
-
-  useEffect(() => {
-    load();
-  }, [load]);
+  const { data: rows, error, reload } = useClientPortalResource<ClaimListRow[]>(
+    () => fetchClaims({ limit: PAGE_SIZE, offset: page * PAGE_SIZE }),
+    [page],
+  );
 
   const hasMore = rows !== null && rows.length === PAGE_SIZE;
 
@@ -55,7 +46,7 @@ export function ClaimsView() {
           <span>Something went wrong loading claims.</span>
           <button
             type="button"
-            onClick={load}
+            onClick={reload}
             className="h-9 border border-[rgba(32,30,29,0.4)] px-4 text-[13px] font-extrabold"
           >
             Retry

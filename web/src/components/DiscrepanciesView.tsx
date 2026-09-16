@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { FindingsTable } from './FindingsTable.js';
 import {
@@ -7,8 +7,7 @@ import {
   type FindingsSortDir,
   type FindingsSortKey,
 } from '../lib/api.js';
-
-type LoadStatus = 'loading' | 'error' | 'ready';
+import { useClientPortalResource } from '../lib/use-client-portal-resource.js';
 
 /**
  * 86e37r2rm: dedicated full-page view for the /discrepancies route -- reuses
@@ -39,7 +38,6 @@ type LoadStatus = 'loading' | 'error' | 'ready';
  */
 export function DiscrepanciesView() {
   const [searchParams] = useSearchParams();
-  const [rows, setRows] = useState<FindingRow[]>([]);
   const [carrierFilter, setCarrierFilter] = useState(() => searchParams.get('carrier') ?? '');
   const [statusFilter, setStatusFilter] = useState('');
   const [minAmountFilter, setMinAmountFilter] = useState(() => searchParams.get('minAmount') ?? '');
@@ -50,29 +48,21 @@ export function DiscrepanciesView() {
   });
   const [categoryFilter] = useState(() => searchParams.get('category') ?? '');
   const [sort, setSort] = useState<{ key: FindingsSortKey; dir: FindingsSortDir } | null>(null);
-  const [status, setStatus] = useState<LoadStatus>('loading');
 
-  const load = useCallback(() => {
-    setStatus('loading');
-    fetchFindings({
-      carrier: carrierFilter || undefined,
-      status: statusFilter || undefined,
-      minAmount: minAmountFilter || undefined,
-      assignee: assignedToMe ? 'me' : undefined,
-      minAgeDays: minAgeDaysFilter,
-      category: categoryFilter || undefined,
-      sort: sort?.key,
-      sortDir: sort?.dir,
-    }).then(
-      (rowsResult) => {
-        setRows(rowsResult);
-        setStatus('ready');
-      },
-      () => {
-        setStatus('error');
-      },
-    );
-  }, [carrierFilter, statusFilter, minAmountFilter, assignedToMe, minAgeDaysFilter, categoryFilter, sort]);
+  const { data: rows, error, reload, setData: setRows } = useClientPortalResource<FindingRow[]>(
+    () =>
+      fetchFindings({
+        carrier: carrierFilter || undefined,
+        status: statusFilter || undefined,
+        minAmount: minAmountFilter || undefined,
+        assignee: assignedToMe ? 'me' : undefined,
+        minAgeDays: minAgeDaysFilter,
+        category: categoryFilter || undefined,
+        sort: sort?.key,
+        sortDir: sort?.dir,
+      }),
+    [carrierFilter, statusFilter, minAmountFilter, assignedToMe, minAgeDaysFilter, categoryFilter, sort],
+  );
 
   function toggleSort(key: FindingsSortKey) {
     setSort((prev) => {
@@ -81,18 +71,14 @@ export function DiscrepanciesView() {
     });
   }
 
-  useEffect(() => {
-    load();
-  }, [load]);
-
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-6">
-      {status === 'loading' && (
+      {!error && rows === null && (
         <div data-testid="discrepancies-loading" className="flex flex-1 items-center justify-center text-sm text-[rgba(32,30,29,0.6)]">
           Loading…
         </div>
       )}
-      {status === 'error' && (
+      {error && (
         <div
           data-testid="discrepancies-error"
           className="flex flex-1 flex-col items-center justify-center gap-3 text-sm text-[rgba(32,30,29,0.75)]"
@@ -100,14 +86,14 @@ export function DiscrepanciesView() {
           <span>Something went wrong loading discrepancies.</span>
           <button
             type="button"
-            onClick={load}
+            onClick={reload}
             className="h-9 border border-[rgba(32,30,29,0.4)] px-4 text-[13px] font-extrabold"
           >
             Retry
           </button>
         </div>
       )}
-      {status === 'ready' && (
+      {!error && rows !== null && (
         <FindingsTable
           rows={rows}
           carrierFilter={carrierFilter}
@@ -117,10 +103,10 @@ export function DiscrepanciesView() {
           onStatusFilterChange={setStatusFilter}
           onMinAmountFilterChange={setMinAmountFilter}
           onRowStatusChange={(id, newStatus) =>
-            setRows((prev) => prev.map((r) => (r.id === id ? { ...r, status: newStatus } : r)))
+            setRows((prev) => (prev ?? []).map((r) => (r.id === id ? { ...r, status: newStatus } : r)))
           }
           onRowAssignChange={(id, assignedToUserId) =>
-            setRows((prev) => prev.map((r) => (r.id === id ? { ...r, assignedToUserId } : r)))
+            setRows((prev) => (prev ?? []).map((r) => (r.id === id ? { ...r, assignedToUserId } : r)))
           }
           sort={sort}
           onSortChange={toggleSort}

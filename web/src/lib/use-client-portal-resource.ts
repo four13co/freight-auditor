@@ -1,8 +1,23 @@
-import { useEffect, useState, type DependencyList } from 'react';
+import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction, type DependencyList } from 'react';
 
 export interface ClientPortalResourceState<T> {
   data: T | null;
   error: boolean;
+  /**
+   * 86e39qa7c: re-runs the latest `fetchFn` without needing a `deps` change
+   * -- the Retry-button / post-mutation-refresh escape hatch the hook
+   * originally lacked. Reads `fetchFn` via a ref so it always re-invokes
+   * the fetch the calling component would produce on its *next* render,
+   * not a stale closure from whenever the effect last ran.
+   */
+  reload: () => void;
+  /**
+   * 86e39qa7c: updates `data` in place without a network round-trip -- for
+   * a caller that already knows the new value (a save response, an
+   * optimistic row edit) and doesn't want a `reload()` refetch just to see
+   * it reflected.
+   */
+  setData: Dispatch<SetStateAction<T | null>>;
 }
 
 /**
@@ -25,6 +40,12 @@ export interface ClientPortalResourceState<T> {
  * "re-fetches when the id changes" behavior (a stale previous result must
  * not remain visible while the new one loads); a no-op for the mount-only
  * views since their `deps` never change after the first run.
+ *
+ * Offset pagination (86e39qa7c) is already covered by this same dep-change
+ * mechanism -- a caller manages its own `page` state and includes it in
+ * `deps` (see ClientAuditLogView.tsx), so no separate paginated variant is
+ * needed; `reload()` below is the one genuine gap that blocked adoption by
+ * views with a Retry button or a post-mutation refresh.
  */
 export function useClientPortalResource<T>(
   fetchFn: () => Promise<T> | null,
@@ -32,13 +53,15 @@ export function useClientPortalResource<T>(
 ): ClientPortalResourceState<T> {
   const [data, setData] = useState<T | null>(null);
   const [error, setError] = useState(false);
+  const fetchFnRef = useRef(fetchFn);
+  fetchFnRef.current = fetchFn;
 
-  useEffect(() => {
-    const promise = fetchFn();
+  const run = useCallback(() => {
+    const promise = fetchFnRef.current();
     if (promise === null) {
       setData(null);
       setError(false);
-      return;
+      return undefined;
     }
 
     let cancelled = false;
@@ -49,7 +72,11 @@ export function useClientPortalResource<T>(
       () => { if (!cancelled) setError(true); },
     );
     return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    return run();
   }, deps);
 
-  return { data, error };
+  return { data, error, reload: run, setData };
 }

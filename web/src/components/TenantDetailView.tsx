@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type FormEvent } from 'react';
+import { useState, type FormEvent } from 'react';
 import { useParams } from 'react-router-dom';
 import {
   fetchTenantDetail,
@@ -11,6 +11,7 @@ import {
   type TenantDetail,
   type TenantMemberRow,
 } from '../lib/api.js';
+import { useClientPortalResource } from '../lib/use-client-portal-resource.js';
 import { validateBrandingFields, type BrandingFieldErrors } from '../lib/validation.js';
 import { BrandingForm, type BrandingSaveStatus } from './BrandingForm.js';
 
@@ -26,19 +27,10 @@ type Tab = 'info' | 'branding' | 'members';
 export function TenantDetailView() {
   const { id } = useParams<{ id: string }>();
   const [tab, setTab] = useState<Tab>('info');
-  const [detail, setDetail] = useState<TenantDetail | null>(null);
-  const [error, setError] = useState(false);
-
-  const load = useCallback(() => {
-    if (!id) return;
-    setError(false);
-    setDetail(null);
-    fetchTenantDetail(id).then(setDetail, () => setError(true));
-  }, [id]);
-
-  useEffect(() => {
-    load();
-  }, [load]);
+  const { data: detail, error, reload, setData: setDetail } = useClientPortalResource<TenantDetail>(
+    () => (id ? fetchTenantDetail(id) : null),
+    [id],
+  );
 
   if (!id) return null;
 
@@ -53,7 +45,7 @@ export function TenantDetailView() {
       {error && (
         <div data-testid="tenant-detail-error" role="alert" className="flex flex-1 flex-col items-center justify-center gap-3 text-sm text-[rgba(32,30,29,0.75)]">
           <span>Something went wrong loading this tenant.</span>
-          <button type="button" onClick={load} className="h-9 border border-[rgba(32,30,29,0.4)] px-4 text-[13px] font-extrabold">
+          <button type="button" onClick={reload} className="h-9 border border-[rgba(32,30,29,0.4)] px-4 text-[13px] font-extrabold">
             Retry
           </button>
         </div>
@@ -213,22 +205,14 @@ function BrandingTab({ detail, onSaved }: { detail: TenantDetail; onSaved: (deta
 }
 
 function MembersTab({ tenantId }: { tenantId: string }) {
-  const [members, setMembers] = useState<TenantMemberRow[] | null>(null);
-  const [error, setError] = useState(false);
+  const { data: members, error, reload } = useClientPortalResource<TenantMemberRow[]>(
+    () => fetchTenantMembers(tenantId),
+    [tenantId],
+  );
   const [email, setEmail] = useState('');
   const [role, setRole] = useState<string>('client_admin');
   const [addError, setAddError] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
-
-  const load = useCallback(() => {
-    setError(false);
-    setMembers(null);
-    fetchTenantMembers(tenantId).then(setMembers, () => setError(true));
-  }, [tenantId]);
-
-  useEffect(() => {
-    load();
-  }, [load]);
 
   async function handleAdd(e: FormEvent) {
     e.preventDefault();
@@ -241,7 +225,7 @@ function MembersTab({ tenantId }: { tenantId: string }) {
     try {
       await addTenantMember(tenantId, { email: email.trim(), role });
       setEmail('');
-      load();
+      reload();
     } catch {
       setAddError('Could not add member. They may already have access.');
     } finally {
@@ -251,7 +235,7 @@ function MembersTab({ tenantId }: { tenantId: string }) {
 
   async function handleRemove(membershipId: string) {
     await removeTenantMember(tenantId, membershipId);
-    load();
+    reload();
   }
 
   return (

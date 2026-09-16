@@ -128,14 +128,27 @@ export async function lookupClientName(userId: string): Promise<string | null> {
   });
 }
 
-export async function lookupActorType(userId: string): Promise<{ isInternal: boolean; role: string | null }> {
+/**
+ * 86e39qa6r: the single is_internal lookup shared by this file's own
+ * lookupActorType below, tenant-admin-auth.ts, and internal-analyst-auth.ts
+ * -- all three previously re-declared it (one drifted, missing this
+ * `AND is_active = true`). Same internal-scoped-transaction shape as this
+ * file's other identity lookups.
+ */
+export async function lookupIsInternal(userId: string): Promise<boolean> {
   return withTenantTx({ internal: true }, async (client) => {
-    const userResult = await client.query<{ is_internal: boolean }>(
-      `SELECT is_internal FROM app_user WHERE id = $1`,
+    const result = await client.query<{ is_internal: boolean }>(
+      `SELECT is_internal FROM app_user WHERE id = $1 AND is_active = true`,
       [userId],
     );
-    if (userResult.rows[0]?.is_internal === true) return { isInternal: true, role: null };
+    return result.rows[0]?.is_internal === true;
+  });
+}
 
+export async function lookupActorType(userId: string): Promise<{ isInternal: boolean; role: string | null }> {
+  if (await lookupIsInternal(userId)) return { isInternal: true, role: null };
+
+  return withTenantTx({ internal: true }, async (client) => {
     const membershipResult = await client.query<{ role: string }>(
       `SELECT role FROM membership WHERE user_id = $1 LIMIT 1`,
       [userId],

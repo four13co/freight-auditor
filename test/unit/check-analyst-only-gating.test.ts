@@ -76,6 +76,62 @@ describe('checkFileGating', () => {
     `;
     expect(checkFileGating('widget-routes.ts', content)).toEqual([]);
   });
+
+  it('86e39qa6p AC1: flags a mutating route registered via .route({method:"POST",...}) with no gating preHandler', () => {
+    const content = `
+      export async function registerWidgetRoutes(routes: FastifyInstance): Promise<void> {
+        await registerTenantAuthPreHandler(routes);
+        routes.route({
+          method: 'POST',
+          url: '/api/widgets/:id/self-destruct',
+          handler: async (request, reply) => {
+            return { ok: true };
+          },
+        });
+      }
+    `;
+    expect(checkFileGating('widget-routes.ts', content)).toEqual([
+      { file: 'widget-routes.ts', method: 'POST', path: '/api/widgets/:id/self-destruct' },
+    ]);
+  });
+
+  it('86e39qa6p: a .route({method,...}) call nested inside a role-scoped preHandler sub-scope is not flagged', () => {
+    const content = `
+      export async function registerWidgetRoutes(routes: FastifyInstance): Promise<void> {
+        await registerTenantAuthPreHandler(routes);
+        await routes.register(async (analystOnlyRoutes) => {
+          await registerAnalystOnlyPreHandler(analystOnlyRoutes);
+          analystOnlyRoutes.route({
+            method: 'DELETE',
+            url: '/api/widgets/:id',
+            handler: async (request, reply) => {
+              return { ok: true };
+            },
+          });
+        });
+      }
+    `;
+    expect(checkFileGating('widget-routes.ts', content)).toEqual([]);
+  });
+
+  it('86e39qa6p AC1: flags a mutating route registered via .all(...) with no gating preHandler and no allow-list entry', () => {
+    const content = `
+      export async function registerWidgetRoutes(routes: FastifyInstance): Promise<void> {
+        await registerTenantAuthPreHandler(routes);
+        routes.all('/api/widgets/:id/anything', async (request, reply) => {
+          return { ok: true };
+        });
+      }
+    `;
+    expect(checkFileGating('widget-routes.ts', content)).toEqual([
+      { file: 'widget-routes.ts', method: 'ALL', path: '/api/widgets/:id/anything' },
+    ]);
+  });
+
+  it("86e39qa6p AC2: the real auth-routes.ts app.all('/api/auth/*', ...) mount is unchanged (allow-listed, intentionally unauthenticated)", () => {
+    const content = readFileSync(join(REPO_ROOT, 'src/server', 'auth-routes.ts'), 'utf8');
+    expect(checkFileGating('auth-routes.ts', content)).toEqual([]);
+  });
 });
 
 describe('checkAllRoutes', () => {

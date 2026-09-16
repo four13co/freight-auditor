@@ -1,4 +1,5 @@
 import type pg from 'pg';
+import { buildKeysetAnchorFrom, buildKeysetTieBreak, buildLimitOffsetClause } from '../../shared/cursor-pagination.js';
 
 export interface ClientRow {
   id: string;
@@ -29,26 +30,13 @@ export async function listClients(client: pg.PoolClient, options: ListClientsOpt
   let fromClause = 'FROM client';
 
   if (options.cursor) {
-    params.push(options.cursor.id);
-    const cursorIdIdx = params.length;
-    fromClause += `, (
-      SELECT created_at AS anchor_created_at, id AS anchor_id
-        FROM client AS cursor_row
-       WHERE cursor_row.id = $${cursorIdIdx}
-    ) cursor_anchor`;
-    conditions.push('(client.created_at < cursor_anchor.anchor_created_at OR (client.created_at = cursor_anchor.anchor_created_at AND client.id > cursor_anchor.anchor_id))');
+    const anchor = buildKeysetAnchorFrom(params, { table: 'client', tsColumn: 'created_at', cursorId: options.cursor.id });
+    fromClause += anchor.fromClauseAddition;
+    conditions.push(buildKeysetTieBreak('client.created_at', 'client.id', anchor.anchorTsAlias));
   }
 
   const limit = options.limit ?? DEFAULT_LIMIT;
-  let limitOffsetClause: string;
-  if (options.cursor) {
-    params.push(limit);
-    limitOffsetClause = `LIMIT $${params.length}`;
-  } else {
-    const offset = options.offset ?? 0;
-    params.push(limit, offset);
-    limitOffsetClause = `LIMIT $${params.length - 1} OFFSET $${params.length}`;
-  }
+  const limitOffsetClause = buildLimitOffsetClause(params, { limit, offset: options.offset, hasCursor: Boolean(options.cursor) });
 
   const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 

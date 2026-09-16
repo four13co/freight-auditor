@@ -1,5 +1,12 @@
 import { describe, it, expect } from 'vitest';
-import { encodeCursor, decodeCursor, paginateKeyset } from '../../src/shared/cursor-pagination.js';
+import {
+  encodeCursor,
+  decodeCursor,
+  paginateKeyset,
+  buildKeysetAnchorFrom,
+  buildKeysetTieBreak,
+  buildLimitOffsetClause,
+} from '../../src/shared/cursor-pagination.js';
 
 describe('encodeCursor / decodeCursor', () => {
   it('round-trips a cursor', () => {
@@ -65,5 +72,72 @@ describe('paginateKeyset', () => {
     // concern (real callers always have one); paginateKeyset itself is
     // agnostic to id shape.
     expect(result.nextCursor).toBe(encodeCursor({ v: '2026-01-02T00:00:00.000Z', id: '2' }));
+  });
+});
+
+describe('buildKeysetAnchorFrom', () => {
+  it('appends the cursor id as a new param and builds the correlated-subquery FROM addition', () => {
+    const params: unknown[] = ['client-1'];
+    const result = buildKeysetAnchorFrom(params, { table: 'claim', tsColumn: 'opened_at', cursorId: 'c5' });
+    expect(params).toEqual(['client-1', 'c5']);
+    expect(result.anchorTsAlias).toBe('anchor_opened_at');
+    expect(result.fromClauseAddition).toMatch(
+      /,\s*\(\s*SELECT opened_at AS anchor_opened_at, id AS anchor_id\s*FROM claim AS cursor_row\s*WHERE cursor_row\.id = \$2\s*\) cursor_anchor/,
+    );
+  });
+
+  it('ANDs in an extra anchor predicate for a caller that must scope the anchor row explicitly', () => {
+    const params: unknown[] = ['client-1'];
+    const result = buildKeysetAnchorFrom(params, {
+      table: 'claim',
+      tsColumn: 'opened_at',
+      cursorId: 'c5',
+      extraAnchorPredicate: 'cursor_row.client_id = $1',
+    });
+    expect(result.fromClauseAddition).toMatch(/WHERE cursor_row\.id = \$2 AND cursor_row\.client_id = \$1/);
+  });
+
+  it('uses a column-specific anchor alias so two different sort columns never collide', () => {
+    const params: unknown[] = [];
+    const result = buildKeysetAnchorFrom(params, { table: 'gate_failure', tsColumn: 'recorded_at', cursorId: 'gf5' });
+    expect(result.anchorTsAlias).toBe('anchor_recorded_at');
+    expect(result.fromClauseAddition).toMatch(/SELECT recorded_at AS anchor_recorded_at, id AS anchor_id/);
+  });
+});
+
+describe('buildKeysetTieBreak', () => {
+  it('builds an unqualified tie-break condition when given bare column refs', () => {
+    expect(buildKeysetTieBreak('opened_at', 'id', 'anchor_opened_at')).toBe(
+      '(opened_at < cursor_anchor.anchor_opened_at OR (opened_at = cursor_anchor.anchor_opened_at AND id > cursor_anchor.anchor_id))',
+    );
+  });
+
+  it('builds a table-qualified tie-break condition when given qualified column refs', () => {
+    expect(buildKeysetTieBreak('gate_failure.recorded_at', 'gate_failure.id', 'anchor_recorded_at')).toBe(
+      '(gate_failure.recorded_at < cursor_anchor.anchor_recorded_at OR (gate_failure.recorded_at = cursor_anchor.anchor_recorded_at AND gate_failure.id > cursor_anchor.anchor_id))',
+    );
+  });
+});
+
+describe('buildLimitOffsetClause', () => {
+  it('appends limit and offset (defaulting offset to 0) and returns a LIMIT..OFFSET clause when there is no cursor', () => {
+    const params: unknown[] = ['client-1'];
+    const clause = buildLimitOffsetClause(params, { limit: 50, hasCursor: false });
+    expect(params).toEqual(['client-1', 50, 0]);
+    expect(clause).toBe('LIMIT $2 OFFSET $3');
+  });
+
+  it('honors an explicit offset', () => {
+    const params: unknown[] = [];
+    const clause = buildLimitOffsetClause(params, { limit: 10, offset: 20, hasCursor: false });
+    expect(params).toEqual([10, 20]);
+    expect(clause).toBe('LIMIT $1 OFFSET $2');
+  });
+
+  it('appends only limit and returns a bare LIMIT clause when a cursor is present', () => {
+    const params: unknown[] = ['c5'];
+    const clause = buildLimitOffsetClause(params, { limit: 10, hasCursor: true });
+    expect(params).toEqual(['c5', 10]);
+    expect(clause).toBe('LIMIT $2');
   });
 });

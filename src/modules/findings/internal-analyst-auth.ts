@@ -1,7 +1,7 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
-import { withTenantTx, type TenantContext } from '../../db/tenant-context.js';
+import type { TenantContext } from '../../db/tenant-context.js';
 import { getAuth } from '../../auth/better-auth.js';
-import { readHeader, toFetchHeaders } from './tenant-auth.js';
+import { readHeader, toFetchHeaders, lookupIsInternal } from './tenant-auth.js';
 
 /**
  * Isolated auth resolver for internal-analyst-only routes (P5.C.3, rebuild).
@@ -23,29 +23,12 @@ import { readHeader, toFetchHeaders } from './tenant-auth.js';
  * This resolver only grants { internal: true } (no clientIds at all) on
  * whichever route(s) opt into THIS preHandler -- currently just
  * portfolio-routes.ts's GET /api/portfolio/cross-client-recovery. No
- * existing route's auth behavior changes. `toFetchHeaders` and `readHeader`
- * are imported (not duplicated) from tenant-auth.ts -- both are pure
- * header-format helpers with no auth decision in them, so reusing them
- * carries none of the risk that reusing the resolvers themselves would.
+ * existing route's auth behavior changes. `toFetchHeaders`, `readHeader`,
+ * and `lookupIsInternal` (86e39qa6r) are imported (not duplicated) from
+ * tenant-auth.ts -- all three are pure lookups/header-format helpers with
+ * no auth *decision* in them, so reusing them carries none of the risk that
+ * reusing the resolvers themselves would.
  */
-
-/**
- * app_user carries no RLS (it is not in migration 0009's tenant-table list --
- * it is the identity table itself, not tenant-scoped data), but the lookup
- * still runs inside an internal-scoped transaction for consistency with
- * every other identity lookup in this codebase (lookupMembership in
- * tenant-auth.ts) and so a future RLS policy added to app_user wouldn't
- * silently break this path.
- */
-async function lookupIsInternal(userId: string): Promise<boolean> {
-  return withTenantTx({ internal: true }, async (client) => {
-    const result = await client.query<{ is_internal: boolean }>(
-      `SELECT is_internal FROM app_user WHERE id = $1 AND is_active = true`,
-      [userId],
-    );
-    return result.rows[0]?.is_internal === true;
-  });
-}
 
 /** DEV_AUTH_HEADERS path: x-user-id only -- no x-client-id, this scope is cross-client by design. */
 async function resolveViaDevHeader(request: FastifyRequest): Promise<TenantContext | null> {

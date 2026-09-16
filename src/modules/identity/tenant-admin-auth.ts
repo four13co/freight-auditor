@@ -1,7 +1,6 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
-import { withTenantTx } from '../../db/tenant-context.js';
 import { getAuth } from '../../auth/better-auth.js';
-import { readHeader, toFetchHeaders } from '../findings/tenant-auth.js';
+import { readHeader, toFetchHeaders, lookupIsInternal } from '../findings/tenant-auth.js';
 
 /**
  * Own auth resolver for /api/internal/tenants* (86e38rdnm), a genuinely
@@ -17,8 +16,8 @@ import { readHeader, toFetchHeaders } from '../findings/tenant-auth.js';
  * internal-analyst-auth.ts's resolver returns for "authenticated but not
  * internal" (it doesn't distinguish that from "no identity at all"). So this
  * is its own small resolver, reusing only the pure header helpers
- * (readHeader/toFetchHeaders) and the is_internal lookup shape -- not the
- * resolvers themselves -- distinguishing "no identity" (401) from
+ * (readHeader/toFetchHeaders) and the shared lookupIsInternal() (86e39qa6r)
+ * -- not the resolvers themselves -- distinguishing "no identity" (401) from
  * "identity, but not an internal analyst" (403) so AC5 holds exactly as
  * written.
  */
@@ -26,16 +25,6 @@ import { readHeader, toFetchHeaders } from '../findings/tenant-auth.js';
 interface ResolvedTenantAdminIdentity {
   userId: string;
   isInternal: boolean;
-}
-
-async function lookupIsInternal(userId: string): Promise<boolean> {
-  return withTenantTx({ internal: true }, async (client) => {
-    const result = await client.query<{ is_internal: boolean }>(
-      `SELECT is_internal FROM app_user WHERE id = $1 AND is_active = true`,
-      [userId],
-    );
-    return result.rows[0]?.is_internal === true;
-  });
 }
 
 async function resolveIdentity(request: FastifyRequest): Promise<ResolvedTenantAdminIdentity | null> {

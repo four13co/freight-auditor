@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { withTenantTx } from '../db/tenant-context.js';
 import { registerClientViewerAuthPreHandler } from '../modules/identity/client-viewer-auth.js';
-import { isUuid } from '../shared/request-validation.js';
+import { isUuid, AUDIT_ENTITY_OR_EVENT_PATTERN } from '../shared/request-validation.js';
 import { parseLimitOffset } from '../shared/parse-limit-offset.js';
 import { listClientInvoices } from '../modules/portal/list-client-invoices.js';
 import { getClientAuditRunScorecard } from '../modules/portal/get-client-audit-run-scorecard.js';
@@ -20,8 +20,6 @@ const VARIANCE_STATUS_VALUES = new Set<string>(ALL_VARIANCE_STATUSES);
 const SORT_KEYS = new Set<ClientFindingsSortKey>(['variance', 'age']);
 const SORT_DIRS = new Set(['asc', 'desc']);
 const NUMERIC_STRING = /^-?\d+(\.\d+)?$/;
-// Same allowlist write-audit-event.ts's AuditEventInputSchema enforces on entity/event at write time.
-const AUDIT_ENTITY_OR_EVENT = /^[a-z][a-z0-9_.-]*$/;
 
 /**
  * Client portal content read APIs: invoice list + per-audit-run scorecard
@@ -292,11 +290,11 @@ export async function registerPortalContentRoutes(routes: FastifyInstance): Prom
       offset?: string;
     };
 
-    if (query.entity !== undefined && !AUDIT_ENTITY_OR_EVENT.test(query.entity)) {
+    if (query.entity !== undefined && !AUDIT_ENTITY_OR_EVENT_PATTERN.test(query.entity)) {
       await reply.code(400).send({ error: 'invalid entity: must match ^[a-z][a-z0-9_.-]*$' });
       return;
     }
-    if (query.event !== undefined && !AUDIT_ENTITY_OR_EVENT.test(query.event)) {
+    if (query.event !== undefined && !AUDIT_ENTITY_OR_EVENT_PATTERN.test(query.event)) {
       await reply.code(400).send({ error: 'invalid event: must match ^[a-z][a-z0-9_.-]*$' });
       return;
     }

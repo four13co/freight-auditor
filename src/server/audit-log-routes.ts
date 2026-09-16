@@ -3,11 +3,9 @@ import { withTenantReadTx } from '../db/tenant-context.js';
 import { registerInternalAnalystAuthPreHandler } from '../modules/findings/internal-analyst-auth.js';
 import { listInternalAuditEvents } from '../modules/audit-ledger/list-internal-audit-events.js';
 import { parseLimitOffset } from '../shared/parse-limit-offset.js';
+import { AUDIT_ENTITY_OR_EVENT_PATTERN } from '../shared/request-validation.js';
 
 const MAX_LIMIT = 200;
-// Same allowlist portal-content-routes.ts's own /api/portal/audit-log route enforces,
-// mirroring write-audit-event.ts's AuditEventInputSchema constraint on entity/event.
-const AUDIT_ENTITY_OR_EVENT = /^[a-z][a-z0-9_.-]*$/;
 
 /**
  * Internal-analyst-facing audit log (86e37r2rv) -- the same audit-ledger
@@ -30,11 +28,11 @@ export async function registerAuditLogRoutes(routes: FastifyInstance): Promise<v
       offset?: string;
     };
 
-    if (query.entity !== undefined && !AUDIT_ENTITY_OR_EVENT.test(query.entity)) {
+    if (query.entity !== undefined && !AUDIT_ENTITY_OR_EVENT_PATTERN.test(query.entity)) {
       await reply.code(400).send({ error: 'invalid entity: must match ^[a-z][a-z0-9_.-]*$' });
       return;
     }
-    if (query.event !== undefined && !AUDIT_ENTITY_OR_EVENT.test(query.event)) {
+    if (query.event !== undefined && !AUDIT_ENTITY_OR_EVENT_PATTERN.test(query.event)) {
       await reply.code(400).send({ error: 'invalid event: must match ^[a-z][a-z0-9_.-]*$' });
       return;
     }

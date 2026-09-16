@@ -1,6 +1,7 @@
 import type pg from 'pg';
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
+import { AUDIT_ENTITY_OR_EVENT_PATTERN } from '../../shared/request-validation.js';
 
 // pg returns timestamptz as a JS Date (no setTypeParser override in this repo),
 // so a raw Date reaching a call site's detail payload is expected input, not a
@@ -17,9 +18,9 @@ const postgresUuid = z.string().regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9
 export const AuditEventInputSchema = z.object({
   id: postgresUuid,
   clientId: postgresUuid.nullable(),
-  entity: z.string().trim().min(1).max(100).regex(/^[a-z][a-z0-9_.-]*$/),
+  entity: z.string().trim().min(1).max(100).regex(AUDIT_ENTITY_OR_EVENT_PATTERN),
   entityId: postgresUuid.nullable().default(null),
-  event: z.string().trim().min(1).max(100).regex(/^[a-z][a-z0-9_.-]*$/),
+  event: z.string().trim().min(1).max(100).regex(AUDIT_ENTITY_OR_EVENT_PATTERN),
   // 'client' added for P6.A.4 (86e2zfjp9): a client-portal user (client_admin
   // /client_viewer) taking an auditable action through the portal is neither
   // an internal analyst, an AI, nor the system -- mislabeling it as one of

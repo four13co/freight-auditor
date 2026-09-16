@@ -32,6 +32,7 @@
 import pg from 'pg';
 import { getAuth } from '../src/auth/better-auth.js';
 import { DEV_CLIENT_ID } from './seed-dev-tenant.mjs';
+import { upsertAnalystMembership } from './seed-membership.mjs';
 
 export const ADMIN_EMAIL = 'greg@four13.co';
 
@@ -58,11 +59,7 @@ export async function seedAdminUser({ pool, password } = {}) {
       userId = result.user.id;
     }
 
-    await client.query(
-      `INSERT INTO membership (user_id, client_id, role) VALUES ($1, $2, 'analyst')
-       ON CONFLICT (user_id, client_id) DO UPDATE SET role = EXCLUDED.role`,
-      [userId, DEV_CLIENT_ID],
-    );
+    await upsertAnalystMembership(client, { userId, clientId: DEV_CLIENT_ID });
 
     // app_user.is_internal defaults to false (migrations/0003) and
     // signUpEmail doesn't set it -- App.tsx routes purely on isInternal, not

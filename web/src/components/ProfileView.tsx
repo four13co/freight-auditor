@@ -2,15 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { useSession, authClient, changePassword } from '../lib/auth-client.js';
 import { fetchActorContext, updateProfile, type ActorContext } from '../lib/api.js';
 import { PasskeyRegistration } from './PasskeyRegistration.js';
-
-function isValidHttpUrl(value: string): boolean {
-  try {
-    const url = new URL(value);
-    return url.protocol === 'http:' || url.protocol === 'https:';
-  } catch {
-    return false;
-  }
-}
+import { isValidHttpUrl } from '../lib/validation.js';
 
 type SaveStatus = 'idle' | 'saving' | 'saved' | 'error';
 

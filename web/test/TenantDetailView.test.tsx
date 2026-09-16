@@ -88,6 +88,74 @@ describe('TenantDetailView', () => {
     await waitFor(() => expect(screen.getByTestId('tenant-branding-saved')).toBeInTheDocument());
   });
 
+  it('AC2: Branding tab CREATE form rejects a blank domain client-side, with no POST request sent', async () => {
+    const user = userEvent.setup();
+    renderView();
+    await waitFor(() => expect(screen.getByTestId('tenant-info-form')).toBeInTheDocument());
+
+    await user.click(screen.getByTestId('tenant-tab-branding'));
+    fetchMock.mockClear();
+
+    await user.type(screen.getByLabelText('Logo URL'), 'https://cdn.example.com/logo.png');
+    await user.type(screen.getByLabelText('Primary color'), '#112233');
+    await user.click(screen.getByRole('button', { name: /create branding/i }));
+
+    expect(await screen.findByTestId('tenant-branding-domain-error')).toBeInTheDocument();
+    expect(fetchMock.mock.calls.some(([input]) => String(input).includes(`/tenants/${TENANT_ID}/branding`))).toBe(false);
+  });
+
+  it('rejects an invalid logo URL client-side, with no branding request sent', async () => {
+    const user = userEvent.setup();
+    renderView();
+    await waitFor(() => expect(screen.getByTestId('tenant-info-form')).toBeInTheDocument());
+
+    await user.click(screen.getByTestId('tenant-tab-branding'));
+    fetchMock.mockClear();
+
+    await user.type(screen.getByLabelText('Domain'), 'acme.example.com');
+    await user.type(screen.getByLabelText('Logo URL'), 'not-a-url');
+    await user.type(screen.getByLabelText('Primary color'), '#112233');
+    await user.click(screen.getByRole('button', { name: /create branding/i }));
+
+    expect(await screen.findByTestId('tenant-branding-logo-url-error')).toBeInTheDocument();
+    expect(fetchMock.mock.calls.some(([input]) => String(input).includes(`/tenants/${TENANT_ID}/branding`))).toBe(false);
+  });
+
+  it('rejects an invalid primary color client-side, with no branding request sent', async () => {
+    const user = userEvent.setup();
+    renderView();
+    await waitFor(() => expect(screen.getByTestId('tenant-info-form')).toBeInTheDocument());
+
+    await user.click(screen.getByTestId('tenant-tab-branding'));
+    fetchMock.mockClear();
+
+    await user.type(screen.getByLabelText('Domain'), 'acme.example.com');
+    await user.type(screen.getByLabelText('Logo URL'), 'https://cdn.example.com/logo.png');
+    await user.type(screen.getByLabelText('Primary color'), 'red');
+    await user.click(screen.getByRole('button', { name: /create branding/i }));
+
+    expect(await screen.findByTestId('tenant-branding-primary-color-error')).toBeInTheDocument();
+    expect(fetchMock.mock.calls.some(([input]) => String(input).includes(`/tenants/${TENANT_ID}/branding`))).toBe(false);
+  });
+
+  it('rejects an invalid secondary color client-side, with no branding request sent', async () => {
+    const user = userEvent.setup();
+    renderView();
+    await waitFor(() => expect(screen.getByTestId('tenant-info-form')).toBeInTheDocument());
+
+    await user.click(screen.getByTestId('tenant-tab-branding'));
+    fetchMock.mockClear();
+
+    await user.type(screen.getByLabelText('Domain'), 'acme.example.com');
+    await user.type(screen.getByLabelText('Logo URL'), 'https://cdn.example.com/logo.png');
+    await user.type(screen.getByLabelText('Primary color'), '#112233');
+    await user.type(screen.getByLabelText('Secondary color'), 'blue');
+    await user.click(screen.getByRole('button', { name: /create branding/i }));
+
+    expect(await screen.findByTestId('tenant-branding-secondary-color-error')).toBeInTheDocument();
+    expect(fetchMock.mock.calls.some(([input]) => String(input).includes(`/tenants/${TENANT_ID}/branding`))).toBe(false);
+  });
+
   it('AC3: Branding tab shows an UPDATE form (domain read-only) for a tenant with existing branding, and PATCHes on submit', async () => {
     fetchMock = vi.fn((input: string | URL | Request) => {
       const url = input.toString();

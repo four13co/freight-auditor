@@ -1,25 +1,9 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { fetchBranding, updateBranding } from '../lib/api.js';
-
-const HEX_COLOR_PATTERN = /^#[0-9a-fA-F]{6}$/;
-
-function isValidHttpUrl(value: string): boolean {
-  try {
-    const url = new URL(value);
-    return url.protocol === 'http:' || url.protocol === 'https:';
-  } catch {
-    return false;
-  }
-}
+import { validateBrandingFields, type BrandingFieldErrors } from '../lib/validation.js';
+import { BrandingForm, type BrandingSaveStatus } from './BrandingForm.js';
 
 type LoadStatus = 'loading' | 'ready';
-type SaveStatus = 'idle' | 'saving' | 'saved' | 'error';
-
-interface FieldErrors {
-  logoUrl?: string;
-  primaryColor?: string;
-  secondaryColor?: string;
-}
 
 /**
  * 86e37r2t4: internal-analyst-facing Settings page -- narrowly scoped to the
@@ -41,8 +25,8 @@ export function SettingsView() {
   const [logoUrl, setLogoUrl] = useState('');
   const [primaryColor, setPrimaryColor] = useState('');
   const [secondaryColor, setSecondaryColor] = useState('');
-  const [errors, setErrors] = useState<FieldErrors>({});
-  const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
+  const [errors, setErrors] = useState<BrandingFieldErrors>({});
+  const [saveStatus, setSaveStatus] = useState<BrandingSaveStatus>('idle');
 
   function load() {
     setStatus('loading');
@@ -58,23 +42,9 @@ export function SettingsView() {
     load();
   }, []);
 
-  function validate(): FieldErrors {
-    const next: FieldErrors = {};
-    if (!logoUrl.trim() || !isValidHttpUrl(logoUrl)) {
-      next.logoUrl = 'Enter a valid http(s) URL.';
-    }
-    if (!primaryColor.trim() || !HEX_COLOR_PATTERN.test(primaryColor)) {
-      next.primaryColor = 'Enter a valid hex color, e.g. #112233.';
-    }
-    if (secondaryColor.trim() !== '' && !HEX_COLOR_PATTERN.test(secondaryColor)) {
-      next.secondaryColor = 'Enter a valid hex color, e.g. #112233, or leave blank.';
-    }
-    return next;
-  }
-
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
-    const fieldErrors = validate();
+    const fieldErrors = validateBrandingFields({ logoUrl, primaryColor, secondaryColor });
     setErrors(fieldErrors);
     // AC3: an invalid field rejects client-side with no request sent at all.
     if (Object.keys(fieldErrors).length > 0) return;
@@ -108,104 +78,22 @@ export function SettingsView() {
       )}
 
       {status === 'ready' && (
-        <form
-          data-testid="settings-form"
+        <BrandingForm
+          testIdPrefix="settings"
+          errorTestId="settings-save-error"
+          logoUrl={logoUrl}
+          onLogoUrlChange={setLogoUrl}
+          primaryColor={primaryColor}
+          onPrimaryColorChange={setPrimaryColor}
+          secondaryColor={secondaryColor}
+          onSecondaryColorChange={setSecondaryColor}
+          errors={errors}
+          saveStatus={saveStatus}
+          submitLabel="Save"
           onSubmit={(e) => {
             void handleSubmit(e);
           }}
-          className="flex max-w-md flex-col gap-4 px-5"
-        >
-          <div className="flex flex-col gap-1.5">
-            <label htmlFor="settings-logo-url" className="text-[13px] font-semibold text-[#201e1d]">
-              Logo URL
-            </label>
-            <input
-              id="settings-logo-url"
-              aria-label="Logo URL"
-              value={logoUrl}
-              onChange={(e) => setLogoUrl(e.target.value)}
-              placeholder="https://cdn.example.com/logo.png"
-              className="h-9 border border-[rgba(32,30,29,0.4)] px-2.5 text-sm outline-none"
-            />
-            {errors.logoUrl && (
-              <span data-testid="settings-logo-url-error" role="alert" className="text-[12px] text-[#c0290f]">
-                {errors.logoUrl}
-              </span>
-            )}
-          </div>
-
-          <div className="flex flex-col gap-1.5">
-            <label htmlFor="settings-primary-color" className="text-[13px] font-semibold text-[#201e1d]">
-              Primary color
-            </label>
-            <div className="flex items-center gap-2">
-              <span
-                data-testid="settings-primary-color-swatch"
-                className="h-6 w-6 flex-none border border-[rgba(32,30,29,0.3)]"
-                style={{ background: HEX_COLOR_PATTERN.test(primaryColor) ? primaryColor : 'transparent' }}
-              />
-              <input
-                id="settings-primary-color"
-                aria-label="Primary color"
-                value={primaryColor}
-                onChange={(e) => setPrimaryColor(e.target.value)}
-                placeholder="#112233"
-                className="h-9 flex-1 border border-[rgba(32,30,29,0.4)] px-2.5 text-sm outline-none"
-              />
-            </div>
-            {errors.primaryColor && (
-              <span data-testid="settings-primary-color-error" role="alert" className="text-[12px] text-[#c0290f]">
-                {errors.primaryColor}
-              </span>
-            )}
-          </div>
-
-          <div className="flex flex-col gap-1.5">
-            <label htmlFor="settings-secondary-color" className="text-[13px] font-semibold text-[#201e1d]">
-              Secondary color
-            </label>
-            <div className="flex items-center gap-2">
-              <span
-                data-testid="settings-secondary-color-swatch"
-                className="h-6 w-6 flex-none border border-[rgba(32,30,29,0.3)]"
-                style={{ background: HEX_COLOR_PATTERN.test(secondaryColor) ? secondaryColor : 'transparent' }}
-              />
-              <input
-                id="settings-secondary-color"
-                aria-label="Secondary color"
-                value={secondaryColor}
-                onChange={(e) => setSecondaryColor(e.target.value)}
-                placeholder="#445566 (optional)"
-                className="h-9 flex-1 border border-[rgba(32,30,29,0.4)] px-2.5 text-sm outline-none"
-              />
-            </div>
-            {errors.secondaryColor && (
-              <span data-testid="settings-secondary-color-error" role="alert" className="text-[12px] text-[#c0290f]">
-                {errors.secondaryColor}
-              </span>
-            )}
-          </div>
-
-          <div className="flex items-center gap-3">
-            <button
-              type="submit"
-              disabled={saveStatus === 'saving'}
-              className="flex h-9 items-center bg-[#ec3013] px-4 text-[13px] font-extrabold text-[#f3f2f2] disabled:opacity-60"
-            >
-              {saveStatus === 'saving' ? 'Saving…' : 'Save'}
-            </button>
-            {saveStatus === 'saved' && (
-              <span data-testid="settings-saved" role="status" className="text-[13px] font-semibold text-[#1a7f37]">
-                Saved
-              </span>
-            )}
-            {saveStatus === 'error' && (
-              <span data-testid="settings-save-error" role="alert" className="text-[13px] font-semibold text-[#c0290f]">
-                Save failed. Try again.
-              </span>
-            )}
-          </div>
-        </form>
+        />
       )}
     </div>
   );

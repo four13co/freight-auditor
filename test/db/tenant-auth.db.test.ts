@@ -19,6 +19,8 @@ describe('resolveAuthorizedTenantContext (DB)', () => {
   let clientId: string;
   let userIdWithMembership: string;
   let userIdWithoutMembership: string;
+  let inactiveClientId: string;
+  let userIdOnInactiveClient: string;
   let originalFlag: string | undefined;
   const tag = `ta-${Date.now()}`;
 
@@ -30,15 +32,26 @@ describe('resolveAuthorizedTenantContext (DB)', () => {
     try {
       const c = await owner.query(`INSERT INTO client (name, slug) VALUES ('TA', $1) RETURNING id`, [tag]);
       clientId = c.rows[0].id;
+      const c2 = await owner.query(
+        `INSERT INTO client (name, slug, is_active) VALUES ('TA-inactive', $1, false) RETURNING id`,
+        [`${tag}-inactive`],
+      );
+      inactiveClientId = c2.rows[0].id;
 
       const u1 = await owner.query(`INSERT INTO app_user (email) VALUES ($1) RETURNING id`, [`${tag}-member@example.com`]);
       userIdWithMembership = u1.rows[0].id;
       const u2 = await owner.query(`INSERT INTO app_user (email) VALUES ($1) RETURNING id`, [`${tag}-nonmember@example.com`]);
       userIdWithoutMembership = u2.rows[0].id;
+      const u3 = await owner.query(`INSERT INTO app_user (email) VALUES ($1) RETURNING id`, [`${tag}-inactive-client-member@example.com`]);
+      userIdOnInactiveClient = u3.rows[0].id;
 
       await owner.query(
         `INSERT INTO membership (user_id, client_id, role) VALUES ($1, $2, 'client_viewer')`,
         [userIdWithMembership, clientId],
+      );
+      await owner.query(
+        `INSERT INTO membership (user_id, client_id, role) VALUES ($1, $2, 'client_viewer')`,
+        [userIdOnInactiveClient, inactiveClientId],
       );
     } finally {
       owner.release();
@@ -50,9 +63,11 @@ describe('resolveAuthorizedTenantContext (DB)', () => {
     else process.env.DEV_AUTH_HEADERS = originalFlag;
     const owner = await pool.connect();
     try {
-      await owner.query(`DELETE FROM membership WHERE client_id = $1`, [clientId]);
-      await owner.query(`DELETE FROM app_user WHERE id = ANY($1)`, [[userIdWithMembership, userIdWithoutMembership]]);
-      await owner.query(`DELETE FROM client WHERE id = $1`, [clientId]);
+      await owner.query(`DELETE FROM membership WHERE client_id = ANY($1)`, [[clientId, inactiveClientId]]);
+      await owner.query(`DELETE FROM app_user WHERE id = ANY($1)`, [
+        [userIdWithMembership, userIdWithoutMembership, userIdOnInactiveClient],
+      ]);
+      await owner.query(`DELETE FROM client WHERE id = ANY($1)`, [[clientId, inactiveClientId]]);
     } finally {
       owner.release();
     }
@@ -83,6 +98,13 @@ describe('resolveAuthorizedTenantContext (DB)', () => {
   it('AC3: returns null when x-user-id is absent', async () => {
     const ctx = await resolveAuthorizedTenantContext({
       headers: { 'x-client-id': clientId },
+    } as never);
+    expect(ctx).toBeNull();
+  });
+
+  it('86e39qa6h: returns null for a member of a deactivated (is_active = false) client, even with a valid membership row', async () => {
+    const ctx = await resolveAuthorizedTenantContext({
+      headers: { 'x-client-id': inactiveClientId, 'x-user-id': userIdOnInactiveClient },
     } as never);
     expect(ctx).toBeNull();
   });

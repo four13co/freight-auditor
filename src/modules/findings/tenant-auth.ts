@@ -54,11 +54,17 @@ export function readHeader(value: string | string[] | undefined): string | undef
  * second lookup because it's the exact same SELECT, one extra column, and
  * every existing caller here still only checks truthiness (a role string is
  * as truthy as `1` was) so no existing 401/access behavior changes.
+ *
+ * 86e39qa6h: joins to client and requires is_active -- a deactivated
+ * tenant's membership rows otherwise still resolved a full TenantContext,
+ * since client.is_active was previously consulted only by background job
+ * schedulers, never this request-time authz path.
  */
 async function lookupMembership(userId: string, clientId: string): Promise<string | null> {
   return withTenantTx({ internal: true }, async (client) => {
     const result = await client.query<{ role: string }>(
-      `SELECT role FROM membership WHERE user_id = $1 AND client_id = $2 LIMIT 1`,
+      `SELECT m.role FROM membership m JOIN client c ON c.id = m.client_id
+       WHERE m.user_id = $1 AND m.client_id = $2 AND c.is_active = true LIMIT 1`,
       [userId, clientId],
     );
     return result.rows[0]?.role ?? null;

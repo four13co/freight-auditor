@@ -46,11 +46,17 @@ import { readHeader, toFetchHeaders } from '../findings/tenant-auth.js';
  * header): tenant-auth.ts's version never returns the role, and importing
  * client-viewer-auth.ts's would couple two independently-reviewable
  * sibling modules together.
+ *
+ * 86e39qa6h: joins to client and requires is_active, mirroring
+ * tenant-auth.ts's and client-viewer-auth.ts's own fixes -- a deactivated
+ * tenant's client_admin members must lose access the same way any other
+ * member does.
  */
 async function lookupMembershipRole(userId: string, clientId: string): Promise<string | null> {
   return withTenantTx({ internal: true }, async (client) => {
     const result = await client.query<{ role: string }>(
-      `SELECT role FROM membership WHERE user_id = $1 AND client_id = $2 LIMIT 1`,
+      `SELECT m.role FROM membership m JOIN client c ON c.id = m.client_id
+       WHERE m.user_id = $1 AND m.client_id = $2 AND c.is_active = true LIMIT 1`,
       [userId, clientId],
     );
     return result.rows[0]?.role ?? null;

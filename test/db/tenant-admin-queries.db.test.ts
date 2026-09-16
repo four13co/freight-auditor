@@ -81,6 +81,13 @@ describe('tenant-admin queries (DB)', () => {
     ]);
   });
 
+  it('86e39qa6m: a non-internal context scoped to a different tenant cannot read this tenant\'s members (RLS)', async () => {
+    const members = await withTenantTx({ clientIds: ['00000000-0000-4000-8000-000000000000'], internal: false }, (client) =>
+      listTenantMembers(client, clientId),
+    );
+    expect(members).toEqual([]);
+  });
+
   it('removeMembership deletes the row and reports found: false on a repeat', async () => {
     const first = await withTenantTx({ internal: true }, (client) => removeMembership(client, clientId, membershipId));
     expect(first).toEqual({ found: true });

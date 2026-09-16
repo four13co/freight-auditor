@@ -155,4 +155,33 @@ describe('registerAnalystOnlyPreHandler (DB): dispute, finding, and payment muta
     });
     expect(res.statusCode).toBe(200);
   });
+
+  it('86e39qa6m AC1: a client_viewer is rejected with 403 on PATCH /api/internal/branding', async () => {
+    const res = await app.inject({
+      method: 'PATCH', url: '/api/internal/branding', headers: headersFor(viewerUserId),
+      payload: { logoUrl: 'https://cdn.example.com/logo.png', primaryColor: '#112233' },
+    });
+    expect(res.statusCode).toBe(403);
+  });
+
+  it('86e39qa6m AC1: an analyst still reaches the route body (404, not 403) on PATCH /api/internal/branding', async () => {
+    const res = await app.inject({
+      method: 'PATCH', url: '/api/internal/branding', headers: headersFor(analystUserId),
+      payload: { logoUrl: 'https://cdn.example.com/logo.png', primaryColor: '#112233' },
+    });
+    // no customer_branding row exists yet for this tenant -- proves the analyst reached the
+    // route body (updateCustomerBranding's `found: false`), not that the gate rejected them.
+    expect(res.statusCode).toBe(404);
+  });
+
+  it('86e39qa6m AC1: a client_viewer is rejected with 403 on GET /api/invoices', async () => {
+    const res = await app.inject({ method: 'GET', url: '/api/invoices', headers: headersFor(viewerUserId) });
+    expect(res.statusCode).toBe(403);
+  });
+
+  it('86e39qa6m AC1: an analyst still reaches the route body (200, not 403) on GET /api/invoices', async () => {
+    const res = await app.inject({ method: 'GET', url: '/api/invoices', headers: headersFor(analystUserId) });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ invoices: [] });
+  });
 });

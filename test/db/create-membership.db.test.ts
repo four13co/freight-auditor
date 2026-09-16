@@ -67,4 +67,12 @@ describe('createMembership (DB)', () => {
     );
     expect(result).toEqual({ created: false, reason: 'already_member' });
   });
+
+  it('86e39qa6m: a non-internal context scoped to a different tenant cannot create a membership for this one (RLS)', async () => {
+    await expect(
+      withTenantTx({ clientIds: ['00000000-0000-4000-8000-000000000000'], internal: false }, (client) =>
+        createMembership(client, { clientId, email: `rls-${tag}@example.test`, role: 'analyst' }),
+      ),
+    ).rejects.toBeTruthy();
+  });
 });

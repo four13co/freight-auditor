@@ -140,6 +140,22 @@ describe('GET /api/auth/memberships (DB, e2e)', () => {
     expect(res.json()).toEqual({ clientIds: [], isInternal: true, role: null, clientName: null });
   });
 
+  it('86e39qa6r: returns isInternal:false for a deactivated internal analyst (is_active = false)', async () => {
+    const email = `${tag}-inactive-internal@example.com`;
+    const cookieHeader = await signUpAndSignIn(email);
+
+    const owner = await pool.connect();
+    try {
+      await owner.query(`UPDATE app_user SET is_internal = true, is_active = false WHERE email = $1`, [email]);
+    } finally {
+      owner.release();
+    }
+
+    const res = await app.inject({ method: 'GET', url: '/api/auth/memberships', headers: { cookie: cookieHeader } });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ clientIds: [], isInternal: false, role: null, clientName: null });
+  });
+
   it('86e2zfjmb AC4: returns isInternal:false and the membership role for a portal member', async () => {
     const email = `${tag}-portal@example.com`;
     const cookieHeader = await signUpAndSignIn(email);

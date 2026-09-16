@@ -20,10 +20,12 @@ describe('resolveClientViewerContext (DB)', () => {
   let pool: pg.Pool;
   let clientId: string;
   let otherClientId: string;
+  let inactiveClientId: string;
   let viewerUserId: string;
   let adminUserId: string;
   let analystUserId: string;
   let nonMemberUserId: string;
+  let viewerUserIdOnInactiveClient: string;
   let originalFlag: string | undefined;
   const tag = `cva-${Date.now()}`;
 
@@ -37,6 +39,11 @@ describe('resolveClientViewerContext (DB)', () => {
       clientId = c.rows[0].id;
       const c2 = await owner.query(`INSERT INTO client (name, slug) VALUES ('CVA-other', $1) RETURNING id`, [`${tag}-other`]);
       otherClientId = c2.rows[0].id;
+      const c3 = await owner.query(
+        `INSERT INTO client (name, slug, is_active) VALUES ('CVA-inactive', $1, false) RETURNING id`,
+        [`${tag}-inactive`],
+      );
+      inactiveClientId = c3.rows[0].id;
 
       const uViewer = await owner.query(`INSERT INTO app_user (email) VALUES ($1) RETURNING id`, [`${tag}-viewer@example.com`]);
       viewerUserId = uViewer.rows[0].id;
@@ -49,10 +56,18 @@ describe('resolveClientViewerContext (DB)', () => {
       analystUserId = uAnalyst.rows[0].id;
       const uNonMember = await owner.query(`INSERT INTO app_user (email) VALUES ($1) RETURNING id`, [`${tag}-nonmember@example.com`]);
       nonMemberUserId = uNonMember.rows[0].id;
+      const uInactiveClientViewer = await owner.query(`INSERT INTO app_user (email) VALUES ($1) RETURNING id`, [
+        `${tag}-inactive-client-viewer@example.com`,
+      ]);
+      viewerUserIdOnInactiveClient = uInactiveClientViewer.rows[0].id;
 
       await owner.query(`INSERT INTO membership (user_id, client_id, role) VALUES ($1, $2, 'client_viewer')`, [
         viewerUserId,
         clientId,
+      ]);
+      await owner.query(`INSERT INTO membership (user_id, client_id, role) VALUES ($1, $2, 'client_viewer')`, [
+        viewerUserIdOnInactiveClient,
+        inactiveClientId,
       ]);
       await owner.query(`INSERT INTO membership (user_id, client_id, role) VALUES ($1, $2, 'client_admin')`, [
         adminUserId,
@@ -73,11 +88,11 @@ describe('resolveClientViewerContext (DB)', () => {
     else process.env.DEV_AUTH_HEADERS = originalFlag;
     const owner = await pool.connect();
     try {
-      await owner.query(`DELETE FROM membership WHERE client_id = ANY($1)`, [[clientId, otherClientId]]);
+      await owner.query(`DELETE FROM membership WHERE client_id = ANY($1)`, [[clientId, otherClientId, inactiveClientId]]);
       await owner.query(`DELETE FROM app_user WHERE id = ANY($1)`, [
-        [viewerUserId, adminUserId, analystUserId, nonMemberUserId],
+        [viewerUserId, adminUserId, analystUserId, nonMemberUserId, viewerUserIdOnInactiveClient],
       ]);
-      await owner.query(`DELETE FROM client WHERE id = ANY($1)`, [[clientId, otherClientId]]);
+      await owner.query(`DELETE FROM client WHERE id = ANY($1)`, [[clientId, otherClientId, inactiveClientId]]);
     } finally {
       owner.release();
     }
@@ -115,6 +130,13 @@ describe('resolveClientViewerContext (DB)', () => {
   it('rejects a real client_viewer against a client they are not a member of (cross-tenant isolation)', async () => {
     const ctx = await resolveClientViewerContext({
       headers: { 'x-client-id': otherClientId, 'x-user-id': viewerUserId },
+    } as never);
+    expect(ctx).toBeNull();
+  });
+
+  it('86e39qa6h: rejects a client_viewer membership on a deactivated (is_active = false) client', async () => {
+    const ctx = await resolveClientViewerContext({
+      headers: { 'x-client-id': inactiveClientId, 'x-user-id': viewerUserIdOnInactiveClient },
     } as never);
     expect(ctx).toBeNull();
   });

@@ -51,11 +51,16 @@ const SAFE_METHODS = new Set(['GET', 'HEAD']);
  * not import (see module header): that function only proves a membership
  * row exists, it never returns the role, and widening its return type would
  * touch the shared module every other tenant-scoped route depends on.
+ *
+ * 86e39qa6h: joins to client and requires is_active, mirroring
+ * tenant-auth.ts's own lookupMembership fix -- a deactivated tenant's
+ * client_viewer members must lose access the same way any other member does.
  */
 async function lookupMembershipRole(userId: string, clientId: string): Promise<string | null> {
   return withTenantTx({ internal: true }, async (client) => {
     const result = await client.query<{ role: string }>(
-      `SELECT role FROM membership WHERE user_id = $1 AND client_id = $2 LIMIT 1`,
+      `SELECT m.role FROM membership m JOIN client c ON c.id = m.client_id
+       WHERE m.user_id = $1 AND m.client_id = $2 AND c.is_active = true LIMIT 1`,
       [userId, clientId],
     );
     return result.rows[0]?.role ?? null;

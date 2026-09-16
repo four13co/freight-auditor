@@ -12,6 +12,7 @@ import { listTenantMembers } from '../modules/identity/list-tenant-members.js';
 import { removeMembership } from '../modules/identity/remove-membership.js';
 import { isUuid } from '../shared/request-validation.js';
 import { decodeCursor, paginateKeyset } from '../shared/cursor-pagination.js';
+import { parseLimitOffset } from '../shared/parse-limit-offset.js';
 
 const HEX_COLOR_PATTERN = /^#[0-9a-fA-F]{6}$/;
 const MEMBERSHIP_ROLES = new Set(['analyst', 'lead', 'client_viewer', 'client_admin']);
@@ -80,23 +81,12 @@ export async function registerTenantAdminRoutes(routes: FastifyInstance): Promis
     adminRoutes.get('/api/internal/tenants', async (request, reply) => {
       const query = request.query as { limit?: string; offset?: string; cursor?: string };
 
-      let limit: number | undefined;
-      if (query.limit !== undefined) {
-        limit = Number(query.limit);
-        if (!Number.isInteger(limit) || limit < 1 || limit > MAX_LIMIT) {
-          await reply.code(400).send({ error: `invalid limit: must be an integer between 1 and ${MAX_LIMIT}` });
-          return;
-        }
+      const parsedLimitOffset = parseLimitOffset(query, { maxLimit: MAX_LIMIT });
+      if (!parsedLimitOffset.ok) {
+        await reply.code(400).send({ error: parsedLimitOffset.error });
+        return;
       }
-
-      let offset: number | undefined;
-      if (query.offset !== undefined) {
-        offset = Number(query.offset);
-        if (!Number.isInteger(offset) || offset < 0) {
-          await reply.code(400).send({ error: 'invalid offset: must be a non-negative integer' });
-          return;
-        }
-      }
+      const { limit, offset } = parsedLimitOffset.value;
 
       if (query.cursor !== undefined && query.offset !== undefined) {
         await reply.code(400).send({ error: 'cannot combine cursor with offset' });

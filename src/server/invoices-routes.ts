@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { withTenantReadTx } from '../db/tenant-context.js';
 import { listInvoices } from '../modules/invoices/list-invoices.js';
 import { registerTenantAuthPreHandler, registerAnalystOnlyPreHandler } from '../modules/findings/tenant-auth.js';
+import { parseLimitOffset } from '../shared/parse-limit-offset.js';
 
 const MAX_LIMIT = 200;
 const DEFAULT_LIMIT = 50;
@@ -37,23 +38,12 @@ export async function registerInvoicesRoutes(routes: FastifyInstance): Promise<v
   routes.get('/api/invoices', async (request, reply) => {
     const query = request.query as { carrier?: string; status?: string; limit?: string; offset?: string };
 
-    let limit: number | undefined;
-    if (query.limit !== undefined) {
-      limit = Number(query.limit);
-      if (!Number.isInteger(limit) || limit < 1 || limit > MAX_LIMIT) {
-        await reply.code(400).send({ error: `invalid limit: must be an integer between 1 and ${MAX_LIMIT}` });
-        return;
-      }
+    const parsedLimitOffset = parseLimitOffset(query, { maxLimit: MAX_LIMIT });
+    if (!parsedLimitOffset.ok) {
+      await reply.code(400).send({ error: parsedLimitOffset.error });
+      return;
     }
-
-    let offset: number | undefined;
-    if (query.offset !== undefined) {
-      offset = Number(query.offset);
-      if (!Number.isInteger(offset) || offset < 0) {
-        await reply.code(400).send({ error: 'invalid offset: must be a non-negative integer' });
-        return;
-      }
-    }
+    const { limit, offset } = parsedLimitOffset.value;
 
     const ctx = request.tenantContext!;
     const invoices = await withTenantReadTx(ctx, (client) =>

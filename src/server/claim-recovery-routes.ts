@@ -4,6 +4,7 @@ import { registerTenantAuthPreHandler } from '../modules/findings/tenant-auth.js
 import { requireSingleClientId } from '../modules/ingestion/raw-upload-route.js';
 import { isUuid } from '../shared/request-validation.js';
 import { decodeCursor, paginateKeyset } from '../shared/cursor-pagination.js';
+import { parseLimitOffset } from '../shared/parse-limit-offset.js';
 import { listClaims } from '../modules/claims/list-claims.js';
 import { getClaimDetail } from '../modules/claims/get-claim-detail.js';
 
@@ -30,23 +31,12 @@ export async function registerClaimRecoveryRoutes(claimRoutes: FastifyInstance):
 
     const query = request.query as { status?: string; limit?: string; offset?: string; cursor?: string };
 
-    let limit: number | undefined;
-    if (query.limit !== undefined) {
-      limit = Number(query.limit);
-      if (!Number.isInteger(limit) || limit < 1 || limit > MAX_LIMIT) {
-        await reply.code(400).send({ error: `invalid limit: must be an integer between 1 and ${MAX_LIMIT}` });
-        return;
-      }
+    const parsedLimitOffset = parseLimitOffset(query, { maxLimit: MAX_LIMIT });
+    if (!parsedLimitOffset.ok) {
+      await reply.code(400).send({ error: parsedLimitOffset.error });
+      return;
     }
-
-    let offset: number | undefined;
-    if (query.offset !== undefined) {
-      offset = Number(query.offset);
-      if (!Number.isInteger(offset) || offset < 0) {
-        await reply.code(400).send({ error: 'invalid offset: must be a non-negative integer' });
-        return;
-      }
-    }
+    const { limit, offset } = parsedLimitOffset.value;
 
     // P6.C.1: cursor and offset address the same "where in the list" concept
     // two different ways -- combining them is ambiguous, not additive.

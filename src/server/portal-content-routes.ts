@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { withTenantTx } from '../db/tenant-context.js';
 import { registerClientViewerAuthPreHandler } from '../modules/identity/client-viewer-auth.js';
 import { isUuid } from '../shared/request-validation.js';
+import { parseLimitOffset } from '../shared/parse-limit-offset.js';
 import { listClientInvoices } from '../modules/portal/list-client-invoices.js';
 import { getClientAuditRunScorecard } from '../modules/portal/get-client-audit-run-scorecard.js';
 import { listClientFindings, type ClientFindingsSortKey } from '../modules/portal/list-client-findings.js';
@@ -97,23 +98,12 @@ export async function registerPortalContentRoutes(routes: FastifyInstance): Prom
 
     const query = request.query as { status?: string; limit?: string; offset?: string };
 
-    let limit: number | undefined;
-    if (query.limit !== undefined) {
-      limit = Number(query.limit);
-      if (!Number.isInteger(limit) || limit < 1 || limit > MAX_LIMIT) {
-        await reply.code(400).send({ error: `invalid limit: must be an integer between 1 and ${MAX_LIMIT}` });
-        return;
-      }
+    const parsedLimitOffset = parseLimitOffset(query, { maxLimit: MAX_LIMIT });
+    if (!parsedLimitOffset.ok) {
+      await reply.code(400).send({ error: parsedLimitOffset.error });
+      return;
     }
-
-    let offset: number | undefined;
-    if (query.offset !== undefined) {
-      offset = Number(query.offset);
-      if (!Number.isInteger(offset) || offset < 0) {
-        await reply.code(400).send({ error: 'invalid offset: must be a non-negative integer' });
-        return;
-      }
-    }
+    const { limit, offset } = parsedLimitOffset.value;
 
     const invoices = await withTenantTx(request.tenantContext!, (client) =>
       listClientInvoices(client, clientId, { status: query.status, limit, offset }),
@@ -170,23 +160,12 @@ export async function registerPortalContentRoutes(routes: FastifyInstance): Prom
       return;
     }
 
-    let limit: number | undefined;
-    if (query.limit !== undefined) {
-      limit = Number(query.limit);
-      if (!Number.isInteger(limit) || limit < 1 || limit > MAX_LIMIT) {
-        await reply.code(400).send({ error: `invalid limit: must be an integer between 1 and ${MAX_LIMIT}` });
-        return;
-      }
+    const parsedLimitOffset = parseLimitOffset(query, { maxLimit: MAX_LIMIT });
+    if (!parsedLimitOffset.ok) {
+      await reply.code(400).send({ error: parsedLimitOffset.error });
+      return;
     }
-
-    let offset: number | undefined;
-    if (query.offset !== undefined) {
-      offset = Number(query.offset);
-      if (!Number.isInteger(offset) || offset < 0) {
-        await reply.code(400).send({ error: 'invalid offset: must be a non-negative integer' });
-        return;
-      }
-    }
+    const { limit, offset } = parsedLimitOffset.value;
 
     const findings = await withTenantTx(request.tenantContext!, (client) =>
       listClientFindings(client, clientId, {
@@ -340,23 +319,12 @@ export async function registerPortalContentRoutes(routes: FastifyInstance): Prom
       }
     }
 
-    let limit: number | undefined;
-    if (query.limit !== undefined) {
-      limit = Number(query.limit);
-      if (!Number.isInteger(limit) || limit < 1 || limit > MAX_LIMIT) {
-        await reply.code(400).send({ error: `invalid limit: must be an integer between 1 and ${MAX_LIMIT}` });
-        return;
-      }
+    const parsedLimitOffset = parseLimitOffset(query, { maxLimit: MAX_LIMIT });
+    if (!parsedLimitOffset.ok) {
+      await reply.code(400).send({ error: parsedLimitOffset.error });
+      return;
     }
-
-    let offset: number | undefined;
-    if (query.offset !== undefined) {
-      offset = Number(query.offset);
-      if (!Number.isInteger(offset) || offset < 0) {
-        await reply.code(400).send({ error: 'invalid offset: must be a non-negative integer' });
-        return;
-      }
-    }
+    const { limit, offset } = parsedLimitOffset.value;
 
     const events = await withTenantTx(request.tenantContext!, (client) =>
       listClientAuditEvents(client, clientId, {

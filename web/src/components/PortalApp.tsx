@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { HashRouter, NavLink, Route, Routes } from 'react-router-dom';
 import type { Branding } from '../lib/api.js';
+import { navItemClassName, navItemStyle } from '../lib/nav-item.js';
 import { BrandMark } from './BrandMark.js';
 import { ClientInvoicesView } from './ClientInvoicesView.js';
 import { ClientScorecardView } from './ClientScorecardView.js';
@@ -101,12 +102,8 @@ function PortalNav({ branding, role }: { branding?: Branding | null; role?: stri
             key={item.path}
             to={item.path}
             data-testid="portal-nav-item"
-            className={({ isActive }) =>
-              `border-l-2 px-[16px] py-[9px] text-sm font-medium ${
-                isActive ? 'bg-sidebar-active text-sidebar-fg' : 'border-transparent text-sidebar-fg-85'
-              }`
-            }
-            style={({ isActive }) => (isActive ? { borderLeftColor: 'var(--brand-primary, #ec3013)' } : undefined)}
+            className={({ isActive }) => navItemClassName(isActive)}
+            style={({ isActive }) => navItemStyle(isActive)}
           >
             {item.label}
           </NavLink>

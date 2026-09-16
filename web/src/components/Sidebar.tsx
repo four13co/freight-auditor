@@ -7,6 +7,7 @@
  */
 import type { ReactNode } from 'react';
 import type { Branding } from '../lib/api.js';
+import { navItemClassName, navItemStyle } from '../lib/nav-item.js';
 import { BrandMark } from './BrandMark.js';
 import { UserMenu } from './UserMenu.js';
 
@@ -25,10 +26,8 @@ function NavAnchor({ href, path, currentPath, children }: { href: string; path: 
     <a
       href={href}
       data-testid={active ? 'sidebar-active-item' : undefined}
-      className={`border-l-2 px-[16px] py-[9px] text-sm font-medium ${
-        active ? 'bg-sidebar-active text-sidebar-fg' : 'border-transparent text-sidebar-fg-85'
-      }`}
-      style={active ? { borderLeftColor: 'var(--brand-primary, #ec3013)' } : undefined}
+      className={navItemClassName(active)}
+      style={navItemStyle(active)}
     >
       {children}
     </a>

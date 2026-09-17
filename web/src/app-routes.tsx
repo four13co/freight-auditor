@@ -15,6 +15,9 @@ import EmployeeClientsPage from '@/pages/employee/ClientsPage';
 import EmployeeGrandClientsPage from '@/pages/employee/GrandClientsPage';
 import EmployeeVendorsPage from '@/pages/employee/VendorsPage';
 import EmployeeRulesRatesPage from '@/pages/employee/RulesRatesPage';
+import ClientUsersPage from '@/pages/client/UsersPage';
+import ClientGrandClientUsersPage from '@/pages/client/GrandClientUsersPage';
+import ClientVendorUsersPage from '@/pages/client/VendorUsersPage';
 import { PlaceholderPage } from '@/components/navigation/PlaceholderPage';
 import { NAV_CONFIG, flattenNavItems } from '@/components/navigation/nav-config';
 import { ROLE_HOME_PATH, useAuth, type AppRole } from '@/providers/auth-provider';
@@ -33,6 +36,9 @@ const PAGE_OVERRIDES: Partial<Record<string, () => ReactElement>> = {
   '/employee/clients/grand-clients': EmployeeGrandClientsPage,
   '/employee/clients/grand-clients/vendors': EmployeeVendorsPage,
   '/employee/rules-rates': EmployeeRulesRatesPage,
+  '/client/users': ClientUsersPage,
+  '/client/grand-client-users': ClientGrandClientUsersPage,
+  '/client/vendor-users': ClientVendorUsersPage,
 };
 
 /** "/" itself: send an authenticated user straight to their role's home. */

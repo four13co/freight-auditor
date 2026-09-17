@@ -65,3 +65,69 @@ export function useScopedEntities(scopeKey: string | null) {
     },
   };
 }
+
+/**
+ * Client-scoped Grand Client users (86e3a6rh4) and Vendor users (86e3a6rhj),
+ * in-memory only -- same reasoning and the same shared module as
+ * ScopedEntity above (Bridge decision on task 86e3a6r3b / PR #406: route
+ * every Grand Client/Vendor screen through this one store, no per-screen
+ * mocks). A separate map from `stores` because these rows are user-shaped
+ * (email/role) rather than entity-shaped (name/contactInfo), but the same
+ * scope-key convention: `grandClientUsers:<grandClientId>` and
+ * `vendorUsers:<grandClientId>`.
+ */
+export interface ScopedUser {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+  status: 'active' | 'disabled';
+  createdAt: string;
+  /** Vendor-user-only: which Vendor entity (from that Grand Client's `grandClient:<id>` scope) this user belongs to. Unused by Grand-Client-scoped users. */
+  vendorId?: string;
+  vendorName?: string;
+}
+
+const userStores = new Map<string, ScopedUser[]>();
+
+export function useScopedUsers(scopeKey: string | null) {
+  const [users, setUsers] = useState<ScopedUser[]>(() => (scopeKey ? (userStores.get(scopeKey) ?? []) : []));
+
+  useEffect(() => {
+    setUsers(scopeKey ? (userStores.get(scopeKey) ?? []) : []);
+  }, [scopeKey]);
+
+  function persist(next: ScopedUser[]) {
+    if (scopeKey) userStores.set(scopeKey, next);
+    setUsers(next);
+  }
+
+  return {
+    users,
+    create(input: { name: string; email: string; role: string; vendorId?: string; vendorName?: string }) {
+      if (!scopeKey) return;
+      persist([
+        ...users,
+        {
+          id: crypto.randomUUID(),
+          name: input.name,
+          email: input.email,
+          role: input.role,
+          vendorId: input.vendorId,
+          vendorName: input.vendorName,
+          status: 'active',
+          createdAt: new Date().toISOString(),
+        },
+      ]);
+    },
+    update(id: string, patch: { name?: string; email?: string; role?: string; vendorId?: string; vendorName?: string }) {
+      persist(users.map((u) => (u.id === id ? { ...u, ...patch } : u)));
+    },
+    toggleStatus(id: string) {
+      persist(users.map((u) => (u.id === id ? { ...u, status: u.status === 'active' ? 'disabled' : 'active' } : u)));
+    },
+    remove(id: string) {
+      persist(users.filter((u) => u.id !== id));
+    },
+  };
+}

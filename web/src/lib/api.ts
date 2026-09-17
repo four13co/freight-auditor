@@ -54,6 +54,19 @@ export async function fetchAndStoreClientId(): Promise<void> {
 }
 
 /**
+ * 86e3a6rgc/rgu/rh4/rhj/rhv/rj8/rjr (Client UI epic): the Client role's own
+ * client id, for scoping the shared in-memory-hierarchy-store (`client:<id>`)
+ * and for any page that needs it directly -- same two sources authHeaders()
+ * already reads (the dev-header pair, or the real-session sessionStorage
+ * value fetchAndStoreClientId() populates), just exposed for callers that
+ * need the id itself rather than a ready-made headers object.
+ */
+export function getOwnClientId(): string | null {
+  if (!devHeaderPathActive()) return sessionStorage.getItem(CLIENT_ID_STORAGE_KEY);
+  return DEV_CLIENT_ID;
+}
+
+/**
  * The actor-type half of GET /api/auth/memberships' response.
  * isInternal===true means an app_user.is_internal analyst; otherwise role
  * is the backend's portal membership role (currently 'client_viewer' /
@@ -442,6 +455,60 @@ export async function deleteContractRate(tenantId: string, rateId: string): Prom
     headers: authHeaders(),
   });
   return res.ok;
+}
+
+// ---- Client portal self-service members (86e3a6rgu) -----------------------
+
+/**
+ * One row of the client's own portal roster -- GET /api/portal/members
+ * (portal-admin-routes.ts), available to client_viewer or client_admin,
+ * scoped server-side to the caller's own client_id via requireSingleClientId.
+ * Deliberately thin: no fullName/status/lastLogin columns exist on this
+ * endpoint (list-portal-members.ts's PortalMemberRow is
+ * id/userId/email/role/createdAt only) -- rendered as-is rather than
+ * fabricated, see UsersPage's own Uncertainties.
+ */
+export interface PortalMember {
+  id: string;
+  userId: string;
+  email: string;
+  role: 'client_viewer' | 'client_admin';
+  createdAt: string;
+}
+
+export async function fetchPortalMembers(): Promise<PortalMember[]> {
+  try {
+    const res = await fetch('/api/portal/members?limit=200', { headers: authHeaders() });
+    if (!res.ok) return [];
+    const body = (await res.json()) as { members?: PortalMember[] };
+    return body.members ?? [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * PATCH /api/portal/members/:id/role -- client_admin only server-side
+ * (registerClientAdminAuthPreHandler); a client_viewer's attempt 403s and
+ * this surfaces that error via the same {ok:false, error} shape as every
+ * other write in this file, rather than trying to pre-guess the caller's
+ * own role client-side (AuthUser.role is the coarse 'client' bucket only --
+ * see the role-vocab-gap note in auth-provider.tsx).
+ */
+export async function updatePortalMemberRole(
+  membershipId: string,
+  role: 'client_viewer' | 'client_admin',
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const res = await fetch(`/api/portal/members/${membershipId}/role`, {
+    method: 'PATCH',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ role }),
+  });
+  if (!res.ok) {
+    const body = (await res.json().catch(() => ({}))) as { error?: string };
+    return { ok: false, error: body.error ?? `request failed (${res.status})` };
+  }
+  return { ok: true };
 }
 
 export async function fetchActorContext(): Promise<ActorContext> {

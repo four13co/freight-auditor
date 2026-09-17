@@ -113,6 +113,47 @@ export async function fetchTenantSummaries(): Promise<TenantSummary[]> {
   }
 }
 
+function slugify(name: string): string {
+  return (
+    name
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/(^-|-$)/g, '') || `client-${Date.now()}`
+  );
+}
+
+export async function createClient(
+  input: { name: string },
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const res = await fetch('/api/internal/tenants', {
+    method: 'POST',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: input.name, slug: slugify(input.name) }),
+  });
+  if (!res.ok) {
+    const body = (await res.json().catch(() => ({}))) as { error?: string };
+    return { ok: false, error: body.error ?? `request failed (${res.status})` };
+  }
+  return { ok: true };
+}
+
+export async function updateClient(
+  tenantId: string,
+  patch: { name?: string; isActive?: boolean },
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const res = await fetch(`/api/internal/tenants/${tenantId}`, {
+    method: 'PATCH',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify(patch),
+  });
+  if (!res.ok) {
+    const body = (await res.json().catch(() => ({}))) as { error?: string };
+    return { ok: false, error: body.error ?? `request failed (${res.status})` };
+  }
+  return { ok: true };
+}
+
 /**
  * Backs the Employee-only branch of TenantPicker (86e3a6rak): GET
  * /api/internal/tenants is gated to internal actors server-side, so this

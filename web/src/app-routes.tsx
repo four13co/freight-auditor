@@ -11,6 +11,9 @@ import ResetPasswordPage from '@/pages/reset-password';
 import HomePage from '@/pages/home';
 import EmployeeHomePage from '@/pages/employee/HomePage';
 import EmployeeUsersPage from '@/pages/employee/UsersPage';
+import EmployeeClientsPage from '@/pages/employee/ClientsPage';
+import EmployeeGrandClientsPage from '@/pages/employee/GrandClientsPage';
+import EmployeeVendorsPage from '@/pages/employee/VendorsPage';
 import { PlaceholderPage } from '@/components/navigation/PlaceholderPage';
 import { NAV_CONFIG, flattenNavItems } from '@/components/navigation/nav-config';
 import { ROLE_HOME_PATH, useAuth, type AppRole } from '@/providers/auth-provider';
@@ -25,6 +28,9 @@ const ROLES = Object.keys(NAV_CONFIG) as AppRole[];
 const PAGE_OVERRIDES: Partial<Record<string, () => ReactElement>> = {
   '/employee/home': EmployeeHomePage,
   '/employee/users': EmployeeUsersPage,
+  '/employee/clients': EmployeeClientsPage,
+  '/employee/clients/grand-clients': EmployeeGrandClientsPage,
+  '/employee/clients/grand-clients/vendors': EmployeeVendorsPage,
 };
 
 /** "/" itself: send an authenticated user straight to their role's home. */

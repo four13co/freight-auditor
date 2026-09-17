@@ -19,6 +19,7 @@ import {
   deleteTenantMember,
   fetchAllUsers,
   fetchTenantSummaries,
+  updateTenantMember,
   type MembershipRole,
   type TenantSummary,
   type UserRow,
@@ -149,6 +150,73 @@ function CreateUserDialog({
   );
 }
 
+function EditRoleDialog({
+  user,
+  onOpenChange,
+  onSaved,
+}: {
+  user: UserRow | null;
+  onOpenChange: (open: boolean) => void;
+  onSaved: () => void;
+}) {
+  const [role, setRole] = useState<MembershipRole>(user?.role ?? 'analyst');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (user) setRole(user.role);
+  }, [user]);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!user) return;
+    setIsSubmitting(true);
+    const result = await updateTenantMember(user.tenantId, user.membershipId, { role });
+    setIsSubmitting(false);
+    if (!result.ok) {
+      toast.error(result.error);
+      return;
+    }
+    toast.success('Role updated.');
+    onOpenChange(false);
+    onSaved();
+  }
+
+  return (
+    <Dialog open={user !== null} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <form onSubmit={handleSubmit}>
+          <DialogHeader>
+            <DialogTitle>Edit role</DialogTitle>
+            <DialogDescription>Change this user&apos;s role for {user?.tenantName}.</DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-4 py-4">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="edit-user-role">Role</Label>
+              <select
+                id="edit-user-role"
+                className="h-8 rounded-lg border border-input bg-transparent px-2.5 text-sm dark:bg-input/30"
+                value={role}
+                onChange={(e) => setRole(e.target.value as MembershipRole)}
+              >
+                {MEMBERSHIP_ROLES.map((r) => (
+                  <option key={r} value={r}>
+                    {ROLE_LABELS[r]}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button type="submit" disabled={isSubmitting}>
+              {isSubmitting ? 'Saving…' : 'Save'}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export default function UsersPage() {
   const [users, setUsers] = useState<UserRow[]>([]);
   const [tenants, setTenants] = useState<TenantSummary[]>([]);
@@ -156,6 +224,7 @@ export default function UsersPage() {
   const [roleFilter, setRoleFilter] = useState<MembershipRole | 'all'>('all');
   const [tenantFilter, setTenantFilter] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'disabled'>('all');
+  const [editing, setEditing] = useState<UserRow | null>(null);
 
   async function load() {
     setIsLoading(true);
@@ -173,8 +242,8 @@ export default function UsersPage() {
     return users.filter((u) => {
       if (roleFilter !== 'all' && u.role !== roleFilter) return false;
       if (tenantFilter !== 'all' && u.tenantId !== tenantFilter) return false;
-      if (statusFilter === 'active' && !u.tenantIsActive) return false;
-      if (statusFilter === 'disabled' && u.tenantIsActive) return false;
+      if (statusFilter === 'active' && !u.isActive) return false;
+      if (statusFilter === 'disabled' && u.isActive) return false;
       return true;
     });
   }, [users, roleFilter, tenantFilter, statusFilter]);
@@ -189,6 +258,16 @@ export default function UsersPage() {
     setUsers((prev) => prev.filter((u) => u.membershipId !== user.membershipId));
   }
 
+  async function handleToggleActive(user: UserRow) {
+    const result = await updateTenantMember(user.tenantId, user.membershipId, { isActive: !user.isActive });
+    if (!result.ok) {
+      toast.error(result.error);
+      return;
+    }
+    toast.success(user.isActive ? 'User disabled.' : 'User enabled.');
+    load();
+  }
+
   const columns: DataTableColumn<UserRow>[] = [
     { key: 'name', header: 'Name', sortValue: (u) => u.fullName ?? u.email, render: (u) => u.fullName ?? '—' },
     { key: 'email', header: 'Email', sortValue: (u) => u.email, render: (u) => u.email },
@@ -197,8 +276,8 @@ export default function UsersPage() {
     {
       key: 'status',
       header: 'Status',
-      sortValue: (u) => (u.tenantIsActive ? 0 : 1),
-      render: (u) => <Badge variant={u.tenantIsActive ? 'default' : 'secondary'}>{u.tenantIsActive ? 'Active' : 'Disabled'}</Badge>,
+      sortValue: (u) => (u.isActive ? 0 : 1),
+      render: (u) => <Badge variant={u.isActive ? 'default' : 'secondary'}>{u.isActive ? 'Active' : 'Disabled'}</Badge>,
     },
     { key: 'lastLogin', header: 'Last login', render: () => <span className="text-muted-foreground">—</span> },
     {
@@ -211,9 +290,17 @@ export default function UsersPage() {
       key: 'actions',
       header: 'Actions',
       render: (u) => (
-        <Button variant="ghost" size="sm" onClick={() => handleRemove(u)}>
-          Remove
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="ghost" size="sm" onClick={() => setEditing(u)}>
+            Edit role
+          </Button>
+          <Button variant="ghost" size="sm" onClick={() => handleToggleActive(u)}>
+            {u.isActive ? 'Disable' : 'Enable'}
+          </Button>
+          <Button variant="ghost" size="sm" onClick={() => handleRemove(u)}>
+            Remove
+          </Button>
+        </div>
       ),
     },
   ];
@@ -283,6 +370,15 @@ export default function UsersPage() {
         toolbarEnd={<CreateUserDialog tenants={tenants} onCreated={load} />}
         isLoading={isLoading}
         emptyState="No users match these filters."
+      />
+
+      <EditRoleDialog
+        user={editing}
+        onOpenChange={(open) => !open && setEditing(null)}
+        onSaved={() => {
+          setEditing(null);
+          load();
+        }}
       />
     </div>
   );

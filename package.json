@@ -31,6 +31,7 @@
     "seed:dev": "node scripts/seed-dev-tenant.mjs",
     "seed:criteria": "tsx scripts/seed-criteria.mjs",
     "seed:e2e-fullstack-fixture": "tsx scripts/seed-fullstack-e2e-fixture.mjs",
+    "seed:e2e-many-members": "tsx scripts/seed-e2e-many-members.mjs",
     "seed:e2e-auth-user": "tsx scripts/seed-e2e-auth-user.mjs",
     "seed:e2e-portal-user": "tsx scripts/seed-e2e-portal-user.mjs",
     "seed:e2e-portal-admin-user": "tsx scripts/seed-e2e-portal-admin-user.mjs",

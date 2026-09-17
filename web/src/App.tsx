@@ -1,14 +1,15 @@
-import { APP_NAME } from '@/lib/app-info';
+import { Toaster } from '@/components/ui/sonner';
+import { TooltipProvider } from '@/components/ui/tooltip';
+import { ThemeProvider } from '@/providers/theme-provider';
+import ThemeSmokeTest from '@/pages/theme-smoke-test';
 
 export default function App() {
   return (
-    <main className="flex min-h-screen items-center justify-center bg-slate-50">
-      <div className="rounded-lg bg-white p-8 text-center shadow-md">
-        <h1 className="text-2xl font-semibold text-slate-900">{APP_NAME}</h1>
-        <p className="mt-2 text-sm text-slate-500">
-          Frontend scaffold rebuilding in progress.
-        </p>
-      </div>
-    </main>
+    <ThemeProvider defaultTheme="system" storageKey="freight-auditor-theme">
+      <TooltipProvider>
+        <ThemeSmokeTest />
+        <Toaster />
+      </TooltipProvider>
+    </ThemeProvider>
   );
 }

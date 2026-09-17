@@ -21,6 +21,7 @@ import ClientVendorUsersPage from '@/pages/client/VendorUsersPage';
 import ClientGrandClientsPage from '@/pages/client/GrandClientsPage';
 import ClientGrandClientRulesRatesPage from '@/pages/client/GrandClientRulesRatesPage';
 import ClientGrandClientFileDropPage from '@/pages/client/GrandClientFileDropPage';
+import ClientHomePage from '@/pages/client/HomePage';
 import { PlaceholderPage } from '@/components/navigation/PlaceholderPage';
 import { NAV_CONFIG, flattenNavItems } from '@/components/navigation/nav-config';
 import { ROLE_HOME_PATH, useAuth, type AppRole } from '@/providers/auth-provider';
@@ -45,6 +46,7 @@ const PAGE_OVERRIDES: Partial<Record<string, () => ReactElement>> = {
   '/client/grand-clients': ClientGrandClientsPage,
   '/client/grand-clients/rules-rates': ClientGrandClientRulesRatesPage,
   '/client/grand-clients/file-drop': ClientGrandClientFileDropPage,
+  '/client/home': ClientHomePage,
 };
 
 /** "/" itself: send an authenticated user straight to their role's home. */

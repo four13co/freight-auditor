@@ -173,6 +173,107 @@ describe('portal-admin routes (DB, e2e)', () => {
     expect(res.statusCode).toBe(404);
   });
 
+  it('a client_admin invites a new portal member into their own client, durably (86e3a6rgu review fix)', async () => {
+    const email = `${tag}-invitee@example.com`;
+    const res = await app.inject({
+      method: 'POST', url: '/api/portal/members',
+      headers: { 'x-client-id': clientId, 'x-user-id': adminUserId, 'content-type': 'application/json' },
+      payload: { email, role: 'client_viewer' },
+    });
+    expect(res.statusCode).toBe(201);
+    const body = res.json();
+    expect(body).toMatchObject({ isNewUser: true, role: 'client_viewer' });
+
+    const owner = await pool.connect();
+    try {
+      const row = await owner.query(`SELECT client_id, role FROM membership WHERE id = $1`, [body.membershipId]);
+      expect(row.rows[0]).toMatchObject({ client_id: clientId, role: 'client_viewer' });
+    } finally {
+      await owner.query(`DELETE FROM membership WHERE id = $1`, [body.membershipId]);
+      await owner.query(`DELETE FROM app_user WHERE id = $1`, [body.userId]);
+      owner.release();
+    }
+  });
+
+  it('invite rejects a role outside PORTAL_ROLES (e.g. analyst) with 400 -- a client_admin can never self-assign an internal role', async () => {
+    const res = await app.inject({
+      method: 'POST', url: '/api/portal/members',
+      headers: { 'x-client-id': clientId, 'x-user-id': adminUserId, 'content-type': 'application/json' },
+      payload: { email: `${tag}-blocked@example.com`, role: 'analyst' },
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it('invite rejects a client_viewer caller with 401, never reaching createMembership', async () => {
+    const res = await app.inject({
+      method: 'POST', url: '/api/portal/members',
+      headers: { 'x-client-id': clientId, 'x-user-id': viewerUserId, 'content-type': 'application/json' },
+      payload: { email: `${tag}-should-not-exist@example.com`, role: 'client_viewer' },
+    });
+    expect(res.statusCode).toBe(401);
+
+    const owner = await pool.connect();
+    try {
+      const row = await owner.query(`SELECT id FROM app_user WHERE email = $1`, [`${tag}-should-not-exist@example.com`]);
+      expect(row.rows).toHaveLength(0);
+    } finally {
+      owner.release();
+    }
+  });
+
+  it('a client_admin removes a portal member from their own roster, durably', async () => {
+    const owner = await pool.connect();
+    let removableUserId: string;
+    let removableMembershipId: string;
+    try {
+      const u = await owner.query(`INSERT INTO app_user (email) VALUES ($1) RETURNING id`, [`${tag}-removable@example.com`]);
+      removableUserId = u.rows[0].id;
+      const m = await owner.query(`INSERT INTO membership (user_id, client_id, role) VALUES ($1, $2, 'client_viewer') RETURNING id`, [removableUserId, clientId]);
+      removableMembershipId = m.rows[0].id;
+    } finally {
+      owner.release();
+    }
+
+    const res = await app.inject({
+      method: 'DELETE', url: `/api/portal/members/${removableMembershipId}`,
+      headers: { 'x-client-id': clientId, 'x-user-id': adminUserId },
+    });
+    expect(res.statusCode).toBe(204);
+
+    const check = await pool.connect();
+    try {
+      const row = await check.query(`SELECT id FROM membership WHERE id = $1`, [removableMembershipId]);
+      expect(row.rows).toHaveLength(0);
+    } finally {
+      await check.query(`DELETE FROM app_user WHERE id = $1`, [removableUserId]);
+      check.release();
+    }
+  });
+
+  it('remove: a client_admin cannot remove the internal analyst membership row -- 404, structurally blocked', async () => {
+    const res = await app.inject({
+      method: 'DELETE', url: `/api/portal/members/${analystMembershipId}`,
+      headers: { 'x-client-id': clientId, 'x-user-id': adminUserId },
+    });
+    expect(res.statusCode).toBe(404);
+
+    const owner = await pool.connect();
+    try {
+      const row = await owner.query(`SELECT id FROM membership WHERE id = $1`, [analystMembershipId]);
+      expect(row.rows).toHaveLength(1);
+    } finally {
+      owner.release();
+    }
+  });
+
+  it('remove rejects a client_viewer caller with 401', async () => {
+    const res = await app.inject({
+      method: 'DELETE', url: `/api/portal/members/${adminMembershipId}`,
+      headers: { 'x-client-id': clientId, 'x-user-id': viewerUserId },
+    });
+    expect(res.statusCode).toBe(401);
+  });
+
   it('cross-tenant: a client_admin of one client cannot list or act on another client\'s roster', async () => {
     const cAdmin = await pool.connect();
     let otherAdminUserId: string;
@@ -208,6 +309,45 @@ describe('portal-admin routes (DB, e2e)', () => {
       await owner.query(`DELETE FROM membership WHERE user_id = $1`, [otherAdminUserId]);
       await owner.query(`DELETE FROM app_user WHERE id = $1`, [otherAdminUserId]);
     } finally {
+      owner.release();
+    }
+  });
+
+  it('cross-tenant: invite always lands in the caller\'s OWN client (clientId is server-derived, never client input) -- and remove cannot reach another client\'s membership row', async () => {
+    const cAdmin = await pool.connect();
+    let otherAdminUserId: string;
+    try {
+      const u = await cAdmin.query(`INSERT INTO app_user (email) VALUES ($1) RETURNING id`, [`${tag}-other-admin-2@example.com`]);
+      otherAdminUserId = u.rows[0].id;
+      await cAdmin.query(`INSERT INTO membership (user_id, client_id, role) VALUES ($1, $2, 'client_admin')`, [otherAdminUserId, otherClientId]);
+    } finally {
+      cAdmin.release();
+    }
+
+    const inviteRes = await app.inject({
+      method: 'POST', url: '/api/portal/members',
+      headers: { 'x-client-id': otherClientId, 'x-user-id': otherAdminUserId, 'content-type': 'application/json' },
+      payload: { email: `${tag}-invited-by-other@example.com`, role: 'client_viewer' },
+    });
+    expect(inviteRes.statusCode).toBe(201);
+    const invitedMembershipId = inviteRes.json().membershipId;
+    const invitedUserId = inviteRes.json().userId;
+
+    const removeRes = await app.inject({
+      method: 'DELETE', url: `/api/portal/members/${adminMembershipId}`,
+      headers: { 'x-client-id': otherClientId, 'x-user-id': otherAdminUserId },
+    });
+    expect(removeRes.statusCode).toBe(404);
+
+    const owner = await pool.connect();
+    try {
+      const invited = await owner.query(`SELECT client_id FROM membership WHERE id = $1`, [invitedMembershipId]);
+      expect(invited.rows[0].client_id).toBe(otherClientId);
+      const stillThere = await owner.query(`SELECT id FROM membership WHERE id = $1`, [adminMembershipId]);
+      expect(stillThere.rows).toHaveLength(1);
+    } finally {
+      await owner.query(`DELETE FROM membership WHERE user_id = ANY($1)`, [[invitedUserId, otherAdminUserId]]);
+      await owner.query(`DELETE FROM app_user WHERE id = ANY($1)`, [[invitedUserId, otherAdminUserId]]);
       owner.release();
     }
   });

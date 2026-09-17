@@ -5,6 +5,8 @@ import UsersPage from '@/pages/client/UsersPage';
 
 const fetchPortalMembersMock = vi.fn();
 const updatePortalMemberRoleMock = vi.fn();
+const createPortalMemberMock = vi.fn();
+const removePortalMemberMock = vi.fn();
 
 vi.mock('@/lib/api', async () => {
   const actual = await vi.importActual<typeof import('@/lib/api')>('@/lib/api');
@@ -12,6 +14,8 @@ vi.mock('@/lib/api', async () => {
     ...actual,
     fetchPortalMembers: () => fetchPortalMembersMock(),
     updatePortalMemberRole: (...args: unknown[]) => updatePortalMemberRoleMock(...args),
+    createPortalMember: (...args: unknown[]) => createPortalMemberMock(...args),
+    removePortalMember: (...args: unknown[]) => removePortalMemberMock(...args),
   };
 });
 
@@ -23,6 +27,8 @@ const MEMBERS = [
 beforeEach(() => {
   fetchPortalMembersMock.mockReset().mockResolvedValue(MEMBERS);
   updatePortalMemberRoleMock.mockReset().mockResolvedValue({ ok: true });
+  createPortalMemberMock.mockReset().mockResolvedValue({ ok: true });
+  removePortalMemberMock.mockReset().mockResolvedValue(true);
 });
 
 describe('client UsersPage', () => {
@@ -75,5 +81,58 @@ describe('client UsersPage', () => {
     await waitFor(() => expect(screen.getByText('dana@acme.test')).toBeInTheDocument());
 
     expect(container.querySelector('[data-slot="table-container"].overflow-x-auto')).not.toBeNull();
+  });
+
+  it('AC: invite flow works end-to-end via the API (86e3a6rgu review fix)', async () => {
+    const user = userEvent.setup();
+    render(<UsersPage />);
+    await waitFor(() => expect(screen.getByText('dana@acme.test')).toBeInTheDocument());
+
+    await user.click(screen.getByRole('button', { name: 'Invite user' }));
+    await user.type(screen.getByLabelText('Email'), 'new@acme.test');
+    await user.selectOptions(screen.getByLabelText('Role'), 'client_admin');
+    await user.click(screen.getByRole('button', { name: 'Invite' }));
+
+    await waitFor(() => expect(createPortalMemberMock).toHaveBeenCalledWith({ email: 'new@acme.test', role: 'client_admin' }));
+    expect(fetchPortalMembersMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('AC: invite surfaces a server-side error instead of silently closing', async () => {
+    createPortalMemberMock.mockResolvedValue({ ok: false, error: 'this user is already a member of this tenant' });
+    const user = userEvent.setup();
+    render(<UsersPage />);
+    await waitFor(() => expect(screen.getByText('dana@acme.test')).toBeInTheDocument());
+
+    await user.click(screen.getByRole('button', { name: 'Invite user' }));
+    await user.type(screen.getByLabelText('Email'), 'dana@acme.test');
+    await user.click(screen.getByRole('button', { name: 'Invite' }));
+
+    await waitFor(() => expect(createPortalMemberMock).toHaveBeenCalled());
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+  });
+
+  it('AC: remove row action calls the API and drops the row', async () => {
+    const user = userEvent.setup();
+    render(<UsersPage />);
+    await waitFor(() => expect(screen.getByText('dana@acme.test')).toBeInTheDocument());
+
+    const row = screen.getByText('dana@acme.test').closest('tr')!;
+    await user.click(within(row).getByRole('button', { name: 'Remove' }));
+
+    expect(removePortalMemberMock).toHaveBeenCalledWith('m1');
+    await waitFor(() => expect(screen.queryByText('dana@acme.test')).not.toBeInTheDocument());
+  });
+
+  it('AC: a remove failure surfaces an error and does not drop the row', async () => {
+    removePortalMemberMock.mockResolvedValue(false);
+    const user = userEvent.setup();
+    render(<UsersPage />);
+    await waitFor(() => expect(screen.getByText('dana@acme.test')).toBeInTheDocument());
+
+    const row = screen.getByText('dana@acme.test').closest('tr')!;
+    await user.click(within(row).getByRole('button', { name: 'Remove' }));
+
+    await waitFor(() => expect(removePortalMemberMock).toHaveBeenCalled());
+    expect(screen.getByText('dana@acme.test')).toBeInTheDocument();
   });
 });

@@ -67,6 +67,8 @@ describe('portal-admin routes (unit, mocked withTenantTx + auth)', () => {
     vi.doUnmock('../../src/modules/identity/client-viewer-auth.js');
     vi.doUnmock('../../src/modules/identity/list-portal-members.js');
     vi.doUnmock('../../src/modules/identity/update-portal-member-role.js');
+    vi.doUnmock('../../src/modules/identity/create-membership.js');
+    vi.doUnmock('../../src/modules/identity/remove-portal-member.js');
   });
 
   describe('GET /api/portal/members', () => {
@@ -318,6 +320,192 @@ describe('portal-admin routes (unit, mocked withTenantTx + auth)', () => {
         headers: { 'x-client-id': CLIENT_ID, 'x-user-id': 'user-1', 'content-type': 'application/json' },
         payload: { role: 'client_admin' },
       });
+      expect(res.statusCode).toBe(404);
+    });
+  });
+
+  describe('POST /api/portal/members', () => {
+    it('invites a new portal member for an authorized client_admin caller', async () => {
+      mockAuth({ clientIds: [CLIENT_ID], internal: false }, null);
+      vi.doMock('../../src/db/tenant-context.js', () => ({
+        withTenantTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
+      }));
+      const createMembership = vi.fn().mockResolvedValue({ created: true, membershipId: 'm9', userId: 'u9', isNewUser: true });
+      vi.doMock('../../src/modules/identity/create-membership.js', () => ({ createMembership }));
+      vi.doMock('../../src/modules/identity/update-portal-member-role.js', () => ({ updatePortalMemberRole: vi.fn(), PORTAL_ROLES: ['client_viewer', 'client_admin'] }));
+      const { buildApp } = await import('../../src/server/app.js');
+      app = buildApp();
+
+      const res = await app.inject({
+        method: 'POST', url: '/api/portal/members',
+        headers: { 'x-client-id': CLIENT_ID, 'x-user-id': 'user-1', 'content-type': 'application/json' },
+        payload: { email: 'new@example.com', role: 'client_viewer' },
+      });
+
+      expect(res.statusCode).toBe(201);
+      expect(res.json()).toEqual({ membershipId: 'm9', userId: 'u9', isNewUser: true, role: 'client_viewer' });
+      expect(createMembership).toHaveBeenCalledWith({}, { clientId: CLIENT_ID, email: 'new@example.com', fullName: null, role: 'client_viewer' });
+    });
+
+    it('rejects an authorized-but-non-admin (client_viewer) caller with 401, never reaching the handler', async () => {
+      mockAuth(null, { clientIds: [CLIENT_ID], internal: false });
+      const createMembership = vi.fn();
+      vi.doMock('../../src/db/tenant-context.js', () => ({ withTenantTx: vi.fn() }));
+      vi.doMock('../../src/modules/identity/create-membership.js', () => ({ createMembership }));
+      vi.doMock('../../src/modules/identity/update-portal-member-role.js', () => ({ updatePortalMemberRole: vi.fn(), PORTAL_ROLES: ['client_viewer', 'client_admin'] }));
+      const { buildApp } = await import('../../src/server/app.js');
+      app = buildApp();
+
+      const res = await app.inject({
+        method: 'POST', url: '/api/portal/members',
+        headers: { 'x-client-id': CLIENT_ID, 'x-user-id': 'user-1', 'content-type': 'application/json' },
+        payload: { email: 'new@example.com', role: 'client_viewer' },
+      });
+
+      expect(res.statusCode).toBe(401);
+      expect(createMembership).not.toHaveBeenCalled();
+    });
+
+    it('rejects a role outside PORTAL_ROLES (e.g. analyst) with 400, so a client_admin can never self-assign an internal role', async () => {
+      mockAuth({ clientIds: [CLIENT_ID], internal: false }, null);
+      const createMembership = vi.fn();
+      vi.doMock('../../src/db/tenant-context.js', () => ({
+        withTenantTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
+      }));
+      vi.doMock('../../src/modules/identity/create-membership.js', () => ({ createMembership }));
+      vi.doMock('../../src/modules/identity/update-portal-member-role.js', () => ({ updatePortalMemberRole: vi.fn(), PORTAL_ROLES: ['client_viewer', 'client_admin'] }));
+      const { buildApp } = await import('../../src/server/app.js');
+      app = buildApp();
+
+      const res = await app.inject({
+        method: 'POST', url: '/api/portal/members',
+        headers: { 'x-client-id': CLIENT_ID, 'x-user-id': 'user-1', 'content-type': 'application/json' },
+        payload: { email: 'new@example.com', role: 'analyst' },
+      });
+
+      expect(res.statusCode).toBe(400);
+      expect(createMembership).not.toHaveBeenCalled();
+    });
+
+    it('rejects a missing/empty email with 400', async () => {
+      mockAuth({ clientIds: [CLIENT_ID], internal: false }, null);
+      const createMembership = vi.fn();
+      vi.doMock('../../src/db/tenant-context.js', () => ({
+        withTenantTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
+      }));
+      vi.doMock('../../src/modules/identity/create-membership.js', () => ({ createMembership }));
+      vi.doMock('../../src/modules/identity/update-portal-member-role.js', () => ({ updatePortalMemberRole: vi.fn(), PORTAL_ROLES: ['client_viewer', 'client_admin'] }));
+      const { buildApp } = await import('../../src/server/app.js');
+      app = buildApp();
+
+      const res = await app.inject({
+        method: 'POST', url: '/api/portal/members',
+        headers: { 'x-client-id': CLIENT_ID, 'x-user-id': 'user-1', 'content-type': 'application/json' },
+        payload: { email: '', role: 'client_viewer' },
+      });
+
+      expect(res.statusCode).toBe(400);
+      expect(createMembership).not.toHaveBeenCalled();
+    });
+
+    it('returns 409 when createMembership resolves created: false (already a member)', async () => {
+      mockAuth({ clientIds: [CLIENT_ID], internal: false }, null);
+      vi.doMock('../../src/db/tenant-context.js', () => ({
+        withTenantTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
+      }));
+      vi.doMock('../../src/modules/identity/create-membership.js', () => ({
+        createMembership: vi.fn().mockResolvedValue({ created: false, reason: 'already_member' }),
+      }));
+      vi.doMock('../../src/modules/identity/update-portal-member-role.js', () => ({ updatePortalMemberRole: vi.fn(), PORTAL_ROLES: ['client_viewer', 'client_admin'] }));
+      const { buildApp } = await import('../../src/server/app.js');
+      app = buildApp();
+
+      const res = await app.inject({
+        method: 'POST', url: '/api/portal/members',
+        headers: { 'x-client-id': CLIENT_ID, 'x-user-id': 'user-1', 'content-type': 'application/json' },
+        payload: { email: 'dup@example.com', role: 'client_viewer' },
+      });
+
+      expect(res.statusCode).toBe(409);
+    });
+  });
+
+  describe('DELETE /api/portal/members/:id', () => {
+    const membershipId = '10000000-0000-4000-8000-000000000001';
+
+    it('removes a member for an authorized client_admin caller', async () => {
+      mockAuth({ clientIds: [CLIENT_ID], internal: false }, null);
+      vi.doMock('../../src/db/tenant-context.js', () => ({
+        withTenantTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
+      }));
+      const removeMembership = vi.fn().mockResolvedValue({ found: true });
+      vi.doMock('../../src/modules/identity/remove-portal-member.js', () => ({ removePortalMember: removeMembership }));
+      vi.doMock('../../src/modules/identity/update-portal-member-role.js', () => ({ updatePortalMemberRole: vi.fn(), PORTAL_ROLES: ['client_viewer', 'client_admin'] }));
+      const { buildApp } = await import('../../src/server/app.js');
+      app = buildApp();
+
+      const res = await app.inject({
+        method: 'DELETE', url: `/api/portal/members/${membershipId}`,
+        headers: { 'x-client-id': CLIENT_ID, 'x-user-id': 'user-1' },
+      });
+
+      expect(res.statusCode).toBe(204);
+      expect(removeMembership).toHaveBeenCalledWith({}, CLIENT_ID, membershipId);
+    });
+
+    it('rejects an authorized-but-non-admin (client_viewer) caller with 401, never reaching the handler', async () => {
+      mockAuth(null, { clientIds: [CLIENT_ID], internal: false });
+      const removeMembership = vi.fn();
+      vi.doMock('../../src/db/tenant-context.js', () => ({ withTenantTx: vi.fn() }));
+      vi.doMock('../../src/modules/identity/remove-portal-member.js', () => ({ removePortalMember: removeMembership }));
+      vi.doMock('../../src/modules/identity/update-portal-member-role.js', () => ({ updatePortalMemberRole: vi.fn(), PORTAL_ROLES: ['client_viewer', 'client_admin'] }));
+      const { buildApp } = await import('../../src/server/app.js');
+      app = buildApp();
+
+      const res = await app.inject({
+        method: 'DELETE', url: `/api/portal/members/${membershipId}`,
+        headers: { 'x-client-id': CLIENT_ID, 'x-user-id': 'user-1' },
+      });
+
+      expect(res.statusCode).toBe(401);
+      expect(removeMembership).not.toHaveBeenCalled();
+    });
+
+    it('rejects a malformed membership id with 400', async () => {
+      mockAuth({ clientIds: [CLIENT_ID], internal: false }, null);
+      const removeMembership = vi.fn();
+      vi.doMock('../../src/db/tenant-context.js', () => ({
+        withTenantTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
+      }));
+      vi.doMock('../../src/modules/identity/remove-portal-member.js', () => ({ removePortalMember: removeMembership }));
+      vi.doMock('../../src/modules/identity/update-portal-member-role.js', () => ({ updatePortalMemberRole: vi.fn(), PORTAL_ROLES: ['client_viewer', 'client_admin'] }));
+      const { buildApp } = await import('../../src/server/app.js');
+      app = buildApp();
+
+      const res = await app.inject({
+        method: 'DELETE', url: '/api/portal/members/not-a-uuid',
+        headers: { 'x-client-id': CLIENT_ID, 'x-user-id': 'user-1' },
+      });
+
+      expect(res.statusCode).toBe(400);
+      expect(removeMembership).not.toHaveBeenCalled();
+    });
+
+    it('returns 404 when removeMembership resolves found: false', async () => {
+      mockAuth({ clientIds: [CLIENT_ID], internal: false }, null);
+      vi.doMock('../../src/db/tenant-context.js', () => ({
+        withTenantTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
+      }));
+      vi.doMock('../../src/modules/identity/remove-portal-member.js', () => ({ removePortalMember: vi.fn().mockResolvedValue({ found: false }) }));
+      vi.doMock('../../src/modules/identity/update-portal-member-role.js', () => ({ updatePortalMemberRole: vi.fn(), PORTAL_ROLES: ['client_viewer', 'client_admin'] }));
+      const { buildApp } = await import('../../src/server/app.js');
+      app = buildApp();
+
+      const res = await app.inject({
+        method: 'DELETE', url: `/api/portal/members/${membershipId}`,
+        headers: { 'x-client-id': CLIENT_ID, 'x-user-id': 'user-1' },
+      });
+
       expect(res.statusCode).toBe(404);
     });
   });

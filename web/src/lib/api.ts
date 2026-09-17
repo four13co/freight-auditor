@@ -466,7 +466,9 @@ export async function deleteContractRate(tenantId: string, rateId: string): Prom
  * Deliberately thin: no fullName/status/lastLogin columns exist on this
  * endpoint (list-portal-members.ts's PortalMemberRow is
  * id/userId/email/role/createdAt only) -- rendered as-is rather than
- * fabricated, see UsersPage's own Uncertainties.
+ * fabricated. Invite (createPortalMember) and remove (removePortalMember)
+ * are real, below; there is still no reset-password route, see UsersPage's
+ * own Uncertainties.
  */
 export interface PortalMember {
   id: string;
@@ -509,6 +511,40 @@ export async function updatePortalMemberRole(
     return { ok: false, error: body.error ?? `request failed (${res.status})` };
   }
   return { ok: true };
+}
+
+/**
+ * POST /api/portal/members -- client_admin only server-side. Real (86e3a6rgu
+ * PR #408 review fix): reuses createMembership, restricted to PORTAL_ROLES.
+ */
+export async function createPortalMember(input: {
+  email: string;
+  fullName?: string | null;
+  role: 'client_viewer' | 'client_admin';
+}): Promise<{ ok: true } | { ok: false; error: string }> {
+  const res = await fetch('/api/portal/members', {
+    method: 'POST',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) {
+    const body = (await res.json().catch(() => ({}))) as { error?: string };
+    return { ok: false, error: body.error ?? `request failed (${res.status})` };
+  }
+  return { ok: true };
+}
+
+/**
+ * DELETE /api/portal/members/:id -- client_admin only server-side. Real
+ * (86e3a6rgu PR #408 review fix): restricted to PORTAL_ROLES, so this can
+ * never remove an internal analyst's membership row.
+ */
+export async function removePortalMember(membershipId: string): Promise<boolean> {
+  const res = await fetch(`/api/portal/members/${membershipId}`, {
+    method: 'DELETE',
+    headers: authHeaders(),
+  });
+  return res.ok;
 }
 
 export async function fetchActorContext(): Promise<ActorContext> {

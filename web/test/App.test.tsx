@@ -19,12 +19,10 @@ describe('App', () => {
     expect(main).toHaveClass('flex-1', 'overflow-y-auto', 'p-6');
   });
 
-  it('renders the shadcn/ui smoke test surface: Card, Button, Input, Table', () => {
+  it('AC (86e3a6rbe): dev-mode default landing renders the Employee home screen', () => {
     render(<App />);
-    expect(screen.getByText('shadcn/ui smoke test')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Primary action' })).toBeInTheDocument();
-    expect(screen.getByLabelText('Carrier')).toBeInTheDocument();
-    expect(screen.getByRole('table')).toBeInTheDocument();
-    expect(screen.getByText('SH-1001')).toBeInTheDocument();
+    expect(screen.getByText(/Good (morning|afternoon|evening), Dev/)).toBeInTheDocument();
+    expect(screen.getByText('Recent activity')).toBeInTheDocument();
+    expect(screen.getByText('Quick actions')).toBeInTheDocument();
   });
 });

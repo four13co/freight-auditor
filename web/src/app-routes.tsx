@@ -1,3 +1,4 @@
+import type { ReactElement } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { RequireAuth } from '@/components/require-auth';
 import { RequireRole } from '@/components/require-role';
@@ -8,11 +9,17 @@ import ForgotUsernamePage from '@/pages/forgot-username';
 import ForgotPasswordPage from '@/pages/forgot-password';
 import ResetPasswordPage from '@/pages/reset-password';
 import HomePage from '@/pages/home';
+import EmployeeHomePage from '@/pages/employee/HomePage';
 import { PlaceholderPage } from '@/components/navigation/PlaceholderPage';
 import { NAV_CONFIG, flattenNavItems } from '@/components/navigation/nav-config';
 import { ROLE_HOME_PATH, useAuth, type AppRole } from '@/providers/auth-provider';
 
 const ROLES = Object.keys(NAV_CONFIG) as AppRole[];
+
+/** Per-role real home screen, once built (86e3a6rbe); everything else still falls back to the shared placeholder HomePage. */
+const ROLE_HOME_PAGE: Partial<Record<AppRole, () => ReactElement>> = {
+  employee: EmployeeHomePage,
+};
 
 /** "/" itself: send an authenticated user straight to their role's home. */
 function RoleHomeRedirect() {
@@ -48,13 +55,16 @@ export function AppRoutes() {
           */}
           {ROLES.map((role) => (
             <Route key={role} element={<RequireRole roles={[role]} />}>
-              {flattenNavItems(role).map((item) => (
-                <Route
-                  key={item.path}
-                  path={item.path}
-                  element={item.isHome ? <HomePage /> : <PlaceholderPage title={item.label} />}
-                />
-              ))}
+              {flattenNavItems(role).map((item) => {
+                const RoleHome = ROLE_HOME_PAGE[role];
+                let element: ReactElement;
+                if (item.isHome) {
+                  element = RoleHome ? <RoleHome /> : <HomePage />;
+                } else {
+                  element = <PlaceholderPage title={item.label} />;
+                }
+                return <Route key={item.path} path={item.path} element={element} />;
+              })}
             </Route>
           ))}
         </Route>

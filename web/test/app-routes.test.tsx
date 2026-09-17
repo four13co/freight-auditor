@@ -52,7 +52,7 @@ describe('AppRoutes', () => {
 
     renderAt('/login');
 
-    expect(screen.getByText('shadcn/ui smoke test')).toBeInTheDocument();
+    expect(screen.getByText(/Good (morning|afternoon|evening), Dev/)).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'Sign in' })).not.toBeInTheDocument();
   });
 
@@ -62,7 +62,7 @@ describe('AppRoutes', () => {
 
     renderAt('/');
 
-    expect(screen.getByText(/Signed in as Dev Dashboard User \(employee\)/)).toBeInTheDocument();
+    expect(screen.getByText(/Good (morning|afternoon|evening), Dev/)).toBeInTheDocument();
   });
 
   it.each(['/login', '/forgot-username', '/forgot-password', '/reset-password'])(
@@ -93,6 +93,16 @@ describe('AppRoutes', () => {
 
     renderAt('/vendor/home');
 
-    expect(screen.getByText(/Signed in as Dev Dashboard User \(employee\)/)).toBeInTheDocument();
+    expect(screen.getByText(/Good (morning|afternoon|evening), Dev/)).toBeInTheDocument();
+  });
+
+  it('AC (86e3a6rbe): Employee role renders its own home screen, not the shared placeholder', () => {
+    devHeaderPathActiveMock.mockReturnValue(true); // dev-header path == employee
+
+    renderAt('/employee/home');
+
+    expect(screen.getByText('Recent activity')).toBeInTheDocument();
+    expect(screen.getByText('Quick actions')).toBeInTheDocument();
+    expect(screen.queryByText('shadcn/ui smoke test')).not.toBeInTheDocument();
   });
 });

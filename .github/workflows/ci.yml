@@ -260,6 +260,14 @@ jobs:
       - name: Seed full-stack e2e fixture
         run: npm run seed:e2e-fullstack-fixture
 
+      # 86e3a7d57: admin-users-cross-tenant.fullstack.spec.ts's own header
+      # documents this dependency explicitly -- without it, the >100-tenant
+      # fixture never exists in CI and both of that spec's tests fail looking
+      # for seeded members (PR #413's own review caught this: the spec passed
+      # locally only because this step was run by hand, never wired into CI).
+      - name: Seed many-tenants fixture (admin Users cross-tenant e2e)
+        run: npm run seed:e2e-many-members
+
       # The suite's webServer starts the real server, which only serves the
       # frontend if web/dist exists (src/server/app.ts tolerates it being
       # absent -- a running server with no UI, not a loud error). Must build

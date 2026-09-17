@@ -202,46 +202,59 @@ export interface TenantMember {
 export interface UserRow extends TenantMember {
   tenantId: string;
   tenantName: string;
-  tenantIsActive: boolean;
+  /** membership.is_active (the per-row toggle), not the tenant's own isActive. */
+  isActive: boolean;
+}
+
+interface AllTenantMembersPage {
+  members: {
+    id: string;
+    userId: string;
+    email: string;
+    fullName: string | null;
+    role: MembershipRole;
+    isActive: boolean;
+    clientId: string;
+    clientName: string;
+    createdAt: string;
+  }[];
+  nextCursor: string | null;
 }
 
 /**
- * 86e3a6rde: GET /api/internal/tenants/:id/members -- real, but scoped to
- * ONE tenant and not paginated (listTenantMembers.ts returns every row for
- * that tenant). There is no cross-tenant "all users" endpoint.
- */
-export async function fetchTenantMembers(tenantId: string): Promise<TenantMember[]> {
-  try {
-    const res = await fetch(`/api/internal/tenants/${tenantId}/members`, { headers: authHeaders() });
-    if (!res.ok) return [];
-    const body = (await res.json()) as { members?: TenantMember[] };
-    return body.members ?? [];
-  } catch {
-    return [];
-  }
-}
-
-/**
- * 86e3a6rde's "global user management across all tenants" AC has no single
- * backend endpoint behind it -- built here as tenants-then-members fan-out
- * over the two real endpoints that do exist. This means UsersPage's
- * pagination/sort/filter run client-side over this aggregate, not
- * server-side over a combined query; see UsersPage's own Uncertainties.
+ * 86e3a7d57: replaces the old tenants-then-members client-side fan-out (GET
+ * /api/internal/tenants, capped at limit=100, then GET
+ * /api/internal/tenants/:id/members per tenant -- silently dropping any
+ * tenant past the 100th) with the cross-tenant paginated
+ * GET /api/internal/members endpoint (list-all-tenant-members.ts), paging
+ * via its opaque keyset cursor until nextCursor is null so every tenant's
+ * members are represented regardless of tenant count.
  */
 export async function fetchAllUsers(): Promise<UserRow[]> {
-  const tenants = await fetchTenantSummaries();
-  const perTenant = await Promise.all(
-    tenants.map(async (tenant) => {
-      const members = await fetchTenantMembers(tenant.id);
-      return members.map((member) => ({
-        ...member,
-        tenantId: tenant.id,
-        tenantName: tenant.name,
-        tenantIsActive: tenant.isActive,
-      }));
-    }),
-  );
-  return perTenant.flat();
+  const rows: UserRow[] = [];
+  let cursor: string | undefined;
+  for (;;) {
+    const url = cursor ? `/api/internal/members?cursor=${encodeURIComponent(cursor)}` : '/api/internal/members';
+    const res = await fetch(url, { headers: authHeaders() });
+    if (!res.ok) break;
+    const body = (await res.json()) as AllTenantMembersPage;
+    for (const m of body.members) {
+      rows.push({
+        membershipId: m.id,
+        userId: m.userId,
+        email: m.email,
+        fullName: m.fullName,
+        role: m.role,
+        isActive: m.isActive,
+        tenantId: m.clientId,
+        tenantName: m.clientName,
+        createdAt: m.createdAt,
+      });
+    }
+    if (!body.nextCursor) break;
+    cursor = body.nextCursor;
+  }
+  return rows;
 }
 
 export async function createTenantMember(
@@ -252,6 +265,24 @@ export async function createTenantMember(
     method: 'POST',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
     body: JSON.stringify(input),
+  });
+  if (!res.ok) {
+    const body = (await res.json().catch(() => ({}))) as { error?: string };
+    return { ok: false, error: body.error ?? `request failed (${res.status})` };
+  }
+  return { ok: true };
+}
+
+/** Edit role and/or toggle enable/disable on an existing tenant membership (86e3a7d57). */
+export async function updateTenantMember(
+  tenantId: string,
+  membershipId: string,
+  patch: { role?: MembershipRole; isActive?: boolean },
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const res = await fetch(`/api/internal/tenants/${tenantId}/members/${membershipId}`, {
+    method: 'PATCH',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify(patch),
   });
   if (!res.ok) {
     const body = (await res.json().catch(() => ({}))) as { error?: string };

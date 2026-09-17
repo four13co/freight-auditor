@@ -7,6 +7,7 @@ const fetchAllUsersMock = vi.fn();
 const fetchTenantSummariesMock = vi.fn();
 const createTenantMemberMock = vi.fn();
 const deleteTenantMemberMock = vi.fn();
+const updateTenantMemberMock = vi.fn();
 
 vi.mock('@/lib/api', async () => {
   const actual = await vi.importActual<typeof import('@/lib/api')>('@/lib/api');
@@ -16,6 +17,7 @@ vi.mock('@/lib/api', async () => {
     fetchTenantSummaries: () => fetchTenantSummariesMock(),
     createTenantMember: (...args: unknown[]) => createTenantMemberMock(...args),
     deleteTenantMember: (...args: unknown[]) => deleteTenantMemberMock(...args),
+    updateTenantMember: (...args: unknown[]) => updateTenantMemberMock(...args),
   };
 });
 
@@ -33,7 +35,7 @@ const USERS = [
     role: 'client_admin' as const,
     tenantId: 't1',
     tenantName: 'Acme Freight',
-    tenantIsActive: true,
+    isActive: true,
     createdAt: '2026-03-01T00:00:00Z',
   },
   {
@@ -44,7 +46,7 @@ const USERS = [
     role: 'analyst' as const,
     tenantId: 't2',
     tenantName: 'Beacon Logistics',
-    tenantIsActive: false,
+    isActive: false,
     createdAt: '2026-03-05T00:00:00Z',
   },
 ];
@@ -54,6 +56,7 @@ beforeEach(() => {
   fetchTenantSummariesMock.mockReset().mockResolvedValue(TENANTS);
   createTenantMemberMock.mockReset().mockResolvedValue({ ok: true });
   deleteTenantMemberMock.mockReset().mockResolvedValue(true);
+  updateTenantMemberMock.mockReset().mockResolvedValue({ ok: true });
 });
 
 describe('UsersPage', () => {
@@ -163,5 +166,73 @@ describe('UsersPage', () => {
     await waitFor(() => expect(screen.getByText('dana@acme.test')).toBeInTheDocument());
 
     expect(container.querySelector('[data-slot="table-container"].overflow-x-auto')).not.toBeNull();
+  });
+
+  it('AC: status column reads membership.isActive, not the tenant\'s own isActive', async () => {
+    render(<UsersPage />);
+    await waitFor(() => expect(screen.getByText('dana@acme.test')).toBeInTheDocument());
+
+    // dana's tenant (Acme Freight) is active, but her own membership isn't --
+    // the Status column must reflect the membership, not silently proxy the
+    // tenant the way it used to (86e3a7d57).
+    const danaRow = screen.getByText('dana@acme.test').closest('tr')!;
+    expect(within(danaRow).getByText('Active')).toBeInTheDocument();
+
+    // alex's tenant (Beacon Logistics) is disabled, but his own membership is
+    // active -- same proof in the other direction.
+    const alexRow = screen.getByText('alex@fa.test').closest('tr')!;
+    expect(within(alexRow).getByText('Disabled')).toBeInTheDocument();
+  });
+
+  it('AC: edit role calls the PATCH endpoint and reflects the result', async () => {
+    const user = userEvent.setup();
+    render(<UsersPage />);
+    await waitFor(() => expect(screen.getByText('dana@acme.test')).toBeInTheDocument());
+
+    fetchAllUsersMock.mockResolvedValueOnce([{ ...USERS[0], role: 'analyst' as const }, USERS[1]]);
+
+    const row = screen.getByText('dana@acme.test').closest('tr')!;
+    await user.click(within(row).getByRole('button', { name: 'Edit role' }));
+    await user.selectOptions(screen.getByLabelText('Role'), 'analyst');
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => expect(updateTenantMemberMock).toHaveBeenCalledWith('t1', 'm1', { role: 'analyst' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    await waitFor(() => {
+      const updatedRow = screen.getByText('dana@acme.test').closest('tr')!;
+      expect(within(updatedRow).getByText('Employee (Analyst)')).toBeInTheDocument();
+    });
+  });
+
+  it('AC: enable/disable toggle calls the PATCH endpoint and reflects the result', async () => {
+    const user = userEvent.setup();
+    render(<UsersPage />);
+    await waitFor(() => expect(screen.getByText('dana@acme.test')).toBeInTheDocument());
+
+    fetchAllUsersMock.mockResolvedValueOnce([{ ...USERS[0], isActive: false }, USERS[1]]);
+
+    const row = screen.getByText('dana@acme.test').closest('tr')!;
+    await user.click(within(row).getByRole('button', { name: 'Disable' }));
+
+    expect(updateTenantMemberMock).toHaveBeenCalledWith('t1', 'm1', { isActive: false });
+    await waitFor(() => {
+      const updatedRow = screen.getByText('dana@acme.test').closest('tr')!;
+      expect(within(updatedRow).getByText('Disabled')).toBeInTheDocument();
+      expect(within(updatedRow).getByRole('button', { name: 'Enable' })).toBeInTheDocument();
+    });
+  });
+
+  it('AC: edit role surfaces a server-side error instead of silently closing', async () => {
+    updateTenantMemberMock.mockResolvedValue({ ok: false, error: 'invalid role' });
+    const user = userEvent.setup();
+    render(<UsersPage />);
+    await waitFor(() => expect(screen.getByText('dana@acme.test')).toBeInTheDocument());
+
+    const row = screen.getByText('dana@acme.test').closest('tr')!;
+    await user.click(within(row).getByRole('button', { name: 'Edit role' }));
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => expect(updateTenantMemberMock).toHaveBeenCalled());
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
   });
 });

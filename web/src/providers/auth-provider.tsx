@@ -10,6 +10,22 @@ import { devHeaderPathActive } from '@/lib/dev-auth';
 
 export type AppRole = 'employee' | 'client' | 'grand_client' | 'vendor';
 
+/**
+ * 86e3a6r65: where each role lands after login. Only 'employee' and
+ * 'client' are reachable today (mapActorToRole's stopgap below); the other
+ * two entries are forward-declared for when the role-vocabulary gap closes
+ * and are otherwise dead branches. The routes themselves don't exist until
+ * 86e3a6r8z (app shell) and the per-role home-screen tasks land -- same
+ * forward-reference shape as AuthLayout pointing at this task's pages
+ * before they existed.
+ */
+export const ROLE_HOME_PATH: Record<AppRole, string> = {
+  employee: '/employee/home',
+  client: '/client/home',
+  grand_client: '/grand-client/home',
+  vendor: '/vendor/home',
+};
+
 export interface AuthUser {
   id: string;
   email: string | null;
@@ -19,12 +35,16 @@ export interface AuthUser {
   clientName: string | null;
 }
 
+export interface LoginResult {
+  error: string | null;
+}
+
 interface AuthContextValue {
   user: AuthUser | null;
   role: AppRole | null;
   isAuthenticated: boolean;
   isLoading: boolean;
-  login: (email: string, password: string) => Promise<void>;
+  login: (email: string, password: string) => Promise<LoginResult>;
   logout: () => Promise<void>;
 }
 
@@ -79,7 +99,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         role: DEV_USER.role,
         isAuthenticated: true,
         isLoading: false,
-        login: async () => {},
+        login: async () => ({ error: null }),
         logout: async () => {},
       };
     }
@@ -104,7 +124,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       isAuthenticated: Boolean(sessionUser) && Boolean(user),
       isLoading,
       login: async (email: string, password: string) => {
-        await authClient.signIn.email({ email, password });
+        const { error } = await authClient.signIn.email({ email, password });
+        return { error: error?.message ?? null };
       },
       logout: async () => {
         sessionStorage.removeItem(CLIENT_ID_STORAGE_KEY);

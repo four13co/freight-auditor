@@ -3,6 +3,7 @@ import { RequireAuth } from '@/components/require-auth';
 import AuthLayout from '@/layouts/AuthLayout';
 import LoginPage from '@/pages/login';
 import ForgotUsernamePage from '@/pages/forgot-username';
+import ForgotPasswordPage from '@/pages/forgot-password';
 import ResetPasswordPage from '@/pages/reset-password';
 import HomePage from '@/pages/home';
 
@@ -17,6 +18,7 @@ export function AppRoutes() {
       <Route element={<AuthLayout />}>
         <Route path="/login" element={<LoginPage />} />
         <Route path="/forgot-username" element={<ForgotUsernamePage />} />
+        <Route path="/forgot-password" element={<ForgotPasswordPage />} />
         <Route path="/reset-password" element={<ResetPasswordPage />} />
       </Route>
       <Route element={<RequireAuth />}>

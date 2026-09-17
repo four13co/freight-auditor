@@ -5,40 +5,21 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { requestPasswordReset } from '@/lib/auth-client';
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 /**
- * 86e3a6r6e: no backend endpoint exists for this yet (there's no separate
- * "username" concept in better-auth's email/password setup -- see
- * src/auth/better-auth.ts). Expected contract for whoever builds it:
- *
- *   POST /api/auth/forgot-username
- *   body: { email: string }
- *   response: 200 always (mirrors the security pattern below -- never
- *     signal whether the email matched an account), fire-and-forget email
- *     send on the backend.
- *
- * Until that route exists, the fetch below 404s -- caught and folded into
- * the same generic success state as a real send, which is also the
- * correct behavior for the finished endpoint (never reveal account
- * existence). Only a genuine network failure (fetch itself rejecting)
- * surfaces as an error.
+ * 86e3a6r6n: better-auth's emailAndPassword.sendResetPassword isn't
+ * configured yet (src/auth/better-auth.ts), so requestPasswordReset()
+ * currently rejects with a BAD_REQUEST ("Reset password isn't enabled")
+ * regardless of whether the email matches an account. That's folded into
+ * the same generic confirmation as a real send below -- which is also the
+ * correct behavior once the backend is wired up (never reveal account
+ * existence). Only a genuine network failure (the request itself never
+ * completing) surfaces as an error.
  */
-async function submitForgotUsername(email: string): Promise<{ networkError: boolean }> {
-  try {
-    await fetch('/api/auth/forgot-username', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email }),
-    });
-    return { networkError: false };
-  } catch {
-    return { networkError: true };
-  }
-}
-
-export default function ForgotUsernamePage() {
+export default function ForgotPasswordPage() {
   const [email, setEmail] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
@@ -54,13 +35,17 @@ export default function ForgotUsernamePage() {
     }
 
     setSubmitting(true);
-    const { networkError } = await submitForgotUsername(email.trim());
-    setSubmitting(false);
-
-    if (networkError) {
+    try {
+      await requestPasswordReset({
+        email: email.trim(),
+        redirectTo: `${window.location.origin}/reset-password`,
+      });
+    } catch {
+      setSubmitting(false);
       setError('Something went wrong. Check your connection and try again.');
       return;
     }
+    setSubmitting(false);
     setSubmitted(true);
   }
 
@@ -70,7 +55,7 @@ export default function ForgotUsernamePage() {
         <div className="space-y-1">
           <h1 className="text-lg font-semibold tracking-tight">Check your email</h1>
           <p className="text-sm text-muted-foreground">
-            If an account with that email exists, we've sent your username.
+            If an account with that email exists, we've sent a link to reset your password.
           </p>
         </div>
         <Link to="/login" className="text-sm text-muted-foreground hover:text-foreground hover:underline">
@@ -83,17 +68,17 @@ export default function ForgotUsernamePage() {
   return (
     <div className="space-y-6">
       <div className="space-y-1 text-center">
-        <h1 className="text-lg font-semibold tracking-tight">Forgot your username?</h1>
+        <h1 className="text-lg font-semibold tracking-tight">Forgot your password?</h1>
         <p className="text-sm text-muted-foreground">
-          Enter your email and we'll send you your username if we find a match.
+          Enter your email and we'll send you a link to reset it.
         </p>
       </div>
 
       <form className="space-y-4" onSubmit={onSubmit} noValidate>
         <div className="space-y-1.5">
-          <Label htmlFor="forgot-username-email">Email</Label>
+          <Label htmlFor="forgot-password-email">Email</Label>
           <Input
-            id="forgot-username-email"
+            id="forgot-password-email"
             type="email"
             autoComplete="email"
             value={email}
@@ -111,7 +96,7 @@ export default function ForgotUsernamePage() {
 
         <Button type="submit" className="w-full" disabled={submitting}>
           {submitting && <Loader2 className="animate-spin" />}
-          Send username
+          Send reset link
         </Button>
       </form>
 

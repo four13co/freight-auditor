@@ -39,7 +39,7 @@ describe('AppRoutes', () => {
 
     renderAt('/');
 
-    expect(screen.getByText('Sign in')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Sign in' })).toBeInTheDocument();
   });
 
   it('AC: authenticated users are redirected away from /login to home', () => {
@@ -49,7 +49,7 @@ describe('AppRoutes', () => {
     renderAt('/login');
 
     expect(screen.getByText('shadcn/ui smoke test')).toBeInTheDocument();
-    expect(screen.queryByText('Sign in')).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Sign in' })).not.toBeInTheDocument();
   });
 
   it('AC: dev-mode headers work for local development (bypasses the real session check)', () => {
@@ -61,7 +61,7 @@ describe('AppRoutes', () => {
     expect(screen.getByText(/Signed in as Dev Dashboard User \(employee\)/)).toBeInTheDocument();
   });
 
-  it.each(['/login', '/forgot-username', '/reset-password'])(
+  it.each(['/login', '/forgot-username', '/forgot-password', '/reset-password'])(
     'AC (86e3a6r5p): %s renders inside the shared AuthLayout',
     (path) => {
       devHeaderPathActiveMock.mockReturnValue(false);

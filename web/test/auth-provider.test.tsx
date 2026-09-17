@@ -8,8 +8,9 @@ vi.mock('@/lib/dev-auth', () => ({
 }));
 
 const useSessionMock = vi.fn();
+const signInEmailMock = vi.fn();
 vi.mock('@/lib/auth-client', () => ({
-  authClient: { signIn: { email: vi.fn() } },
+  authClient: { signIn: { email: (...args: unknown[]) => signInEmailMock(...args) } },
   useSession: () => useSessionMock(),
   signOut: vi.fn(),
 }));
@@ -115,5 +116,52 @@ describe('AuthProvider', () => {
     await waitFor(() =>
       expect(screen.getByText('authenticated as Portal Viewer (client)')).toBeInTheDocument(),
     );
+  });
+
+  it('86e3a6r65: login() resolves with error: null on success', async () => {
+    devHeaderPathActiveMock.mockReturnValue(false);
+    useSessionMock.mockReturnValue({ data: null, isPending: false });
+    signInEmailMock.mockResolvedValue({ data: { user: {} }, error: null });
+
+    let captured: { error: string | null } | undefined;
+    function Trigger() {
+      const { login } = useAuth();
+      return (
+        <button onClick={() => void login('a@example.com', 'pw').then((r) => (captured = r))}>go</button>
+      );
+    }
+
+    render(
+      <AuthProvider>
+        <Trigger />
+      </AuthProvider>,
+    );
+    screen.getByText('go').click();
+
+    await waitFor(() => expect(captured).toEqual({ error: null }));
+    expect(signInEmailMock).toHaveBeenCalledWith({ email: 'a@example.com', password: 'pw' });
+  });
+
+  it("86e3a6r65: login() surfaces the auth client's error message without throwing", async () => {
+    devHeaderPathActiveMock.mockReturnValue(false);
+    useSessionMock.mockReturnValue({ data: null, isPending: false });
+    signInEmailMock.mockResolvedValue({ data: null, error: { status: 401, message: 'Invalid email or password.' } });
+
+    let captured: { error: string | null } | undefined;
+    function Trigger() {
+      const { login } = useAuth();
+      return (
+        <button onClick={() => void login('a@example.com', 'wrong').then((r) => (captured = r))}>go</button>
+      );
+    }
+
+    render(
+      <AuthProvider>
+        <Trigger />
+      </AuthProvider>,
+    );
+    screen.getByText('go').click();
+
+    await waitFor(() => expect(captured).toEqual({ error: 'Invalid email or password.' }));
   });
 });

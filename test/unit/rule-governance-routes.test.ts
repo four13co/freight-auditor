@@ -349,4 +349,200 @@ describe('rule governance internal routes (unit, mocked withTenantTx + auth)', (
       expect(res.json()).toEqual({ proposals: [{ id: 'rv-1' }] });
     });
   });
+
+  // 86e3a6rg1: Rules tab list/detail + the two remaining lifecycle
+  // transitions (deprecate/quarantine), all gated the same internal-analyst-
+  // only way as ratify/activate above.
+  describe('GET /api/rules', () => {
+    afterEach(() => vi.doUnmock('../../src/modules/rule-engine/list-rules.js'));
+
+    it('rejects a caller with only a valid single-client tenant-membership context', async () => {
+      mockTenantMembershipGrant();
+      const listRules = vi.fn();
+      vi.doMock('../../src/modules/rule-engine/list-rules.js', () => ({ listRules }));
+      const { buildApp } = await import('../../src/server/app.js');
+      app = buildApp();
+
+      const res = await app.inject({ method: 'GET', url: '/api/rules' });
+      expect(res.statusCode).toBe(401);
+      expect(listRules).not.toHaveBeenCalled();
+    });
+
+    it('passes validated query params through and returns the list', async () => {
+      mockAuth({ internal: true });
+      vi.doMock('../../src/db/tenant-context.js', () => ({
+        withTenantTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
+      }));
+      const listRules = vi.fn().mockResolvedValue({ rows: [{ ruleId: 'r-1' }], total: 1 });
+      vi.doMock('../../src/modules/rule-engine/list-rules.js', () => ({ listRules }));
+      const { buildApp } = await import('../../src/server/app.js');
+      app = buildApp();
+
+      const res = await app.inject({
+        method: 'GET',
+        url: '/api/rules?tier=CLIENT&kind=GATING&status=ACTIVE&sortKey=name&sortDirection=asc&limit=10&offset=5',
+        headers: { 'x-user-id': ACTOR_ID },
+      });
+
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toEqual({ rows: [{ ruleId: 'r-1' }], total: 1 });
+      expect(listRules).toHaveBeenCalledWith({}, {
+        tier: 'CLIENT', kind: 'GATING', status: 'ACTIVE', sortKey: 'name', sortDirection: 'asc', limit: 10, offset: 5,
+      });
+    });
+
+    it('rejects an invalid tier with 400', async () => {
+      mockAuth({ internal: true });
+      vi.doMock('../../src/db/tenant-context.js', () => ({
+        withTenantTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
+      }));
+      const listRules = vi.fn();
+      vi.doMock('../../src/modules/rule-engine/list-rules.js', () => ({ listRules }));
+      const { buildApp } = await import('../../src/server/app.js');
+      app = buildApp();
+
+      const res = await app.inject({ method: 'GET', url: '/api/rules?tier=BOGUS', headers: { 'x-user-id': ACTOR_ID } });
+      expect(res.statusCode).toBe(400);
+      expect(listRules).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('GET /api/rules/:id', () => {
+    afterEach(() => vi.doUnmock('../../src/modules/rule-engine/get-rule-detail.js'));
+
+    it('returns 404 when the rule version does not exist', async () => {
+      mockAuth({ internal: true });
+      vi.doMock('../../src/db/tenant-context.js', () => ({
+        withTenantTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
+      }));
+      const getRuleDetail = vi.fn().mockResolvedValue(null);
+      vi.doMock('../../src/modules/rule-engine/get-rule-detail.js', () => ({ getRuleDetail }));
+      const { buildApp } = await import('../../src/server/app.js');
+      app = buildApp();
+
+      const res = await app.inject({ method: 'GET', url: `/api/rules/${RULE_VERSION_ID}`, headers: { 'x-user-id': ACTOR_ID } });
+      expect(res.statusCode).toBe(404);
+    });
+
+    it('returns the detail payload', async () => {
+      mockAuth({ internal: true });
+      vi.doMock('../../src/db/tenant-context.js', () => ({
+        withTenantTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
+      }));
+      const getRuleDetail = vi.fn().mockResolvedValue({ ruleVersionId: RULE_VERSION_ID, ast: { op: 'GTE' } });
+      vi.doMock('../../src/modules/rule-engine/get-rule-detail.js', () => ({ getRuleDetail }));
+      const { buildApp } = await import('../../src/server/app.js');
+      app = buildApp();
+
+      const res = await app.inject({ method: 'GET', url: `/api/rules/${RULE_VERSION_ID}`, headers: { 'x-user-id': ACTOR_ID } });
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toEqual({ ruleVersionId: RULE_VERSION_ID, ast: { op: 'GTE' } });
+    });
+  });
+
+  describe('POST /api/rules/:id/deprecate', () => {
+    it('rejects a caller with only a valid single-client tenant-membership context', async () => {
+      mockTenantMembershipGrant();
+      const transitionRuleLifecycle = vi.fn();
+      vi.doMock('../../src/modules/rule-engine/transition-rule-lifecycle.js', () => ({ transitionRuleLifecycle }));
+      const { buildApp } = await import('../../src/server/app.js');
+      app = buildApp();
+
+      const res = await app.inject({
+        method: 'POST', url: `/api/rules/${RULE_VERSION_ID}/deprecate`,
+        headers: { 'x-client-id': '11111111-1111-4111-8111-111111111111', 'x-user-id': ACTOR_ID },
+        payload: { rationale: 'superseded' },
+      });
+      expect(res.statusCode).toBe(401);
+      expect(transitionRuleLifecycle).not.toHaveBeenCalled();
+    });
+
+    it('transitions to DEPRECATED and writes an attributed audit event', async () => {
+      mockAuth({ internal: true });
+      vi.doMock('../../src/db/tenant-context.js', () => ({
+        withTenantTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
+      }));
+      const transitionRuleLifecycle = vi.fn().mockResolvedValue({ ruleVersionId: 'next-5', created: true });
+      vi.doMock('../../src/modules/rule-engine/transition-rule-lifecycle.js', () => ({ transitionRuleLifecycle }));
+      const writeAuditEvent = vi.fn().mockResolvedValue({ id: 'evt-5', created: true });
+      vi.doMock('../../src/modules/audit-ledger/write-audit-event.js', async (importOriginal) => ({
+        ...(await importOriginal<object>()), writeAuditEvent,
+      }));
+      const { buildApp } = await import('../../src/server/app.js');
+      app = buildApp();
+
+      const res = await app.inject({
+        method: 'POST', url: `/api/rules/${RULE_VERSION_ID}/deprecate`,
+        headers: { 'x-user-id': ACTOR_ID },
+        payload: { rationale: 'superseded by a firmer rule' },
+      });
+
+      expect(res.statusCode).toBe(201);
+      expect(res.json()).toEqual({ ruleVersionId: 'next-5', created: true });
+      expect(transitionRuleLifecycle).toHaveBeenCalledWith({}, { ruleVersionId: RULE_VERSION_ID, to: 'DEPRECATED', rationale: 'superseded by a firmer rule' });
+      expect(writeAuditEvent).toHaveBeenCalledWith({}, expect.objectContaining({
+        clientId: null, entity: 'rule_version', entityId: RULE_VERSION_ID, event: 'deprecated',
+        actorKind: 'analyst', actorUserId: ACTOR_ID, ruleVersionId: 'next-5',
+      }));
+    });
+
+    it('requires a non-empty rationale', async () => {
+      mockAuth({ internal: true });
+      vi.doMock('../../src/db/tenant-context.js', () => ({
+        withTenantTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
+      }));
+      const { buildApp } = await import('../../src/server/app.js');
+      app = buildApp();
+
+      const res = await app.inject({ method: 'POST', url: `/api/rules/${RULE_VERSION_ID}/deprecate`, headers: { 'x-user-id': ACTOR_ID }, payload: {} });
+      expect(res.statusCode).toBe(400);
+    });
+  });
+
+  describe('POST /api/rules/:id/quarantine', () => {
+    it('rejects a caller with only a valid single-client tenant-membership context', async () => {
+      mockTenantMembershipGrant();
+      const transitionRuleLifecycle = vi.fn();
+      vi.doMock('../../src/modules/rule-engine/transition-rule-lifecycle.js', () => ({ transitionRuleLifecycle }));
+      const { buildApp } = await import('../../src/server/app.js');
+      app = buildApp();
+
+      const res = await app.inject({
+        method: 'POST', url: `/api/rules/${RULE_VERSION_ID}/quarantine`,
+        headers: { 'x-client-id': '11111111-1111-4111-8111-111111111111', 'x-user-id': ACTOR_ID },
+        payload: { rationale: 'reversal threshold exceeded' },
+      });
+      expect(res.statusCode).toBe(401);
+      expect(transitionRuleLifecycle).not.toHaveBeenCalled();
+    });
+
+    it('transitions to QUARANTINED and writes an attributed audit event', async () => {
+      mockAuth({ internal: true });
+      vi.doMock('../../src/db/tenant-context.js', () => ({
+        withTenantTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
+      }));
+      const transitionRuleLifecycle = vi.fn().mockResolvedValue({ ruleVersionId: 'next-6', created: true });
+      vi.doMock('../../src/modules/rule-engine/transition-rule-lifecycle.js', () => ({ transitionRuleLifecycle }));
+      const writeAuditEvent = vi.fn().mockResolvedValue({ id: 'evt-6', created: true });
+      vi.doMock('../../src/modules/audit-ledger/write-audit-event.js', async (importOriginal) => ({
+        ...(await importOriginal<object>()), writeAuditEvent,
+      }));
+      const { buildApp } = await import('../../src/server/app.js');
+      app = buildApp();
+
+      const res = await app.inject({
+        method: 'POST', url: `/api/rules/${RULE_VERSION_ID}/quarantine`,
+        headers: { 'x-user-id': ACTOR_ID },
+        payload: { rationale: 'reversal threshold exceeded' },
+      });
+
+      expect(res.statusCode).toBe(201);
+      expect(res.json()).toEqual({ ruleVersionId: 'next-6', created: true });
+      expect(transitionRuleLifecycle).toHaveBeenCalledWith({}, { ruleVersionId: RULE_VERSION_ID, to: 'QUARANTINED', rationale: 'reversal threshold exceeded' });
+      expect(writeAuditEvent).toHaveBeenCalledWith({}, expect.objectContaining({
+        clientId: null, entity: 'rule_version', entityId: RULE_VERSION_ID, event: 'quarantined',
+        actorKind: 'analyst', actorUserId: ACTOR_ID, ruleVersionId: 'next-6',
+      }));
+    });
+  });
 });

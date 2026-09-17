@@ -255,6 +255,195 @@ export async function deleteTenantMember(tenantId: string, membershipId: string)
   return res.ok;
 }
 
+// ---- Rules & Rates (86e3a6rg1) --------------------------------------------
+
+export type RuleTier = 'STANDARD' | 'CLIENT' | 'CONTRACT';
+export type RuleKind = 'GATING' | 'SCORING';
+export type RuleLifecycle = 'PROPOSED' | 'SHADOW' | 'ACTIVE' | 'DEPRECATED' | 'QUARANTINED';
+export type RuleListSortKey = 'name' | 'tier' | 'type' | 'status' | 'lastModified';
+
+export interface RuleRow {
+  ruleVersionId: string;
+  ruleId: string;
+  slug: string;
+  ruleType: string;
+  tier: RuleTier | null;
+  kind: RuleKind | null;
+  status: RuleLifecycle;
+  hardness: string;
+  lastModified: string;
+}
+
+export interface RuleListParams {
+  tier?: RuleTier;
+  kind?: RuleKind;
+  status?: RuleLifecycle;
+  sortKey?: RuleListSortKey;
+  sortDirection?: 'asc' | 'desc';
+  limit: number;
+  offset: number;
+}
+
+export interface RuleListResult {
+  rows: RuleRow[];
+  total: number;
+}
+
+export interface RulePromotionEvent {
+  id: string;
+  fromLifecycle: string | null;
+  toLifecycle: string | null;
+  direction: string;
+  rationale: string | null;
+  recordedAt: string;
+}
+
+export interface RuleDetail extends RuleRow {
+  emits: string;
+  ast: unknown;
+  expectedInputs: unknown;
+  provenance: unknown;
+  clauseId: string | null;
+  validFrom: string;
+  validTo: string | null;
+  recordedAt: string;
+  history: RulePromotionEvent[];
+}
+
+/**
+ * The Rules tab's list -- server-side filter/sort/pagination, unlike
+ * UsersPage's client-side DataTable use (see rule-governance-routes.ts's
+ * GET /api/rules for why: this list is expected to grow far larger than
+ * this epic's other tables, per the task's own AC).
+ */
+export async function fetchRules(params: RuleListParams): Promise<RuleListResult> {
+  const search = new URLSearchParams();
+  if (params.tier) search.set('tier', params.tier);
+  if (params.kind) search.set('kind', params.kind);
+  if (params.status) search.set('status', params.status);
+  if (params.sortKey) search.set('sortKey', params.sortKey);
+  if (params.sortDirection) search.set('sortDirection', params.sortDirection);
+  search.set('limit', String(params.limit));
+  search.set('offset', String(params.offset));
+
+  const res = await fetch(`/api/rules?${search.toString()}`, { headers: authHeaders() });
+  if (!res.ok) return { rows: [], total: 0 };
+  return (await res.json()) as RuleListResult;
+}
+
+export async function fetchRuleDetail(ruleVersionId: string): Promise<RuleDetail | null> {
+  const res = await fetch(`/api/rules/${ruleVersionId}`, { headers: authHeaders() });
+  if (!res.ok) return null;
+  return (await res.json()) as RuleDetail;
+}
+
+async function transitionRule(
+  ruleVersionId: string,
+  action: 'ratify' | 'activate' | 'deprecate' | 'quarantine',
+  rationale: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const res = await fetch(`/api/rules/${ruleVersionId}/${action}`, {
+    method: 'POST',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ rationale }),
+  });
+  if (!res.ok) {
+    const body = (await res.json().catch(() => ({}))) as { error?: string };
+    return { ok: false, error: body.error ?? `request failed (${res.status})` };
+  }
+  return { ok: true };
+}
+
+export const ratifyRule = (id: string, rationale: string) => transitionRule(id, 'ratify', rationale);
+export const activateRule = (id: string, rationale: string) => transitionRule(id, 'activate', rationale);
+export const deprecateRule = (id: string, rationale: string) => transitionRule(id, 'deprecate', rationale);
+export const quarantineRule = (id: string, rationale: string) => transitionRule(id, 'quarantine', rationale);
+
+export interface ContractVersionOption {
+  contractVersionId: string;
+  contractId: string;
+  contractName: string;
+  versionLabel: string | null;
+  validFrom: string;
+  validTo: string | null;
+}
+
+export async function fetchContractVersions(tenantId: string): Promise<ContractVersionOption[]> {
+  try {
+    const res = await fetch(`/api/internal/tenants/${tenantId}/contract-versions`, { headers: authHeaders() });
+    if (!res.ok) return [];
+    const body = (await res.json()) as { contractVersions?: ContractVersionOption[] };
+    return body.contractVersions ?? [];
+  } catch {
+    return [];
+  }
+}
+
+export interface ContractRateRow {
+  id: string;
+  contractVersionId: string;
+  contractId: string;
+  contractName: string;
+  versionLabel: string | null;
+  category: string;
+  amount: string;
+  currency: string;
+  clauseId: string | null;
+  createdAt: string;
+}
+
+export async function fetchContractRates(tenantId: string): Promise<ContractRateRow[]> {
+  try {
+    const res = await fetch(`/api/internal/tenants/${tenantId}/rates`, { headers: authHeaders() });
+    if (!res.ok) return [];
+    const body = (await res.json()) as { rates?: ContractRateRow[] };
+    return body.rates ?? [];
+  } catch {
+    return [];
+  }
+}
+
+export async function createContractRate(
+  tenantId: string,
+  input: { contractVersionId: string; category: string; amount: string; currency: string },
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const res = await fetch(`/api/internal/tenants/${tenantId}/rates`, {
+    method: 'POST',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) {
+    const body = (await res.json().catch(() => ({}))) as { error?: string };
+    return { ok: false, error: body.error ?? `request failed (${res.status})` };
+  }
+  return { ok: true };
+}
+
+export async function updateContractRate(
+  tenantId: string,
+  rateId: string,
+  patch: { category?: string; amount?: string; currency?: string },
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const res = await fetch(`/api/internal/tenants/${tenantId}/rates/${rateId}`, {
+    method: 'PATCH',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify(patch),
+  });
+  if (!res.ok) {
+    const body = (await res.json().catch(() => ({}))) as { error?: string };
+    return { ok: false, error: body.error ?? `request failed (${res.status})` };
+  }
+  return { ok: true };
+}
+
+export async function deleteContractRate(tenantId: string, rateId: string): Promise<boolean> {
+  const res = await fetch(`/api/internal/tenants/${tenantId}/rates/${rateId}`, {
+    method: 'DELETE',
+    headers: authHeaders(),
+  });
+  return res.ok;
+}
+
 export async function fetchActorContext(): Promise<ActorContext> {
   const res = await fetch('/api/auth/memberships');
   if (!res.ok) return { isInternal: false, role: null, clientName: null };

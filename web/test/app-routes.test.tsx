@@ -22,6 +22,20 @@ vi.mock('@/lib/api', () => ({
   fetchActorContext: vi.fn().mockResolvedValue({ isInternal: false, role: null, clientName: null }),
   fetchAndStoreClientId: vi.fn().mockResolvedValue(undefined),
   fetchClients: vi.fn().mockResolvedValue([]),
+  // RulesRatesPage (86e3a6rg1) references these at module scope (RULE_ACTIONS) --
+  // this test never navigates there, but the module import chain still needs
+  // every export it touches to exist on the mock.
+  ratifyRule: vi.fn(),
+  activateRule: vi.fn(),
+  deprecateRule: vi.fn(),
+  quarantineRule: vi.fn(),
+  fetchRules: vi.fn().mockResolvedValue({ rows: [], total: 0 }),
+  fetchRuleDetail: vi.fn().mockResolvedValue(null),
+  fetchContractVersions: vi.fn().mockResolvedValue([]),
+  fetchContractRates: vi.fn().mockResolvedValue([]),
+  createContractRate: vi.fn(),
+  updateContractRate: vi.fn(),
+  deleteContractRate: vi.fn(),
 }));
 
 function renderAt(path: string) {

@@ -76,6 +76,43 @@ export interface TenantOption {
   name: string;
 }
 
+export interface TenantSummary {
+  id: string;
+  name: string;
+  slug: string;
+  isActive: boolean;
+  createdAt: string;
+}
+
+/**
+ * Full tenant rows (id/name/slug/isActive/createdAt) from the same
+ * GET /api/internal/tenants endpoint fetchClients() calls -- that function
+ * only projects {id, name} for TenantPicker's combobox. This one keeps the
+ * fields the Employee Clients/Users pages need (86e3a6rde/re6). One page
+ * fetch (limit 100, matching fetchClients' own cap) rather than paging
+ * through the whole tenant list -- fine for this epic's data volume; a
+ * genuinely large tenant count would need real pagination wired through
+ * the page, tracked as a future gap alongside the others in this epic.
+ */
+export async function fetchTenantSummaries(): Promise<TenantSummary[]> {
+  try {
+    const res = await fetch('/api/internal/tenants?limit=100', { headers: authHeaders() });
+    if (!res.ok) return [];
+    const body = (await res.json()) as {
+      tenants?: { id: string; name: string; slug: string; isActive: boolean; createdAt: string }[];
+    };
+    return (body.tenants ?? []).map((t) => ({
+      id: t.id,
+      name: t.name,
+      slug: t.slug,
+      isActive: t.isActive,
+      createdAt: t.createdAt,
+    }));
+  } catch {
+    return [];
+  }
+}
+
 /**
  * Backs the Employee-only branch of TenantPicker (86e3a6rak): GET
  * /api/internal/tenants is gated to internal actors server-side, so this
@@ -93,6 +130,88 @@ export async function fetchClients(): Promise<TenantOption[]> {
   } catch {
     return [];
   }
+}
+
+/** Backend membership roles (tenant-admin-routes.ts's MEMBERSHIP_ROLES) -- the real role vocabulary today. */
+export const MEMBERSHIP_ROLES = ['analyst', 'lead', 'client_viewer', 'client_admin'] as const;
+export type MembershipRole = (typeof MEMBERSHIP_ROLES)[number];
+
+export interface TenantMember {
+  membershipId: string;
+  userId: string;
+  email: string;
+  fullName: string | null;
+  role: MembershipRole;
+  createdAt: string;
+}
+
+export interface UserRow extends TenantMember {
+  tenantId: string;
+  tenantName: string;
+  tenantIsActive: boolean;
+}
+
+/**
+ * 86e3a6rde: GET /api/internal/tenants/:id/members -- real, but scoped to
+ * ONE tenant and not paginated (listTenantMembers.ts returns every row for
+ * that tenant). There is no cross-tenant "all users" endpoint.
+ */
+export async function fetchTenantMembers(tenantId: string): Promise<TenantMember[]> {
+  try {
+    const res = await fetch(`/api/internal/tenants/${tenantId}/members`, { headers: authHeaders() });
+    if (!res.ok) return [];
+    const body = (await res.json()) as { members?: TenantMember[] };
+    return body.members ?? [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * 86e3a6rde's "global user management across all tenants" AC has no single
+ * backend endpoint behind it -- built here as tenants-then-members fan-out
+ * over the two real endpoints that do exist. This means UsersPage's
+ * pagination/sort/filter run client-side over this aggregate, not
+ * server-side over a combined query; see UsersPage's own Uncertainties.
+ */
+export async function fetchAllUsers(): Promise<UserRow[]> {
+  const tenants = await fetchTenantSummaries();
+  const perTenant = await Promise.all(
+    tenants.map(async (tenant) => {
+      const members = await fetchTenantMembers(tenant.id);
+      return members.map((member) => ({
+        ...member,
+        tenantId: tenant.id,
+        tenantName: tenant.name,
+        tenantIsActive: tenant.isActive,
+      }));
+    }),
+  );
+  return perTenant.flat();
+}
+
+export async function createTenantMember(
+  tenantId: string,
+  input: { email: string; fullName?: string | null; role: MembershipRole },
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const res = await fetch(`/api/internal/tenants/${tenantId}/members`, {
+    method: 'POST',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) {
+    const body = (await res.json().catch(() => ({}))) as { error?: string };
+    return { ok: false, error: body.error ?? `request failed (${res.status})` };
+  }
+  return { ok: true };
+}
+
+export async function deleteTenantMember(tenantId: string, membershipId: string): Promise<boolean> {
+  const res = await fetch(`/api/internal/tenants/${tenantId}/members/${membershipId}`, {
+    method: 'DELETE',
+    headers: authHeaders(),
+  });
+  return res.ok;
 }
 
 export async function fetchActorContext(): Promise<ActorContext> {

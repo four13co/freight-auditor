@@ -10,15 +10,21 @@ import ForgotPasswordPage from '@/pages/forgot-password';
 import ResetPasswordPage from '@/pages/reset-password';
 import HomePage from '@/pages/home';
 import EmployeeHomePage from '@/pages/employee/HomePage';
+import EmployeeUsersPage from '@/pages/employee/UsersPage';
 import { PlaceholderPage } from '@/components/navigation/PlaceholderPage';
 import { NAV_CONFIG, flattenNavItems } from '@/components/navigation/nav-config';
 import { ROLE_HOME_PATH, useAuth, type AppRole } from '@/providers/auth-provider';
 
 const ROLES = Object.keys(NAV_CONFIG) as AppRole[];
 
-/** Per-role real home screen, once built (86e3a6rbe); everything else still falls back to the shared placeholder HomePage. */
-const ROLE_HOME_PAGE: Partial<Record<AppRole, () => ReactElement>> = {
-  employee: EmployeeHomePage,
+/**
+ * Real screens, keyed by their NAV_CONFIG path, as each Employee/Client UI
+ * epic (86e3a6r30/86e3a6r3b) item lands. A nav leaf not listed here still
+ * falls back to PlaceholderPage (or HomePage for an unbuilt role's home).
+ */
+const PAGE_OVERRIDES: Partial<Record<string, () => ReactElement>> = {
+  '/employee/home': EmployeeHomePage,
+  '/employee/users': EmployeeUsersPage,
 };
 
 /** "/" itself: send an authenticated user straight to their role's home. */
@@ -56,10 +62,12 @@ export function AppRoutes() {
           {ROLES.map((role) => (
             <Route key={role} element={<RequireRole roles={[role]} />}>
               {flattenNavItems(role).map((item) => {
-                const RoleHome = ROLE_HOME_PAGE[role];
+                const Override = PAGE_OVERRIDES[item.path];
                 let element: ReactElement;
-                if (item.isHome) {
-                  element = RoleHome ? <RoleHome /> : <HomePage />;
+                if (Override) {
+                  element = <Override />;
+                } else if (item.isHome) {
+                  element = <HomePage />;
                 } else {
                   element = <PlaceholderPage title={item.label} />;
                 }

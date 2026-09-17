@@ -22,6 +22,20 @@ vi.mock('@/lib/api', () => ({
   fetchActorContext: vi.fn().mockResolvedValue({ isInternal: false, role: null, clientName: null }),
   fetchAndStoreClientId: vi.fn().mockResolvedValue(undefined),
   fetchClients: vi.fn().mockResolvedValue([]),
+  // RulesRatesPage (86e3a6rg1) references these at module scope (RULE_ACTIONS) --
+  // this test never navigates there, but the module import chain still needs
+  // every export it touches to exist on the mock.
+  ratifyRule: vi.fn(),
+  activateRule: vi.fn(),
+  deprecateRule: vi.fn(),
+  quarantineRule: vi.fn(),
+  fetchRules: vi.fn().mockResolvedValue({ rows: [], total: 0 }),
+  fetchRuleDetail: vi.fn().mockResolvedValue(null),
+  fetchContractVersions: vi.fn().mockResolvedValue([]),
+  fetchContractRates: vi.fn().mockResolvedValue([]),
+  createContractRate: vi.fn(),
+  updateContractRate: vi.fn(),
+  deleteContractRate: vi.fn(),
 }));
 
 function renderAt(path: string) {
@@ -52,7 +66,7 @@ describe('AppRoutes', () => {
 
     renderAt('/login');
 
-    expect(screen.getByText('shadcn/ui smoke test')).toBeInTheDocument();
+    expect(screen.getByText(/Good (morning|afternoon|evening), Dev/)).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'Sign in' })).not.toBeInTheDocument();
   });
 
@@ -62,7 +76,7 @@ describe('AppRoutes', () => {
 
     renderAt('/');
 
-    expect(screen.getByText(/Signed in as Dev Dashboard User \(employee\)/)).toBeInTheDocument();
+    expect(screen.getByText(/Good (morning|afternoon|evening), Dev/)).toBeInTheDocument();
   });
 
   it.each(['/login', '/forgot-username', '/forgot-password', '/reset-password'])(
@@ -93,6 +107,16 @@ describe('AppRoutes', () => {
 
     renderAt('/vendor/home');
 
-    expect(screen.getByText(/Signed in as Dev Dashboard User \(employee\)/)).toBeInTheDocument();
+    expect(screen.getByText(/Good (morning|afternoon|evening), Dev/)).toBeInTheDocument();
+  });
+
+  it('AC (86e3a6rbe): Employee role renders its own home screen, not the shared placeholder', () => {
+    devHeaderPathActiveMock.mockReturnValue(true); // dev-header path == employee
+
+    renderAt('/employee/home');
+
+    expect(screen.getByText('Recent activity')).toBeInTheDocument();
+    expect(screen.getByText('Quick actions')).toBeInTheDocument();
+    expect(screen.queryByText('shadcn/ui smoke test')).not.toBeInTheDocument();
   });
 });

@@ -13,6 +13,10 @@ import { removeMembership } from '../modules/identity/remove-membership.js';
 import { isUuid, validateBrandingFields } from '../shared/request-validation.js';
 import { decodeCursor, paginateKeyset } from '../shared/cursor-pagination.js';
 import { parseLimitOffset } from '../shared/parse-limit-offset.js';
+import { listContractVersionsForTenant } from '../modules/rate-engine/list-contract-versions.js';
+import {
+  listContractRates, createContractRate, updateContractRate, deleteContractRate, ContractRateNotFoundError,
+} from '../modules/rate-engine/contract-rate-admin.js';
 
 const MEMBERSHIP_ROLES = new Set(['analyst', 'lead', 'client_viewer', 'client_admin']);
 const MAX_LIMIT = 200;
@@ -275,6 +279,126 @@ export async function registerTenantAdminRoutes(routes: FastifyInstance): Promis
       const result = await withTenantTx(request.tenantContext!, (client) => removeMembership(client, id, membershipId));
       if (!result.found) {
         await reply.code(404).send({ error: 'membership not found' });
+        return;
+      }
+      await reply.code(204).send();
+    });
+
+    // 86e3a6rg1 Rates tab: contract-version picker for the create-rate form.
+    adminRoutes.get('/api/internal/tenants/:id/contract-versions', async (request, reply) => {
+      const { id } = request.params as { id: string };
+      if (!isUuid(id)) {
+        await reply.code(400).send({ error: 'invalid tenant id: must be a well-formed UUID' });
+        return;
+      }
+      const contractVersions = await withTenantTx(request.tenantContext!, (client) => listContractVersionsForTenant(client, id));
+      return { contractVersions };
+    });
+
+    adminRoutes.get('/api/internal/tenants/:id/rates', async (request, reply) => {
+      const { id } = request.params as { id: string };
+      if (!isUuid(id)) {
+        await reply.code(400).send({ error: 'invalid tenant id: must be a well-formed UUID' });
+        return;
+      }
+      const rates = await withTenantTx(request.tenantContext!, (client) => listContractRates(client, id));
+      return { rates };
+    });
+
+    adminRoutes.post('/api/internal/tenants/:id/rates', async (request, reply) => {
+      const { id } = request.params as { id: string };
+      if (!isUuid(id)) {
+        await reply.code(400).send({ error: 'invalid tenant id: must be a well-formed UUID' });
+        return;
+      }
+      const body = request.body as { contractVersionId?: unknown; category?: unknown; amount?: unknown; currency?: unknown; clauseId?: unknown };
+      if (typeof body.contractVersionId !== 'string' || !isUuid(body.contractVersionId)) {
+        await reply.code(400).send({ error: 'invalid contractVersionId: must be a well-formed UUID' });
+        return;
+      }
+      if (typeof body.category !== 'string' || body.category.trim() === '') {
+        await reply.code(400).send({ error: 'invalid category: must be a non-empty string' });
+        return;
+      }
+      if (typeof body.amount !== 'string' || !/^\d+(\.\d{1,4})?$/.test(body.amount)) {
+        await reply.code(400).send({ error: 'invalid amount: must be a decimal string (up to 4dp)' });
+        return;
+      }
+      if (typeof body.currency !== 'string' || !/^[A-Z]{3}$/.test(body.currency)) {
+        await reply.code(400).send({ error: 'invalid currency: must be a 3-letter ISO code' });
+        return;
+      }
+      if (body.clauseId !== undefined && body.clauseId !== null && (typeof body.clauseId !== 'string' || !isUuid(body.clauseId))) {
+        await reply.code(400).send({ error: 'invalid clauseId: must be a well-formed UUID' });
+        return;
+      }
+
+      try {
+        const created = await withTenantTx(request.tenantContext!, (client) => createContractRate(client, id, {
+          contractVersionId: body.contractVersionId as string,
+          category: body.category as string,
+          amount: body.amount as string,
+          currency: body.currency as string,
+          clauseId: (body.clauseId as string | null | undefined) ?? null,
+        }));
+        await reply.code(201).send(created);
+      } catch (err) {
+        if (err instanceof ContractRateNotFoundError) {
+          await reply.code(404).send({ error: 'contract version not found for this tenant' });
+          return;
+        }
+        throw err;
+      }
+    });
+
+    adminRoutes.patch('/api/internal/tenants/:id/rates/:rateId', async (request, reply) => {
+      const { id, rateId } = request.params as { id: string; rateId: string };
+      if (!isUuid(id) || !isUuid(rateId)) {
+        await reply.code(400).send({ error: 'invalid id: must be a well-formed UUID' });
+        return;
+      }
+      const body = request.body as { category?: unknown; amount?: unknown; currency?: unknown; clauseId?: unknown };
+      if (body.category !== undefined && (typeof body.category !== 'string' || body.category.trim() === '')) {
+        await reply.code(400).send({ error: 'invalid category: must be a non-empty string' });
+        return;
+      }
+      if (body.amount !== undefined && (typeof body.amount !== 'string' || !/^\d+(\.\d{1,4})?$/.test(body.amount))) {
+        await reply.code(400).send({ error: 'invalid amount: must be a decimal string (up to 4dp)' });
+        return;
+      }
+      if (body.currency !== undefined && (typeof body.currency !== 'string' || !/^[A-Z]{3}$/.test(body.currency))) {
+        await reply.code(400).send({ error: 'invalid currency: must be a 3-letter ISO code' });
+        return;
+      }
+      if (body.clauseId !== undefined && body.clauseId !== null && (typeof body.clauseId !== 'string' || !isUuid(body.clauseId))) {
+        await reply.code(400).send({ error: 'invalid clauseId: must be a well-formed UUID' });
+        return;
+      }
+
+      const patch: { category?: string; amount?: string; currency?: string; clauseId?: string | null } = {
+        category: body.category as string | undefined,
+        amount: body.amount as string | undefined,
+        currency: body.currency as string | undefined,
+      };
+      if ('clauseId' in body) patch.clauseId = (body.clauseId as string | null) ?? null;
+
+      const found = await withTenantTx(request.tenantContext!, (client) => updateContractRate(client, id, rateId, patch));
+      if (!found) {
+        await reply.code(404).send({ error: 'rate not found' });
+        return;
+      }
+      await reply.code(204).send();
+    });
+
+    adminRoutes.delete('/api/internal/tenants/:id/rates/:rateId', async (request, reply) => {
+      const { id, rateId } = request.params as { id: string; rateId: string };
+      if (!isUuid(id) || !isUuid(rateId)) {
+        await reply.code(400).send({ error: 'invalid id: must be a well-formed UUID' });
+        return;
+      }
+      const found = await withTenantTx(request.tenantContext!, (client) => deleteContractRate(client, id, rateId));
+      if (!found) {
+        await reply.code(404).send({ error: 'rate not found' });
         return;
       }
       await reply.code(204).send();

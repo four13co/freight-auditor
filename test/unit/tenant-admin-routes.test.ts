@@ -5,6 +5,8 @@ const INTERNAL_USER_ID = '33333333-3333-4333-8333-333333333333';
 const TENANT_ID = '11111111-1111-4111-8111-111111111111';
 const MEMBERSHIP_ID = '44444444-4444-4444-8444-444444444444';
 const INVALID_ID = 'not-a-uuid';
+const RATE_ID = '55555555-5555-4555-8555-555555555555';
+const CONTRACT_VERSION_ID = '66666666-6666-4666-8666-666666666666';
 
 function mockAuth(isInternal: boolean) {
   vi.doMock('../../src/modules/identity/tenant-admin-auth.js', () => ({
@@ -61,6 +63,8 @@ describe('tenant-admin-routes', () => {
     vi.doUnmock('../../src/modules/identity/create-membership.js');
     vi.doUnmock('../../src/modules/identity/list-tenant-members.js');
     vi.doUnmock('../../src/modules/identity/remove-membership.js');
+    vi.doUnmock('../../src/modules/rate-engine/list-contract-versions.js');
+    vi.doUnmock('../../src/modules/rate-engine/contract-rate-admin.js');
   });
 
   it('requires authentication: 401 with no identity at all', async () => {
@@ -638,5 +642,372 @@ describe('tenant-admin-routes', () => {
 
     const response = await app.inject({ method: 'DELETE', url: `/api/internal/tenants/${TENANT_ID}/members/${MEMBERSHIP_ID}` });
     expect(response.statusCode).toBe(404);
+  });
+
+  // 86e3a6rg1: Rates tab CRUD + the contract-version picker.
+  describe('GET .../contract-versions', () => {
+    it('returns the tenant-scoped contract-version options', async () => {
+      mockAuth(true);
+      mockTx();
+      const listContractVersionsForTenant = vi.fn(async () => [
+        { contractVersionId: CONTRACT_VERSION_ID, contractId: 'c1', contractName: 'Acme MSA', versionLabel: 'v1', validFrom: '2026-01-01', validTo: null },
+      ]);
+      vi.doMock('../../src/modules/rate-engine/list-contract-versions.js', () => ({ listContractVersionsForTenant }));
+      const { registerTenantAdminRoutes } = await import('../../src/server/tenant-admin-routes.js');
+      app = Fastify();
+      await app.register(registerTenantAdminRoutes);
+      await app.ready();
+
+      const response = await app.inject({ method: 'GET', url: `/api/internal/tenants/${TENANT_ID}/contract-versions` });
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toEqual({ contractVersions: [
+        { contractVersionId: CONTRACT_VERSION_ID, contractId: 'c1', contractName: 'Acme MSA', versionLabel: 'v1', validFrom: '2026-01-01', validTo: null },
+      ] });
+      expect(listContractVersionsForTenant).toHaveBeenCalledWith({}, TENANT_ID);
+    });
+
+    it('rejects an invalid tenant id with 400', async () => {
+      mockAuth(true);
+      mockTx();
+      const { registerTenantAdminRoutes } = await import('../../src/server/tenant-admin-routes.js');
+      app = Fastify();
+      await app.register(registerTenantAdminRoutes);
+      await app.ready();
+
+      const response = await app.inject({ method: 'GET', url: `/api/internal/tenants/${INVALID_ID}/contract-versions` });
+      expect(response.statusCode).toBe(400);
+    });
+  });
+
+  describe('GET .../rates', () => {
+    it('returns the tenant-scoped rates', async () => {
+      mockAuth(true);
+      mockTx();
+      const listContractRates = vi.fn(async () => [
+        { id: RATE_ID, contractVersionId: CONTRACT_VERSION_ID, contractId: 'c1', contractName: 'Acme MSA', versionLabel: 'v1', category: 'LINEHAUL', amount: '900.0000', currency: 'USD', clauseId: null, createdAt: new Date('2026-01-01T00:00:00Z') },
+      ]);
+      vi.doMock('../../src/modules/rate-engine/contract-rate-admin.js', () => ({ listContractRates }));
+      const { registerTenantAdminRoutes } = await import('../../src/server/tenant-admin-routes.js');
+      app = Fastify();
+      await app.register(registerTenantAdminRoutes);
+      await app.ready();
+
+      const response = await app.inject({ method: 'GET', url: `/api/internal/tenants/${TENANT_ID}/rates` });
+      expect(response.statusCode).toBe(200);
+      expect(response.json().rates).toHaveLength(1);
+      expect(listContractRates).toHaveBeenCalledWith({}, TENANT_ID);
+    });
+
+    it('rejects an invalid tenant id with 400', async () => {
+      mockAuth(true);
+      mockTx();
+      const { registerTenantAdminRoutes } = await import('../../src/server/tenant-admin-routes.js');
+      app = Fastify();
+      await app.register(registerTenantAdminRoutes);
+      await app.ready();
+
+      const response = await app.inject({ method: 'GET', url: `/api/internal/tenants/${INVALID_ID}/rates` });
+      expect(response.statusCode).toBe(400);
+    });
+  });
+
+  describe('POST .../rates', () => {
+    it('creates a rate and returns 201', async () => {
+      mockAuth(true);
+      mockTx();
+      const createContractRate = vi.fn(async () => ({ id: RATE_ID }));
+      vi.doMock('../../src/modules/rate-engine/contract-rate-admin.js', () => ({ createContractRate }));
+      const { registerTenantAdminRoutes } = await import('../../src/server/tenant-admin-routes.js');
+      app = Fastify();
+      await app.register(registerTenantAdminRoutes);
+      await app.ready();
+
+      const response = await app.inject({
+        method: 'POST', url: `/api/internal/tenants/${TENANT_ID}/rates`,
+        payload: { contractVersionId: CONTRACT_VERSION_ID, category: 'LINEHAUL', amount: '900.0000', currency: 'USD' },
+      });
+      expect(response.statusCode).toBe(201);
+      expect(response.json()).toEqual({ id: RATE_ID });
+      expect(createContractRate).toHaveBeenCalledWith({}, TENANT_ID, {
+        contractVersionId: CONTRACT_VERSION_ID, category: 'LINEHAUL', amount: '900.0000', currency: 'USD', clauseId: null,
+      });
+    });
+
+    it('rejects an invalid tenant id with 400', async () => {
+      mockAuth(true);
+      mockTx();
+      const { registerTenantAdminRoutes } = await import('../../src/server/tenant-admin-routes.js');
+      app = Fastify();
+      await app.register(registerTenantAdminRoutes);
+      await app.ready();
+
+      const response = await app.inject({
+        method: 'POST', url: `/api/internal/tenants/${INVALID_ID}/rates`,
+        payload: { contractVersionId: CONTRACT_VERSION_ID, category: 'LINEHAUL', amount: '1.0000', currency: 'USD' },
+      });
+      expect(response.statusCode).toBe(400);
+    });
+
+    it('rejects an invalid contractVersionId with 400', async () => {
+      mockAuth(true);
+      mockTx();
+      const { registerTenantAdminRoutes } = await import('../../src/server/tenant-admin-routes.js');
+      app = Fastify();
+      await app.register(registerTenantAdminRoutes);
+      await app.ready();
+
+      const response = await app.inject({
+        method: 'POST', url: `/api/internal/tenants/${TENANT_ID}/rates`,
+        payload: { contractVersionId: INVALID_ID, category: 'LINEHAUL', amount: '1.0000', currency: 'USD' },
+      });
+      expect(response.statusCode).toBe(400);
+    });
+
+    it('rejects an empty category with 400', async () => {
+      mockAuth(true);
+      mockTx();
+      const { registerTenantAdminRoutes } = await import('../../src/server/tenant-admin-routes.js');
+      app = Fastify();
+      await app.register(registerTenantAdminRoutes);
+      await app.ready();
+
+      const response = await app.inject({
+        method: 'POST', url: `/api/internal/tenants/${TENANT_ID}/rates`,
+        payload: { contractVersionId: CONTRACT_VERSION_ID, category: '  ', amount: '1.0000', currency: 'USD' },
+      });
+      expect(response.statusCode).toBe(400);
+    });
+
+    it('rejects an invalid amount with 400', async () => {
+      mockAuth(true);
+      mockTx();
+      const { registerTenantAdminRoutes } = await import('../../src/server/tenant-admin-routes.js');
+      app = Fastify();
+      await app.register(registerTenantAdminRoutes);
+      await app.ready();
+
+      const response = await app.inject({
+        method: 'POST', url: `/api/internal/tenants/${TENANT_ID}/rates`,
+        payload: { contractVersionId: CONTRACT_VERSION_ID, category: 'LINEHAUL', amount: 'not-a-number', currency: 'USD' },
+      });
+      expect(response.statusCode).toBe(400);
+    });
+
+    it('rejects an invalid currency with 400', async () => {
+      mockAuth(true);
+      mockTx();
+      const { registerTenantAdminRoutes } = await import('../../src/server/tenant-admin-routes.js');
+      app = Fastify();
+      await app.register(registerTenantAdminRoutes);
+      await app.ready();
+
+      const response = await app.inject({
+        method: 'POST', url: `/api/internal/tenants/${TENANT_ID}/rates`,
+        payload: { contractVersionId: CONTRACT_VERSION_ID, category: 'LINEHAUL', amount: '1.0000', currency: 'usd' },
+      });
+      expect(response.statusCode).toBe(400);
+    });
+
+    it('rejects an invalid clauseId with 400', async () => {
+      mockAuth(true);
+      mockTx();
+      const { registerTenantAdminRoutes } = await import('../../src/server/tenant-admin-routes.js');
+      app = Fastify();
+      await app.register(registerTenantAdminRoutes);
+      await app.ready();
+
+      const response = await app.inject({
+        method: 'POST', url: `/api/internal/tenants/${TENANT_ID}/rates`,
+        payload: { contractVersionId: CONTRACT_VERSION_ID, category: 'LINEHAUL', amount: '1.0000', currency: 'USD', clauseId: INVALID_ID },
+      });
+      expect(response.statusCode).toBe(400);
+    });
+
+    it('returns 404 when the contract version does not belong to this tenant', async () => {
+      mockAuth(true);
+      mockTx();
+      const { ContractRateNotFoundError } = await vi.importActual<typeof import('../../src/modules/rate-engine/contract-rate-admin.js')>(
+        '../../src/modules/rate-engine/contract-rate-admin.js',
+      );
+      const createContractRate = vi.fn(async () => { throw new ContractRateNotFoundError('nope'); });
+      vi.doMock('../../src/modules/rate-engine/contract-rate-admin.js', async (importOriginal) => ({
+        ...(await importOriginal<object>()), createContractRate,
+      }));
+      const { registerTenantAdminRoutes } = await import('../../src/server/tenant-admin-routes.js');
+      app = Fastify();
+      await app.register(registerTenantAdminRoutes);
+      await app.ready();
+
+      const response = await app.inject({
+        method: 'POST', url: `/api/internal/tenants/${TENANT_ID}/rates`,
+        payload: { contractVersionId: CONTRACT_VERSION_ID, category: 'LINEHAUL', amount: '1.0000', currency: 'USD' },
+      });
+      expect(response.statusCode).toBe(404);
+    });
+  });
+
+  describe('PATCH .../rates/:rateId', () => {
+    it('rejects an invalid rateId with 400', async () => {
+      mockAuth(true);
+      mockTx();
+      const { registerTenantAdminRoutes } = await import('../../src/server/tenant-admin-routes.js');
+      app = Fastify();
+      await app.register(registerTenantAdminRoutes);
+      await app.ready();
+
+      const response = await app.inject({
+        method: 'PATCH', url: `/api/internal/tenants/${TENANT_ID}/rates/${INVALID_ID}`, payload: { amount: '1.0000' },
+      });
+      expect(response.statusCode).toBe(400);
+    });
+
+    it('rejects an empty category with 400', async () => {
+      mockAuth(true);
+      mockTx();
+      const { registerTenantAdminRoutes } = await import('../../src/server/tenant-admin-routes.js');
+      app = Fastify();
+      await app.register(registerTenantAdminRoutes);
+      await app.ready();
+
+      const response = await app.inject({
+        method: 'PATCH', url: `/api/internal/tenants/${TENANT_ID}/rates/${RATE_ID}`, payload: { category: '  ' },
+      });
+      expect(response.statusCode).toBe(400);
+    });
+
+    it('rejects an invalid amount with 400', async () => {
+      mockAuth(true);
+      mockTx();
+      const { registerTenantAdminRoutes } = await import('../../src/server/tenant-admin-routes.js');
+      app = Fastify();
+      await app.register(registerTenantAdminRoutes);
+      await app.ready();
+
+      const response = await app.inject({
+        method: 'PATCH', url: `/api/internal/tenants/${TENANT_ID}/rates/${RATE_ID}`, payload: { amount: 'not-a-number' },
+      });
+      expect(response.statusCode).toBe(400);
+    });
+
+    it('rejects an invalid currency with 400', async () => {
+      mockAuth(true);
+      mockTx();
+      const { registerTenantAdminRoutes } = await import('../../src/server/tenant-admin-routes.js');
+      app = Fastify();
+      await app.register(registerTenantAdminRoutes);
+      await app.ready();
+
+      const response = await app.inject({
+        method: 'PATCH', url: `/api/internal/tenants/${TENANT_ID}/rates/${RATE_ID}`, payload: { currency: 'usd' },
+      });
+      expect(response.statusCode).toBe(400);
+    });
+
+    it('rejects an invalid clauseId with 400', async () => {
+      mockAuth(true);
+      mockTx();
+      const { registerTenantAdminRoutes } = await import('../../src/server/tenant-admin-routes.js');
+      app = Fastify();
+      await app.register(registerTenantAdminRoutes);
+      await app.ready();
+
+      const response = await app.inject({
+        method: 'PATCH', url: `/api/internal/tenants/${TENANT_ID}/rates/${RATE_ID}`, payload: { clauseId: INVALID_ID },
+      });
+      expect(response.statusCode).toBe(400);
+    });
+
+    it('updates a rate and returns 204', async () => {
+      mockAuth(true);
+      mockTx();
+      const updateContractRate = vi.fn(async () => true);
+      vi.doMock('../../src/modules/rate-engine/contract-rate-admin.js', () => ({ updateContractRate }));
+      const { registerTenantAdminRoutes } = await import('../../src/server/tenant-admin-routes.js');
+      app = Fastify();
+      await app.register(registerTenantAdminRoutes);
+      await app.ready();
+
+      const response = await app.inject({
+        method: 'PATCH', url: `/api/internal/tenants/${TENANT_ID}/rates/${RATE_ID}`, payload: { amount: '950.0000' },
+      });
+      expect(response.statusCode).toBe(204);
+      expect(updateContractRate).toHaveBeenCalledWith({}, TENANT_ID, RATE_ID, { category: undefined, amount: '950.0000', currency: undefined });
+    });
+
+    it('passes an explicit null clauseId through to clear the citation', async () => {
+      mockAuth(true);
+      mockTx();
+      const updateContractRate = vi.fn(async () => true);
+      vi.doMock('../../src/modules/rate-engine/contract-rate-admin.js', () => ({ updateContractRate }));
+      const { registerTenantAdminRoutes } = await import('../../src/server/tenant-admin-routes.js');
+      app = Fastify();
+      await app.register(registerTenantAdminRoutes);
+      await app.ready();
+
+      const response = await app.inject({
+        method: 'PATCH', url: `/api/internal/tenants/${TENANT_ID}/rates/${RATE_ID}`, payload: { clauseId: null },
+      });
+      expect(response.statusCode).toBe(204);
+      expect(updateContractRate).toHaveBeenCalledWith({}, TENANT_ID, RATE_ID, { category: undefined, amount: undefined, currency: undefined, clauseId: null });
+    });
+
+    it('returns 404 when the rate is not found', async () => {
+      mockAuth(true);
+      mockTx();
+      const updateContractRate = vi.fn(async () => false);
+      vi.doMock('../../src/modules/rate-engine/contract-rate-admin.js', () => ({ updateContractRate }));
+      const { registerTenantAdminRoutes } = await import('../../src/server/tenant-admin-routes.js');
+      app = Fastify();
+      await app.register(registerTenantAdminRoutes);
+      await app.ready();
+
+      const response = await app.inject({
+        method: 'PATCH', url: `/api/internal/tenants/${TENANT_ID}/rates/${RATE_ID}`, payload: { amount: '1.0000' },
+      });
+      expect(response.statusCode).toBe(404);
+    });
+  });
+
+  describe('DELETE .../rates/:rateId', () => {
+    it('rejects an invalid rateId with 400', async () => {
+      mockAuth(true);
+      mockTx();
+      const { registerTenantAdminRoutes } = await import('../../src/server/tenant-admin-routes.js');
+      app = Fastify();
+      await app.register(registerTenantAdminRoutes);
+      await app.ready();
+
+      const response = await app.inject({ method: 'DELETE', url: `/api/internal/tenants/${TENANT_ID}/rates/${INVALID_ID}` });
+      expect(response.statusCode).toBe(400);
+    });
+
+    it('deletes a rate and returns 204', async () => {
+      mockAuth(true);
+      mockTx();
+      const deleteContractRate = vi.fn(async () => true);
+      vi.doMock('../../src/modules/rate-engine/contract-rate-admin.js', () => ({ deleteContractRate }));
+      const { registerTenantAdminRoutes } = await import('../../src/server/tenant-admin-routes.js');
+      app = Fastify();
+      await app.register(registerTenantAdminRoutes);
+      await app.ready();
+
+      const response = await app.inject({ method: 'DELETE', url: `/api/internal/tenants/${TENANT_ID}/rates/${RATE_ID}` });
+      expect(response.statusCode).toBe(204);
+      expect(deleteContractRate).toHaveBeenCalledWith({}, TENANT_ID, RATE_ID);
+    });
+
+    it('returns 404 when the rate is not found', async () => {
+      mockAuth(true);
+      mockTx();
+      const deleteContractRate = vi.fn(async () => false);
+      vi.doMock('../../src/modules/rate-engine/contract-rate-admin.js', () => ({ deleteContractRate }));
+      const { registerTenantAdminRoutes } = await import('../../src/server/tenant-admin-routes.js');
+      app = Fastify();
+      await app.register(registerTenantAdminRoutes);
+      await app.ready();
+
+      const response = await app.inject({ method: 'DELETE', url: `/api/internal/tenants/${TENANT_ID}/rates/${RATE_ID}` });
+      expect(response.statusCode).toBe(404);
+    });
   });
 });

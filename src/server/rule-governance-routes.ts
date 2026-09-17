@@ -5,6 +5,7 @@ import { registerTenantAuthPreHandler } from '../modules/findings/tenant-auth.js
 import { registerInternalAnalystAuthPreHandler } from '../modules/findings/internal-analyst-auth.js';
 import { transitionRuleLifecycle } from '../modules/rule-engine/transition-rule-lifecycle.js';
 import { isUuid } from '../shared/request-validation.js';
+import { parseLimitOffset } from '../shared/parse-limit-offset.js';
 import { promoteShadowRule, DualControlRequiredError } from '../modules/rule-engine/promote-shadow-rule.js';
 import {
   activationCasesSchema, runAndPersistRuleActivationBacktest, RuleActivationBacktestRegressionError,
@@ -13,6 +14,15 @@ import { listContractRuleProposalPreviews } from '../modules/contracts/list-cont
 import { acceptContractRuleProposal, ProposalAcceptanceError } from '../modules/contracts/accept-contract-rule-proposal.js';
 import { ratifyContractRuleProposal, ProposalRatificationError } from '../modules/contracts/ratify-contract-rule-proposal.js';
 import { deterministicAuditEventId, writeAuditEvent } from '../modules/audit-ledger/write-audit-event.js';
+import { listRules, type RuleListSortKey } from '../modules/rule-engine/list-rules.js';
+import { getRuleDetail } from '../modules/rule-engine/get-rule-detail.js';
+
+const RULE_LIST_SORT_KEYS = new Set<RuleListSortKey>(['name', 'tier', 'type', 'status', 'lastModified']);
+const RULE_TIERS = new Set(['STANDARD', 'CLIENT', 'CONTRACT']);
+const RULE_KINDS = new Set(['GATING', 'SCORING']);
+const RULE_STATUSES = new Set(['PROPOSED', 'SHADOW', 'ACTIVE', 'DEPRECATED', 'QUARANTINED']);
+const MAX_RULE_LIST_LIMIT = 200;
+const DEFAULT_RULE_LIST_LIMIT = 50;
 
 export async function registerRuleGovernanceRoutes(routes: FastifyInstance): Promise<void> {
   // Tenant-scoped proposal read/accept/ratify -- unchanged, shared preHandler.
@@ -135,6 +145,105 @@ export async function registerRuleGovernanceRoutes(routes: FastifyInstance): Pro
         if (error instanceof DualControlRequiredError) return reply.code(409).send({ error: error.code });
         throw error;
       }
+    });
+
+    // 86e3a6rg1: the Rules tab's list -- every rule's CURRENT version (any
+    // lifecycle state, not just PROPOSED/SHADOW like /api/rules/proposals
+    // above), with server-side filter/sort/pagination. See list-rules.ts's
+    // header comment for how tier/type are derived and the deterministic
+    // simplification that implies for a rule wired to more than one
+    // criterion/rubric.
+    internalRoutes.get('/api/rules', async (request, reply) => {
+      const query = request.query as {
+        tier?: string; kind?: string; status?: string; sortKey?: string; sortDirection?: string;
+        limit?: string; offset?: string;
+      };
+      if (query.tier !== undefined && !RULE_TIERS.has(query.tier)) {
+        return reply.code(400).send({ error: `invalid tier: must be one of ${[...RULE_TIERS].join(', ')}` });
+      }
+      if (query.kind !== undefined && !RULE_KINDS.has(query.kind)) {
+        return reply.code(400).send({ error: `invalid kind: must be one of ${[...RULE_KINDS].join(', ')}` });
+      }
+      if (query.status !== undefined && !RULE_STATUSES.has(query.status)) {
+        return reply.code(400).send({ error: `invalid status: must be one of ${[...RULE_STATUSES].join(', ')}` });
+      }
+      if (query.sortKey !== undefined && !RULE_LIST_SORT_KEYS.has(query.sortKey as RuleListSortKey)) {
+        return reply.code(400).send({ error: `invalid sortKey: must be one of ${[...RULE_LIST_SORT_KEYS].join(', ')}` });
+      }
+      if (query.sortDirection !== undefined && query.sortDirection !== 'asc' && query.sortDirection !== 'desc') {
+        return reply.code(400).send({ error: 'invalid sortDirection: must be asc or desc' });
+      }
+      const parsedLimitOffset = parseLimitOffset(query, { maxLimit: MAX_RULE_LIST_LIMIT });
+      if (!parsedLimitOffset.ok) return reply.code(400).send({ error: parsedLimitOffset.error });
+      const { limit, offset } = parsedLimitOffset.value;
+
+      const result = await withTenantTx(request.tenantContext!, (client) => listRules(client, {
+        tier: query.tier as 'STANDARD' | 'CLIENT' | 'CONTRACT' | undefined,
+        kind: query.kind as 'GATING' | 'SCORING' | undefined,
+        status: query.status as 'PROPOSED' | 'SHADOW' | 'ACTIVE' | 'DEPRECATED' | 'QUARANTINED' | undefined,
+        sortKey: query.sortKey as RuleListSortKey | undefined,
+        sortDirection: query.sortDirection as 'asc' | 'desc' | undefined,
+        limit: limit ?? DEFAULT_RULE_LIST_LIMIT,
+        offset: offset ?? 0,
+      }));
+      return result;
+    });
+
+    internalRoutes.get('/api/rules/:id', async (request, reply) => {
+      const { id } = request.params as { id: string };
+      if (!isUuid(id)) return reply.code(400).send({ error: 'invalid rule version id' });
+      const detail = await withTenantTx(request.tenantContext!, (client) => getRuleDetail(client, id));
+      if (!detail) return reply.code(404).send({ error: 'rule version not found' });
+      return detail;
+    });
+
+    // Deprecate (ACTIVE -> DEPRECATED) and quarantine (PROPOSED/SHADOW/ACTIVE
+    // -> QUARANTINED) -- the two remaining rule-lifecycle transitions the
+    // task's own Rules tab lists ("Activate, Deprecate, Quarantine") that
+    // /ratify and /activate above don't cover. Same shape as /ratify: a bare
+    // transitionRuleLifecycle call (no dual-control gate -- that's specific
+    // to SHADOW->ACTIVE, see promote-shadow-rule.ts) plus an attributed,
+    // global (clientId: null) audit_event.
+    internalRoutes.post('/api/rules/:id/deprecate', async (request, reply) => {
+      const { id } = request.params as { id: string };
+      if (!isUuid(id)) return reply.code(400).send({ error: 'invalid rule version id' });
+      const body = request.body as { rationale?: unknown };
+      if (typeof body.rationale !== 'string' || !body.rationale.trim()) {
+        return reply.code(400).send({ error: 'rationale is required' });
+      }
+      const actorUserId = request.actorUserId!;
+      const result = await withTenantTx(request.tenantContext!, async (client) => {
+        const transition = await transitionRuleLifecycle(client, { ruleVersionId: id, to: 'DEPRECATED', rationale: body.rationale as string });
+        await writeAuditEvent(client, {
+          id: deterministicAuditEventId(id, transition.ruleVersionId, 'rule_version.deprecated'),
+          clientId: null, entity: 'rule_version', entityId: id, event: 'deprecated',
+          actorKind: 'analyst', actorUserId, ruleVersionId: transition.ruleVersionId,
+          detail: { rationale: body.rationale, fromRuleVersionId: id },
+        });
+        return transition;
+      });
+      return reply.code(201).send(result);
+    });
+
+    internalRoutes.post('/api/rules/:id/quarantine', async (request, reply) => {
+      const { id } = request.params as { id: string };
+      if (!isUuid(id)) return reply.code(400).send({ error: 'invalid rule version id' });
+      const body = request.body as { rationale?: unknown };
+      if (typeof body.rationale !== 'string' || !body.rationale.trim()) {
+        return reply.code(400).send({ error: 'rationale is required' });
+      }
+      const actorUserId = request.actorUserId!;
+      const result = await withTenantTx(request.tenantContext!, async (client) => {
+        const transition = await transitionRuleLifecycle(client, { ruleVersionId: id, to: 'QUARANTINED', rationale: body.rationale as string });
+        await writeAuditEvent(client, {
+          id: deterministicAuditEventId(id, transition.ruleVersionId, 'rule_version.quarantined'),
+          clientId: null, entity: 'rule_version', entityId: id, event: 'quarantined',
+          actorKind: 'analyst', actorUserId, ruleVersionId: transition.ruleVersionId,
+          detail: { rationale: body.rationale, fromRuleVersionId: id },
+        });
+        return transition;
+      });
+      return reply.code(201).send(result);
     });
   });
 }

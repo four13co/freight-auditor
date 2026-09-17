@@ -7,6 +7,8 @@ import { getClientDetail } from '../../src/modules/identity/get-client-detail.js
 import { updateClient } from '../../src/modules/identity/update-client.js';
 import { listTenantMembers } from '../../src/modules/identity/list-tenant-members.js';
 import { removeMembership } from '../../src/modules/identity/remove-membership.js';
+import { updateTenantMembership } from '../../src/modules/identity/update-tenant-membership.js';
+import { listAllTenantMembers } from '../../src/modules/identity/list-all-tenant-members.js';
 
 /**
  * 86e38rdnm: the read/update queries behind the Tenant Admin UI's list,
@@ -42,6 +44,7 @@ describe('tenant-admin queries (DB)', () => {
   afterAll(async () => {
     const owner = await pool.connect();
     try {
+      await owner.query(`DELETE FROM audit_event WHERE actor_user_id = $1`, [userId]);
       await owner.query(`DELETE FROM membership WHERE client_id = $1`, [clientId]);
       await owner.query(`DELETE FROM app_user WHERE id = $1`, [userId]);
       await owner.query(`DELETE FROM client WHERE id = $1`, [clientId]);
@@ -86,6 +89,108 @@ describe('tenant-admin queries (DB)', () => {
       listTenantMembers(client, clientId),
     );
     expect(members).toEqual([]);
+  });
+
+  it('AC1: updateTenantMembership changes the role and writes a membership.role_changed_to_<role> audit event', async () => {
+    const result = await withTenantTx({ internal: true }, (client) =>
+      updateTenantMembership(client, clientId, membershipId, { role: 'lead' }, userId),
+    );
+    expect(result).toEqual({ found: true, id: membershipId, role: 'lead', isActive: true });
+
+    const owner = await pool.connect();
+    try {
+      const events = await owner.query(
+        `SELECT event, detail FROM audit_event WHERE entity = 'membership' AND entity_id = $1`,
+        [membershipId],
+      );
+      expect(events.rows).toEqual([
+        { event: 'membership.role_changed_to_lead', detail: { fromRole: 'analyst', toRole: 'lead' } },
+      ]);
+    } finally {
+      owner.release();
+    }
+  });
+
+  it('AC2: updateTenantMembership returns found: false for a membership scoped to a different tenant, and changes nothing', async () => {
+    const otherTenant = await withTenantTx({ internal: true }, (client) => client.query(`INSERT INTO client (name, slug) VALUES ('TAQ Other', $1) RETURNING id`, [`${tag}-other`]));
+    const otherClientId = otherTenant.rows[0].id;
+    try {
+      const result = await withTenantTx({ internal: true }, (client) =>
+        updateTenantMembership(client, otherClientId, membershipId, { role: 'client_admin' }, userId),
+      );
+      expect(result).toEqual({ found: false });
+
+      const members = await withTenantTx({ internal: true }, (client) => listTenantMembers(client, clientId));
+      expect(members[0]?.role).toBe('lead');
+    } finally {
+      await withTenantTx({ internal: true }, (client) => client.query(`DELETE FROM client WHERE id = $1`, [otherClientId]));
+    }
+  });
+
+  it('AC3: updateTenantMembership disables a membership (is_active: false) and writes no audit event for it', async () => {
+    const before = await pool.connect();
+    let beforeCount: number;
+    try {
+      beforeCount = (await before.query(`SELECT count(*)::int AS n FROM audit_event WHERE entity = 'membership' AND entity_id = $1`, [membershipId])).rows[0].n;
+    } finally {
+      before.release();
+    }
+
+    const result = await withTenantTx({ internal: true }, (client) =>
+      updateTenantMembership(client, clientId, membershipId, { isActive: false }, userId),
+    );
+    expect(result).toEqual({ found: true, id: membershipId, role: 'lead', isActive: false });
+
+    const owner = await pool.connect();
+    try {
+      const afterCount = (await owner.query(`SELECT count(*)::int AS n FROM audit_event WHERE entity = 'membership' AND entity_id = $1`, [membershipId])).rows[0].n;
+      expect(afterCount).toBe(beforeCount);
+    } finally {
+      owner.release();
+    }
+
+    // re-activate so downstream tests (removeMembership, and the cross-tenant
+    // listAllTenantMembers assertions below) see this row in its normal state.
+    await withTenantTx({ internal: true }, (client) => updateTenantMembership(client, clientId, membershipId, { isActive: true }, userId));
+  });
+
+  it('AC4: listAllTenantMembers aggregates membership rows across tenants, keyed by their own client', async () => {
+    const other = await withTenantTx({ internal: true }, (client) => client.query(`INSERT INTO client (name, slug) VALUES ('TAQ Cross', $1) RETURNING id`, [`${tag}-cross`]));
+    const otherClientId = other.rows[0].id;
+    const otherUser = await withTenantTx({ internal: true }, (client) => client.query(`INSERT INTO app_user (email, full_name) VALUES ($1, 'TAQ Cross User') RETURNING id`, [`${tag}-cross@example.test`]));
+    const otherUserId = otherUser.rows[0].id;
+    const otherMembership = await withTenantTx({ internal: true }, (client) =>
+      client.query(`INSERT INTO membership (user_id, client_id, role) VALUES ($1, $2, 'client_viewer') RETURNING id`, [otherUserId, otherClientId]),
+    );
+    const otherMembershipId = otherMembership.rows[0].id;
+
+    try {
+      const rows = await withTenantTx({ internal: true }, (client) => listAllTenantMembers(client, { limit: 200 }));
+      const ids = rows.map((r) => r.id);
+      expect(ids).toEqual(expect.arrayContaining([membershipId, otherMembershipId]));
+      expect(rows.find((r) => r.id === otherMembershipId)).toMatchObject({
+        clientId: otherClientId, clientName: 'TAQ Cross', email: `${tag}-cross@example.test`, role: 'client_viewer', isActive: true,
+      });
+
+      // AC4's keyset-cursor boundary case: page with limit=1 across both
+      // tenants' rows and confirm every seeded row is recovered exactly
+      // once, no drops or duplicates (same shape as
+      // list-gate-failures.db.test.ts's own P6.C.1 boundary proof).
+      const seen: string[] = [];
+      let cursor: { id: string } | undefined;
+      for (let i = 0; i < rows.length + 1; i++) {
+        const page = await withTenantTx({ internal: true }, (client) => listAllTenantMembers(client, { limit: 1, cursor }));
+        if (page.length === 0) break;
+        seen.push(page[0]!.id);
+        cursor = { id: page[0]!.id };
+      }
+      expect(seen).toEqual(expect.arrayContaining([membershipId, otherMembershipId]));
+      expect(new Set(seen).size).toBe(seen.length);
+    } finally {
+      await withTenantTx({ internal: true }, (client) => client.query(`DELETE FROM membership WHERE client_id = $1`, [otherClientId]));
+      await withTenantTx({ internal: true }, (client) => client.query(`DELETE FROM app_user WHERE id = $1`, [otherUserId]));
+      await withTenantTx({ internal: true }, (client) => client.query(`DELETE FROM client WHERE id = $1`, [otherClientId]));
+    }
   });
 
   it('removeMembership deletes the row and reports found: false on a repeat', async () => {

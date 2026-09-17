@@ -61,6 +61,8 @@ describe('tenant-admin-routes', () => {
     vi.doUnmock('../../src/modules/identity/create-membership.js');
     vi.doUnmock('../../src/modules/identity/list-tenant-members.js');
     vi.doUnmock('../../src/modules/identity/remove-membership.js');
+    vi.doUnmock('../../src/modules/identity/update-tenant-membership.js');
+    vi.doUnmock('../../src/modules/identity/list-all-tenant-members.js');
   });
 
   it('requires authentication: 401 with no identity at all', async () => {
@@ -638,5 +640,149 @@ describe('tenant-admin-routes', () => {
 
     const response = await app.inject({ method: 'DELETE', url: `/api/internal/tenants/${TENANT_ID}/members/${MEMBERSHIP_ID}` });
     expect(response.statusCode).toBe(404);
+  });
+
+  it('AC1: PATCH .../members/:membershipId updates the role and returns 200', async () => {
+    mockAuth(true);
+    mockTx();
+    const updateTenantMembership = vi.fn(async () => ({ found: true, id: MEMBERSHIP_ID, role: 'lead', isActive: true }));
+    vi.doMock('../../src/modules/identity/update-tenant-membership.js', () => ({ updateTenantMembership }));
+    const { registerTenantAdminRoutes } = await import('../../src/server/tenant-admin-routes.js');
+    app = Fastify();
+    await app.register(registerTenantAdminRoutes);
+    await app.ready();
+
+    const response = await app.inject({
+      method: 'PATCH', url: `/api/internal/tenants/${TENANT_ID}/members/${MEMBERSHIP_ID}`, payload: { role: 'lead' },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ id: MEMBERSHIP_ID, role: 'lead', isActive: true });
+    expect(updateTenantMembership).toHaveBeenCalledWith({}, TENANT_ID, MEMBERSHIP_ID, { role: 'lead', isActive: undefined }, INTERNAL_USER_ID);
+  });
+
+  it('AC3: PATCH .../members/:membershipId disables a membership (isActive: false)', async () => {
+    mockAuth(true);
+    mockTx();
+    vi.doMock('../../src/modules/identity/update-tenant-membership.js', () => ({
+      updateTenantMembership: vi.fn(async () => ({ found: true, id: MEMBERSHIP_ID, role: 'analyst', isActive: false })),
+    }));
+    const { registerTenantAdminRoutes } = await import('../../src/server/tenant-admin-routes.js');
+    app = Fastify();
+    await app.register(registerTenantAdminRoutes);
+    await app.ready();
+
+    const response = await app.inject({
+      method: 'PATCH', url: `/api/internal/tenants/${TENANT_ID}/members/${MEMBERSHIP_ID}`, payload: { isActive: false },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json().isActive).toBe(false);
+  });
+
+  it('PATCH .../members/:membershipId rejects an invalid id with 400', async () => {
+    mockAuth(true);
+    mockTx();
+    const { registerTenantAdminRoutes } = await import('../../src/server/tenant-admin-routes.js');
+    app = Fastify();
+    await app.register(registerTenantAdminRoutes);
+    await app.ready();
+
+    const response = await app.inject({
+      method: 'PATCH', url: `/api/internal/tenants/${TENANT_ID}/members/${INVALID_ID}`, payload: { role: 'lead' },
+    });
+    expect(response.statusCode).toBe(400);
+  });
+
+  it('AC5: PATCH .../members/:membershipId rejects a role outside the current enum with 400', async () => {
+    mockAuth(true);
+    mockTx();
+    const updateTenantMembership = vi.fn();
+    vi.doMock('../../src/modules/identity/update-tenant-membership.js', () => ({ updateTenantMembership }));
+    const { registerTenantAdminRoutes } = await import('../../src/server/tenant-admin-routes.js');
+    app = Fastify();
+    await app.register(registerTenantAdminRoutes);
+    await app.ready();
+
+    const response = await app.inject({
+      method: 'PATCH', url: `/api/internal/tenants/${TENANT_ID}/members/${MEMBERSHIP_ID}`, payload: { role: 'grand_client' },
+    });
+    expect(response.statusCode).toBe(400);
+    expect(updateTenantMembership).not.toHaveBeenCalled();
+  });
+
+  it('PATCH .../members/:membershipId rejects a non-boolean isActive with 400', async () => {
+    mockAuth(true);
+    mockTx();
+    const { registerTenantAdminRoutes } = await import('../../src/server/tenant-admin-routes.js');
+    app = Fastify();
+    await app.register(registerTenantAdminRoutes);
+    await app.ready();
+
+    const response = await app.inject({
+      method: 'PATCH', url: `/api/internal/tenants/${TENANT_ID}/members/${MEMBERSHIP_ID}`, payload: { isActive: 'yes' },
+    });
+    expect(response.statusCode).toBe(400);
+  });
+
+  it('PATCH .../members/:membershipId rejects an empty payload with 400', async () => {
+    mockAuth(true);
+    mockTx();
+    const { registerTenantAdminRoutes } = await import('../../src/server/tenant-admin-routes.js');
+    app = Fastify();
+    await app.register(registerTenantAdminRoutes);
+    await app.ready();
+
+    const response = await app.inject({ method: 'PATCH', url: `/api/internal/tenants/${TENANT_ID}/members/${MEMBERSHIP_ID}`, payload: {} });
+    expect(response.statusCode).toBe(400);
+  });
+
+  it('AC2: PATCH .../members/:membershipId returns 404 for a membership in a different tenant', async () => {
+    mockAuth(true);
+    mockTx();
+    vi.doMock('../../src/modules/identity/update-tenant-membership.js', () => ({
+      updateTenantMembership: vi.fn(async () => ({ found: false })),
+    }));
+    const { registerTenantAdminRoutes } = await import('../../src/server/tenant-admin-routes.js');
+    app = Fastify();
+    await app.register(registerTenantAdminRoutes);
+    await app.ready();
+
+    const response = await app.inject({
+      method: 'PATCH', url: `/api/internal/tenants/${TENANT_ID}/members/${MEMBERSHIP_ID}`, payload: { role: 'lead' },
+    });
+    expect(response.statusCode).toBe(404);
+  });
+
+  it('GET /api/internal/members rejects with 400: invalid cursor', async () => {
+    mockAuth(true);
+    mockTx();
+    const { registerTenantAdminRoutes } = await import('../../src/server/tenant-admin-routes.js');
+    app = Fastify();
+    await app.register(registerTenantAdminRoutes);
+    await app.ready();
+
+    const response = await app.inject({ method: 'GET', url: '/api/internal/members', query: { cursor: 'not-a-valid-cursor' } });
+    expect(response.statusCode).toBe(400);
+  });
+
+  it('AC4: GET /api/internal/members lists members across tenants', async () => {
+    mockAuth(true);
+    mockTx();
+    vi.doMock('../../src/modules/identity/list-all-tenant-members.js', () => ({
+      listAllTenantMembers: vi.fn(async () => [
+        {
+          id: MEMBERSHIP_ID, userId: 'user-1', email: 'a@example.com', fullName: null, role: 'analyst',
+          isActive: true, clientId: TENANT_ID, clientName: 'Acme', createdAt: new Date('2026-01-01T00:00:00Z'),
+        },
+      ]),
+    }));
+    const { registerTenantAdminRoutes } = await import('../../src/server/tenant-admin-routes.js');
+    app = Fastify();
+    await app.register(registerTenantAdminRoutes);
+    await app.ready();
+
+    const response = await app.inject({ method: 'GET', url: '/api/internal/members' });
+    expect(response.statusCode).toBe(200);
+    expect(response.json().members).toHaveLength(1);
+    expect(response.json().members[0]).toMatchObject({ id: MEMBERSHIP_ID, clientId: TENANT_ID, clientName: 'Acme' });
   });
 });

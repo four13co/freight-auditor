@@ -206,3 +206,62 @@ export function useScopedRates(scopeKey: string | null) {
     },
   };
 }
+
+/**
+ * Grand-Client-scoped file drop uploads (86e3a6rj8), in-memory only -- same
+ * gap as every other Grand-Client-scoped screen (Bridge decision on
+ * 86e3a6r3b): a real upload route (portal-contract-upload-routes.ts's
+ * pattern) needs a real `client_id` and an existing domain row (contract,
+ * carrier) to attach to, and Grand Client is neither a real tenant nor a
+ * real row anywhere in the schema. Scoped by `grandClientFiles:<id>`.
+ */
+export interface ScopedFile {
+  id: string;
+  name: string;
+  type: string;
+  size: number;
+  status: 'submitted' | 'processing' | 'complete' | 'failed';
+  uploadedAt: string;
+}
+
+const fileStores = new Map<string, ScopedFile[]>();
+
+export function useScopedFiles(scopeKey: string | null) {
+  const [files, setFiles] = useState<ScopedFile[]>(() => (scopeKey ? (fileStores.get(scopeKey) ?? []) : []));
+
+  useEffect(() => {
+    setFiles(scopeKey ? (fileStores.get(scopeKey) ?? []) : []);
+  }, [scopeKey]);
+
+  return {
+    files,
+    /**
+     * Functional setState (not a `persist(next)` computed from the outer
+     * `files` closure, unlike the other hooks above): multiple files
+     * dropped together each run their own independent progress-timer
+     * closure (GrandClientFileDropPage), so two `submit` calls can land
+     * within the same render's stale `files` snapshot -- reading `prev` at
+     * apply time is what keeps a second concurrent upload from clobbering
+     * the first.
+     */
+    submit(input: { name: string; type: string; size: number }) {
+      if (!scopeKey) return;
+      setFiles((prev) => {
+        const next = [
+          ...prev,
+          { id: crypto.randomUUID(), name: input.name, type: input.type, size: input.size, status: 'submitted' as const, uploadedAt: new Date().toISOString() },
+        ];
+        fileStores.set(scopeKey, next);
+        return next;
+      });
+    },
+    remove(id: string) {
+      if (!scopeKey) return;
+      setFiles((prev) => {
+        const next = prev.filter((f) => f.id !== id);
+        fileStores.set(scopeKey, next);
+        return next;
+      });
+    },
+  };
+}

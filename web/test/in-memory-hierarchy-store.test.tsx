@@ -1,6 +1,6 @@
 import { renderHook, act } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
-import { countScopedEntities, useScopedEntities, useScopedRates, useScopedRules, useScopedUsers } from '@/lib/in-memory-hierarchy-store';
+import { countScopedEntities, useScopedEntities, useScopedFiles, useScopedRates, useScopedRules, useScopedUsers } from '@/lib/in-memory-hierarchy-store';
 
 describe('useScopedEntities', () => {
   it('creates, updates, and toggles status, scoped by key', () => {
@@ -134,5 +134,40 @@ describe('useScopedRates', () => {
     expect(result.current.rates).toEqual([]);
     act(() => result.current.create({ category: 'Ignored', amount: '0', currency: 'USD' }));
     expect(result.current.rates).toEqual([]);
+  });
+});
+
+/** 86e3a6rj8: scoped file-drop uploads, same shared module. */
+describe('useScopedFiles', () => {
+  it('submits and removes files, scoped by key', () => {
+    const scope = `test-files-${Math.random()}`;
+    const { result } = renderHook(() => useScopedFiles(scope));
+
+    act(() => result.current.submit({ name: 'invoice.pdf', type: 'application/pdf', size: 1024 }));
+    expect(result.current.files).toHaveLength(1);
+    expect(result.current.files[0].status).toBe('submitted');
+
+    const id = result.current.files[0].id;
+    act(() => result.current.remove(id));
+    expect(result.current.files).toHaveLength(0);
+  });
+
+  it('separate scopes never see each other\'s files', () => {
+    const scopeA = `test-files-a-${Math.random()}`;
+    const scopeB = `test-files-b-${Math.random()}`;
+    const { result: a } = renderHook(() => useScopedFiles(scopeA));
+    const { result: b } = renderHook(() => useScopedFiles(scopeB));
+
+    act(() => a.current.submit({ name: 'only-a.pdf', type: 'application/pdf', size: 10 }));
+
+    expect(a.current.files).toHaveLength(1);
+    expect(b.current.files).toHaveLength(0);
+  });
+
+  it('returns nothing for a null scope', () => {
+    const { result } = renderHook(() => useScopedFiles(null));
+    expect(result.current.files).toEqual([]);
+    act(() => result.current.submit({ name: 'ignored.pdf', type: 'application/pdf', size: 1 }));
+    expect(result.current.files).toEqual([]);
   });
 });

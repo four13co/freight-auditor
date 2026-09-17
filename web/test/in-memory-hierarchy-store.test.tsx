@@ -1,6 +1,6 @@
 import { renderHook, act } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
-import { countScopedEntities, useScopedEntities, useScopedUsers } from '@/lib/in-memory-hierarchy-store';
+import { countScopedEntities, useScopedEntities, useScopedRates, useScopedRules, useScopedUsers } from '@/lib/in-memory-hierarchy-store';
 
 describe('useScopedEntities', () => {
   it('creates, updates, and toggles status, scoped by key', () => {
@@ -89,5 +89,50 @@ describe('useScopedUsers', () => {
 
     expect(a.current.users).toHaveLength(1);
     expect(b.current.users).toHaveLength(0);
+  });
+});
+
+/** 86e3a6rjr: read-only-in-the-page but testable rule/rate stand-ins, same shared module. */
+describe('useScopedRules', () => {
+  it('creates rules, scoped by key, with no cross-scope leakage', () => {
+    const scopeA = `test-rules-a-${Math.random()}`;
+    const scopeB = `test-rules-b-${Math.random()}`;
+    const { result: a } = renderHook(() => useScopedRules(scopeA));
+    const { result: b } = renderHook(() => useScopedRules(scopeB));
+
+    act(() => a.current.create({ name: 'Weight tolerance', tier: 'CLIENT', kind: 'GATING' }));
+
+    expect(a.current.rules).toHaveLength(1);
+    expect(a.current.rules[0].tier).toBe('CLIENT');
+    expect(b.current.rules).toHaveLength(0);
+  });
+
+  it('returns nothing for a null scope', () => {
+    const { result } = renderHook(() => useScopedRules(null));
+    expect(result.current.rules).toEqual([]);
+    act(() => result.current.create({ name: 'Ignored', tier: 'STANDARD', kind: 'SCORING' }));
+    expect(result.current.rules).toEqual([]);
+  });
+});
+
+describe('useScopedRates', () => {
+  it('creates rates, scoped by key, with no cross-scope leakage', () => {
+    const scopeA = `test-rates-a-${Math.random()}`;
+    const scopeB = `test-rates-b-${Math.random()}`;
+    const { result: a } = renderHook(() => useScopedRates(scopeA));
+    const { result: b } = renderHook(() => useScopedRates(scopeB));
+
+    act(() => a.current.create({ category: 'LINEHAUL', amount: '125.00', currency: 'USD' }));
+
+    expect(a.current.rates).toHaveLength(1);
+    expect(a.current.rates[0].category).toBe('LINEHAUL');
+    expect(b.current.rates).toHaveLength(0);
+  });
+
+  it('returns nothing for a null scope', () => {
+    const { result } = renderHook(() => useScopedRates(null));
+    expect(result.current.rates).toEqual([]);
+    act(() => result.current.create({ category: 'Ignored', amount: '0', currency: 'USD' }));
+    expect(result.current.rates).toEqual([]);
   });
 });

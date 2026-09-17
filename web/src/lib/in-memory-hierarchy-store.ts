@@ -131,3 +131,78 @@ export function useScopedUsers(scopeKey: string | null) {
     },
   };
 }
+
+/**
+ * Grand-Client-scoped Rules/Rates stand-ins (86e3a6rjr). The real
+ * Rules/Rates surface (`/api/rules`, `/api/internal/tenants/:id/rates`,
+ * PR #407) is internal-analyst-only server-side either way (rules) or
+ * tenant-scoped to a REAL tenant, not a Grand Client (rates) -- there is no
+ * backend concept of "rules/rates for a Grand Client" to fetch at all, same
+ * gap as the Grand Client entity itself. Read-only in the page (86e3a6rjr's
+ * own AC: "Default to read-only... add edit as backend supports it"), but
+ * `create` is kept on the hook (unused by the page today) so a future
+ * "propose a rule" enhancement -- named as a TBD in that task's own body --
+ * has somewhere real to write, without a second store.
+ */
+export interface ScopedRule {
+  id: string;
+  name: string;
+  tier: 'STANDARD' | 'CLIENT' | 'CONTRACT';
+  kind: 'GATING' | 'SCORING';
+  status: string;
+  createdAt: string;
+}
+
+const ruleStores = new Map<string, ScopedRule[]>();
+
+export function useScopedRules(scopeKey: string | null) {
+  const [rules, setRules] = useState<ScopedRule[]>(() => (scopeKey ? (ruleStores.get(scopeKey) ?? []) : []));
+
+  useEffect(() => {
+    setRules(scopeKey ? (ruleStores.get(scopeKey) ?? []) : []);
+  }, [scopeKey]);
+
+  return {
+    rules,
+    create(input: { name: string; tier: ScopedRule['tier']; kind: ScopedRule['kind'] }) {
+      if (!scopeKey) return;
+      const next = [
+        ...rules,
+        { id: crypto.randomUUID(), name: input.name, tier: input.tier, kind: input.kind, status: 'ACTIVE', createdAt: new Date().toISOString() },
+      ];
+      ruleStores.set(scopeKey, next);
+      setRules(next);
+    },
+  };
+}
+
+export interface ScopedRate {
+  id: string;
+  category: string;
+  amount: string;
+  currency: string;
+  createdAt: string;
+}
+
+const rateStores = new Map<string, ScopedRate[]>();
+
+export function useScopedRates(scopeKey: string | null) {
+  const [rates, setRates] = useState<ScopedRate[]>(() => (scopeKey ? (rateStores.get(scopeKey) ?? []) : []));
+
+  useEffect(() => {
+    setRates(scopeKey ? (rateStores.get(scopeKey) ?? []) : []);
+  }, [scopeKey]);
+
+  return {
+    rates,
+    create(input: { category: string; amount: string; currency: string }) {
+      if (!scopeKey) return;
+      const next = [
+        ...rates,
+        { id: crypto.randomUUID(), category: input.category, amount: input.amount, currency: input.currency, createdAt: new Date().toISOString() },
+      ];
+      rateStores.set(scopeKey, next);
+      setRates(next);
+    },
+  };
+}

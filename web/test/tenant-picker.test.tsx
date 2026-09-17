@@ -54,4 +54,42 @@ describe('TenantPicker', () => {
 
     expect(setActiveClient).toHaveBeenCalledWith({ id: 'c2', name: 'Beacon Logistics' });
   });
+
+  it('AC: Client can search and select their own Grand Client', async () => {
+    const setActiveGrandClient = vi.fn();
+    useAuthMock.mockReturnValue({ role: 'client' });
+    useTenantMock.mockReturnValue({
+      options: [
+        { id: 'gc1', name: 'Grand Client One' },
+        { id: 'gc2', name: 'Grand Client Two' },
+      ],
+      activeGrandClient: { id: 'gc1', name: 'Grand Client One' },
+      setActiveGrandClient,
+      isLoading: false,
+    });
+
+    const user = userEvent.setup();
+    render(<TenantPicker />);
+
+    await user.click(screen.getByRole('combobox'));
+    await user.type(screen.getByPlaceholderText('Search grand clients…'), 'Two');
+
+    await waitFor(() => expect(screen.getByText('Grand Client Two')).toBeInTheDocument());
+    await user.click(screen.getByText('Grand Client Two'));
+
+    expect(setActiveGrandClient).toHaveBeenCalledWith({ id: 'gc2', name: 'Grand Client Two' });
+  });
+
+  it('AC: hidden for a Client with zero Grand Clients (graceful empty handling)', () => {
+    useAuthMock.mockReturnValue({ role: 'client' });
+    useTenantMock.mockReturnValue({
+      options: [],
+      activeGrandClient: null,
+      setActiveGrandClient: vi.fn(),
+      isLoading: false,
+    });
+
+    const { container } = render(<TenantPicker />);
+    expect(container).toBeEmptyDOMElement();
+  });
 });

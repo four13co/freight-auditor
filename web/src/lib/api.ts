@@ -71,6 +71,30 @@ export interface ActorContext {
   clientName: string | null;
 }
 
+export interface TenantOption {
+  id: string;
+  name: string;
+}
+
+/**
+ * Backs the Employee-only branch of TenantPicker (86e3a6rak): GET
+ * /api/internal/tenants is gated to internal actors server-side, so this
+ * always 403s for a non-employee caller -- TenantProvider only calls it
+ * when role === 'employee'. There is no equivalent "my Grand Clients"
+ * endpoint yet (the backend has no Grand Client concept at all -- see this
+ * PR's Uncertainties), so Client/Grand Client/Vendor have nothing to fetch.
+ */
+export async function fetchClients(): Promise<TenantOption[]> {
+  try {
+    const res = await fetch('/api/internal/tenants?limit=100', { headers: authHeaders() });
+    if (!res.ok) return [];
+    const body = (await res.json()) as { tenants?: { id: string; name: string }[] };
+    return (body.tenants ?? []).map((t) => ({ id: t.id, name: t.name }));
+  } catch {
+    return [];
+  }
+}
+
 export async function fetchActorContext(): Promise<ActorContext> {
   const res = await fetch('/api/auth/memberships');
   if (!res.ok) return { isInternal: false, role: null, clientName: null };

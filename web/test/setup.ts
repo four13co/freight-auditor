@@ -53,3 +53,25 @@ for (const target of [globalThis, window]) {
     writable: true,
   });
 }
+
+// jsdom implements neither (86e3a6r8z/9c/ak: the first tests in this suite to
+// actually open a @base-ui/react Menu/Popover or mount cmdk's <Command>).
+// Menu/Popover interactions check `hasPointerCapture` before opening and
+// silently no-op without it; cmdk's list virtualization needs a
+// ResizeObserver constructor to exist at all.
+if (!Element.prototype.hasPointerCapture) {
+  Element.prototype.hasPointerCapture = () => false;
+  Element.prototype.setPointerCapture = () => {};
+  Element.prototype.releasePointerCapture = () => {};
+}
+if (!('ResizeObserver' in globalThis)) {
+  class NoopResizeObserver {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  }
+  globalThis.ResizeObserver = NoopResizeObserver as unknown as typeof ResizeObserver;
+}
+if (!Element.prototype.scrollIntoView) {
+  Element.prototype.scrollIntoView = () => {};
+}

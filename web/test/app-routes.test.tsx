@@ -60,4 +60,18 @@ describe('AppRoutes', () => {
 
     expect(screen.getByText(/Signed in as Dev Dashboard User \(employee\)/)).toBeInTheDocument();
   });
+
+  it.each(['/login', '/forgot-username', '/reset-password'])(
+    'AC (86e3a6r5p): %s renders inside the shared AuthLayout',
+    (path) => {
+      devHeaderPathActiveMock.mockReturnValue(false);
+      useSessionMock.mockReturnValue({ data: null, isPending: false });
+
+      renderAt(path);
+
+      // AuthLayout's wordmark -- proves the route is nested under it, not
+      // rendering standalone.
+      expect(screen.getByText('Freight Auditor')).toBeInTheDocument();
+    },
+  );
 });

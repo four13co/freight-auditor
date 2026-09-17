@@ -1,5 +1,6 @@
 import { Route, Routes } from 'react-router-dom';
 import { RequireAuth } from '@/components/require-auth';
+import AuthLayout from '@/layouts/AuthLayout';
 import LoginPage from '@/pages/login';
 import ForgotUsernamePage from '@/pages/forgot-username';
 import ResetPasswordPage from '@/pages/reset-password';
@@ -13,9 +14,11 @@ import HomePage from '@/pages/home';
 export function AppRoutes() {
   return (
     <Routes>
-      <Route path="/login" element={<LoginPage />} />
-      <Route path="/forgot-username" element={<ForgotUsernamePage />} />
-      <Route path="/reset-password" element={<ResetPasswordPage />} />
+      <Route element={<AuthLayout />}>
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/forgot-username" element={<ForgotUsernamePage />} />
+        <Route path="/reset-password" element={<ResetPasswordPage />} />
+      </Route>
       <Route element={<RequireAuth />}>
         <Route path="/" element={<HomePage />} />
       </Route>

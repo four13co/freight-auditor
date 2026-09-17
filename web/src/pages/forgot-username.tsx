@@ -1,8 +1,5 @@
 // Placeholder route -- built out by 86e3a6r6e (forgot username flow).
+// Rendered inside AuthLayout's <Outlet/>.
 export default function ForgotUsernamePage() {
-  return (
-    <main className="flex min-h-screen items-center justify-center bg-background p-8">
-      <p className="text-sm text-muted-foreground">Forgot username flow coming soon.</p>
-    </main>
-  );
+  return <p className="text-center text-sm text-muted-foreground">Forgot username flow coming soon.</p>;
 }

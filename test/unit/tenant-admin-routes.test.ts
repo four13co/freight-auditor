@@ -697,6 +697,18 @@ describe('tenant-admin-routes', () => {
       expect(response.json().rates).toHaveLength(1);
       expect(listContractRates).toHaveBeenCalledWith({}, TENANT_ID);
     });
+
+    it('rejects an invalid tenant id with 400', async () => {
+      mockAuth(true);
+      mockTx();
+      const { registerTenantAdminRoutes } = await import('../../src/server/tenant-admin-routes.js');
+      app = Fastify();
+      await app.register(registerTenantAdminRoutes);
+      await app.ready();
+
+      const response = await app.inject({ method: 'GET', url: `/api/internal/tenants/${INVALID_ID}/rates` });
+      expect(response.statusCode).toBe(400);
+    });
   });
 
   describe('POST .../rates', () => {
@@ -719,6 +731,51 @@ describe('tenant-admin-routes', () => {
       expect(createContractRate).toHaveBeenCalledWith({}, TENANT_ID, {
         contractVersionId: CONTRACT_VERSION_ID, category: 'LINEHAUL', amount: '900.0000', currency: 'USD', clauseId: null,
       });
+    });
+
+    it('rejects an invalid tenant id with 400', async () => {
+      mockAuth(true);
+      mockTx();
+      const { registerTenantAdminRoutes } = await import('../../src/server/tenant-admin-routes.js');
+      app = Fastify();
+      await app.register(registerTenantAdminRoutes);
+      await app.ready();
+
+      const response = await app.inject({
+        method: 'POST', url: `/api/internal/tenants/${INVALID_ID}/rates`,
+        payload: { contractVersionId: CONTRACT_VERSION_ID, category: 'LINEHAUL', amount: '1.0000', currency: 'USD' },
+      });
+      expect(response.statusCode).toBe(400);
+    });
+
+    it('rejects an invalid contractVersionId with 400', async () => {
+      mockAuth(true);
+      mockTx();
+      const { registerTenantAdminRoutes } = await import('../../src/server/tenant-admin-routes.js');
+      app = Fastify();
+      await app.register(registerTenantAdminRoutes);
+      await app.ready();
+
+      const response = await app.inject({
+        method: 'POST', url: `/api/internal/tenants/${TENANT_ID}/rates`,
+        payload: { contractVersionId: INVALID_ID, category: 'LINEHAUL', amount: '1.0000', currency: 'USD' },
+      });
+      expect(response.statusCode).toBe(400);
+    });
+
+    it('rejects an empty category with 400', async () => {
+      mockAuth(true);
+      mockTx();
+      const { registerTenantAdminRoutes } = await import('../../src/server/tenant-admin-routes.js');
+      app = Fastify();
+      await app.register(registerTenantAdminRoutes);
+      await app.ready();
+
+      const response = await app.inject({
+        method: 'POST', url: `/api/internal/tenants/${TENANT_ID}/rates`,
+        payload: { contractVersionId: CONTRACT_VERSION_ID, category: '  ', amount: '1.0000', currency: 'USD' },
+      });
+      expect(response.statusCode).toBe(400);
     });
 
     it('rejects an invalid amount with 400', async () => {
@@ -751,6 +808,21 @@ describe('tenant-admin-routes', () => {
       expect(response.statusCode).toBe(400);
     });
 
+    it('rejects an invalid clauseId with 400', async () => {
+      mockAuth(true);
+      mockTx();
+      const { registerTenantAdminRoutes } = await import('../../src/server/tenant-admin-routes.js');
+      app = Fastify();
+      await app.register(registerTenantAdminRoutes);
+      await app.ready();
+
+      const response = await app.inject({
+        method: 'POST', url: `/api/internal/tenants/${TENANT_ID}/rates`,
+        payload: { contractVersionId: CONTRACT_VERSION_ID, category: 'LINEHAUL', amount: '1.0000', currency: 'USD', clauseId: INVALID_ID },
+      });
+      expect(response.statusCode).toBe(400);
+    });
+
     it('returns 404 when the contract version does not belong to this tenant', async () => {
       mockAuth(true);
       mockTx();
@@ -775,6 +847,76 @@ describe('tenant-admin-routes', () => {
   });
 
   describe('PATCH .../rates/:rateId', () => {
+    it('rejects an invalid rateId with 400', async () => {
+      mockAuth(true);
+      mockTx();
+      const { registerTenantAdminRoutes } = await import('../../src/server/tenant-admin-routes.js');
+      app = Fastify();
+      await app.register(registerTenantAdminRoutes);
+      await app.ready();
+
+      const response = await app.inject({
+        method: 'PATCH', url: `/api/internal/tenants/${TENANT_ID}/rates/${INVALID_ID}`, payload: { amount: '1.0000' },
+      });
+      expect(response.statusCode).toBe(400);
+    });
+
+    it('rejects an empty category with 400', async () => {
+      mockAuth(true);
+      mockTx();
+      const { registerTenantAdminRoutes } = await import('../../src/server/tenant-admin-routes.js');
+      app = Fastify();
+      await app.register(registerTenantAdminRoutes);
+      await app.ready();
+
+      const response = await app.inject({
+        method: 'PATCH', url: `/api/internal/tenants/${TENANT_ID}/rates/${RATE_ID}`, payload: { category: '  ' },
+      });
+      expect(response.statusCode).toBe(400);
+    });
+
+    it('rejects an invalid amount with 400', async () => {
+      mockAuth(true);
+      mockTx();
+      const { registerTenantAdminRoutes } = await import('../../src/server/tenant-admin-routes.js');
+      app = Fastify();
+      await app.register(registerTenantAdminRoutes);
+      await app.ready();
+
+      const response = await app.inject({
+        method: 'PATCH', url: `/api/internal/tenants/${TENANT_ID}/rates/${RATE_ID}`, payload: { amount: 'not-a-number' },
+      });
+      expect(response.statusCode).toBe(400);
+    });
+
+    it('rejects an invalid currency with 400', async () => {
+      mockAuth(true);
+      mockTx();
+      const { registerTenantAdminRoutes } = await import('../../src/server/tenant-admin-routes.js');
+      app = Fastify();
+      await app.register(registerTenantAdminRoutes);
+      await app.ready();
+
+      const response = await app.inject({
+        method: 'PATCH', url: `/api/internal/tenants/${TENANT_ID}/rates/${RATE_ID}`, payload: { currency: 'usd' },
+      });
+      expect(response.statusCode).toBe(400);
+    });
+
+    it('rejects an invalid clauseId with 400', async () => {
+      mockAuth(true);
+      mockTx();
+      const { registerTenantAdminRoutes } = await import('../../src/server/tenant-admin-routes.js');
+      app = Fastify();
+      await app.register(registerTenantAdminRoutes);
+      await app.ready();
+
+      const response = await app.inject({
+        method: 'PATCH', url: `/api/internal/tenants/${TENANT_ID}/rates/${RATE_ID}`, payload: { clauseId: INVALID_ID },
+      });
+      expect(response.statusCode).toBe(400);
+    });
+
     it('updates a rate and returns 204', async () => {
       mockAuth(true);
       mockTx();
@@ -827,6 +969,18 @@ describe('tenant-admin-routes', () => {
   });
 
   describe('DELETE .../rates/:rateId', () => {
+    it('rejects an invalid rateId with 400', async () => {
+      mockAuth(true);
+      mockTx();
+      const { registerTenantAdminRoutes } = await import('../../src/server/tenant-admin-routes.js');
+      app = Fastify();
+      await app.register(registerTenantAdminRoutes);
+      await app.ready();
+
+      const response = await app.inject({ method: 'DELETE', url: `/api/internal/tenants/${TENANT_ID}/rates/${INVALID_ID}` });
+      expect(response.statusCode).toBe(400);
+    });
+
     it('deletes a rate and returns 204', async () => {
       mockAuth(true);
       mockTx();

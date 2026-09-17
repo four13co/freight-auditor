@@ -133,6 +133,22 @@ export default defineConfig({
         // precedent (86e2xcna3) for testing a route's own logic without a DB.
         'src/modules/claims/list-claims.ts',
         'src/modules/claims/get-claim-detail.ts',
+        // 86e3a6rg1: rule-governance-routes.ts (already excluded above) gained
+        // new endpoints backing the Employee Rules & Rates management page,
+        // pulling listRules/getRuleDetail into the unit suite's import graph
+        // for the first time -- same accident-of-import-graph reasoning as
+        // the entries above. Both are Postgres transaction boundaries (rule/
+        // rubric/criterion joins); fully covered by test:db
+        // (list-rules.db.test.ts, get-rule-detail.db.test.ts).
+        'src/modules/rule-engine/list-rules.ts',
+        'src/modules/rule-engine/get-rule-detail.ts',
+        // 86e3a6rg1: tenant-admin-routes.ts (unit-tested with mocked DB calls,
+        // matching the claim-recovery-routes.ts precedent above -- not itself
+        // excluded) gained Rates-tab endpoints that import these two Postgres
+        // transaction boundaries for the first time. Fully covered by test:db
+        // (contract-rate-admin.db.test.ts).
+        'src/modules/rate-engine/contract-rate-admin.ts',
+        'src/modules/rate-engine/list-contract-versions.ts',
       ],
       reporter: ['text', 'json-summary'],
       // Floor ratcheted up in this same PR (86e2u72u2) to match the coverage this

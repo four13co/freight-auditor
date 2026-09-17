@@ -21,6 +21,7 @@ describe('resolveAuthorizedTenantContext (DB)', () => {
   let userIdWithoutMembership: string;
   let inactiveClientId: string;
   let userIdOnInactiveClient: string;
+  let userIdWithDisabledMembership: string;
   let originalFlag: string | undefined;
   const tag = `ta-${Date.now()}`;
 
@@ -44,6 +45,8 @@ describe('resolveAuthorizedTenantContext (DB)', () => {
       userIdWithoutMembership = u2.rows[0].id;
       const u3 = await owner.query(`INSERT INTO app_user (email) VALUES ($1) RETURNING id`, [`${tag}-inactive-client-member@example.com`]);
       userIdOnInactiveClient = u3.rows[0].id;
+      const u4 = await owner.query(`INSERT INTO app_user (email) VALUES ($1) RETURNING id`, [`${tag}-disabled-membership@example.com`]);
+      userIdWithDisabledMembership = u4.rows[0].id;
 
       await owner.query(
         `INSERT INTO membership (user_id, client_id, role) VALUES ($1, $2, 'client_viewer')`,
@@ -52,6 +55,14 @@ describe('resolveAuthorizedTenantContext (DB)', () => {
       await owner.query(
         `INSERT INTO membership (user_id, client_id, role) VALUES ($1, $2, 'client_viewer')`,
         [userIdOnInactiveClient, inactiveClientId],
+      );
+      // 86e3a75mf: a membership row that is itself disabled (is_active =
+      // false, migration 0082) on an otherwise-active client -- distinct
+      // from the userIdOnInactiveClient fixture above, which disables the
+      // whole tenant instead.
+      await owner.query(
+        `INSERT INTO membership (user_id, client_id, role, is_active) VALUES ($1, $2, 'client_viewer', false)`,
+        [userIdWithDisabledMembership, clientId],
       );
     } finally {
       owner.release();
@@ -65,7 +76,7 @@ describe('resolveAuthorizedTenantContext (DB)', () => {
     try {
       await owner.query(`DELETE FROM membership WHERE client_id = ANY($1)`, [[clientId, inactiveClientId]]);
       await owner.query(`DELETE FROM app_user WHERE id = ANY($1)`, [
-        [userIdWithMembership, userIdWithoutMembership, userIdOnInactiveClient],
+        [userIdWithMembership, userIdWithoutMembership, userIdOnInactiveClient, userIdWithDisabledMembership],
       ]);
       await owner.query(`DELETE FROM client WHERE id = ANY($1)`, [[clientId, inactiveClientId]]);
     } finally {
@@ -105,6 +116,13 @@ describe('resolveAuthorizedTenantContext (DB)', () => {
   it('86e39qa6h: returns null for a member of a deactivated (is_active = false) client, even with a valid membership row', async () => {
     const ctx = await resolveAuthorizedTenantContext({
       headers: { 'x-client-id': inactiveClientId, 'x-user-id': userIdOnInactiveClient },
+    } as never);
+    expect(ctx).toBeNull();
+  });
+
+  it('AC3 (86e3a75mf): returns null for a disabled membership (membership.is_active = false), even on an active client', async () => {
+    const ctx = await resolveAuthorizedTenantContext({
+      headers: { 'x-client-id': clientId, 'x-user-id': userIdWithDisabledMembership },
     } as never);
     expect(ctx).toBeNull();
   });

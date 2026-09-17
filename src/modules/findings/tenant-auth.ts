@@ -59,12 +59,18 @@ export function readHeader(value: string | string[] | undefined): string | undef
  * tenant's membership rows otherwise still resolved a full TenantContext,
  * since client.is_active was previously consulted only by background job
  * schedulers, never this request-time authz path.
+ *
+ * 86e3a75mf: also requires m.is_active -- membership's own per-tenant
+ * enable/disable flag (migration 0082), independent of client.is_active
+ * above and of app_user.is_active (checked separately by lookupIsInternal).
+ * A disabled membership must block this one tenant's access without
+ * touching either of those other flags.
  */
 async function lookupMembership(userId: string, clientId: string): Promise<string | null> {
   return withTenantTx({ internal: true }, async (client) => {
     const result = await client.query<{ role: string }>(
       `SELECT m.role FROM membership m JOIN client c ON c.id = m.client_id
-       WHERE m.user_id = $1 AND m.client_id = $2 AND c.is_active = true LIMIT 1`,
+       WHERE m.user_id = $1 AND m.client_id = $2 AND c.is_active = true AND m.is_active = true LIMIT 1`,
       [userId, clientId],
     );
     return result.rows[0]?.role ?? null;

@@ -10,6 +10,8 @@ import { updateCustomerBranding } from '../modules/identity/update-customer-bran
 import { createMembership } from '../modules/identity/create-membership.js';
 import { listTenantMembers } from '../modules/identity/list-tenant-members.js';
 import { removeMembership } from '../modules/identity/remove-membership.js';
+import { updateTenantMembership } from '../modules/identity/update-tenant-membership.js';
+import { listAllTenantMembers } from '../modules/identity/list-all-tenant-members.js';
 import { isUuid, validateBrandingFields } from '../shared/request-validation.js';
 import { decodeCursor, paginateKeyset } from '../shared/cursor-pagination.js';
 import { parseLimitOffset } from '../shared/parse-limit-offset.js';
@@ -269,6 +271,43 @@ export async function registerTenantAdminRoutes(routes: FastifyInstance): Promis
       await reply.code(201).send({ membershipId: result.membershipId, userId: result.userId, isNewUser: result.isNewUser, role: body.role });
     });
 
+    adminRoutes.patch('/api/internal/tenants/:id/members/:membershipId', async (request, reply) => {
+      const { id, membershipId } = request.params as { id: string; membershipId: string };
+      if (!isUuid(id) || !isUuid(membershipId)) {
+        await reply.code(400).send({ error: 'invalid id: must be a well-formed UUID' });
+        return;
+      }
+
+      const body = request.body as { role?: unknown; isActive?: unknown };
+      if (body.role !== undefined && (typeof body.role !== 'string' || !MEMBERSHIP_ROLES.has(body.role))) {
+        await reply.code(400).send({ error: `invalid role: must be one of ${[...MEMBERSHIP_ROLES].join(', ')}` });
+        return;
+      }
+      if (body.isActive !== undefined && typeof body.isActive !== 'boolean') {
+        await reply.code(400).send({ error: 'invalid isActive: must be a boolean' });
+        return;
+      }
+      if (body.role === undefined && body.isActive === undefined) {
+        await reply.code(400).send({ error: 'at least one of role or isActive must be provided' });
+        return;
+      }
+
+      const result = await withTenantTx(request.tenantContext!, (client) =>
+        updateTenantMembership(
+          client,
+          id,
+          membershipId,
+          { role: body.role as string | undefined, isActive: body.isActive as boolean | undefined },
+          request.actorUserId,
+        ),
+      );
+      if (!result.found) {
+        await reply.code(404).send({ error: 'membership not found' });
+        return;
+      }
+      return { id: result.id, role: result.role, isActive: result.isActive };
+    });
+
     adminRoutes.delete('/api/internal/tenants/:id/members/:membershipId', async (request, reply) => {
       const { id, membershipId } = request.params as { id: string; membershipId: string };
       if (!isUuid(id) || !isUuid(membershipId)) {
@@ -402,6 +441,43 @@ export async function registerTenantAdminRoutes(routes: FastifyInstance): Promis
         return;
       }
       await reply.code(204).send();
+    });
+
+    // 86e3a75mf: cross-tenant paginated members view, replacing
+    // fetchAllUsers()'s client-side per-tenant fan-out (see
+    // list-all-tenant-members.ts). Same limit/cursor/offset validation as
+    // GET /api/internal/tenants above.
+    adminRoutes.get('/api/internal/members', async (request, reply) => {
+      const query = request.query as { limit?: string; offset?: string; cursor?: string };
+
+      const parsedLimitOffset = parseLimitOffset(query, { maxLimit: MAX_LIMIT });
+      if (!parsedLimitOffset.ok) {
+        await reply.code(400).send({ error: parsedLimitOffset.error });
+        return;
+      }
+      const { limit, offset } = parsedLimitOffset.value;
+
+      if (query.cursor !== undefined && query.offset !== undefined) {
+        await reply.code(400).send({ error: 'cannot combine cursor with offset' });
+        return;
+      }
+
+      let cursor: { id: string } | undefined;
+      if (query.cursor !== undefined) {
+        const decoded = decodeCursor(query.cursor);
+        if (!decoded) {
+          await reply.code(400).send({ error: 'invalid cursor' });
+          return;
+        }
+        cursor = { id: decoded.id };
+      }
+
+      const effectiveLimit = limit ?? DEFAULT_LIMIT;
+      const rows = await withTenantTx(request.tenantContext!, (client) =>
+        listAllTenantMembers(client, { limit: effectiveLimit + 1, offset: cursor ? undefined : offset, cursor }),
+      );
+      const { page, nextCursor } = paginateKeyset(rows, effectiveLimit, (r) => ({ v: r.createdAt.toISOString(), id: r.id }));
+      return { members: page, nextCursor };
     });
   });
 }

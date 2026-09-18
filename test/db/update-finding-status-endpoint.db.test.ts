@@ -105,7 +105,7 @@ describe('PATCH /api/findings/:id/status (DB, e2e)', () => {
     const res = await app.inject({
       method: 'PATCH',
       url: `/api/findings/${id}/status`,
-      headers: { 'x-client-id': clientId, 'x-user-id': userId, 'content-type': 'application/json' },
+      headers: { 'x-account-id': clientId, 'x-user-id': userId, 'content-type': 'application/json' },
       payload: { status: 'in_review' },
     });
     expect(res.statusCode).toBe(200);
@@ -124,7 +124,7 @@ describe('PATCH /api/findings/:id/status (DB, e2e)', () => {
     const before = await app.inject({
       method: 'GET',
       url: '/api/findings/summary',
-      headers: { 'x-client-id': clientId, 'x-user-id': userId },
+      headers: { 'x-account-id': clientId, 'x-user-id': userId },
     });
     const beforeOpen = Number(before.json().recoverableOpen);
 
@@ -132,14 +132,14 @@ describe('PATCH /api/findings/:id/status (DB, e2e)', () => {
     const afterSeed = await app.inject({
       method: 'GET',
       url: '/api/findings/summary',
-      headers: { 'x-client-id': clientId, 'x-user-id': userId },
+      headers: { 'x-account-id': clientId, 'x-user-id': userId },
     });
     expect(Number(afterSeed.json().recoverableOpen) - beforeOpen).toBeCloseTo(250, 4);
 
     const patch = await app.inject({
       method: 'PATCH',
       url: `/api/findings/${id}/status`,
-      headers: { 'x-client-id': clientId, 'x-user-id': userId, 'content-type': 'application/json' },
+      headers: { 'x-account-id': clientId, 'x-user-id': userId, 'content-type': 'application/json' },
       payload: { status: 'closed' },
     });
     expect(patch.statusCode).toBe(200);
@@ -147,7 +147,7 @@ describe('PATCH /api/findings/:id/status (DB, e2e)', () => {
     const afterPatch = await app.inject({
       method: 'GET',
       url: '/api/findings/summary',
-      headers: { 'x-client-id': clientId, 'x-user-id': userId },
+      headers: { 'x-account-id': clientId, 'x-user-id': userId },
     });
     expect(Number(afterPatch.json().recoverableOpen)).toBeCloseTo(beforeOpen, 4);
   });
@@ -167,7 +167,7 @@ describe('PATCH /api/findings/:id/status (DB, e2e)', () => {
     const res = await app.inject({
       method: 'PATCH',
       url: `/api/findings/${id}/status`,
-      headers: { 'x-client-id': clientId, 'x-user-id': userId, 'content-type': 'application/json' },
+      headers: { 'x-account-id': clientId, 'x-user-id': userId, 'content-type': 'application/json' },
       payload: { status: 'in_review' },
     });
     expect(res.statusCode).toBe(404);
@@ -184,7 +184,7 @@ describe('PATCH /api/findings/:id/status (DB, e2e)', () => {
     const res = await app.inject({
       method: 'PATCH',
       url: `/api/findings/${id}/status`,
-      headers: { 'x-client-id': clientId, 'x-user-id': userId, 'content-type': 'application/json' },
+      headers: { 'x-account-id': clientId, 'x-user-id': userId, 'content-type': 'application/json' },
       payload: { status: 'accepted' },
     });
     expect(res.statusCode).toBe(400);
@@ -192,7 +192,7 @@ describe('PATCH /api/findings/:id/status (DB, e2e)', () => {
 
   it('AC6: two sequential PATCH calls both appear in finding_status_event, in order', async () => {
     const id = await seedFinding(clientId);
-    const headers = { 'x-client-id': clientId, 'x-user-id': userId, 'content-type': 'application/json' };
+    const headers = { 'x-account-id': clientId, 'x-user-id': userId, 'content-type': 'application/json' };
     await app.inject({ method: 'PATCH', url: `/api/findings/${id}/status`, headers, payload: { status: 'in_review' } });
     await app.inject({ method: 'PATCH', url: `/api/findings/${id}/status`, headers, payload: { status: 'disputed' } });
 

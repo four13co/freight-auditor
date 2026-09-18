@@ -504,7 +504,7 @@ describe('tenant-admin-routes', () => {
 
     const response = await app.inject({
       method: 'POST', url: `/api/internal/tenants/${TENANT_ID}/members`,
-      payload: { email: 'new@example.com', role: 'client_admin' },
+      payload: { email: 'new@example.com', role: 'account_admin' },
     });
     expect(response.statusCode).toBe(201);
     expect(createMembership).toHaveBeenCalledWith({}, { clientId: TENANT_ID, email: 'new@example.com', fullName: null, role: 'account_admin' });

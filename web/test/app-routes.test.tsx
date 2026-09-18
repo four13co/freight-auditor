@@ -18,9 +18,9 @@ vi.mock('@/lib/auth-client', () => ({
 }));
 
 vi.mock('@/lib/api', () => ({
-  CLIENT_ID_STORAGE_KEY: 'freight-auditor:client-id',
-  fetchActorContext: vi.fn().mockResolvedValue({ isInternal: false, role: null, clientName: null }),
-  fetchAndStoreClientId: vi.fn().mockResolvedValue(undefined),
+  ACCOUNT_ID_STORAGE_KEY: 'freight-auditor:account-id',
+  fetchActorContext: vi.fn().mockResolvedValue({ isInternal: false, role: null, accountName: null }),
+  fetchAndStoreAccountId: vi.fn().mockResolvedValue(undefined),
   fetchClients: vi.fn().mockResolvedValue([]),
   // RulesRatesPage (86e3a6rg1) references these at module scope (RULE_ACTIONS) --
   // this test never navigates there, but the module import chain still needs

@@ -31,7 +31,7 @@ describe('resolveAuthorizedTenantContext (DEV_AUTH_HEADERS set)', () => {
     vi.resetModules();
   });
 
-  it('returns null when x-client-id is missing, without querying the DB', async () => {
+  it('returns null when x-account-id is missing, without querying the DB', async () => {
     const withTenantTx = vi.fn();
     vi.doMock('../../src/db/tenant-context.js', () => ({ withTenantTx }));
     const { resolveAuthorizedTenantContext } = await import('../../src/modules/findings/tenant-auth.js');
@@ -46,7 +46,7 @@ describe('resolveAuthorizedTenantContext (DEV_AUTH_HEADERS set)', () => {
     vi.doMock('../../src/db/tenant-context.js', () => ({ withTenantTx }));
     const { resolveAuthorizedTenantContext } = await import('../../src/modules/findings/tenant-auth.js');
 
-    const ctx = await resolveAuthorizedTenantContext(mockRequest({ 'x-client-id': 'client-1' }));
+    const ctx = await resolveAuthorizedTenantContext(mockRequest({ 'x-account-id': 'client-1' }));
     expect(ctx).toBeNull();
     expect(withTenantTx).not.toHaveBeenCalled();
   });
@@ -68,7 +68,7 @@ describe('resolveAuthorizedTenantContext (DEV_AUTH_HEADERS set)', () => {
     const { resolveAuthorizedTenantContext } = await import('../../src/modules/findings/tenant-auth.js');
 
     const ctx = await resolveAuthorizedTenantContext(
-      mockRequest({ 'x-client-id': 'client-1', 'x-user-id': 'user-1' }),
+      mockRequest({ 'x-account-id': 'client-1', 'x-user-id': 'user-1' }),
     );
 
     expect(withTenantTx).toHaveBeenCalledWith({ internal: true }, expect.any(Function));
@@ -83,7 +83,7 @@ describe('resolveAuthorizedTenantContext (DEV_AUTH_HEADERS set)', () => {
     const { resolveAuthorizedTenantContext } = await import('../../src/modules/findings/tenant-auth.js');
 
     const ctx = await resolveAuthorizedTenantContext(
-      mockRequest({ 'x-client-id': 'client-1', 'x-user-id': 'user-1' }),
+      mockRequest({ 'x-account-id': 'client-1', 'x-user-id': 'user-1' }),
     );
     expect(ctx).toBeNull();
   });
@@ -95,7 +95,7 @@ describe('resolveAuthorizedTenantContext (DEV_AUTH_HEADERS set)', () => {
     const { resolveAuthorizedTenantContext } = await import('../../src/modules/findings/tenant-auth.js');
 
     await resolveAuthorizedTenantContext(
-      mockRequest({ 'x-client-id': ['client-a', 'client-b'], 'x-user-id': ['user-a', 'user-b'] }),
+      mockRequest({ 'x-account-id': ['client-a', 'client-b'], 'x-user-id': ['user-a', 'user-b'] }),
     );
     expect(query).toHaveBeenCalledWith(expect.any(String), ['user-a', 'client-a']);
   });
@@ -123,7 +123,7 @@ describe('resolveAuthorizedTenantContext (DEV_AUTH_HEADERS unset -- the prod def
     vi.resetModules();
   });
 
-  it('rejects the dev x-client-id/x-user-id headers alone, without a session cookie (the header bypass this AC closes) -- never touches auth or the DB', async () => {
+  it('rejects the dev x-account-id/x-user-id headers alone, without a session cookie (the header bypass this AC closes) -- never touches auth or the DB', async () => {
     const getSession = vi.fn();
     const withTenantTx = vi.fn();
     vi.doMock('../../src/auth/better-auth.js', () => ({ getAuth: () => ({ api: { getSession } }) }));
@@ -131,7 +131,7 @@ describe('resolveAuthorizedTenantContext (DEV_AUTH_HEADERS unset -- the prod def
     const { resolveAuthorizedTenantContext } = await import('../../src/modules/findings/tenant-auth.js');
 
     const ctx = await resolveAuthorizedTenantContext(
-      mockRequest({ 'x-client-id': 'client-1', 'x-user-id': 'user-1' }),
+      mockRequest({ 'x-account-id': 'client-1', 'x-user-id': 'user-1' }),
     );
     expect(ctx).toBeNull();
     expect(getSession).not.toHaveBeenCalled();
@@ -172,7 +172,7 @@ describe('resolveAuthorizedTenantContext (DEV_AUTH_HEADERS unset -- the prod def
     const { resolveAuthorizedTenantContext } = await import('../../src/modules/findings/tenant-auth.js');
 
     const ctx = await resolveAuthorizedTenantContext(
-      mockRequest({ cookie: 'better-auth.session_token=valid', 'x-client-id': 'client-1' }),
+      mockRequest({ cookie: 'better-auth.session_token=valid', 'x-account-id': 'client-1' }),
     );
 
     expect(query).toHaveBeenCalledWith(expect.stringContaining('FROM membership'), ['session-user-1', 'client-1']);
@@ -188,12 +188,12 @@ describe('resolveAuthorizedTenantContext (DEV_AUTH_HEADERS unset -- the prod def
     const { resolveAuthorizedTenantContext } = await import('../../src/modules/findings/tenant-auth.js');
 
     const ctx = await resolveAuthorizedTenantContext(
-      mockRequest({ cookie: 'better-auth.session_token=valid', 'x-client-id': 'client-1' }),
+      mockRequest({ cookie: 'better-auth.session_token=valid', 'x-account-id': 'client-1' }),
     );
     expect(ctx).toBeNull();
   });
 
-  it('rejects a valid session when x-client-id is absent', async () => {
+  it('rejects a valid session when x-account-id is absent', async () => {
     const getSession = vi.fn().mockResolvedValue({ user: { id: 'session-user-1' }, session: {} });
     const withTenantTx = vi.fn();
     vi.doMock('../../src/auth/better-auth.js', () => ({ getAuth: () => ({ api: { getSession } }) }));
@@ -236,7 +236,7 @@ describe.each(['0', 'false'])('resolveAuthorizedTenantContext (DEV_AUTH_HEADERS=
     const { resolveAuthorizedTenantContext } = await import('../../src/modules/findings/tenant-auth.js');
 
     const ctx = await resolveAuthorizedTenantContext(
-      mockRequest({ 'x-client-id': 'client-1', 'x-user-id': 'user-1' }),
+      mockRequest({ 'x-account-id': 'client-1', 'x-user-id': 'user-1' }),
     );
     expect(ctx).toBeNull();
     expect(withTenantTx).not.toHaveBeenCalled();
@@ -244,12 +244,12 @@ describe.each(['0', 'false'])('resolveAuthorizedTenantContext (DEV_AUTH_HEADERS=
 });
 
 /**
- * 86e2wb92b: unit coverage of listMembershipClientIds itself, with
+ * 86e2wb92b: unit coverage of listMembershipAccountIds itself, with
  * withTenantTx mocked -- no live DB. The real query against real membership
  * rows (including >1 row for a user) is covered by
  * test/db/auth-memberships.db.test.ts.
  */
-describe('listMembershipClientIds', () => {
+describe('listMembershipAccountIds', () => {
   afterEach(() => {
     vi.doUnmock('../../src/db/tenant-context.js');
     vi.resetModules();
@@ -262,9 +262,9 @@ describe('listMembershipClientIds', () => {
       return fn({ query });
     });
     vi.doMock('../../src/db/tenant-context.js', () => ({ withTenantTx }));
-    const { listMembershipClientIds } = await import('../../src/modules/findings/tenant-auth.js');
+    const { listMembershipAccountIds } = await import('../../src/modules/findings/tenant-auth.js');
 
-    const result = await listMembershipClientIds('user-1');
+    const result = await listMembershipAccountIds('user-1');
 
     expect(result).toEqual(['c1', 'c2']);
     expect(query).toHaveBeenCalledWith(expect.stringContaining('membership'), ['user-1']);
@@ -274,9 +274,9 @@ describe('listMembershipClientIds', () => {
     const query = vi.fn().mockResolvedValue({ rows: [] });
     const withTenantTx = vi.fn(async (_ctx: unknown, fn: (client: { query: typeof query }) => unknown) => fn({ query }));
     vi.doMock('../../src/db/tenant-context.js', () => ({ withTenantTx }));
-    const { listMembershipClientIds } = await import('../../src/modules/findings/tenant-auth.js');
+    const { listMembershipAccountIds } = await import('../../src/modules/findings/tenant-auth.js');
 
-    const result = await listMembershipClientIds('user-1');
+    const result = await listMembershipAccountIds('user-1');
 
     expect(result).toEqual([]);
   });
@@ -312,14 +312,14 @@ describe('lookupActorType', () => {
   it('returns isInternal:false and the membership role for a portal member', async () => {
     const query = vi.fn()
       .mockResolvedValueOnce({ rows: [{ is_internal: false }] })
-      .mockResolvedValueOnce({ rows: [{ role: 'client_admin' }] });
+      .mockResolvedValueOnce({ rows: [{ role: 'account_admin' }] });
     const withTenantTx = vi.fn(async (_ctx: unknown, fn: (client: { query: typeof query }) => unknown) => fn({ query }));
     vi.doMock('../../src/db/tenant-context.js', () => ({ withTenantTx }));
     const { lookupActorType } = await import('../../src/modules/findings/tenant-auth.js');
 
     const result = await lookupActorType('user-2');
 
-    expect(result).toEqual({ isInternal: false, role: 'client_admin' });
+    expect(result).toEqual({ isInternal: false, role: 'account_admin' });
     expect(query).toHaveBeenCalledTimes(2);
     expect(query).toHaveBeenNthCalledWith(2, expect.stringContaining('membership'), ['user-2']);
   });
@@ -337,11 +337,11 @@ describe('lookupActorType', () => {
 });
 
 /**
- * 86e38pz8e: unit coverage of lookupClientName itself, with withTenantTx
+ * 86e38pz8e: unit coverage of lookupAccountName itself, with withTenantTx
  * mocked -- no live DB. The real query against real client/membership rows
  * is covered by test/db/auth-memberships.db.test.ts.
  */
-describe('lookupClientName', () => {
+describe('lookupAccountName', () => {
   afterEach(() => {
     vi.doUnmock('../../src/db/tenant-context.js');
     vi.resetModules();
@@ -354,9 +354,9 @@ describe('lookupClientName', () => {
       return fn({ query });
     });
     vi.doMock('../../src/db/tenant-context.js', () => ({ withTenantTx }));
-    const { lookupClientName } = await import('../../src/modules/findings/tenant-auth.js');
+    const { lookupAccountName } = await import('../../src/modules/findings/tenant-auth.js');
 
-    const result = await lookupClientName('user-1');
+    const result = await lookupAccountName('user-1');
 
     expect(result).toBe('Acme Corp');
     expect(query).toHaveBeenCalledWith(expect.stringContaining('membership'), ['user-1']);
@@ -366,9 +366,9 @@ describe('lookupClientName', () => {
     const query = vi.fn().mockResolvedValue({ rows: [] });
     const withTenantTx = vi.fn(async (_ctx: unknown, fn: (client: { query: typeof query }) => unknown) => fn({ query }));
     vi.doMock('../../src/db/tenant-context.js', () => ({ withTenantTx }));
-    const { lookupClientName } = await import('../../src/modules/findings/tenant-auth.js');
+    const { lookupAccountName } = await import('../../src/modules/findings/tenant-auth.js');
 
-    const result = await lookupClientName('user-2');
+    const result = await lookupAccountName('user-2');
 
     expect(result).toBeNull();
   });
@@ -422,7 +422,7 @@ describe('registerTenantAuthPreHandler', () => {
     const res = await app.inject({
       method: 'GET',
       url: '/probe',
-      headers: { 'x-client-id': 'client-1', 'x-user-id': 'user-1' },
+      headers: { 'x-account-id': 'client-1', 'x-user-id': 'user-1' },
     });
 
     expect(res.statusCode, res.body).toBe(200);

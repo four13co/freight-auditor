@@ -169,7 +169,7 @@ describe('tenant-admin queries (DB)', () => {
       const ids = rows.map((r) => r.id);
       expect(ids).toEqual(expect.arrayContaining([membershipId, otherMembershipId]));
       expect(rows.find((r) => r.id === otherMembershipId)).toMatchObject({
-        clientId: otherClientId, clientName: 'TAQ Cross', email: `${tag}-cross@example.test`, role: 'client_viewer', isActive: true,
+        accountId: otherClientId, accountName: 'TAQ Cross', email: `${tag}-cross@example.test`, role: 'account_viewer', isActive: true,
       });
 
       // AC4's keyset-cursor boundary case: page with limit=1 across both

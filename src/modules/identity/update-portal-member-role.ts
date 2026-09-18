@@ -1,16 +1,15 @@
 import type pg from 'pg';
 import { deterministicAuditEventId, writeAuditEvent } from '../audit-ledger/write-audit-event.js';
 
-// 86e3ankd7: these are the DB enum labels (membership_role), not the wire
-// values -- the wire still speaks client_viewer/client_admin (frozen by
-// AC5/the No-go on touching web/). portal-admin-routes.ts owns the
-// wire<->db translation via role-wire-mapping.ts at the route boundary.
+// 86e3ankd7 froze these at the wire boundary via a translation layer;
+// 86e3aq0h7 removed it -- these are now both the DB enum labels
+// (membership_role) and the wire's own values, used as-is end to end.
 export type PortalRole = 'account_viewer' | 'account_admin';
 
 export const PORTAL_ROLES: readonly PortalRole[] = ['account_viewer', 'account_admin'];
 
 export interface UpdatePortalMemberRoleResult {
-  /** false when the membership doesn't exist, isn't visible under RLS for this tenant, or its CURRENT role isn't client_viewer/client_admin -- caller maps this to 404. */
+  /** false when the membership doesn't exist, isn't visible under RLS for this tenant, or its CURRENT role isn't account_viewer/account_admin -- caller maps this to 404. */
   found: boolean;
 }
 

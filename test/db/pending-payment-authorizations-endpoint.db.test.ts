@@ -75,7 +75,7 @@ describe('GET /api/payment-authorizations/pending (DB, e2e)', () => {
     const hold = await app.inject({
       method: 'POST',
       url: `/api/audit-runs/${auditRunId}/payment-authorization`,
-      headers: { 'x-client-id': clientId, 'x-user-id': userId },
+      headers: { 'x-account-id': clientId, 'x-user-id': userId },
       payload: { action: 'hold' },
     });
     expect(hold.statusCode).toBe(201);
@@ -83,7 +83,7 @@ describe('GET /api/payment-authorizations/pending (DB, e2e)', () => {
     const before = await app.inject({
       method: 'GET',
       url: '/api/payment-authorizations/pending',
-      headers: { 'x-client-id': clientId, 'x-user-id': userId },
+      headers: { 'x-account-id': clientId, 'x-user-id': userId },
     });
     expect(before.statusCode).toBe(200);
     const beforeBody = before.json() as { pending: Array<{ auditRunId: string; invoiceNumber: string | null }> };
@@ -93,7 +93,7 @@ describe('GET /api/payment-authorizations/pending (DB, e2e)', () => {
     const approve = await app.inject({
       method: 'POST',
       url: `/api/audit-runs/${auditRunId}/payment-authorization`,
-      headers: { 'x-client-id': clientId, 'x-user-id': userId },
+      headers: { 'x-account-id': clientId, 'x-user-id': userId },
       payload: { action: 'approve' },
     });
     expect(approve.statusCode).toBe(201);
@@ -101,7 +101,7 @@ describe('GET /api/payment-authorizations/pending (DB, e2e)', () => {
     const after = await app.inject({
       method: 'GET',
       url: '/api/payment-authorizations/pending',
-      headers: { 'x-client-id': clientId, 'x-user-id': userId },
+      headers: { 'x-account-id': clientId, 'x-user-id': userId },
     });
     const afterBody = after.json() as { pending: Array<{ auditRunId: string }> };
     expect(afterBody.pending.some((row) => row.auditRunId === auditRunId)).toBe(false);

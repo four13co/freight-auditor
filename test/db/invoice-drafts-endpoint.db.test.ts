@@ -121,7 +121,7 @@ describe('POST /api/invoice-drafts + confirm (DB, e2e)', () => {
     const post = await app.inject({
       method: 'POST',
       url: '/api/invoice-drafts',
-      headers: { 'x-client-id': clientId, 'x-user-id': userId, 'content-type': 'application/pdf' },
+      headers: { 'x-account-id': clientId, 'x-user-id': userId, 'content-type': 'application/pdf' },
       payload: pdf,
     });
 
@@ -152,7 +152,7 @@ describe('POST /api/invoice-drafts + confirm (DB, e2e)', () => {
     const draftPost = await app.inject({
       method: 'POST',
       url: '/api/invoice-drafts',
-      headers: { 'x-client-id': clientId, 'x-user-id': userId, 'content-type': 'application/pdf' },
+      headers: { 'x-account-id': clientId, 'x-user-id': userId, 'content-type': 'application/pdf' },
       payload: pdf,
     });
     const draftId = draftPost.json().id as string;
@@ -160,7 +160,7 @@ describe('POST /api/invoice-drafts + confirm (DB, e2e)', () => {
     const confirmPost = await app.inject({
       method: 'POST',
       url: `/api/invoice-drafts/${draftId}/confirm`,
-      headers: { 'x-client-id': clientId, 'x-user-id': userId, 'content-type': 'application/json' },
+      headers: { 'x-account-id': clientId, 'x-user-id': userId, 'content-type': 'application/json' },
       payload: {},
     });
     expect(confirmPost.statusCode).toBe(201);
@@ -170,7 +170,7 @@ describe('POST /api/invoice-drafts + confirm (DB, e2e)', () => {
     const get = await app.inject({
       method: 'GET',
       url: '/api/findings',
-      headers: { 'x-client-id': clientId, 'x-user-id': userId },
+      headers: { 'x-account-id': clientId, 'x-user-id': userId },
     });
     expect(get.statusCode).toBe(200);
     expect(Array.isArray(get.json().findings)).toBe(true);
@@ -207,7 +207,7 @@ describe('POST /api/invoice-drafts + confirm (DB, e2e)', () => {
     const draftPost = await app.inject({
       method: 'POST',
       url: '/api/invoice-drafts',
-      headers: { 'x-client-id': clientId, 'x-user-id': userId, 'content-type': 'application/pdf' },
+      headers: { 'x-account-id': clientId, 'x-user-id': userId, 'content-type': 'application/pdf' },
       payload: pdf,
     });
     const draft = draftPost.json();
@@ -226,7 +226,7 @@ describe('POST /api/invoice-drafts + confirm (DB, e2e)', () => {
     const confirmPost = await app.inject({
       method: 'POST',
       url: `/api/invoice-drafts/${draftId}/confirm`,
-      headers: { 'x-client-id': clientId, 'x-user-id': userId, 'content-type': 'application/json' },
+      headers: { 'x-account-id': clientId, 'x-user-id': userId, 'content-type': 'application/json' },
       payload: { correctedPayload },
     });
     expect(confirmPost.statusCode).toBe(201);
@@ -276,7 +276,7 @@ describe('POST /api/invoice-drafts + confirm (DB, e2e)', () => {
     const post = await app.inject({
       method: 'POST',
       url: '/api/invoice-drafts',
-      headers: { 'x-client-id': clientId, 'x-user-id': userId, 'content-type': 'application/pdf' },
+      headers: { 'x-account-id': clientId, 'x-user-id': userId, 'content-type': 'application/pdf' },
       payload: pdf,
     });
 
@@ -289,7 +289,7 @@ describe('POST /api/invoice-drafts + confirm (DB, e2e)', () => {
     const post = await app.inject({
       method: 'POST',
       url: '/api/invoice-drafts',
-      headers: { 'x-client-id': clientId, 'x-user-id': userId, 'content-type': 'application/pdf' },
+      headers: { 'x-account-id': clientId, 'x-user-id': userId, 'content-type': 'application/pdf' },
       payload: pdf,
     });
 

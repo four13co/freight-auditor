@@ -35,7 +35,7 @@ describe('resolveAccountViewerContext (DEV_AUTH_HEADERS set)', () => {
     vi.resetModules();
   });
 
-  it('returns null when x-client-id is missing, without querying the DB', async () => {
+  it('returns null when x-account-id is missing, without querying the DB', async () => {
     setup();
     const withTenantTx = vi.fn();
     vi.doMock('../../src/db/tenant-context.js', () => ({ withTenantTx }));
@@ -52,7 +52,7 @@ describe('resolveAccountViewerContext (DEV_AUTH_HEADERS set)', () => {
     vi.doMock('../../src/db/tenant-context.js', () => ({ withTenantTx }));
     const { resolveAccountViewerContext } = await import('../../src/modules/identity/account-viewer-auth.js');
 
-    const ctx = await resolveAccountViewerContext(mockRequest({ 'x-client-id': 'client-1' }));
+    const ctx = await resolveAccountViewerContext(mockRequest({ 'x-account-id': 'client-1' }));
     expect(ctx).toBeNull();
     expect(withTenantTx).not.toHaveBeenCalled();
   });
@@ -64,7 +64,7 @@ describe('resolveAccountViewerContext (DEV_AUTH_HEADERS set)', () => {
     vi.doMock('../../src/db/tenant-context.js', () => ({ withTenantTx }));
     const { resolveAccountViewerContext } = await import('../../src/modules/identity/account-viewer-auth.js');
 
-    const ctx = await resolveAccountViewerContext(mockRequest({ 'x-client-id': 'client-1', 'x-user-id': 'user-1' }));
+    const ctx = await resolveAccountViewerContext(mockRequest({ 'x-account-id': 'client-1', 'x-user-id': 'user-1' }));
 
     expect(withTenantTx).toHaveBeenCalledWith({ internal: true }, expect.any(Function));
     expect(query).toHaveBeenCalledWith(expect.stringContaining('FROM membership'), ['user-1', 'client-1']);
@@ -78,7 +78,7 @@ describe('resolveAccountViewerContext (DEV_AUTH_HEADERS set)', () => {
     vi.doMock('../../src/db/tenant-context.js', () => ({ withTenantTx }));
     const { resolveAccountViewerContext } = await import('../../src/modules/identity/account-viewer-auth.js');
 
-    const ctx = await resolveAccountViewerContext(mockRequest({ 'x-client-id': 'client-1', 'x-user-id': 'user-1' }));
+    const ctx = await resolveAccountViewerContext(mockRequest({ 'x-account-id': 'client-1', 'x-user-id': 'user-1' }));
     expect(ctx).toBeNull();
   });
 
@@ -89,7 +89,7 @@ describe('resolveAccountViewerContext (DEV_AUTH_HEADERS set)', () => {
     vi.doMock('../../src/db/tenant-context.js', () => ({ withTenantTx }));
     const { resolveAccountViewerContext } = await import('../../src/modules/identity/account-viewer-auth.js');
 
-    const ctx = await resolveAccountViewerContext(mockRequest({ 'x-client-id': 'client-1', 'x-user-id': 'user-1' }));
+    const ctx = await resolveAccountViewerContext(mockRequest({ 'x-account-id': 'client-1', 'x-user-id': 'user-1' }));
     expect(ctx).toBeNull();
   });
 
@@ -100,11 +100,11 @@ describe('resolveAccountViewerContext (DEV_AUTH_HEADERS set)', () => {
     vi.doMock('../../src/db/tenant-context.js', () => ({ withTenantTx }));
     const { resolveAccountViewerContext } = await import('../../src/modules/identity/account-viewer-auth.js');
 
-    const ctx = await resolveAccountViewerContext(mockRequest({ 'x-client-id': 'client-1', 'x-user-id': 'user-1' }));
+    const ctx = await resolveAccountViewerContext(mockRequest({ 'x-account-id': 'client-1', 'x-user-id': 'user-1' }));
     expect(ctx).toBeNull();
   });
 
-  it('takes the first value when x-client-id/x-user-id are sent multiple times', async () => {
+  it('takes the first value when x-account-id/x-user-id are sent multiple times', async () => {
     setup();
     const query = vi.fn().mockResolvedValue({ rows: [{ role: 'account_viewer' }] });
     const withTenantTx = vi.fn(async (_ctx, fn) => fn({ query }));
@@ -112,7 +112,7 @@ describe('resolveAccountViewerContext (DEV_AUTH_HEADERS set)', () => {
     const { resolveAccountViewerContext } = await import('../../src/modules/identity/account-viewer-auth.js');
 
     await resolveAccountViewerContext(
-      mockRequest({ 'x-client-id': ['client-a', 'client-b'], 'x-user-id': ['user-a', 'user-b'] }),
+      mockRequest({ 'x-account-id': ['client-a', 'client-b'], 'x-user-id': ['user-a', 'user-b'] }),
     );
     expect(query).toHaveBeenCalledWith(expect.any(String), ['user-a', 'client-a']);
   });
@@ -149,7 +149,7 @@ describe('resolveAccountViewerContext (DEV_AUTH_HEADERS unset -- the prod defaul
     const { resolveAccountViewerContext } = await import('../../src/modules/identity/account-viewer-auth.js');
 
     const ctx = await resolveAccountViewerContext(
-      mockRequest({ 'x-client-id': 'client-1', 'x-user-id': 'user-1' }),
+      mockRequest({ 'x-account-id': 'client-1', 'x-user-id': 'user-1' }),
     );
     expect(ctx).toBeNull();
     expect(getSession).not.toHaveBeenCalled();
@@ -179,13 +179,13 @@ describe('resolveAccountViewerContext (DEV_AUTH_HEADERS unset -- the prod defaul
     const { resolveAccountViewerContext } = await import('../../src/modules/identity/account-viewer-auth.js');
 
     const ctx = await resolveAccountViewerContext(
-      mockRequest({ cookie: 'better-auth.session_token=stale', 'x-client-id': 'client-1' }),
+      mockRequest({ cookie: 'better-auth.session_token=stale', 'x-account-id': 'client-1' }),
     );
     expect(ctx).toBeNull();
     expect(withTenantTx).not.toHaveBeenCalled();
   });
 
-  it('rejects a valid session with no x-client-id header, without querying the DB', async () => {
+  it('rejects a valid session with no x-account-id header, without querying the DB', async () => {
     setup();
     const getSession = vi.fn().mockResolvedValue({ user: { id: 'session-user-1' }, session: {} });
     const withTenantTx = vi.fn();
@@ -208,7 +208,7 @@ describe('resolveAccountViewerContext (DEV_AUTH_HEADERS unset -- the prod defaul
     const { resolveAccountViewerContext } = await import('../../src/modules/identity/account-viewer-auth.js');
 
     const ctx = await resolveAccountViewerContext(
-      mockRequest({ cookie: 'better-auth.session_token=valid', 'x-client-id': 'client-1' }),
+      mockRequest({ cookie: 'better-auth.session_token=valid', 'x-account-id': 'client-1' }),
     );
 
     expect(query).toHaveBeenCalledWith(expect.stringContaining('FROM membership'), ['session-user-1', 'client-1']);
@@ -225,7 +225,7 @@ describe('resolveAccountViewerContext (DEV_AUTH_HEADERS unset -- the prod defaul
     const { resolveAccountViewerContext } = await import('../../src/modules/identity/account-viewer-auth.js');
 
     const ctx = await resolveAccountViewerContext(
-      mockRequest({ cookie: 'better-auth.session_token=valid', 'x-client-id': 'client-1' }),
+      mockRequest({ cookie: 'better-auth.session_token=valid', 'x-account-id': 'client-1' }),
     );
     expect(ctx).toBeNull();
   });
@@ -237,7 +237,7 @@ describe('resolveAccountViewerContext (DEV_AUTH_HEADERS unset -- the prod defaul
     const { resolveAccountViewerContext } = await import('../../src/modules/identity/account-viewer-auth.js');
 
     await expect(
-      resolveAccountViewerContext(mockRequest({ cookie: 'better-auth.session_token=valid', 'x-client-id': 'client-1' })),
+      resolveAccountViewerContext(mockRequest({ cookie: 'better-auth.session_token=valid', 'x-account-id': 'client-1' })),
     ).rejects.toThrow('DATABASE_URL is not set');
   });
 });
@@ -261,7 +261,7 @@ describe.each(['0', 'false'])('resolveAccountViewerContext (DEV_AUTH_HEADERS=%s)
     vi.doMock('../../src/db/tenant-context.js', () => ({ withTenantTx }));
     const { resolveAccountViewerContext } = await import('../../src/modules/identity/account-viewer-auth.js');
 
-    const ctx = await resolveAccountViewerContext(mockRequest({ 'x-client-id': 'client-1', 'x-user-id': 'user-1' }));
+    const ctx = await resolveAccountViewerContext(mockRequest({ 'x-account-id': 'client-1', 'x-user-id': 'user-1' }));
     expect(ctx).toBeNull();
     expect(withTenantTx).not.toHaveBeenCalled();
   });
@@ -307,7 +307,7 @@ describe('registerAccountViewerAuthPreHandler', () => {
     const res = await app.inject({
       method: 'GET',
       url: '/probe',
-      headers: { 'x-client-id': 'client-1', 'x-user-id': 'user-1' },
+      headers: { 'x-account-id': 'client-1', 'x-user-id': 'user-1' },
     });
 
     expect(res.statusCode, res.body).toBe(200);
@@ -329,7 +329,7 @@ describe('registerAccountViewerAuthPreHandler', () => {
     const res = await app.inject({
       method: 'HEAD',
       url: '/probe',
-      headers: { 'x-client-id': 'client-1', 'x-user-id': 'user-1' },
+      headers: { 'x-account-id': 'client-1', 'x-user-id': 'user-1' },
     });
 
     expect(res.statusCode).toBe(200);
@@ -351,7 +351,7 @@ describe('registerAccountViewerAuthPreHandler', () => {
     const res = await app.inject({
       method: 'POST',
       url: '/probe',
-      headers: { 'x-client-id': 'client-1', 'x-user-id': 'user-1' },
+      headers: { 'x-account-id': 'client-1', 'x-user-id': 'user-1' },
     });
 
     expect(res.statusCode).toBe(403);
@@ -393,7 +393,7 @@ describe('registerAccountViewerAuthPreHandler', () => {
     const res = await app.inject({
       method: 'GET',
       url: '/probe',
-      headers: { 'x-client-id': 'client-1', 'x-user-id': 'user-1' },
+      headers: { 'x-account-id': 'client-1', 'x-user-id': 'user-1' },
     });
 
     expect(res.statusCode).toBe(401);

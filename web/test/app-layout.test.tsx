@@ -21,7 +21,7 @@ const baseUser = {
   name: 'Ada Analyst',
   role: 'employee' as const,
   isInternal: true,
-  clientName: null,
+  accountName: null,
 };
 
 function renderLayout(path = '/employee/accounts') {

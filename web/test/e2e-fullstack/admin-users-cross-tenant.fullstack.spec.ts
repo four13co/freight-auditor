@@ -58,7 +58,7 @@ test('admin can edit a member role and toggle enable/disable via the real PATCH 
   await page.getByLabel('Search by name or email…').fill(EDIT_TARGET_MEMBER_EMAIL);
 
   // Reads the row's OWN starting role/status rather than assuming the
-  // freshly-seeded 'client_viewer'/active baseline -- the seed script
+  // freshly-seeded 'account_viewer'/active baseline -- the seed script
   // (scripts/seed-e2e-many-members.mjs) is idempotent and only seeds once,
   // so a re-run of this spec against a not-torn-down local DB starts from
   // whatever the previous run last left the row in. Both PATCH paths are
@@ -69,8 +69,8 @@ test('admin can edit a member role and toggle enable/disable via the real PATCH 
   const toggle = row.getByRole('button', { name: /^(Disable|Enable)$/ });
   const startingRoleLabel = (await row.locator('td').nth(2).textContent())!.trim();
   const startingToggleLabel = (await toggle.textContent())!.trim();
-  const otherRole = startingRoleLabel === 'Client (Admin)' ? 'client_viewer' : 'client_admin';
-  const otherRoleLabel = otherRole === 'client_viewer' ? 'Client (Viewer)' : 'Client (Admin)';
+  const otherRole = startingRoleLabel === 'Client (Admin)' ? 'account_viewer' : 'account_admin';
+  const otherRoleLabel = otherRole === 'account_viewer' ? 'Client (Viewer)' : 'Client (Admin)';
 
   await row.getByRole('button', { name: 'Edit role' }).click();
   const dialog = page.getByRole('dialog', { name: 'Edit role' });
@@ -84,7 +84,7 @@ test('admin can edit a member role and toggle enable/disable via the real PATCH 
 
   // Round-trip both fields back to their starting values.
   await row.getByRole('button', { name: 'Edit role' }).click();
-  await dialog.getByLabel('Role').selectOption(startingRoleLabel === 'Client (Admin)' ? 'client_admin' : 'client_viewer');
+  await dialog.getByLabel('Role').selectOption(startingRoleLabel === 'Client (Admin)' ? 'account_admin' : 'account_viewer');
   await dialog.getByRole('button', { name: 'Save' }).click();
   await expect(dialog).not.toBeVisible();
   await expect(row.getByText(startingRoleLabel)).toBeVisible();

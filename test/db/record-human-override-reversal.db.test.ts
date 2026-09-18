@@ -240,7 +240,7 @@ describe('POST /api/findings/:id/reverse (DB, e2e)', () => {
   it('records a reversal for a FIRM_RULE finding through the real join and RLS', async () => {
     const res = await app.inject({
       method: 'POST', url: `/api/findings/${findingId}/reverse`,
-      headers: { 'x-client-id': clientId, 'x-user-id': userId },
+      headers: { 'x-account-id': clientId, 'x-user-id': userId },
       payload: { caseFingerprint: 'ocean/fsc/e2e', assertedValue: { rate: '1.05' } },
     });
     expect(res.statusCode).toBe(201);
@@ -252,7 +252,7 @@ describe('POST /api/findings/:id/reverse (DB, e2e)', () => {
   it('returns 409 NOT_A_FIRM_RULE for a finding whose rule is not FIRM_RULE', async () => {
     const res = await app.inject({
       method: 'POST', url: `/api/findings/${findingNonFirmId}/reverse`,
-      headers: { 'x-client-id': clientId, 'x-user-id': userId },
+      headers: { 'x-account-id': clientId, 'x-user-id': userId },
       payload: { caseFingerprint: 'x', assertedValue: 1 },
     });
     expect(res.statusCode).toBe(409);
@@ -262,7 +262,7 @@ describe('POST /api/findings/:id/reverse (DB, e2e)', () => {
   it('returns 404 for a finding belonging to a different (or nonexistent) tenant, RLS-scoped', async () => {
     const res = await app.inject({
       method: 'POST', url: '/api/findings/00000000-0000-4000-8000-000000000099/reverse',
-      headers: { 'x-client-id': clientId, 'x-user-id': userId },
+      headers: { 'x-account-id': clientId, 'x-user-id': userId },
       payload: { caseFingerprint: 'x', assertedValue: 1 },
     });
     expect(res.statusCode).toBe(404);

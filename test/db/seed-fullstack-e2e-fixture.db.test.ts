@@ -74,7 +74,7 @@ describe('seedFullstackE2eFixture (DB)', () => {
         const res = await app.inject({
           method: 'GET',
           url: '/api/findings',
-          headers: { 'x-client-id': DEV_CLIENT_ID, 'x-user-id': DEV_USER_ID },
+          headers: { 'x-account-id': DEV_CLIENT_ID, 'x-user-id': DEV_USER_ID },
         });
         expect(res.statusCode).toBe(200);
         const findings = res.json().findings as Array<{

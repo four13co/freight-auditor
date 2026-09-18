@@ -32,7 +32,7 @@ const USERS = [
     userId: 'u1',
     email: 'dana@acme.test',
     fullName: 'Dana Admin',
-    role: 'client_admin' as const,
+    role: 'account_admin' as const,
     tenantId: 't1',
     tenantName: 'Acme Freight',
     isActive: true,

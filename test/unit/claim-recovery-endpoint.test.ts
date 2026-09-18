@@ -54,7 +54,7 @@ describe('claim + recovery APIs (unit, mocked withTenantTx + tenant-auth)', () =
     const { buildApp } = await import('../../src/server/app.js');
     app = buildApp();
 
-    const res = await app.inject({ method: 'GET', url: '/api/claims', headers: { 'x-client-id': CLIENT_ID, 'x-user-id': 'user-1' } });
+    const res = await app.inject({ method: 'GET', url: '/api/claims', headers: { 'x-account-id': CLIENT_ID, 'x-user-id': 'user-1' } });
 
     expect(res.statusCode).toBe(200);
     // P6.C.1: every /api/claims response now also carries nextCursor (null
@@ -84,7 +84,7 @@ describe('claim + recovery APIs (unit, mocked withTenantTx + tenant-auth)', () =
     const { buildApp } = await import('../../src/server/app.js');
     app = buildApp();
 
-    const res = await app.inject({ method: 'GET', url: '/api/claims', headers: { 'x-client-id': CLIENT_ID, 'x-user-id': 'user-1' } });
+    const res = await app.inject({ method: 'GET', url: '/api/claims', headers: { 'x-account-id': CLIENT_ID, 'x-user-id': 'user-1' } });
     expect(res.statusCode).toBe(401);
     expect(listClaims).not.toHaveBeenCalled();
   });
@@ -99,7 +99,7 @@ describe('claim + recovery APIs (unit, mocked withTenantTx + tenant-auth)', () =
     const { buildApp } = await import('../../src/server/app.js');
     app = buildApp();
 
-    const res = await app.inject({ method: 'GET', url: '/api/claims?limit=9999', headers: { 'x-client-id': CLIENT_ID, 'x-user-id': 'user-1' } });
+    const res = await app.inject({ method: 'GET', url: '/api/claims?limit=9999', headers: { 'x-account-id': CLIENT_ID, 'x-user-id': 'user-1' } });
     expect(res.statusCode).toBe(400);
     expect(listClaims).not.toHaveBeenCalled();
   });
@@ -113,7 +113,7 @@ describe('claim + recovery APIs (unit, mocked withTenantTx + tenant-auth)', () =
     const { buildApp } = await import('../../src/server/app.js');
     app = buildApp();
 
-    const res = await app.inject({ method: 'GET', url: '/api/claims?offset=-1', headers: { 'x-client-id': CLIENT_ID, 'x-user-id': 'user-1' } });
+    const res = await app.inject({ method: 'GET', url: '/api/claims?offset=-1', headers: { 'x-account-id': CLIENT_ID, 'x-user-id': 'user-1' } });
     expect(res.statusCode).toBe(400);
   });
 
@@ -130,7 +130,7 @@ describe('claim + recovery APIs (unit, mocked withTenantTx + tenant-auth)', () =
     const cursor = encodeCursor({ v: '2026-01-01T00:00:00.000Z', id: '10000000-0000-4000-8000-000000000001' });
     const res = await app.inject({
       method: 'GET', url: `/api/claims?cursor=${cursor}&offset=10`,
-      headers: { 'x-client-id': CLIENT_ID, 'x-user-id': 'user-1' },
+      headers: { 'x-account-id': CLIENT_ID, 'x-user-id': 'user-1' },
     });
     expect(res.statusCode).toBe(400);
     expect(listClaims).not.toHaveBeenCalled();
@@ -148,7 +148,7 @@ describe('claim + recovery APIs (unit, mocked withTenantTx + tenant-auth)', () =
 
     const res = await app.inject({
       method: 'GET', url: '/api/claims?cursor=not-a-valid-cursor',
-      headers: { 'x-client-id': CLIENT_ID, 'x-user-id': 'user-1' },
+      headers: { 'x-account-id': CLIENT_ID, 'x-user-id': 'user-1' },
     });
     expect(res.statusCode).toBe(400);
     expect(listClaims).not.toHaveBeenCalled();
@@ -167,7 +167,7 @@ describe('claim + recovery APIs (unit, mocked withTenantTx + tenant-auth)', () =
     const cursor = encodeCursor({ v: '2026-01-01T00:00:00.000Z', id: '10000000-0000-4000-8000-000000000001' });
     const res = await app.inject({
       method: 'GET', url: `/api/claims?cursor=${cursor}`,
-      headers: { 'x-client-id': CLIENT_ID, 'x-user-id': 'user-1' },
+      headers: { 'x-account-id': CLIENT_ID, 'x-user-id': 'user-1' },
     });
     expect(res.statusCode).toBe(200);
     expect(listClaims).toHaveBeenCalledWith({}, CLIENT_ID, {
@@ -195,7 +195,7 @@ describe('claim + recovery APIs (unit, mocked withTenantTx + tenant-auth)', () =
 
     const res = await app.inject({
       method: 'GET', url: '/api/claims?limit=2',
-      headers: { 'x-client-id': CLIENT_ID, 'x-user-id': 'user-1' },
+      headers: { 'x-account-id': CLIENT_ID, 'x-user-id': 'user-1' },
     });
     expect(res.statusCode).toBe(200);
     const body = res.json();
@@ -220,7 +220,7 @@ describe('claim + recovery APIs (unit, mocked withTenantTx + tenant-auth)', () =
 
     const res = await app.inject({
       method: 'GET', url: '/api/claims/10000000-0000-4000-8000-000000000001',
-      headers: { 'x-client-id': CLIENT_ID, 'x-user-id': 'user-1' },
+      headers: { 'x-account-id': CLIENT_ID, 'x-user-id': 'user-1' },
     });
     expect(res.statusCode).toBe(200);
     expect(res.json().id).toBe('10000000-0000-4000-8000-000000000001');
@@ -237,7 +237,7 @@ describe('claim + recovery APIs (unit, mocked withTenantTx + tenant-auth)', () =
 
     const res = await app.inject({
       method: 'GET', url: '/api/claims/10000000-0000-4000-8000-000000000001',
-      headers: { 'x-client-id': CLIENT_ID, 'x-user-id': 'user-1' },
+      headers: { 'x-account-id': CLIENT_ID, 'x-user-id': 'user-1' },
     });
     expect(res.statusCode).toBe(401);
     expect(getClaimDetail).not.toHaveBeenCalled();
@@ -249,7 +249,7 @@ describe('claim + recovery APIs (unit, mocked withTenantTx + tenant-auth)', () =
     const { buildApp } = await import('../../src/server/app.js');
     app = buildApp();
 
-    const res = await app.inject({ method: 'GET', url: '/api/claims/not-a-uuid', headers: { 'x-client-id': CLIENT_ID, 'x-user-id': 'user-1' } });
+    const res = await app.inject({ method: 'GET', url: '/api/claims/not-a-uuid', headers: { 'x-account-id': CLIENT_ID, 'x-user-id': 'user-1' } });
     expect(res.statusCode).toBe(400);
   });
 
@@ -266,7 +266,7 @@ describe('claim + recovery APIs (unit, mocked withTenantTx + tenant-auth)', () =
 
     const res = await app.inject({
       method: 'GET', url: '/api/claims/10000000-0000-4000-8000-000000000001',
-      headers: { 'x-client-id': CLIENT_ID, 'x-user-id': 'user-1' },
+      headers: { 'x-account-id': CLIENT_ID, 'x-user-id': 'user-1' },
     });
     expect(res.statusCode).toBe(404);
   });

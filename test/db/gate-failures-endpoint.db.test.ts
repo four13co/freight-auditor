@@ -76,7 +76,7 @@ describe('GET /api/gate-failures (DB, e2e)', () => {
     const res = await app.inject({
       method: 'GET',
       url: '/api/gate-failures',
-      headers: { 'x-client-id': clientId, 'x-user-id': userId },
+      headers: { 'x-account-id': clientId, 'x-user-id': userId },
     });
     expect(res.statusCode).toBe(200);
     const body = res.json();

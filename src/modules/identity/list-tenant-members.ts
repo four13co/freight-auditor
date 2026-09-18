@@ -1,5 +1,4 @@
 import type pg from 'pg';
-import { roleDbToWire } from './role-wire-mapping.js';
 
 export interface TenantMemberRow {
   id: string;
@@ -31,5 +30,5 @@ export async function listTenantMembers(client: pg.PoolClient, clientId: string)
     [clientId],
   );
 
-  return rows.map((r) => ({ id: r.id, userId: r.user_id, email: r.email, fullName: r.full_name, role: roleDbToWire(r.role), createdAt: r.created_at }));
+  return rows.map((r) => ({ id: r.id, userId: r.user_id, email: r.email, fullName: r.full_name, role: r.role, createdAt: r.created_at }));
 }

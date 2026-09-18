@@ -7,16 +7,13 @@ import { parseLimitOffset } from '../shared/parse-limit-offset.js';
 import { resolveAccountAdminContext, registerAccountAdminAuthPreHandler } from '../modules/identity/account-admin-auth.js';
 import { resolveAccountViewerContext } from '../modules/identity/account-viewer-auth.js';
 import { listPortalMembers } from '../modules/identity/list-portal-members.js';
-import { updatePortalMemberRole, type PortalRole } from '../modules/identity/update-portal-member-role.js';
-import { roleWireToDb } from '../modules/identity/role-wire-mapping.js';
+import { updatePortalMemberRole, PORTAL_ROLES, type PortalRole } from '../modules/identity/update-portal-member-role.js';
 
 const MAX_LIMIT = 200;
 const DEFAULT_LIMIT = 50;
-// Wire-facing values (frozen by AC5/the No-go on touching web/) -- NOT the
-// same set as update-portal-member-role.ts's PORTAL_ROLES, which is the DB
-// enum's current labels. Translated via roleWireToDb() before it reaches
-// the DB-facing call below.
-const ASSIGNABLE_ROLES = new Set<string>(['client_viewer', 'client_admin']);
+// 86e3aq0h7: the wire now speaks the DB's own account_viewer/account_admin
+// labels directly -- no translation layer, per that task's own AC4.
+const ASSIGNABLE_ROLES = new Set<string>(PORTAL_ROLES);
 
 /**
  * Portal-specific tenant-scoped APIs (P6.A.4) -- the first routes to use
@@ -121,7 +118,7 @@ export async function registerPortalAdminRoutes(app: FastifyInstance): Promise<v
       }
 
       const result = await withTenantTx(request.tenantContext!, (client) =>
-        updatePortalMemberRole(client, clientId, id, roleWireToDb(body.role as string) as PortalRole, request.actorUserId),
+        updatePortalMemberRole(client, clientId, id, body.role as PortalRole, request.actorUserId),
       );
       if (!result.found) {
         await reply.code(404).send({ error: 'membership not found' });

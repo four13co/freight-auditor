@@ -1,8 +1,7 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { getAuth } from '../auth/better-auth.js';
-import { listMembershipClientIds, lookupActorType, lookupClientName, toFetchHeaders } from '../modules/findings/tenant-auth.js';
+import { listMembershipAccountIds, lookupActorType, lookupAccountName, toFetchHeaders } from '../modules/findings/tenant-auth.js';
 import { authenticationAction, writeSecurityEvent } from '../modules/audit-ledger/security-events.js';
-import { roleDbToWire } from '../modules/identity/role-wire-mapping.js';
 
 /**
  * 86e2wb4zg: the better-auth mount + membership lookup, split out of app.ts's
@@ -89,10 +88,10 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
 
   // 86e2wb92b: a real (non-dev-header) session proves WHO the user is, but
   // resolveViaSession (tenant-auth.ts) still requires an explicit
-  // x-client-id header -- nothing previously told the frontend WHICH
+  // x-account-id header -- nothing previously told the frontend WHICH
   // account_id to send. This is that lookup: verify the session, then return
   // the account_id(s) the user has a membership row for, so login can store
-  // one and start sending it as x-client-id on subsequent requests.
+  // one and start sending it as x-account-id on subsequent requests.
   //
   // 86e2zfjmb: also returns the actor's type -- isInternal (app_user.is_internal)
   // and, if not internal, their portal role (client_viewer/client_admin) --
@@ -110,25 +109,25 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
       await reply.code(401).send({ error: 'unauthorized' });
       return;
     }
-    const [clientIds, actorType, clientName] = await Promise.all([
-      listMembershipClientIds(session.user.id),
+    const [accountIds, actorType, accountName] = await Promise.all([
+      listMembershipAccountIds(session.user.id),
       lookupActorType(session.user.id),
       // 86e38pz8e: additive -- the profile page's org/tenant name field.
       // Fails closed to null on no membership (same "degrade, don't throw"
-      // contract as actorType/clientIds above), never blocking this response.
-      lookupClientName(session.user.id),
+      // contract as actorType/accountIds above), never blocking this response.
+      lookupAccountName(session.user.id),
     ]);
     await writeSecurityEvent({
       request,
       event: 'authorization.memberships.granted',
       actorUserId: session.user.id,
-      detail: { membershipCount: clientIds.length },
+      detail: { membershipCount: accountIds.length },
     });
     return {
-      clientIds,
+      accountIds,
       isInternal: actorType.isInternal,
-      role: actorType.role === null ? null : roleDbToWire(actorType.role),
-      clientName,
+      role: actorType.role,
+      accountName,
     };
   });
 }

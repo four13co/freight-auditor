@@ -101,42 +101,42 @@ describe('resolveAccountAdminContext (DB)', () => {
 
   it('grants { clientIds: [clientId], internal: false } for a client_admin membership', async () => {
     const ctx = await resolveAccountAdminContext({
-      headers: { 'x-client-id': clientId, 'x-user-id': adminUserId },
+      headers: { 'x-account-id': clientId, 'x-user-id': adminUserId },
     } as never);
     expect(ctx).toEqual({ clientIds: [clientId], internal: false });
   });
 
   it('rejects a client_viewer membership on the same client -- sibling capability, out of this task\'s scope', async () => {
     const ctx = await resolveAccountAdminContext({
-      headers: { 'x-client-id': clientId, 'x-user-id': viewerUserId },
+      headers: { 'x-account-id': clientId, 'x-user-id': viewerUserId },
     } as never);
     expect(ctx).toBeNull();
   });
 
   it('rejects an internal analyst membership', async () => {
     const ctx = await resolveAccountAdminContext({
-      headers: { 'x-client-id': clientId, 'x-user-id': analystUserId },
+      headers: { 'x-account-id': clientId, 'x-user-id': analystUserId },
     } as never);
     expect(ctx).toBeNull();
   });
 
   it('rejects a user with no membership row at all', async () => {
     const ctx = await resolveAccountAdminContext({
-      headers: { 'x-client-id': clientId, 'x-user-id': nonMemberUserId },
+      headers: { 'x-account-id': clientId, 'x-user-id': nonMemberUserId },
     } as never);
     expect(ctx).toBeNull();
   });
 
   it('rejects a real client_admin against a client they are not a member of (cross-tenant isolation)', async () => {
     const ctx = await resolveAccountAdminContext({
-      headers: { 'x-client-id': otherClientId, 'x-user-id': adminUserId },
+      headers: { 'x-account-id': otherClientId, 'x-user-id': adminUserId },
     } as never);
     expect(ctx).toBeNull();
   });
 
   it('86e39qa6h: rejects a client_admin membership on a deactivated (is_active = false) client', async () => {
     const ctx = await resolveAccountAdminContext({
-      headers: { 'x-client-id': inactiveClientId, 'x-user-id': adminUserIdOnInactiveClient },
+      headers: { 'x-account-id': inactiveClientId, 'x-user-id': adminUserIdOnInactiveClient },
     } as never);
     expect(ctx).toBeNull();
   });

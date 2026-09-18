@@ -27,13 +27,13 @@ describe('fetchAllUsers', () => {
   it('pages through every cursor page and aggregates all rows', async () => {
     const page1 = {
       members: [
-        { id: 'm1', userId: 'u1', email: 'a@x.test', fullName: 'A', role: 'analyst', isActive: true, clientId: 't1', clientName: 'T1', createdAt: '2026-01-01T00:00:00Z' },
+        { id: 'm1', userId: 'u1', email: 'a@x.test', fullName: 'A', role: 'analyst', isActive: true, accountId: 't1', accountName: 'T1', createdAt: '2026-01-01T00:00:00Z' },
       ],
       nextCursor: 'cursor-1',
     };
     const page2 = {
       members: [
-        { id: 'm2', userId: 'u2', email: 'b@x.test', fullName: 'B', role: 'lead', isActive: false, clientId: 't2', clientName: 'T2', createdAt: '2026-01-02T00:00:00Z' },
+        { id: 'm2', userId: 'u2', email: 'b@x.test', fullName: 'B', role: 'lead', isActive: false, accountId: 't2', accountName: 'T2', createdAt: '2026-01-02T00:00:00Z' },
       ],
       nextCursor: null,
     };

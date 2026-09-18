@@ -87,19 +87,19 @@ describe('resolveAuthorizedTenantContext (DB)', () => {
 
   it('AC2: returns the claimed client scope when a membership row exists for the user+client pair', async () => {
     const ctx = await resolveAuthorizedTenantContext({
-      headers: { 'x-client-id': clientId, 'x-user-id': userIdWithMembership },
+      headers: { 'x-account-id': clientId, 'x-user-id': userIdWithMembership },
     } as never);
     expect(ctx).toEqual({ clientIds: [clientId], internal: false });
   });
 
   it('AC1: returns null when no membership row exists for the claimed user+client pair', async () => {
     const ctx = await resolveAuthorizedTenantContext({
-      headers: { 'x-client-id': clientId, 'x-user-id': userIdWithoutMembership },
+      headers: { 'x-account-id': clientId, 'x-user-id': userIdWithoutMembership },
     } as never);
     expect(ctx).toBeNull();
   });
 
-  it('AC3: returns null when x-client-id is absent', async () => {
+  it('AC3: returns null when x-account-id is absent', async () => {
     const ctx = await resolveAuthorizedTenantContext({
       headers: { 'x-user-id': userIdWithMembership },
     } as never);
@@ -108,21 +108,21 @@ describe('resolveAuthorizedTenantContext (DB)', () => {
 
   it('AC3: returns null when x-user-id is absent', async () => {
     const ctx = await resolveAuthorizedTenantContext({
-      headers: { 'x-client-id': clientId },
+      headers: { 'x-account-id': clientId },
     } as never);
     expect(ctx).toBeNull();
   });
 
   it('86e39qa6h: returns null for a member of a deactivated (is_active = false) client, even with a valid membership row', async () => {
     const ctx = await resolveAuthorizedTenantContext({
-      headers: { 'x-client-id': inactiveClientId, 'x-user-id': userIdOnInactiveClient },
+      headers: { 'x-account-id': inactiveClientId, 'x-user-id': userIdOnInactiveClient },
     } as never);
     expect(ctx).toBeNull();
   });
 
   it('AC3 (86e3a75mf): returns null for a disabled membership (membership.is_active = false), even on an active client', async () => {
     const ctx = await resolveAuthorizedTenantContext({
-      headers: { 'x-client-id': clientId, 'x-user-id': userIdWithDisabledMembership },
+      headers: { 'x-account-id': clientId, 'x-user-id': userIdWithDisabledMembership },
     } as never);
     expect(ctx).toBeNull();
   });

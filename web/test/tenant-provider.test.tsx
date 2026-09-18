@@ -9,7 +9,7 @@ vi.mock('@/providers/auth-provider', () => ({
 
 const fetchClientsMock = vi.fn();
 vi.mock('@/lib/api', () => ({
-  CLIENT_ID_STORAGE_KEY: 'freight-auditor:client-id',
+  ACCOUNT_ID_STORAGE_KEY: 'freight-auditor:account-id',
   fetchClients: () => fetchClientsMock(),
 }));
 
@@ -52,7 +52,7 @@ describe('TenantProvider', () => {
 
   it('AC: graceful handling of the Account role with zero Clients in the store', async () => {
     useAuthMock.mockReturnValue({ role: 'account' });
-    sessionStorage.setItem('freight-auditor:client-id', 'own-client-1');
+    sessionStorage.setItem('freight-auditor:account-id', 'own-client-1');
     useScopedEntitiesMock.mockReturnValue({ entities: [] });
 
     render(
@@ -67,7 +67,7 @@ describe('TenantProvider', () => {
 
   it('AC: Account role selects from their own Clients, sourced from in-memory-hierarchy-store scoped to their own client id, first pre-selected', async () => {
     useAuthMock.mockReturnValue({ role: 'account' });
-    sessionStorage.setItem('freight-auditor:client-id', 'own-client-1');
+    sessionStorage.setItem('freight-auditor:account-id', 'own-client-1');
     useScopedEntitiesMock.mockImplementation((scopeKey: string | null) => {
       expect(scopeKey).toBe('client:own-client-1');
       return {
@@ -89,7 +89,7 @@ describe('TenantProvider', () => {
 
   it("AC: the Account role's Client selection persists across a remount (localStorage)", async () => {
     useAuthMock.mockReturnValue({ role: 'account' });
-    sessionStorage.setItem('freight-auditor:client-id', 'own-client-1');
+    sessionStorage.setItem('freight-auditor:account-id', 'own-client-1');
     useScopedEntitiesMock.mockReturnValue({
       entities: [
         { id: 'gc1', name: 'Client One', status: 'active', createdAt: '2026-01-01' },

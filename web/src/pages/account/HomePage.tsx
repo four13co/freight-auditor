@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { buttonVariants } from '@/components/ui/button';
 import { cn } from 'cn';
 import { useAuth } from '@/providers/auth-provider';
-import { getOwnClientId } from '@/lib/api';
+import { getOwnAccountId } from '@/lib/api';
 import { useScopedEntities } from '@/lib/in-memory-hierarchy-store';
 import { ActivityFeed, SummaryCard } from '@/pages/employee/HomePage';
 
@@ -64,7 +64,7 @@ function greeting(date: Date): string {
  */
 export default function AccountHomePage() {
   const { user } = useAuth();
-  const ownClientId = getOwnClientId();
+  const ownClientId = getOwnAccountId();
   const { entities: grandClients } = useScopedEntities(ownClientId ? `client:${ownClientId}` : null);
   const activeGrandClientCount = grandClients.filter((e) => e.status === 'active').length;
 

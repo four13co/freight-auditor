@@ -91,7 +91,7 @@ describe('rule governance internal routes (unit, mocked withTenantTx + auth)', (
 
       const res = await app.inject({
         method: 'POST', url: `/api/rules/${RULE_VERSION_ID}/ratify`,
-        headers: { 'x-client-id': '11111111-1111-4111-8111-111111111111', 'x-user-id': ACTOR_ID },
+        headers: { 'x-account-id': '11111111-1111-4111-8111-111111111111', 'x-user-id': ACTOR_ID },
         payload: { rationale: 'looks good' },
       });
 
@@ -139,7 +139,7 @@ describe('rule governance internal routes (unit, mocked withTenantTx + auth)', (
 
       const res = await app.inject({
         method: 'POST', url: `/api/rules/${RULE_VERSION_ID}/activate`,
-        headers: { 'x-client-id': '11111111-1111-4111-8111-111111111111', 'x-user-id': ACTOR_ID },
+        headers: { 'x-account-id': '11111111-1111-4111-8111-111111111111', 'x-user-id': ACTOR_ID },
         payload: { rationale: 'promote it' },
       });
 
@@ -450,7 +450,7 @@ describe('rule governance internal routes (unit, mocked withTenantTx + auth)', (
 
       const res = await app.inject({
         method: 'POST', url: `/api/rules/${RULE_VERSION_ID}/deprecate`,
-        headers: { 'x-client-id': '11111111-1111-4111-8111-111111111111', 'x-user-id': ACTOR_ID },
+        headers: { 'x-account-id': '11111111-1111-4111-8111-111111111111', 'x-user-id': ACTOR_ID },
         payload: { rationale: 'superseded' },
       });
       expect(res.statusCode).toBe(401);
@@ -509,7 +509,7 @@ describe('rule governance internal routes (unit, mocked withTenantTx + auth)', (
 
       const res = await app.inject({
         method: 'POST', url: `/api/rules/${RULE_VERSION_ID}/quarantine`,
-        headers: { 'x-client-id': '11111111-1111-4111-8111-111111111111', 'x-user-id': ACTOR_ID },
+        headers: { 'x-account-id': '11111111-1111-4111-8111-111111111111', 'x-user-id': ACTOR_ID },
         payload: { rationale: 'reversal threshold exceeded' },
       });
       expect(res.statusCode).toBe(401);

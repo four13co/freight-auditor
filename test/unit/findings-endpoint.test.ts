@@ -72,7 +72,7 @@ describe('GET /api/findings (unit, mocked withTenantTx + tenant-auth)', () => {
     const res = await app.inject({
       method: 'GET',
       url: '/api/findings',
-      headers: { 'x-client-id': 'client-abc', 'x-user-id': 'user-1' },
+      headers: { 'x-account-id': 'client-abc', 'x-user-id': 'user-1' },
     });
 
     expect(res.statusCode).toBe(200);
@@ -93,7 +93,7 @@ describe('GET /api/findings (unit, mocked withTenantTx + tenant-auth)', () => {
     await app.inject({
       method: 'GET',
       url: '/api/findings?min-amount=250&carrier=ACME&status=open',
-      headers: { 'x-client-id': 'client-abc', 'x-user-id': 'user-1' },
+      headers: { 'x-account-id': 'client-abc', 'x-user-id': 'user-1' },
     });
 
     expect(listFindings).toHaveBeenCalledWith(
@@ -117,7 +117,7 @@ describe('GET /api/findings (unit, mocked withTenantTx + tenant-auth)', () => {
     const res = await app.inject({
       method: 'GET',
       url: '/api/findings',
-      headers: { 'x-client-id': 'client-abc', 'x-user-id': 'user-1' },
+      headers: { 'x-account-id': 'client-abc', 'x-user-id': 'user-1' },
     });
     expect(res.statusCode).toBe(200);
     expect(res.json()).toEqual({ findings: [] });
@@ -156,7 +156,7 @@ describe('GET /api/findings (unit, mocked withTenantTx + tenant-auth)', () => {
       const res = await app.inject({
         method: 'GET',
         url: '/api/findings?status=not-a-real-status',
-        headers: { 'x-client-id': 'client-abc', 'x-user-id': 'user-1' },
+        headers: { 'x-account-id': 'client-abc', 'x-user-id': 'user-1' },
       });
 
       expect(res.statusCode).toBe(400);
@@ -184,7 +184,7 @@ describe('GET /api/findings (unit, mocked withTenantTx + tenant-auth)', () => {
         const res = await app.inject({
           method: 'GET',
           url: `/api/findings?status=${status}`,
-          headers: { 'x-client-id': 'client-abc', 'x-user-id': 'user-1' },
+          headers: { 'x-account-id': 'client-abc', 'x-user-id': 'user-1' },
         });
         expect(res.statusCode).toBe(200);
       }
@@ -204,7 +204,7 @@ describe('GET /api/findings (unit, mocked withTenantTx + tenant-auth)', () => {
       const res = await app.inject({
         method: 'GET',
         url: '/api/findings?min-amount=not-a-number',
-        headers: { 'x-client-id': 'client-abc', 'x-user-id': 'user-1' },
+        headers: { 'x-account-id': 'client-abc', 'x-user-id': 'user-1' },
       });
 
       expect(res.statusCode).toBe(400);
@@ -226,7 +226,7 @@ describe('GET /api/findings (unit, mocked withTenantTx + tenant-auth)', () => {
       const res = await app.inject({
         method: 'GET',
         url: '/api/findings?min-amount=250.50',
-        headers: { 'x-client-id': 'client-abc', 'x-user-id': 'user-1' },
+        headers: { 'x-account-id': 'client-abc', 'x-user-id': 'user-1' },
       });
 
       expect(res.statusCode).toBe(200);
@@ -248,7 +248,7 @@ describe('GET /api/findings (unit, mocked withTenantTx + tenant-auth)', () => {
       const res = await app.inject({
         method: 'GET',
         url: '/api/findings?assignee=some-other-user-id',
-        headers: { 'x-client-id': 'client-abc', 'x-user-id': 'user-1' },
+        headers: { 'x-account-id': 'client-abc', 'x-user-id': 'user-1' },
       });
 
       expect(res.statusCode).toBe(400);
@@ -275,7 +275,7 @@ describe('GET /api/findings (unit, mocked withTenantTx + tenant-auth)', () => {
         // as the real registerTenantAuthPreHandler does (membership-derived,
         // not header-echoed) -- this proves the route reads actorUserId, not
         // a raw query/header value, for "me".
-        headers: { 'x-client-id': 'client-abc', 'x-user-id': 'user-1' },
+        headers: { 'x-account-id': 'client-abc', 'x-user-id': 'user-1' },
       });
 
       expect(res.statusCode).toBe(200);
@@ -296,7 +296,7 @@ describe('GET /api/findings (unit, mocked withTenantTx + tenant-auth)', () => {
       await app.inject({
         method: 'GET',
         url: '/api/findings',
-        headers: { 'x-client-id': 'client-abc', 'x-user-id': 'user-1' },
+        headers: { 'x-account-id': 'client-abc', 'x-user-id': 'user-1' },
       });
 
       expect(listFindings).toHaveBeenCalledWith({}, expect.objectContaining({ assignedToUserId: undefined }));
@@ -316,7 +316,7 @@ describe('GET /api/findings (unit, mocked withTenantTx + tenant-auth)', () => {
       const res = await app.inject({
         method: 'GET',
         url: '/api/findings?min-age-days=not-a-number',
-        headers: { 'x-client-id': 'client-abc', 'x-user-id': 'user-1' },
+        headers: { 'x-account-id': 'client-abc', 'x-user-id': 'user-1' },
       });
 
       expect(res.statusCode).toBe(400);
@@ -338,7 +338,7 @@ describe('GET /api/findings (unit, mocked withTenantTx + tenant-auth)', () => {
       const res = await app.inject({
         method: 'GET',
         url: '/api/findings?min-age-days=5',
-        headers: { 'x-client-id': 'client-abc', 'x-user-id': 'user-1' },
+        headers: { 'x-account-id': 'client-abc', 'x-user-id': 'user-1' },
       });
 
       expect(res.statusCode).toBe(200);
@@ -360,7 +360,7 @@ describe('GET /api/findings (unit, mocked withTenantTx + tenant-auth)', () => {
       await app.inject({
         method: 'GET',
         url: '/api/findings?carrier=Estes&category=accessorial',
-        headers: { 'x-client-id': 'client-abc', 'x-user-id': 'user-1' },
+        headers: { 'x-account-id': 'client-abc', 'x-user-id': 'user-1' },
       });
 
       expect(listFindings).toHaveBeenCalledWith(
@@ -386,7 +386,7 @@ describe('GET /api/findings (unit, mocked withTenantTx + tenant-auth)', () => {
       const res = await app.inject({
         method: 'GET',
         url: '/api/gate-failures',
-        headers: { 'x-client-id': 'client-abc', 'x-user-id': 'user-1' },
+        headers: { 'x-account-id': 'client-abc', 'x-user-id': 'user-1' },
       });
 
       expect(res.statusCode).toBe(200);
@@ -408,7 +408,7 @@ describe('GET /api/findings (unit, mocked withTenantTx + tenant-auth)', () => {
       await app.inject({
         method: 'GET',
         url: '/api/gate-failures?carrier=ACME',
-        headers: { 'x-client-id': 'client-abc', 'x-user-id': 'user-1' },
+        headers: { 'x-account-id': 'client-abc', 'x-user-id': 'user-1' },
       });
 
       // P6.C.1: limit is always inflated to effectiveLimit+1 internally.
@@ -445,7 +445,7 @@ describe('GET /api/findings (unit, mocked withTenantTx + tenant-auth)', () => {
       const cursor = encodeCursor({ v: '2026-01-01T00:00:00.000Z', id: '10000000-0000-4000-8000-000000000001' });
       const res = await app.inject({
         method: 'GET', url: `/api/gate-failures?cursor=${cursor}&offset=10`,
-        headers: { 'x-client-id': 'client-abc', 'x-user-id': 'user-1' },
+        headers: { 'x-account-id': 'client-abc', 'x-user-id': 'user-1' },
       });
       expect(res.statusCode).toBe(400);
       expect(listGateFailures).not.toHaveBeenCalled();
@@ -464,7 +464,7 @@ describe('GET /api/findings (unit, mocked withTenantTx + tenant-auth)', () => {
 
       const res = await app.inject({
         method: 'GET', url: '/api/gate-failures?cursor=not-a-valid-cursor',
-        headers: { 'x-client-id': 'client-abc', 'x-user-id': 'user-1' },
+        headers: { 'x-account-id': 'client-abc', 'x-user-id': 'user-1' },
       });
       expect(res.statusCode).toBe(400);
       expect(listGateFailures).not.toHaveBeenCalled();
@@ -484,7 +484,7 @@ describe('GET /api/findings (unit, mocked withTenantTx + tenant-auth)', () => {
       const cursor = encodeCursor({ v: '2026-01-01T00:00:00.000Z', id: '10000000-0000-4000-8000-000000000001' });
       const res = await app.inject({
         method: 'GET', url: `/api/gate-failures?cursor=${cursor}`,
-        headers: { 'x-client-id': 'client-abc', 'x-user-id': 'user-1' },
+        headers: { 'x-account-id': 'client-abc', 'x-user-id': 'user-1' },
       });
       expect(res.statusCode).toBe(200);
       expect(listGateFailures).toHaveBeenCalledWith({}, {
@@ -508,7 +508,7 @@ describe('GET /api/findings (unit, mocked withTenantTx + tenant-auth)', () => {
 
       const res = await app.inject({
         method: 'GET', url: '/api/gate-failures?limit=9999',
-        headers: { 'x-client-id': 'client-abc', 'x-user-id': 'user-1' },
+        headers: { 'x-account-id': 'client-abc', 'x-user-id': 'user-1' },
       });
       expect(res.statusCode).toBe(400);
       expect(listGateFailures).not.toHaveBeenCalled();
@@ -532,7 +532,7 @@ describe('GET /api/findings (unit, mocked withTenantTx + tenant-auth)', () => {
 
       const res = await app.inject({
         method: 'GET', url: '/api/gate-failures?limit=2',
-        headers: { 'x-client-id': 'client-abc', 'x-user-id': 'user-1' },
+        headers: { 'x-account-id': 'client-abc', 'x-user-id': 'user-1' },
       });
       expect(res.statusCode).toBe(200);
       const body = res.json();
@@ -559,7 +559,7 @@ describe('GET /api/findings (unit, mocked withTenantTx + tenant-auth)', () => {
       const res = await app.inject({
         method: 'PATCH',
         url: '/api/findings/11111111-1111-1111-1111-111111111111/status',
-        headers: { 'x-client-id': 'client-abc', 'x-user-id': 'user-1', 'content-type': 'application/json' },
+        headers: { 'x-account-id': 'client-abc', 'x-user-id': 'user-1', 'content-type': 'application/json' },
         payload: { status: 'in_review' },
       });
 
@@ -582,7 +582,7 @@ describe('GET /api/findings (unit, mocked withTenantTx + tenant-auth)', () => {
       const res = await app.inject({
         method: 'PATCH',
         url: '/api/findings/22222222-2222-2222-2222-222222222222/status',
-        headers: { 'x-client-id': 'client-abc', 'x-user-id': 'user-1', 'content-type': 'application/json' },
+        headers: { 'x-account-id': 'client-abc', 'x-user-id': 'user-1', 'content-type': 'application/json' },
         payload: { status: 'in_review' },
       });
       expect(res.statusCode).toBe(404);
@@ -629,7 +629,7 @@ describe('GET /api/findings (unit, mocked withTenantTx + tenant-auth)', () => {
         const res = await app.inject({
           method: 'PATCH',
           url: '/api/findings/f1/status',
-          headers: { 'x-client-id': 'client-abc', 'x-user-id': 'user-1', 'content-type': 'application/json' },
+          headers: { 'x-account-id': 'client-abc', 'x-user-id': 'user-1', 'content-type': 'application/json' },
           payload: { status },
         });
         expect(res.statusCode).toBe(400);
@@ -651,7 +651,7 @@ describe('GET /api/findings (unit, mocked withTenantTx + tenant-auth)', () => {
       const res = await app.inject({
         method: 'PATCH',
         url: '/api/findings/11111111-1111-1111-1111-111111111111/status',
-        headers: { 'x-client-id': 'client-abc', 'x-user-id': 'user-1', 'content-type': 'application/json' },
+        headers: { 'x-account-id': 'client-abc', 'x-user-id': 'user-1', 'content-type': 'application/json' },
         payload: { status: 12345 },
       });
       expect(res.statusCode).toBe(400);
@@ -672,7 +672,7 @@ describe('GET /api/findings (unit, mocked withTenantTx + tenant-auth)', () => {
       const res = await app.inject({
         method: 'PATCH',
         url: '/api/findings/f1/status',
-        headers: { 'x-client-id': 'client-abc', 'x-user-id': 'user-1', 'content-type': 'application/json' },
+        headers: { 'x-account-id': 'client-abc', 'x-user-id': 'user-1', 'content-type': 'application/json' },
         payload: { status: 'in_review', note: 42 },
       });
       expect(res.statusCode).toBe(400);
@@ -693,7 +693,7 @@ describe('GET /api/findings (unit, mocked withTenantTx + tenant-auth)', () => {
       await app.inject({
         method: 'PATCH',
         url: '/api/findings/11111111-1111-1111-1111-111111111111/status',
-        headers: { 'x-client-id': 'client-abc', 'x-user-id': 'user-1', 'content-type': 'application/json' },
+        headers: { 'x-account-id': 'client-abc', 'x-user-id': 'user-1', 'content-type': 'application/json' },
         payload: { status: 'closed', note: 'analyst note' },
       });
       expect(updateFindingStatus).toHaveBeenCalledWith({}, '11111111-1111-1111-1111-111111111111', 'closed', 'analyst note', 'user-1');
@@ -718,7 +718,7 @@ describe('GET /api/findings (unit, mocked withTenantTx + tenant-auth)', () => {
       const res = await app.inject({
         method: 'GET',
         url: '/api/findings?sort=invoiceNumber',
-        headers: { 'x-client-id': 'client-abc', 'x-user-id': 'user-1' },
+        headers: { 'x-account-id': 'client-abc', 'x-user-id': 'user-1' },
       });
 
       expect(res.statusCode).toBe(400);
@@ -740,7 +740,7 @@ describe('GET /api/findings (unit, mocked withTenantTx + tenant-auth)', () => {
       const res = await app.inject({
         method: 'GET',
         url: '/api/findings?sort=variance&sortDir=up',
-        headers: { 'x-client-id': 'client-abc', 'x-user-id': 'user-1' },
+        headers: { 'x-account-id': 'client-abc', 'x-user-id': 'user-1' },
       });
 
       expect(res.statusCode).toBe(400);
@@ -762,7 +762,7 @@ describe('GET /api/findings (unit, mocked withTenantTx + tenant-auth)', () => {
       const res = await app.inject({
         method: 'GET',
         url: '/api/findings?sort=variance&sortDir=asc',
-        headers: { 'x-client-id': 'client-abc', 'x-user-id': 'user-1' },
+        headers: { 'x-account-id': 'client-abc', 'x-user-id': 'user-1' },
       });
 
       expect(res.statusCode).toBe(200);
@@ -783,7 +783,7 @@ describe('GET /api/findings (unit, mocked withTenantTx + tenant-auth)', () => {
       const res = await app.inject({
         method: 'GET',
         url: '/api/findings?sort=age',
-        headers: { 'x-client-id': 'client-abc', 'x-user-id': 'user-1' },
+        headers: { 'x-account-id': 'client-abc', 'x-user-id': 'user-1' },
       });
 
       expect(res.statusCode).toBe(200);

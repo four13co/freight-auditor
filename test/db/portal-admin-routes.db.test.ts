@@ -78,7 +78,7 @@ describe('portal-admin routes (DB, e2e)', () => {
 
   it('a client_admin lists the roster, excluding the internal analyst membership row', async () => {
     const res = await app.inject({
-      method: 'GET', url: '/api/portal/members', headers: { 'x-client-id': clientId, 'x-user-id': adminUserId },
+      method: 'GET', url: '/api/portal/members', headers: { 'x-account-id': clientId, 'x-user-id': adminUserId },
     });
     expect(res.statusCode).toBe(200);
     const body = res.json();
@@ -89,7 +89,7 @@ describe('portal-admin routes (DB, e2e)', () => {
 
   it('a client_viewer can also list the roster (composite read preHandler)', async () => {
     const res = await app.inject({
-      method: 'GET', url: '/api/portal/members', headers: { 'x-client-id': clientId, 'x-user-id': viewerUserId },
+      method: 'GET', url: '/api/portal/members', headers: { 'x-account-id': clientId, 'x-user-id': viewerUserId },
     });
     expect(res.statusCode).toBe(200);
     expect(res.json().members.some((m: { id: string }) => m.id === adminMembershipId)).toBe(true);
@@ -103,11 +103,11 @@ describe('portal-admin routes (DB, e2e)', () => {
   it('a client_admin promotes a client_viewer to client_admin, and it is durably reflected', async () => {
     const res = await app.inject({
       method: 'PATCH', url: `/api/portal/members/${viewerMembershipId}/role`,
-      headers: { 'x-client-id': clientId, 'x-user-id': adminUserId, 'content-type': 'application/json' },
-      payload: { role: 'client_admin' },
+      headers: { 'x-account-id': clientId, 'x-user-id': adminUserId, 'content-type': 'application/json' },
+      payload: { role: 'account_admin' },
     });
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual({ id: viewerMembershipId, role: 'client_admin' });
+    expect(res.json()).toEqual({ id: viewerMembershipId, role: 'account_admin' });
 
     const owner = await pool.connect();
     try {
@@ -132,8 +132,8 @@ describe('portal-admin routes (DB, e2e)', () => {
   it('a client_admin cannot touch the internal analyst membership row -- 404, structurally blocked, not just 403', async () => {
     const res = await app.inject({
       method: 'PATCH', url: `/api/portal/members/${analystMembershipId}/role`,
-      headers: { 'x-client-id': clientId, 'x-user-id': adminUserId, 'content-type': 'application/json' },
-      payload: { role: 'client_viewer' },
+      headers: { 'x-account-id': clientId, 'x-user-id': adminUserId, 'content-type': 'application/json' },
+      payload: { role: 'account_viewer' },
     });
     expect(res.statusCode).toBe(404);
 
@@ -149,8 +149,8 @@ describe('portal-admin routes (DB, e2e)', () => {
   it('rejects a client_viewer attempting the write route with 401', async () => {
     const res = await app.inject({
       method: 'PATCH', url: `/api/portal/members/${adminMembershipId}/role`,
-      headers: { 'x-client-id': clientId, 'x-user-id': viewerUserId, 'content-type': 'application/json' },
-      payload: { role: 'client_viewer' },
+      headers: { 'x-account-id': clientId, 'x-user-id': viewerUserId, 'content-type': 'application/json' },
+      payload: { role: 'account_viewer' },
     });
     expect(res.statusCode).toBe(401);
   });
@@ -158,7 +158,7 @@ describe('portal-admin routes (DB, e2e)', () => {
   it('rejects an invalid role value with 400', async () => {
     const res = await app.inject({
       method: 'PATCH', url: `/api/portal/members/${viewerMembershipId}/role`,
-      headers: { 'x-client-id': clientId, 'x-user-id': adminUserId, 'content-type': 'application/json' },
+      headers: { 'x-account-id': clientId, 'x-user-id': adminUserId, 'content-type': 'application/json' },
       payload: { role: 'analyst' },
     });
     expect(res.statusCode).toBe(400);
@@ -167,8 +167,8 @@ describe('portal-admin routes (DB, e2e)', () => {
   it('returns 404 for a well-formed but nonexistent membership id', async () => {
     const res = await app.inject({
       method: 'PATCH', url: '/api/portal/members/00000000-0000-0000-0000-000000000000/role',
-      headers: { 'x-client-id': clientId, 'x-user-id': adminUserId, 'content-type': 'application/json' },
-      payload: { role: 'client_admin' },
+      headers: { 'x-account-id': clientId, 'x-user-id': adminUserId, 'content-type': 'application/json' },
+      payload: { role: 'account_admin' },
     });
     expect(res.statusCode).toBe(404);
   });
@@ -185,7 +185,7 @@ describe('portal-admin routes (DB, e2e)', () => {
     }
 
     const listRes = await app.inject({
-      method: 'GET', url: '/api/portal/members', headers: { 'x-client-id': otherClientId, 'x-user-id': otherAdminUserId },
+      method: 'GET', url: '/api/portal/members', headers: { 'x-account-id': otherClientId, 'x-user-id': otherAdminUserId },
     });
     expect(listRes.statusCode).toBe(200);
     // otherClientId's roster legitimately contains the caller's own
@@ -198,8 +198,8 @@ describe('portal-admin routes (DB, e2e)', () => {
 
     const patchRes = await app.inject({
       method: 'PATCH', url: `/api/portal/members/${viewerMembershipId}/role`,
-      headers: { 'x-client-id': otherClientId, 'x-user-id': otherAdminUserId, 'content-type': 'application/json' },
-      payload: { role: 'client_admin' },
+      headers: { 'x-account-id': otherClientId, 'x-user-id': otherAdminUserId, 'content-type': 'application/json' },
+      payload: { role: 'account_admin' },
     });
     expect(patchRes.statusCode).toBe(404);
 
@@ -268,7 +268,7 @@ describe('portal-admin query modules: explicit account_id predicate (DB)', () =>
     const result = await withTenantTx({ internal: true }, (c) => updatePortalMemberRole(c, otherClientId, membershipId, 'account_admin', userId));
     expect(result.found).toBe(false);
     const check = await withTenantTx({ internal: true }, (c) => listPortalMembers(c, clientAId));
-    expect(check.find((r) => r.id === membershipId)?.role).toBe('client_viewer');
+    expect(check.find((r) => r.id === membershipId)?.role).toBe('account_viewer');
   });
 
   it('the explicit predicate still finds/updates the row under an internal scope when the clientId matches', async () => {

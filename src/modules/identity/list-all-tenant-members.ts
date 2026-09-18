@@ -1,11 +1,9 @@
 import type pg from 'pg';
 import { buildKeysetAnchorFrom, buildKeysetTieBreak, buildLimitOffsetClause } from '../../shared/cursor-pagination.js';
-import { roleDbToWire } from './role-wire-mapping.js';
 
-// 86e3ankd7: clientId/clientName are the wire-frozen field names on this
-// interface -- the DB-layer rename (account table/account_id column) is
-// translated back to these names in the .map() below, at the API boundary,
-// per AC5/the No-go on touching web/.
+// 86e3aq0h7: accountId/accountName are the response's actual field names
+// now (returned unmapped by tenant-admin-routes.ts) -- 86e3ankd7's
+// wire-boundary freeze (clientId/clientName) is gone.
 export interface AllTenantMemberRow {
   id: string;
   userId: string;
@@ -13,8 +11,8 @@ export interface AllTenantMemberRow {
   fullName: string | null;
   role: string;
   isActive: boolean;
-  clientId: string;
-  clientName: string;
+  accountId: string;
+  accountName: string;
   createdAt: Date;
 }
 
@@ -81,10 +79,10 @@ export async function listAllTenantMembers(
     userId: r.user_id,
     email: r.email,
     fullName: r.full_name,
-    role: roleDbToWire(r.role),
+    role: r.role,
     isActive: r.is_active,
-    clientId: r.account_id,
-    clientName: r.account_name,
+    accountId: r.account_id,
+    accountName: r.account_name,
     createdAt: r.created_at,
   }));
 }

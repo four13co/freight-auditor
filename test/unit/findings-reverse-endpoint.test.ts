@@ -167,7 +167,7 @@ describe('POST /api/findings/:id/reverse (unit, mocked withTenantTx + tenant-aut
   });
 
   it('86e367qxx: rejects a client_viewer with 403, without calling recordHumanOverrideReversal', async () => {
-    mockAuthorized('client_viewer');
+    mockAuthorized('account_viewer');
     mockTx([], []);
     const recordHumanOverrideReversal = vi.fn();
     vi.doMock('../../src/modules/rule-engine/record-human-override-reversal.js', () => ({ recordHumanOverrideReversal, InvalidReversalRequestError: class extends Error {} }));
@@ -180,7 +180,7 @@ describe('POST /api/findings/:id/reverse (unit, mocked withTenantTx + tenant-aut
   });
 
   it('86e367qxx: rejects a client_admin with 403, without calling recordHumanOverrideReversal', async () => {
-    mockAuthorized('client_admin');
+    mockAuthorized('account_admin');
     mockTx([], []);
     const recordHumanOverrideReversal = vi.fn();
     vi.doMock('../../src/modules/rule-engine/record-human-override-reversal.js', () => ({ recordHumanOverrideReversal, InvalidReversalRequestError: class extends Error {} }));

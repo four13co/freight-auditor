@@ -53,7 +53,7 @@ describe('PATCH /api/internal/branding', () => {
     expect(response.statusCode).toBe(401);
   });
 
-  it.each(['client_viewer', 'client_admin'])('rejects %s (portal session) with 403', async (role) => {
+  it.each(['account_viewer', 'account_admin'])('rejects %s (portal session) with 403', async (role) => {
     mockAuth(role);
     vi.doMock('../../src/db/tenant-context.js', () => ({ withTenantTx: vi.fn(async (_ctx, fn) => fn({})) }));
     const { registerInternalBrandingRoutes } = await import('../../src/server/internal-branding-routes.js');

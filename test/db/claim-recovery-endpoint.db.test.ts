@@ -64,7 +64,7 @@ describe('claim + recovery APIs (DB, e2e)', () => {
 
   it('lists claims for the caller tenant', async () => {
     const res = await app.inject({
-      method: 'GET', url: '/api/claims', headers: { 'x-client-id': clientId, 'x-user-id': userId },
+      method: 'GET', url: '/api/claims', headers: { 'x-account-id': clientId, 'x-user-id': userId },
     });
     expect(res.statusCode).toBe(200);
     const body = res.json();
@@ -73,7 +73,7 @@ describe('claim + recovery APIs (DB, e2e)', () => {
 
   it('returns claim detail with its recovery event history and cumulative total', async () => {
     const res = await app.inject({
-      method: 'GET', url: `/api/claims/${claimId}`, headers: { 'x-client-id': clientId, 'x-user-id': userId },
+      method: 'GET', url: `/api/claims/${claimId}`, headers: { 'x-account-id': clientId, 'x-user-id': userId },
     });
     expect(res.statusCode).toBe(200);
     const body = res.json();
@@ -84,14 +84,14 @@ describe('claim + recovery APIs (DB, e2e)', () => {
 
   it('rejects an invalid claim id', async () => {
     const res = await app.inject({
-      method: 'GET', url: '/api/claims/not-a-uuid', headers: { 'x-client-id': clientId, 'x-user-id': userId },
+      method: 'GET', url: '/api/claims/not-a-uuid', headers: { 'x-account-id': clientId, 'x-user-id': userId },
     });
     expect(res.statusCode).toBe(400);
   });
 
   it('returns 404 for an unknown claim id', async () => {
     const res = await app.inject({
-      method: 'GET', url: '/api/claims/00000000-0000-0000-0000-000000000000', headers: { 'x-client-id': clientId, 'x-user-id': userId },
+      method: 'GET', url: '/api/claims/00000000-0000-0000-0000-000000000000', headers: { 'x-account-id': clientId, 'x-user-id': userId },
     });
     expect(res.statusCode).toBe(404);
   });
@@ -103,7 +103,7 @@ describe('claim + recovery APIs (DB, e2e)', () => {
 
   it('rejects an out-of-range limit', async () => {
     const res = await app.inject({
-      method: 'GET', url: '/api/claims?limit=9999', headers: { 'x-client-id': clientId, 'x-user-id': userId },
+      method: 'GET', url: '/api/claims?limit=9999', headers: { 'x-account-id': clientId, 'x-user-id': userId },
     });
     expect(res.statusCode).toBe(400);
   });
@@ -147,13 +147,13 @@ describe('claim + recovery APIs (DB, e2e)', () => {
     // B's real claim id -- with tenant A's own valid header pair, not
     // otherClientId's.
     const listRes = await app.inject({
-      method: 'GET', url: '/api/claims', headers: { 'x-client-id': clientId, 'x-user-id': userId },
+      method: 'GET', url: '/api/claims', headers: { 'x-account-id': clientId, 'x-user-id': userId },
     });
     expect(listRes.statusCode).toBe(200);
     expect(listRes.json().claims.some((c: { id: string }) => c.id === otherClaimId)).toBe(false);
 
     const detailRes = await app.inject({
-      method: 'GET', url: `/api/claims/${otherClaimId}`, headers: { 'x-client-id': clientId, 'x-user-id': userId },
+      method: 'GET', url: `/api/claims/${otherClaimId}`, headers: { 'x-account-id': clientId, 'x-user-id': userId },
     });
     // 404, not 403: the route must not confirm the resource exists under a
     // clientId the caller cannot see -- same non-leaking shape as

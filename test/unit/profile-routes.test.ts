@@ -4,7 +4,7 @@ import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest }
 const CLIENT_ID = '11111111-1111-4111-8111-111111111111';
 const ACTOR_USER_ID = '22222222-2222-4222-8222-222222222222';
 
-function mockAuth(role: string = 'client_viewer') {
+function mockAuth(role: string = 'account_viewer') {
   vi.doMock('../../src/modules/findings/tenant-auth.js', () => ({
     registerTenantAuthPreHandler: async (routes: FastifyInstance) => {
       routes.addHook('preHandler', async (request: FastifyRequest, _reply: FastifyReply) => {
@@ -43,7 +43,7 @@ describe('PATCH /api/profile', () => {
     expect(response.statusCode).toBe(401);
   });
 
-  it.each(['client_viewer', 'client_admin', 'analyst', 'lead'])(
+  it.each(['account_viewer', 'account_admin', 'analyst', 'lead'])(
     'AC3: a %s updates their own display name, scoped to actorUserId',
     async (role) => {
       mockAuth(role);

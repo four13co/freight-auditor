@@ -29,7 +29,7 @@ declare module 'fastify' {
  * unverified -- any caller could claim any UUID via a header).
  *
  * DEV_AUTH_HEADERS gates which identity source is trusted:
- *   - exactly "1": the x-client-id/x-user-id header pair (today's dev/CI/e2e
+ *   - exactly "1": the x-account-id/x-user-id header pair (today's dev/CI/e2e
  *     behavior, unchanged) -- Greg's explicit hard constraint is that this
  *     path must keep working exactly as before when the flag is set (the
  *     full-stack e2e suite and seeded fixture both depend on it).
@@ -80,7 +80,7 @@ async function lookupMembership(userId: string, clientId: string): Promise<strin
 /**
  * 86e2wb92b: a real (non-dev-header) session proves WHO the user is, but not
  * WHICH client they're scoped to -- resolveViaSession still requires an
- * explicit x-client-id, and nothing told the frontend what value to send.
+ * explicit x-account-id, and nothing told the frontend what value to send.
  * This is the lookup the new GET /api/auth/memberships route (app.ts) uses
  * to answer that, so login can store a account_id and start sending it.
  * Same internal-scoped-transaction shape as lookupMembership -- membership
@@ -88,7 +88,7 @@ async function lookupMembership(userId: string, clientId: string): Promise<strin
  * clients also needs the internal scope, not a tenant scope that doesn't
  * exist yet.
  */
-export async function listMembershipClientIds(userId: string): Promise<string[]> {
+export async function listMembershipAccountIds(userId: string): Promise<string[]> {
   return withTenantTx({ internal: true }, async (client) => {
     const result = await client.query(`SELECT account_id FROM membership WHERE user_id = $1`, [userId]);
     return result.rows.map((row: { account_id: string }) => row.account_id);
@@ -99,7 +99,7 @@ export async function listMembershipClientIds(userId: string): Promise<string[]>
  * 86e2zfjmb: the actor-type half of GET /api/auth/memberships' response --
  * whether the caller is an internal analyst (app_user.is_internal) or, if
  * not, their portal membership role (client_viewer/client_admin). A pure
- * read, alongside listMembershipClientIds above (same internal-scoped-
+ * read, alongside listMembershipAccountIds above (same internal-scoped-
  * transaction shape, same reason: app_user carries no RLS but membership
  * does, keyed on account_id, migration 0009). Does not touch
  * resolveViaSession/resolveViaDevHeaders or grant any access -- App.tsx uses
@@ -115,7 +115,7 @@ export async function listMembershipClientIds(userId: string): Promise<string[]>
 /**
  * 86e38pz8e: the profile page's "org/tenant name" field -- GET
  * /api/auth/memberships already resolves a portal member's account_id
- * (listMembershipClientIds above); this is the same single-membership-per-
+ * (listMembershipAccountIds above); this is the same single-membership-per-
  * user lookup, widened to also return that client's display name, for
  * showing "Acme Corp" rather than a bare UUID. Same internal-scoped-
  * transaction shape as its neighbors above -- client carries no RLS of its
@@ -124,7 +124,7 @@ export async function listMembershipClientIds(userId: string): Promise<string[]>
  * with no membership row, rather than throwing -- the profile page simply
  * omits the org name in either case.
  */
-export async function lookupClientName(userId: string): Promise<string | null> {
+export async function lookupAccountName(userId: string): Promise<string | null> {
   return withTenantTx({ internal: true }, async (client) => {
     const result = await client.query<{ name: string }>(
       `SELECT c.name FROM membership m JOIN account c ON c.id = m.account_id WHERE m.user_id = $1 LIMIT 1`,
@@ -163,9 +163,9 @@ export async function lookupActorType(userId: string): Promise<{ isInternal: boo
   });
 }
 
-/** DEV_AUTH_HEADERS path: x-client-id/x-user-id headers, membership-checked. Unchanged behavior. */
+/** DEV_AUTH_HEADERS path: x-account-id/x-user-id headers, membership-checked. Unchanged behavior. */
 async function resolveViaDevHeaders(request: FastifyRequest): Promise<TenantContext | null> {
-  const clientId = readHeader(request.headers['x-client-id']);
+  const clientId = readHeader(request.headers['x-account-id']);
   const userId = readHeader(request.headers['x-user-id']);
   if (!clientId || !userId) return null;
 
@@ -214,7 +214,7 @@ async function resolveViaSession(request: FastifyRequest): Promise<TenantContext
   const session = await getAuth().api.getSession({ headers: toFetchHeaders(request) });
   if (!session) return null;
 
-  const clientId = readHeader(request.headers['x-client-id']);
+  const clientId = readHeader(request.headers['x-account-id']);
   if (!clientId) return null;
 
   const role = await lookupMembership(session.user.id, clientId);
@@ -227,7 +227,7 @@ async function resolveViaSession(request: FastifyRequest): Promise<TenantContext
 /**
  * Resolve and validate the request's tenant scope. Returns `null` when the
  * request should be rejected (no valid identity, missing/unmatched
- * x-client-id, or no membership row for the resolved user+client pair) --
+ * x-account-id, or no membership row for the resolved user+client pair) --
  * registerTenantAuthPreHandler turns that into a 401. A request that
  * presents no identity at all (no dev headers, no session cookie) is
  * rejected without touching the DB. A request that presents SOME identity

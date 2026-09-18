@@ -92,9 +92,9 @@ describe('buildKeysetAnchorFrom', () => {
       table: 'claim',
       tsColumn: 'opened_at',
       cursorId: 'c5',
-      extraAnchorPredicate: 'cursor_row.client_id = $1',
+      extraAnchorPredicate: 'cursor_row.account_id = $1',
     });
-    expect(result.fromClauseAddition).toMatch(/WHERE cursor_row\.id = \$2 AND cursor_row\.client_id = \$1/);
+    expect(result.fromClauseAddition).toMatch(/WHERE cursor_row\.id = \$2 AND cursor_row\.account_id = \$1/);
   });
 
   it('uses a column-specific anchor alias so two different sort columns never collide', () => {

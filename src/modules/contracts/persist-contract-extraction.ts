@@ -31,7 +31,7 @@ export async function persistContractExtraction(
   if (input.idempotencyKey !== expectedKey) throw new ContractExtractionPersistenceError('IDEMPOTENCY_KEY_MISMATCH');
 
   const source = (await client.query<{ sha256: string }>(
-    `SELECT sha256 FROM source_document WHERE id=$1 AND client_id=$2`, [input.sourceDocumentId, input.clientId],
+    `SELECT sha256 FROM source_document WHERE id=$1 AND account_id=$2`, [input.sourceDocumentId, input.clientId],
   )).rows[0];
   if (!source) throw new ContractExtractionPersistenceError('SOURCE_NOT_FOUND');
   if (source.sha256 !== input.extraction.sourceDocumentSha256) throw new ContractExtractionPersistenceError('SOURCE_HASH_MISMATCH');
@@ -48,17 +48,17 @@ export async function persistContractExtraction(
          )
        ), inserted AS (
          INSERT INTO extraction_field
-           (client_id, source_document_id, field_path, ai_value, confidence, page_ref, bbox,
+           (account_id, source_document_id, field_path, ai_value, confidence, page_ref, bbox,
             model_version, prompt_version, extraction_response_hash, extraction_schema_version,
             extraction_status, citations)
          SELECT $2, $3, field_path, ai_value, confidence, page_ref, bbox,
            $4, $5, $6, $7, extraction_status, citations FROM payload
-         ON CONFLICT (client_id, source_document_id, extraction_response_hash, field_path)
+         ON CONFLICT (account_id, source_document_id, extraction_response_hash, field_path)
            WHERE extraction_response_hash IS NOT NULL AND correction_hash IS NULL DO NOTHING RETURNING id
        )
        SELECT (SELECT count(*) FROM inserted)::text inserted_count,
          ((SELECT count(*) FROM inserted) +
-          (SELECT count(*) FROM extraction_field WHERE client_id=$2 AND source_document_id=$3
+          (SELECT count(*) FROM extraction_field WHERE account_id=$2 AND source_document_id=$3
             AND extraction_response_hash=$6 AND correction_hash IS NULL))::text stored_count`,
       [JSON.stringify(rows.map(toDatabaseRow)), input.clientId, input.sourceDocumentId,
         input.extraction.model.modelId, input.extraction.model.promptVersion, expectedKey, input.extraction.schemaVersion],

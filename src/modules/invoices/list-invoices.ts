@@ -32,7 +32,7 @@ const DEFAULT_LIMIT = 50;
  * List invoice rows joined to carrier + their summed charge_fact.amount, for
  * the tenant scope already bound by the caller's withTenantReadTx.
  *
- * No client_id filter is applied here -- RLS (forced on both invoice and
+ * No account_id filter is applied here -- RLS (forced on both invoice and
  * charge_fact) already restricts visible rows to the transaction's tenant
  * scope, same as listFindings' own documented convention.
  */

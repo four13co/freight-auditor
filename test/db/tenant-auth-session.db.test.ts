@@ -6,7 +6,7 @@ import { resolveAuthorizedTenantContext } from '../../src/modules/findings/tenan
 /**
  * 86e2v1bbr AC3/AC4, against real Postgres: a verified better-auth session
  * (via a real sign-up + sign-in round-trip, not a mocked one -- membership
- * carries FORCE RLS keyed on client_id per migration 0009, so this can't be
+ * carries FORCE RLS keyed on account_id per migration 0009, so this can't be
  * proven with a mocked client) resolves the same TenantContext the dev-header
  * path does, gated correctly on whether a membership row exists.
  *
@@ -34,7 +34,7 @@ describe('resolveAuthorizedTenantContext via a real better-auth session (DB)', (
     pool = getPool();
     const owner = await pool.connect();
     try {
-      const c = await owner.query(`INSERT INTO client (name, slug) VALUES ('TAS', $1) RETURNING id`, [tag]);
+      const c = await owner.query(`INSERT INTO account (name, slug) VALUES ('TAS', $1) RETURNING id`, [tag]);
       clientId = c.rows[0].id;
     } finally {
       owner.release();
@@ -51,11 +51,11 @@ describe('resolveAuthorizedTenantContext via a real better-auth session (DB)', (
 
     const owner = await pool.connect();
     try {
-      await owner.query(`DELETE FROM membership WHERE client_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM membership WHERE account_id = $1`, [clientId]);
       await owner.query(`DELETE FROM ba_session WHERE user_id IN (SELECT id FROM app_user WHERE email LIKE $1)`, [`${tag}%`]);
       await owner.query(`DELETE FROM ba_account WHERE user_id IN (SELECT id FROM app_user WHERE email LIKE $1)`, [`${tag}%`]);
       await owner.query(`DELETE FROM app_user WHERE email LIKE $1`, [`${tag}%`]);
-      await owner.query(`DELETE FROM client WHERE id = $1`, [clientId]);
+      await owner.query(`DELETE FROM account WHERE id = $1`, [clientId]);
     } finally {
       owner.release();
     }
@@ -86,7 +86,7 @@ describe('resolveAuthorizedTenantContext via a real better-auth session (DB)', (
     try {
       const u = await owner.query(`SELECT id FROM app_user WHERE email = $1`, [email]);
       await owner.query(
-        `INSERT INTO membership (user_id, client_id, role) VALUES ($1, $2, 'client_viewer')`,
+        `INSERT INTO membership (user_id, account_id, role) VALUES ($1, $2, 'account_viewer')`,
         [u.rows[0].id, clientId],
       );
     } finally {
@@ -121,7 +121,7 @@ describe('resolveAuthorizedTenantContext via a real better-auth session (DB)', (
       );
       userId = u.rows[0].id;
       await owner.query(
-        `INSERT INTO membership (user_id, client_id, role) VALUES ($1, $2, 'client_viewer')`,
+        `INSERT INTO membership (user_id, account_id, role) VALUES ($1, $2, 'account_viewer')`,
         [userId, clientId],
       );
     } finally {

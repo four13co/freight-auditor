@@ -13,21 +13,21 @@ import { makePool, withOwnerTx } from './helpers.js';
  *
  * Enumerates via information_schema.columns rather than hardcoding a table
  * list, so the guard covers a table this test's author never anticipated.
- * Matches `client_id` and `tenant_id` per the task's own framing, plus
- * `scope_client_id` -- `rubric` (0006) is a real tenant table using that
+ * Matches `account_id` and `tenant_id` per the task's own framing, plus
+ * `scope_account_id` -- `rubric` (0006) is a real tenant table using that
  * name for its tenant column (0009's `apply_tenant_rls` pairs list carries
  * it explicitly), and a guard that can't see it isn't a regression net for
  * that table at all.
  *
  * This run found a live gap: rate_cell (0026_finding_citations) has always
- * carried a mandatory client_id column and a freight_app grant, but 0026
+ * carried a mandatory account_id column and a freight_app grant, but 0026
  * never called apply_tenant_rls, unlike every sibling table added since
  * 0009. Fixed in 0076_rate_cell_rls.sql (zero-risk: no source module or
  * test ever inserts into rate_cell). This test would fail against
  * pre-0076 schema state.
  */
 describe('tenant RLS schema guard (DB)', () => {
-  it('every table with a client_id/tenant_id/scope_client_id column has FORCE RLS and a tenant_isolation policy', async () => {
+  it('every table with a account_id/tenant_id/scope_account_id column has FORCE RLS and a tenant_isolation policy', async () => {
     const pool = makePool();
     try {
       const tables = await withOwnerTx(pool, async (client) => {
@@ -39,7 +39,15 @@ describe('tenant RLS schema guard (DB)', () => {
               AND cl.relnamespace = 'public'::regnamespace
               AND cl.relkind = 'r'
             WHERE c.table_schema = 'public'
-              AND c.column_name IN ('client_id', 'tenant_id', 'scope_client_id')
+              AND c.column_name IN ('account_id', 'tenant_id', 'scope_account_id')
+              -- 86e3ankd7: the client->account DB rename introduced a name
+              -- collision -- better-auth's own OAuth-linking table (ba_account)
+              -- has always had its own, unrelated account_id column (which
+              -- OAuth account it links to, nothing to do with our tenant
+              -- concept). It correctly carries no RLS and never has; excluded
+              -- here the same way the migration's own down-path sweeps
+              -- exclude ba_% from the %account%-matching catalog scans.
+              AND c.table_name NOT LIKE 'ba_%'
             ORDER BY c.table_name`,
         );
         return rows;

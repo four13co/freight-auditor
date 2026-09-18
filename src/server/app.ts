@@ -130,7 +130,7 @@ export function buildApp(): FastifyInstance {
   void app.register(registerAuditLogRoutes);
 
   // Client portal content APIs (P6.B.1): invoice list + scorecard summary,
-  // its OWN preHandler (registerClientViewerAuthPreHandler) -- deliberately
+  // its OWN preHandler (registerAccountViewerAuthPreHandler) -- deliberately
   // NOT the shared registerTenantAuthPreHandler -- see portal-content-
   // routes.ts's header comment for why.
   void app.register(registerPortalContentRoutes);
@@ -148,7 +148,7 @@ export function buildApp(): FastifyInstance {
 
   // Client portal Uploads section (86e36yj9d): browser-driven invoice-draft
   // upload/confirm/reject, gated by client-admin-auth.ts's OWN preHandler
-  // (registerClientAdminAuthPreHandler) -- a second, client_admin-only HTTP
+  // (registerAccountAdminAuthPreHandler) -- a second, client_admin-only HTTP
   // surface onto invoice-draft.ts's domain functions, distinct from
   // invoice-drafts-routes.ts's own /api/invoice-drafts (registered above,
   // shared registerTenantAuthPreHandler, left unmodified).

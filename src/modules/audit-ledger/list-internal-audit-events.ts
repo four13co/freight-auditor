@@ -22,12 +22,12 @@ const DEFAULT_LIMIT = 50;
 
 /**
  * Internal-analyst audit-log browser read (86e37r2rv), the cross-client
- * counterpart to list-client-audit-events.ts's listClientAuditEvents. Same
+ * counterpart to list-client-audit-events.ts's listAccountAuditEvents. Same
  * shape of rows and same column set (deliberately omits `detail`, for the
  * same reason: an unbounded internal payload with no place on this
- * reviewable surface), but no `client_id` predicate at all -- unlike the
+ * reviewable surface), but no `account_id` predicate at all -- unlike the
  * portal read, this is meant to see every tenant's events, the same
- * cross-client shape getCrossClientPortfolio.ts uses. Safety is entirely
+ * cross-client shape getCrossAccountPortfolio.ts uses. Safety is entirely
  * the tenant_isolation RLS policy reading the transaction's
  * app.is_internal GUC (set by withTenantReadTx/withTenantTx under an
  * `{ internal: true }` context) -- see that module's own header comment

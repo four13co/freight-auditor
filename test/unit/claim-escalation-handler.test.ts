@@ -17,7 +17,7 @@ const basePayload = {
 describe('handleClaimEscalationJob', () => {
   it('parses the payload and delegates to generateClaimEscalation', async () => {
     const query = vi.fn().mockImplementation(async (sql: string) => {
-      if (sql.includes('FROM claim')) return { rows: [{ id: CLAIM_ID, client_id: CLIENT_ID, status: 'open' }] };
+      if (sql.includes('FROM claim')) return { rows: [{ id: CLAIM_ID, account_id: CLIENT_ID, status: 'open' }] };
       if (sql.includes('FROM audit_event') && sql.includes('ORDER BY recorded_at')) {
         return { rows: [{ recorded_at: new Date('2026-01-01T00:00:00Z') }] };
       }

@@ -1,23 +1,23 @@
 import { describe, it, expect } from 'vitest';
 import { Decimal } from 'decimal.js';
 import {
-  aggregateCrossClientPortfolio,
-  type ClientPortfolioClaimRow,
-  type ClientPortfolioRecoveryEventRow,
-} from '../../src/modules/claims/aggregate-cross-client-portfolio.js';
+  aggregateCrossAccountPortfolio,
+  type AccountPortfolioClaimRow,
+  type AccountPortfolioRecoveryEventRow,
+} from '../../src/modules/claims/aggregate-cross-account-portfolio.js';
 
 const CLIENT_A = 'client-a';
 const CLIENT_B = 'client-b';
 
-function claim(overrides: Partial<ClientPortfolioClaimRow> & { claimId: string }): ClientPortfolioClaimRow {
+function claim(overrides: Partial<AccountPortfolioClaimRow> & { claimId: string }): AccountPortfolioClaimRow {
   return { clientId: CLIENT_A, clientName: 'Client A', amountClaimed: '1000.0000', currency: 'USD', status: 'open', ...overrides };
 }
 
-function event(overrides: Partial<ClientPortfolioRecoveryEventRow> & { claimId: string }): ClientPortfolioRecoveryEventRow {
+function event(overrides: Partial<AccountPortfolioRecoveryEventRow> & { claimId: string }): AccountPortfolioRecoveryEventRow {
   return { amountRecovered: '0.0000', currency: 'USD', ...overrides };
 }
 
-function assertReconciles(buckets: ReturnType<typeof aggregateCrossClientPortfolio>) {
+function assertReconciles(buckets: ReturnType<typeof aggregateCrossAccountPortfolio>) {
   for (const b of buckets) {
     const sum = new Decimal(b.recovered).plus(b.outstanding).plus(b.writtenOff).plus(b.denied);
     expect(sum.toFixed(4)).toBe(new Decimal(b.claimed).toFixed(4));
@@ -25,13 +25,13 @@ function assertReconciles(buckets: ReturnType<typeof aggregateCrossClientPortfol
   }
 }
 
-describe('aggregateCrossClientPortfolio', () => {
+describe('aggregateCrossAccountPortfolio', () => {
   it('returns an empty array for no claims', () => {
-    expect(aggregateCrossClientPortfolio([], [])).toEqual([]);
+    expect(aggregateCrossAccountPortfolio([], [])).toEqual([]);
   });
 
   it('an open claim with no recovery is entirely outstanding', () => {
-    const buckets = aggregateCrossClientPortfolio(
+    const buckets = aggregateCrossAccountPortfolio(
       [claim({ claimId: 'c1', amountClaimed: '500.0000' })],
       [],
     );
@@ -44,7 +44,7 @@ describe('aggregateCrossClientPortfolio', () => {
   });
 
   it('a fully recovered claim has zero outstanding/writtenOff/denied', () => {
-    const buckets = aggregateCrossClientPortfolio(
+    const buckets = aggregateCrossAccountPortfolio(
       [claim({ claimId: 'c1', amountClaimed: '500.0000', status: 'recovered' })],
       [event({ claimId: 'c1', amountRecovered: '500.0000' })],
     );
@@ -53,7 +53,7 @@ describe('aggregateCrossClientPortfolio', () => {
   });
 
   it('a denied claim books the full claimed amount as denied, not writtenOff', () => {
-    const buckets = aggregateCrossClientPortfolio(
+    const buckets = aggregateCrossAccountPortfolio(
       [claim({ claimId: 'c1', amountClaimed: '500.0000', status: 'denied' })],
       [],
     );
@@ -62,7 +62,7 @@ describe('aggregateCrossClientPortfolio', () => {
   });
 
   it('a written-off claim with a prior partial recovery books only the remainder as writtenOff', () => {
-    const buckets = aggregateCrossClientPortfolio(
+    const buckets = aggregateCrossAccountPortfolio(
       [claim({ claimId: 'c1', amountClaimed: '500.0000', status: 'written_off' })],
       [event({ claimId: 'c1', amountRecovered: '200.0000' })],
     );
@@ -71,7 +71,7 @@ describe('aggregateCrossClientPortfolio', () => {
   });
 
   it('groups by client separately -- the cross-client behavior this item adds', () => {
-    const buckets = aggregateCrossClientPortfolio(
+    const buckets = aggregateCrossAccountPortfolio(
       [
         claim({ claimId: 'c1', clientId: CLIENT_A, clientName: 'Client A', amountClaimed: '100.0000' }),
         claim({ claimId: 'c2', clientId: CLIENT_B, clientName: 'Client B', amountClaimed: '200.0000' }),
@@ -89,7 +89,7 @@ describe('aggregateCrossClientPortfolio', () => {
   });
 
   it('groups by currency separately within the same client, never summing across currencies', () => {
-    const buckets = aggregateCrossClientPortfolio(
+    const buckets = aggregateCrossAccountPortfolio(
       [
         claim({ claimId: 'c1', currency: 'USD', amountClaimed: '100.0000' }),
         claim({ claimId: 'c2', currency: 'CAD', amountClaimed: '150.0000' }),
@@ -103,7 +103,7 @@ describe('aggregateCrossClientPortfolio', () => {
   });
 
   it('surfaces a NULL-currency recovery_event separately, excluded from recovered', () => {
-    const buckets = aggregateCrossClientPortfolio(
+    const buckets = aggregateCrossAccountPortfolio(
       [claim({ claimId: 'c1', amountClaimed: '500.0000' })],
       [event({ claimId: 'c1', amountRecovered: '100.0000', currency: null })],
     );
@@ -112,7 +112,7 @@ describe('aggregateCrossClientPortfolio', () => {
   });
 
   it('surfaces a recovery_event whose currency mismatches the claim currency, excluded from recovered', () => {
-    const buckets = aggregateCrossClientPortfolio(
+    const buckets = aggregateCrossAccountPortfolio(
       [claim({ claimId: 'c1', amountClaimed: '500.0000', currency: 'USD' })],
       [event({ claimId: 'c1', amountRecovered: '100.0000', currency: 'CAD' })],
     );
@@ -121,7 +121,7 @@ describe('aggregateCrossClientPortfolio', () => {
   });
 
   it('aggregates multiple claims of mixed outcomes across multiple clients into the correct per-client buckets', () => {
-    const buckets = aggregateCrossClientPortfolio(
+    const buckets = aggregateCrossAccountPortfolio(
       [
         claim({ claimId: 'c1', clientId: CLIENT_A, amountClaimed: '100.0000', status: 'open' }),
         claim({ claimId: 'c2', clientId: CLIENT_A, amountClaimed: '200.0000', status: 'recovered' }),

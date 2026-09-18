@@ -18,25 +18,25 @@ describe('cleanupTenantFixtures (DB)', () => {
 
   async function seedChain(owner: import('pg').PoolClient, tag: string): Promise<string> {
     const client = await owner.query(
-      `INSERT INTO client (name, slug) VALUES ('CTF-A', $1) RETURNING id`,
+      `INSERT INTO account (name, slug) VALUES ('CTF-A', $1) RETURNING id`,
       [tag],
     );
     const clientId: string = client.rows[0].id;
 
     const invoice = await owner.query(
-      `INSERT INTO invoice (client_id, transaction_set, parser_version) VALUES ($1, '210', 'v1') RETURNING id`,
+      `INSERT INTO invoice (account_id, transaction_set, parser_version) VALUES ($1, '210', 'v1') RETURNING id`,
       [clientId],
     );
     const invoiceId: string = invoice.rows[0].id;
 
     const auditRun = await owner.query(
-      `INSERT INTO audit_run (client_id, invoice_id, engine_spec_version, outcome) VALUES ($1, $2, 'v1', 'SCORED') RETURNING id`,
+      `INSERT INTO audit_run (account_id, invoice_id, engine_spec_version, outcome) VALUES ($1, $2, 'v1', 'SCORED') RETURNING id`,
       [clientId, invoiceId],
     );
     const auditRunId: string = auditRun.rows[0].id;
 
     await owner.query(
-      `INSERT INTO variance_finding (client_id, audit_run_id, criterion_id, rule_version_id, evaluated_expr)
+      `INSERT INTO variance_finding (account_id, audit_run_id, criterion_id, rule_version_id, evaluated_expr)
        SELECT $1, $2, c.id, rv.id, '{}'::jsonb
        FROM criterion c JOIN rule r ON r.slug = 'contract-rate_variance'
        JOIN rule_version rv ON rv.rule_id = r.id
@@ -45,7 +45,7 @@ describe('cleanupTenantFixtures (DB)', () => {
     );
 
     await owner.query(
-      `INSERT INTO audit_event (client_id, entity, event, actor_kind) VALUES ($1, 'test', 'test.seeded', 'system')`,
+      `INSERT INTO audit_event (account_id, entity, event, actor_kind) VALUES ($1, 'test', 'test.seeded', 'system')`,
       [clientId],
     );
 
@@ -63,7 +63,7 @@ describe('cleanupTenantFixtures (DB)', () => {
 
     await expect(cleanupTenantFixtures(pool, [clientId])).resolves.toBeUndefined();
 
-    const check = await pool.query(`SELECT id FROM client WHERE id = $1`, [clientId]);
+    const check = await pool.query(`SELECT id FROM account WHERE id = $1`, [clientId]);
     expect(check.rowCount).toBe(0);
   });
 
@@ -79,7 +79,7 @@ describe('cleanupTenantFixtures (DB)', () => {
 
     await cleanupTenantFixtures(pool, [clientIdA, clientIdB]);
 
-    const check = await pool.query(`SELECT id FROM client WHERE id = ANY($1::uuid[])`, [[clientIdA, clientIdB]]);
+    const check = await pool.query(`SELECT id FROM account WHERE id = ANY($1::uuid[])`, [[clientIdA, clientIdB]]);
     expect(check.rowCount).toBe(0);
   });
 

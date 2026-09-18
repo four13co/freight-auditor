@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { withTenantReadTx } from '../db/tenant-context.js';
 import { registerInternalAnalystAuthPreHandler } from '../modules/findings/internal-analyst-auth.js';
-import { getCrossClientPortfolio } from '../modules/claims/get-cross-client-portfolio.js';
+import { getCrossAccountPortfolio } from '../modules/claims/get-cross-account-portfolio.js';
 
 /**
  * Cross-client portfolio reporting for internal analysts (P5.C.3, rebuild
@@ -17,8 +17,8 @@ export async function registerPortfolioRoutes(routes: FastifyInstance): Promise<
 
   // 86e2zfjym: read-only, so routed through withTenantReadTx (replica pool
   // when configured, else the primary — identical to today when unconfigured).
-  routes.get('/api/portfolio/cross-client-recovery', async (request) => {
-    const buckets = await withTenantReadTx(request.tenantContext!, (client) => getCrossClientPortfolio(client));
+  routes.get('/api/portfolio/cross-account-recovery', async (request) => {
+    const buckets = await withTenantReadTx(request.tenantContext!, (client) => getCrossAccountPortfolio(client));
     return { buckets };
   });
 }

@@ -37,7 +37,7 @@ describe('currency format CHECK constraint (DB)', () => {
     pool = getPool();
     const owner = await pool.connect();
     try {
-      const c = await owner.query(`INSERT INTO client (name, slug) VALUES ('CFC', $1) RETURNING id`, [tag]);
+      const c = await owner.query(`INSERT INTO account (name, slug) VALUES ('CFC', $1) RETURNING id`, [tag]);
       clientId = c.rows[0].id;
     } finally {
       owner.release();
@@ -72,7 +72,7 @@ describe('currency format CHECK constraint (DB)', () => {
     try {
       for (const bad of ['usd', 'US', '12A']) {
         await expect(
-          owner.query(`INSERT INTO dispute (client_id, status, amount_claimed, currency) VALUES ($1, 'draft', '100.0000', $2)`, [
+          owner.query(`INSERT INTO dispute (account_id, status, amount_claimed, currency) VALUES ($1, 'draft', '100.0000', $2)`, [
             clientId,
             bad,
           ]),
@@ -87,7 +87,7 @@ describe('currency format CHECK constraint (DB)', () => {
     const owner = await pool.connect();
     try {
       await expect(
-        owner.query(`INSERT INTO claim (client_id, amount_claimed, currency) VALUES ($1, '100.0000', $2)`, [clientId, 'eur']),
+        owner.query(`INSERT INTO claim (account_id, amount_claimed, currency) VALUES ($1, '100.0000', $2)`, [clientId, 'eur']),
       ).rejects.toMatchObject({ code: '23514' });
     } finally {
       owner.release();
@@ -98,13 +98,13 @@ describe('currency format CHECK constraint (DB)', () => {
     const owner = await pool.connect();
     try {
       const dispute = await owner.query(
-        `INSERT INTO dispute (client_id, status, amount_claimed, currency) VALUES ($1, 'draft', '100.0000', 'USD') RETURNING id, currency`,
+        `INSERT INTO dispute (account_id, status, amount_claimed, currency) VALUES ($1, 'draft', '100.0000', 'USD') RETURNING id, currency`,
         [clientId],
       );
       expect(dispute.rows[0].currency).toBe('USD');
 
       const claim = await owner.query(
-        `INSERT INTO claim (client_id, amount_claimed, currency) VALUES ($1, '100.0000', 'EUR') RETURNING id, currency`,
+        `INSERT INTO claim (account_id, amount_claimed, currency) VALUES ($1, '100.0000', 'EUR') RETURNING id, currency`,
         [clientId],
       );
       expect(claim.rows[0].currency).toBe('EUR');
@@ -117,7 +117,7 @@ describe('currency format CHECK constraint (DB)', () => {
     const owner = await pool.connect();
     try {
       const res = await owner.query(
-        `INSERT INTO dispute (client_id, status, amount_claimed, currency) VALUES ($1, 'draft', '100.0000', NULL) RETURNING id, currency`,
+        `INSERT INTO dispute (account_id, status, amount_claimed, currency) VALUES ($1, 'draft', '100.0000', NULL) RETURNING id, currency`,
         [clientId],
       );
       expect(res.rows[0].currency).toBeNull();

@@ -58,7 +58,7 @@ export async function buildEvidencePacket(
   disputeId: string,
 ): Promise<EvidencePacket> {
   const disputeCheck = await client.query<{ id: string }>(
-    `SELECT id FROM dispute WHERE client_id = $1 AND id = $2`,
+    `SELECT id FROM dispute WHERE account_id = $1 AND id = $2`,
     [clientId, disputeId],
   );
   if (!disputeCheck.rowCount) throw new BuildEvidencePacketError('DISPUTE_NOT_FOUND');
@@ -68,7 +68,7 @@ export async function buildEvidencePacket(
   }>(
     `SELECT id, variance_finding_id, amount, currency
        FROM dispute_line
-      WHERE client_id = $1 AND dispute_id = $2
+      WHERE account_id = $1 AND dispute_id = $2
       ORDER BY id`,
     [clientId, disputeId],
   );
@@ -85,7 +85,7 @@ export async function buildEvidencePacket(
     }>(
       `SELECT step_order, step, pinned_inputs, clause_id
          FROM computation_trace
-        WHERE client_id = $1 AND audit_run_id = $2
+        WHERE account_id = $1 AND audit_run_id = $2
         ORDER BY step_order`,
       [clientId, chain.finding.auditRunId],
     );

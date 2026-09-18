@@ -23,13 +23,13 @@ describe('detectExtractionQualityTriggers (DB)', () => {
     pool = getPool();
     const owner = await pool.connect();
     try {
-      const c = await owner.query(`INSERT INTO client (name, slug) VALUES ('EQT', $1) RETURNING id`, [tag]);
+      const c = await owner.query(`INSERT INTO account (name, slug) VALUES ('EQT', $1) RETURNING id`, [tag]);
       clientId = c.rows[0].id;
       const user = await owner.query(`INSERT INTO app_user (email) VALUES ($1) RETURNING id`, [`${tag}@example.com`]);
       userId = user.rows[0].id;
       const sha = createHash('sha256').update(tag).digest('hex');
       const doc = await owner.query(
-        `INSERT INTO source_document (client_id, sha256, content_type, byte_size, storage_uri)
+        `INSERT INTO source_document (account_id, sha256, content_type, byte_size, storage_uri)
          VALUES ($1, $2, 'application/pdf', 1, $3) RETURNING id`,
         [clientId, sha, `local://${tag}`],
       );
@@ -42,12 +42,12 @@ describe('detectExtractionQualityTriggers (DB)', () => {
   afterAll(async () => {
     const owner = await pool.connect();
     try {
-      await owner.query(`DELETE FROM extraction_quality_trigger WHERE client_id = $1`, [clientId]);
-      await owner.query(`DELETE FROM audit_event WHERE client_id = $1`, [clientId]);
-      await owner.query(`DELETE FROM extraction_field WHERE client_id = $1`, [clientId]);
-      await owner.query(`DELETE FROM source_document WHERE client_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM extraction_quality_trigger WHERE account_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM audit_event WHERE account_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM extraction_field WHERE account_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM source_document WHERE account_id = $1`, [clientId]);
       await owner.query(`DELETE FROM app_user WHERE id = $1`, [userId]);
-      await owner.query(`DELETE FROM client WHERE id = $1`, [clientId]);
+      await owner.query(`DELETE FROM account WHERE id = $1`, [clientId]);
     } finally {
       owner.release();
     }
@@ -60,7 +60,7 @@ describe('detectExtractionQualityTriggers (DB)', () => {
   ): Promise<{ id: string }> {
     const inserted = await client.query(
       `INSERT INTO extraction_field
-         (client_id, source_document_id, field_path, ai_value, confidence, model_version, prompt_version,
+         (account_id, source_document_id, field_path, ai_value, confidence, model_version, prompt_version,
           extraction_response_hash, extraction_schema_version, extraction_status, citations)
        VALUES ($1, $2, $3, $4::jsonb, $5, 'test-model', 'test-prompt/1', $6, 'contract-extraction/1', $7, '[]'::jsonb)
        RETURNING id`,
@@ -70,7 +70,7 @@ describe('detectExtractionQualityTriggers (DB)', () => {
     if (field.humanCorrected) {
       await client.query(
         `INSERT INTO extraction_field
-           (client_id, source_document_id, field_path, ai_value, human_value, confidence, model_version, prompt_version,
+           (account_id, source_document_id, field_path, ai_value, human_value, confidence, model_version, prompt_version,
             extraction_response_hash, extraction_schema_version, extraction_status, citations, correction_hash, correction_source, corrected_by)
          VALUES ($1, $2, $3, $4::jsonb, '{"corrected":true}'::jsonb, $5, 'test-model', 'test-prompt/1', $6, 'contract-extraction/1', $7, '[]'::jsonb,
            $8, 'analyst_knowledge', $9)`,
@@ -102,7 +102,7 @@ describe('detectExtractionQualityTriggers (DB)', () => {
       expect(new Set(second.triggerIds)).toEqual(new Set(first.triggerIds));
 
       const rows = (await owner.query(
-        `SELECT extraction_field_id, trigger_type FROM extraction_quality_trigger WHERE client_id = $1 AND extraction_field_id = ANY($2::uuid[]) ORDER BY trigger_type`,
+        `SELECT extraction_field_id, trigger_type FROM extraction_quality_trigger WHERE account_id = $1 AND extraction_field_id = ANY($2::uuid[]) ORDER BY trigger_type`,
         [clientId, [low.id, notFound.id]],
       )).rows;
       expect(rows).toEqual([
@@ -128,7 +128,7 @@ describe('detectExtractionQualityTriggers (DB)', () => {
 
       const rows = (await owner.query(
         `SELECT extraction_field_id, trigger_type FROM extraction_quality_trigger
-         WHERE client_id = $1 AND extraction_field_id = ANY($2::uuid[])`,
+         WHERE account_id = $1 AND extraction_field_id = ANY($2::uuid[])`,
         [clientId, [ambiguous.id, belowCustomThreshold.id]],
       )).rows;
       expect(rows).toEqual(expect.arrayContaining([
@@ -139,7 +139,7 @@ describe('detectExtractionQualityTriggers (DB)', () => {
       const correctedCount = (await owner.query(
         `SELECT count(*)::int count FROM extraction_quality_trigger eqt
          JOIN extraction_field ef ON ef.id = eqt.extraction_field_id
-         WHERE eqt.client_id = $1 AND ef.field_path = $2`,
+         WHERE eqt.account_id = $1 AND ef.field_path = $2`,
         [clientId, `contract.corrected.${tag}`],
       )).rows[0].count;
       expect(correctedCount).toBe(0);
@@ -174,7 +174,7 @@ describe('detectExtractionQualityTriggers (DB)', () => {
       expect(runBResult.triggerIds).toEqual([]);
 
       const rows = (await owner.query(
-        `SELECT extraction_field_id, trigger_type FROM extraction_quality_trigger WHERE client_id = $1 AND field_path = $2 ORDER BY extraction_field_id`,
+        `SELECT extraction_field_id, trigger_type FROM extraction_quality_trigger WHERE account_id = $1 AND field_path = $2 ORDER BY extraction_field_id`,
         [clientId, fieldPath],
       )).rows;
       // Only run A's trigger exists; run B never produced or duplicated one.

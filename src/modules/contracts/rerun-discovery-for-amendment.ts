@@ -36,9 +36,9 @@ export async function rerunDiscoveryForAmendment(
   if (!oldRuleVersionIds.length) return { transitions, affectedAuditRunIds: [], triggersCreated: 0 };
 
   const rows = (await client.query<{ audit_run_id: string }>(
-    `SELECT DISTINCT audit_run_id FROM charge_finding WHERE client_id = $1 AND rule_version_id = ANY($2::uuid[])
+    `SELECT DISTINCT audit_run_id FROM charge_finding WHERE account_id = $1 AND rule_version_id = ANY($2::uuid[])
      UNION
-     SELECT DISTINCT audit_run_id FROM gate_failure WHERE client_id = $1 AND rule_version_id = ANY($2::uuid[])
+     SELECT DISTINCT audit_run_id FROM gate_failure WHERE account_id = $1 AND rule_version_id = ANY($2::uuid[])
      ORDER BY audit_run_id`,
     [input.clientId, oldRuleVersionIds],
   )).rows;

@@ -15,7 +15,7 @@ describe('human overrides applied last', () => {
     }] });
     const resolved = await resolveHumanOverride({ query } as never, request);
     expect(resolved).toMatchObject({ status: 'FOUND', assertedValue: { exempt: true }, resolverVersion: HUMAN_OVERRIDE_RESOLVER_VERSION });
-    expect(query.mock.calls[0]![0]).toContain('ORDER BY (client_id = $1) DESC');
+    expect(query.mock.calls[0]![0]).toContain('ORDER BY (account_id = $1) DESC');
     expect(applyHumanOverride({ exempt: false }, resolved)).toEqual({
       value: { exempt: true }, humanOverrideId: '31111111-1111-4111-8111-111111111111',
     });

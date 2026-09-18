@@ -37,13 +37,13 @@ export async function detectDuplicateClaimedFinding(
     `SELECT DISTINCT dl.variance_finding_id
        FROM dispute_line dl
        JOIN dispute_line other_dl
-         ON other_dl.client_id = dl.client_id
+         ON other_dl.account_id = dl.account_id
         AND other_dl.variance_finding_id = dl.variance_finding_id
         AND other_dl.dispute_id != dl.dispute_id
        JOIN claim c
-         ON c.client_id = other_dl.client_id
+         ON c.account_id = other_dl.account_id
         AND c.dispute_id = other_dl.dispute_id
-      WHERE dl.client_id = $1
+      WHERE dl.account_id = $1
         AND dl.dispute_id = $2
         AND dl.variance_finding_id IS NOT NULL`,
     [clientId, disputeId],

@@ -24,7 +24,7 @@ describe('resolveBrandingByDomain', () => {
     const { client, query } = mockClient({
       rows: [
         {
-          client_id: CLIENT_ID,
+          account_id: CLIENT_ID,
           domain: 'bank-a.example.com',
           logo_url: 'https://cdn.example.com/bank-a/logo.png',
           primary_color: '#123456',
@@ -60,7 +60,7 @@ describe('resolveBrandingByDomain', () => {
     const { client } = mockClient({
       rows: [
         {
-          client_id: CLIENT_ID,
+          account_id: CLIENT_ID,
           domain: 'bank-b.example.com',
           logo_url: 'https://cdn.example.com/bank-b/logo.png',
           primary_color: '#000000',

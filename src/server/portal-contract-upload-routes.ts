@@ -1,7 +1,7 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { ZodError } from 'zod';
 import { withTenantTx } from '../db/tenant-context.js';
-import { registerClientAdminAuthPreHandler } from '../modules/identity/client-admin-auth.js';
+import { registerAccountAdminAuthPreHandler } from '../modules/identity/account-admin-auth.js';
 import { runtimeObjectStore } from '../modules/reference-data/object-store-config.js';
 import {
   ContractUploadConflictError,
@@ -30,7 +30,7 @@ function metadataFromQuery(request: FastifyRequest): Record<string, unknown> {
  * 86e36yrne: the client portal's own Uploads-section entry point for the
  * Contract document type -- same shape as portal-invoice-upload-routes.ts
  * (86e36yj9d): a separate plugin registration under /api/portal/contracts,
- * gated by client-admin-auth.ts's registerClientAdminAuthPreHandler (this
+ * gated by client-admin-auth.ts's registerAccountAdminAuthPreHandler (this
  * task's own Solution: "Gated the same way as the Invoice type"), wrapping
  * the same domain function contracts-routes.ts's internal POST /api/contracts
  * already uses (uploadContractDocument) rather than duplicating it.
@@ -48,7 +48,7 @@ function metadataFromQuery(request: FastifyRequest): Record<string, unknown> {
 export async function registerPortalContractUploadRoutes(app: FastifyInstance): Promise<void> {
   await app.register(async (routes) => {
     registerBufferContentTypeParser(routes, contentTypes);
-    await registerClientAdminAuthPreHandler(routes);
+    await registerAccountAdminAuthPreHandler(routes);
 
     routes.post('/api/portal/contracts', async (request, reply) => {
       const ctx = request.tenantContext!;

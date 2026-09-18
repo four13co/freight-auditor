@@ -32,7 +32,7 @@ export interface HoldDecisionResult {
  * holdThenApprove defaults to true and is accepted as a PARAMETER rather
  * than read internally -- the caller resolves the client's policy (or
  * accepts the true default) and passes it in; this function never reads
- * client_payment_policy itself. (86e367r9x: client_payment_policy, migration
+ * account_payment_policy itself. (86e367r9x: account_payment_policy, migration
  * 0058, is applied and upsertPaymentPolicy already works against it -- an
  * earlier version of this comment claimed the table "does not exist on this
  * branch," which was stale even before this function's only real caller,
@@ -42,7 +42,7 @@ export interface HoldDecisionResult {
  * this one's).
  *
  * Idempotent per (client, audit_run, 'hold'): payment_gate_decision does
- * have a unique constraint on (client_id, audit_run_id, action) (migration
+ * have a unique constraint on (account_id, audit_run_id, action) (migration
  * 0052's payment_gate_decision_run_action_uk -- an earlier version of this
  * comment claimed it was unmerged, which was also stale). This still uses a
  * plain SELECT-then-INSERT rather than ON CONFLICT; both are correct inside
@@ -60,14 +60,14 @@ export async function generateHoldDecision(
   }
 
   const run = await client.query<{ invoice_id: string }>(
-    `SELECT invoice_id FROM audit_run WHERE client_id = $1 AND id = $2 AND outcome = 'SCORED'`,
+    `SELECT invoice_id FROM audit_run WHERE account_id = $1 AND id = $2 AND outcome = 'SCORED'`,
     [input.clientId, input.auditRunId],
   );
   if (!run.rowCount) throw new GenerateHoldDecisionError('AUDIT_RUN_NOT_SCORED');
   const invoiceId = run.rows[0]!.invoice_id;
 
   const existing = await client.query<{ id: string }>(
-    `SELECT id FROM payment_gate_decision WHERE client_id = $1 AND audit_run_id = $2 AND action = 'hold'`,
+    `SELECT id FROM payment_gate_decision WHERE account_id = $1 AND audit_run_id = $2 AND action = 'hold'`,
     [input.clientId, input.auditRunId],
   );
   if (existing.rows[0]) {
@@ -75,7 +75,7 @@ export async function generateHoldDecision(
   }
 
   const inserted = await client.query<{ id: string }>(
-    `INSERT INTO payment_gate_decision (client_id, invoice_id, audit_run_id, action, actor_kind, rationale)
+    `INSERT INTO payment_gate_decision (account_id, invoice_id, audit_run_id, action, actor_kind, rationale)
      VALUES ($1,$2,$3,'hold','system',$4) RETURNING id`,
     [input.clientId, invoiceId, input.auditRunId, 'Held by default pending analyst payment authorization (hold-then-approve).'],
   );

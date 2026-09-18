@@ -39,11 +39,11 @@ describe('listClaims (unit, mocked client)', () => {
     ]);
   });
 
-  it('always filters on client_id, with no status filter by default', async () => {
+  it('always filters on account_id, with no status filter by default', async () => {
     const { client, query } = mockClient([]);
     await listClaims(client, 'client-1');
     const [sql, params] = query.mock.calls[0] as [string, unknown[]];
-    expect(sql).toMatch(/client_id = \$1/);
+    expect(sql).toMatch(/account_id = \$1/);
     expect(sql).not.toMatch(/status = /);
     expect(params).toEqual(['client-1', 50, 0]);
   });
@@ -81,7 +81,7 @@ describe('listClaims (unit, mocked client)', () => {
     // timestamptz parser truncates to millisecond precision while the column
     // holds microseconds, which silently broke the tie-break on same-instant
     // rows when the timestamp was threaded through as a query parameter.
-    expect(sql).toMatch(/FROM claim, \(\s*SELECT opened_at AS anchor_opened_at, id AS anchor_id\s*FROM claim AS cursor_row\s*WHERE cursor_row\.id = \$2 AND cursor_row\.client_id = \$1\s*\) cursor_anchor/);
+    expect(sql).toMatch(/FROM claim, \(\s*SELECT opened_at AS anchor_opened_at, id AS anchor_id\s*FROM claim AS cursor_row\s*WHERE cursor_row\.id = \$2 AND cursor_row\.account_id = \$1\s*\) cursor_anchor/);
     expect(sql).toMatch(/\(opened_at < cursor_anchor\.anchor_opened_at OR \(opened_at = cursor_anchor\.anchor_opened_at AND id > cursor_anchor\.anchor_id\)\)/);
     expect(sql).not.toMatch(/OFFSET/);
     expect(sql).toMatch(/LIMIT \$3$/m);

@@ -136,16 +136,16 @@ export async function seedFullstackE2eFixture({ pool } = {}) {
       const carrierId = carrier.rows[0].id;
 
       const contract = await client.query(
-        `INSERT INTO contract (client_id, carrier_id, name) VALUES ($1, $2, 'E2E Fullstack Contract') RETURNING id`,
+        `INSERT INTO contract (account_id, carrier_id, name) VALUES ($1, $2, 'E2E Fullstack Contract') RETURNING id`,
         [DEV_CLIENT_ID, carrierId],
       );
       const version = await client.query(
-        `INSERT INTO contract_version (client_id, contract_id, version_label, valid_from) VALUES ($1, $2, 'v1', CURRENT_DATE) RETURNING id`,
+        `INSERT INTO contract_version (account_id, contract_id, version_label, valid_from) VALUES ($1, $2, 'v1', CURRENT_DATE) RETURNING id`,
         [DEV_CLIENT_ID, contract.rows[0].id],
       );
       const contractVersionId = version.rows[0].id;
       await client.query(
-        `INSERT INTO contract_rate (client_id, contract_version_id, category, rate, currency) VALUES ($1, $2, 'LINEHAUL', $3, 'USD')`,
+        `INSERT INTO contract_rate (account_id, contract_version_id, category, rate, currency) VALUES ($1, $2, 'LINEHAUL', $3, 'USD')`,
         [DEV_CLIENT_ID, contractVersionId, FIXTURE_CONTRACT_RATE],
       );
 

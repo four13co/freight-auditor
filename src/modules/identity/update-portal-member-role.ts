@@ -1,9 +1,13 @@
 import type pg from 'pg';
 import { deterministicAuditEventId, writeAuditEvent } from '../audit-ledger/write-audit-event.js';
 
-export type PortalRole = 'client_viewer' | 'client_admin';
+// 86e3ankd7: these are the DB enum labels (membership_role), not the wire
+// values -- the wire still speaks client_viewer/client_admin (frozen by
+// AC5/the No-go on touching web/). portal-admin-routes.ts owns the
+// wire<->db translation via role-wire-mapping.ts at the route boundary.
+export type PortalRole = 'account_viewer' | 'account_admin';
 
-export const PORTAL_ROLES: readonly PortalRole[] = ['client_viewer', 'client_admin'];
+export const PORTAL_ROLES: readonly PortalRole[] = ['account_viewer', 'account_admin'];
 
 export interface UpdatePortalMemberRoleResult {
   /** false when the membership doesn't exist, isn't visible under RLS for this tenant, or its CURRENT role isn't client_viewer/client_admin -- caller maps this to 404. */
@@ -48,19 +52,19 @@ export async function updatePortalMemberRole(
   newRole: PortalRole,
   actorUserId: string | undefined,
 ): Promise<UpdatePortalMemberRoleResult> {
-  const result = await client.query<{ id: string; client_id: string; from_role: PortalRole }>(
+  const result = await client.query<{ id: string; account_id: string; from_role: PortalRole }>(
     `WITH old AS (
-       SELECT id, client_id, role AS from_role
+       SELECT id, account_id, role AS from_role
          FROM membership
-        WHERE id = $1 AND client_id = $2 AND role = ANY($4::membership_role[])
+        WHERE id = $1 AND account_id = $2 AND role = ANY($4::membership_role[])
      ),
      updated AS (
        UPDATE membership
           SET role = $3::membership_role
         WHERE id = (SELECT id FROM old)
-        RETURNING id, client_id
+        RETURNING id, account_id
      )
-     SELECT updated.id, updated.client_id, (SELECT from_role FROM old) AS from_role
+     SELECT updated.id, updated.account_id, (SELECT from_role FROM old) AS from_role
        FROM updated`,
     [membershipId, clientId, newRole, PORTAL_ROLES],
   );
@@ -70,8 +74,8 @@ export async function updatePortalMemberRole(
 
   const event = `membership.role_changed_to_${newRole}`;
   await writeAuditEvent(client, {
-    id: deterministicAuditEventId(row.client_id, row.id, event),
-    clientId: row.client_id,
+    id: deterministicAuditEventId(row.account_id, row.id, event),
+    clientId: row.account_id,
     entity: 'membership',
     entityId: row.id,
     event,

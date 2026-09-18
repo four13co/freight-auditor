@@ -12,14 +12,14 @@ describe('rubric snapshot deduplication (DB)', () => {
 
   beforeAll(async () => {
     pool = getPool();
-    clientId = (await pool.query(`INSERT INTO client (name, slug) VALUES ('Snapshot', $1) RETURNING id`, [tag])).rows[0].id;
+    clientId = (await pool.query(`INSERT INTO account (name, slug) VALUES ('Snapshot', $1) RETURNING id`, [tag])).rows[0].id;
   });
 
   afterAll(async () => {
     const hash = (await import('../../src/modules/rubric-resolver/canonicalize-resolved-rubric.js'))
       .canonicalizeResolvedRubricDocument(document).contentHash;
     await pool.query(`DELETE FROM rubric_snapshot WHERE content_hash = $1`, [hash]);
-    await pool.query(`DELETE FROM client WHERE id = $1`, [clientId]);
+    await pool.query(`DELETE FROM account WHERE id = $1`, [clientId]);
     await closePool();
   });
 

@@ -12,13 +12,13 @@ describe('non-monotonic tightening conflicts (DB)', () => {
 
   beforeAll(async () => {
     pool = getPool();
-    clientA = (await pool.query(`INSERT INTO client (name, slug) VALUES ('Tighten A', $1) RETURNING id`, [`${tag}-a`])).rows[0].id;
-    clientB = (await pool.query(`INSERT INTO client (name, slug) VALUES ('Tighten B', $1) RETURNING id`, [`${tag}-b`])).rows[0].id;
+    clientA = (await pool.query(`INSERT INTO account (name, slug) VALUES ('Tighten A', $1) RETURNING id`, [`${tag}-a`])).rows[0].id;
+    clientB = (await pool.query(`INSERT INTO account (name, slug) VALUES ('Tighten B', $1) RETURNING id`, [`${tag}-b`])).rows[0].id;
   });
 
   afterAll(async () => {
     await pool.query(`DELETE FROM resolution_conflict WHERE tenant_id IN ($1, $2)`, [clientA, clientB]);
-    await pool.query(`DELETE FROM client WHERE id IN ($1, $2)`, [clientA, clientB]);
+    await pool.query(`DELETE FROM account WHERE id IN ($1, $2)`, [clientA, clientB]);
     await closePool();
   });
 

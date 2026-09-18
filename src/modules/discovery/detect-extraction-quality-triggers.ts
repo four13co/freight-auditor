@@ -38,7 +38,7 @@ interface Source {
  * Scoping to extraction_response_hash (rather than every row ever persisted
  * for the source document) is load-bearing, not cosmetic: a document can be
  * re-extracted, and persist-contract-extraction.ts's
- * (client_id, source_document_id, extraction_response_hash, field_path)
+ * (account_id, source_document_id, extraction_response_hash, field_path)
  * conflict target proves each run's rows are independent -- a field_path can
  * have one row per run, each with its own extraction_field id. Scanning the
  * whole document would resurface an older run's already-superseded
@@ -63,16 +63,16 @@ export async function detectExtractionQualityTriggers(
 ): Promise<{ triggerIds: string[]; createdCount: number }> {
   const input = schema.parse(untrusted);
 
-  const source = await client.query('SELECT 1 FROM source_document WHERE client_id = $1 AND id = $2', [input.clientId, input.sourceDocumentId]);
+  const source = await client.query('SELECT 1 FROM source_document WHERE account_id = $1 AND id = $2', [input.clientId, input.sourceDocumentId]);
   if (!source.rowCount) throw new ExtractionQualityTriggerError('SOURCE_NOT_FOUND');
 
   const rows = (await client.query<Source>(
     `SELECT id, field_path, extraction_status, confidence FROM extraction_field
-     WHERE client_id = $1 AND source_document_id = $2 AND extraction_response_hash = $3
+     WHERE account_id = $1 AND source_document_id = $2 AND extraction_response_hash = $3
        AND correction_hash IS NULL
        AND field_path NOT IN (
          SELECT field_path FROM extraction_field
-         WHERE client_id = $1 AND source_document_id = $2 AND extraction_response_hash = $3 AND human_value IS NOT NULL
+         WHERE account_id = $1 AND source_document_id = $2 AND extraction_response_hash = $3 AND human_value IS NOT NULL
        )
      ORDER BY field_path`,
     [input.clientId, input.sourceDocumentId, input.extractionResponseHash],
@@ -89,10 +89,10 @@ export async function detectExtractionQualityTriggers(
 
     const detail = { extractionStatus: row.extraction_status, confidence, fieldPath: row.field_path, extractionResponseHash: input.extractionResponseHash };
     const result = await insertIdempotent(client, {
-      insertSql: `INSERT INTO extraction_quality_trigger (client_id, source_document_id, extraction_field_id, trigger_type, field_path, confidence, detail)
+      insertSql: `INSERT INTO extraction_quality_trigger (account_id, source_document_id, extraction_field_id, trigger_type, field_path, confidence, detail)
        VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb) ON CONFLICT DO NOTHING`,
       insertParams: [input.clientId, input.sourceDocumentId, row.id, triggerType, row.field_path, confidence, JSON.stringify(detail)],
-      fallbackSql: `SELECT id FROM extraction_quality_trigger WHERE client_id = $8 AND extraction_field_id = $9 AND trigger_type = $10`,
+      fallbackSql: `SELECT id FROM extraction_quality_trigger WHERE account_id = $8 AND extraction_field_id = $9 AND trigger_type = $10`,
       fallbackParams: [input.clientId, row.id, triggerType],
     });
     if (result?.created) createdCount++;

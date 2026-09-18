@@ -4,7 +4,7 @@ import { quarantineOnReversal } from '../../src/modules/rule-engine/quarantine-o
 describe('quarantineOnReversal', () => {
   it('keeps an ACTIVE rule when reversals are within policy', async () => {
     const query = vi.fn().mockResolvedValueOnce({ rows: [{ rule_type: 'STRUCTURAL', lifecycle_state: 'ACTIVE' }] })
-      .mockResolvedValueOnce({ rows: [{ client_id: 'c', rule_type: 'STRUCTURAL', n1_confirm: 3, n2_confirm: 5, max_reversals: 1 }] })
+      .mockResolvedValueOnce({ rows: [{ account_id: 'c', rule_type: 'STRUCTURAL', n1_confirm: 3, n2_confirm: 5, max_reversals: 1 }] })
       .mockResolvedValueOnce({ rows: [{ count: '1' }] });
     await expect(quarantineOnReversal({ query } as never, { clientId: 'c', criterionId: 'crit', ruleVersionId: 'rv' }))
       .resolves.toEqual({ quarantined: false, ruleVersionId: 'rv' });
@@ -16,7 +16,7 @@ describe('quarantineOnReversal', () => {
   });
   it('creates a quarantined successor after the policy cap is exceeded', async () => {
     const query = vi.fn().mockResolvedValueOnce({ rows: [{ rule_type: 'STRUCTURAL', lifecycle_state: 'ACTIVE' }] })
-      .mockResolvedValueOnce({ rows: [{ client_id: 'c', rule_type: 'STRUCTURAL', n1_confirm: 3, n2_confirm: 5, max_reversals: 1 }] })
+      .mockResolvedValueOnce({ rows: [{ account_id: 'c', rule_type: 'STRUCTURAL', n1_confirm: 3, n2_confirm: 5, max_reversals: 1 }] })
       .mockResolvedValueOnce({ rows: [{ count: '2' }] })
       .mockResolvedValueOnce({ rows: [{ lifecycle_state: 'ACTIVE' }] })
       .mockResolvedValueOnce({ rows: [{ id: 'quarantined-rv' }] }).mockResolvedValueOnce({ rows: [] });

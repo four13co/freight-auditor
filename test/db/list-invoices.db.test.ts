@@ -21,9 +21,9 @@ describe('listInvoices (DB)', () => {
     pool = getPool();
     const owner = await pool.connect();
     try {
-      const a = await owner.query(`INSERT INTO client (name, slug) VALUES ('LI-A', $1) RETURNING id`, [`${tag}-a`]);
+      const a = await owner.query(`INSERT INTO account (name, slug) VALUES ('LI-A', $1) RETURNING id`, [`${tag}-a`]);
       clientAId = a.rows[0].id;
-      const b = await owner.query(`INSERT INTO client (name, slug) VALUES ('LI-B', $1) RETURNING id`, [`${tag}-b`]);
+      const b = await owner.query(`INSERT INTO account (name, slug) VALUES ('LI-B', $1) RETURNING id`, [`${tag}-b`]);
       clientBId = b.rows[0].id;
       const carrier = await owner.query(`INSERT INTO carrier (name) VALUES ($1) RETURNING id`, [`Carrier-${tag}`]);
       carrierId = carrier.rows[0].id;
@@ -35,10 +35,10 @@ describe('listInvoices (DB)', () => {
   afterAll(async () => {
     const owner = await pool.connect();
     try {
-      await owner.query(`DELETE FROM charge_fact WHERE client_id IN ($1, $2)`, [clientAId, clientBId]);
-      await owner.query(`DELETE FROM invoice WHERE client_id IN ($1, $2)`, [clientAId, clientBId]);
+      await owner.query(`DELETE FROM charge_fact WHERE account_id IN ($1, $2)`, [clientAId, clientBId]);
+      await owner.query(`DELETE FROM invoice WHERE account_id IN ($1, $2)`, [clientAId, clientBId]);
       await owner.query(`DELETE FROM carrier WHERE id = ANY($1::uuid[])`, [[carrierId, ...extraCarrierIds]]);
-      await owner.query(`DELETE FROM client WHERE id IN ($1, $2)`, [clientAId, clientBId]);
+      await owner.query(`DELETE FROM account WHERE id IN ($1, $2)`, [clientAId, clientBId]);
     } finally {
       owner.release();
     }
@@ -50,7 +50,7 @@ describe('listInvoices (DB)', () => {
     opts: { clientId: string; invoiceNumber?: string; carrierId?: string; status?: string; charges?: string[] },
   ): Promise<{ id: string }> {
     const inv = await client.query(
-      `INSERT INTO invoice (client_id, carrier_id, transaction_set, invoice_number, currency, parser_version, status)
+      `INSERT INTO invoice (account_id, carrier_id, transaction_set, invoice_number, currency, parser_version, status)
        VALUES ($1, $2, '210', $3, 'USD', 'test', $4) RETURNING id`,
       [
         opts.clientId,
@@ -63,7 +63,7 @@ describe('listInvoices (DB)', () => {
 
     for (const amount of opts.charges ?? []) {
       await client.query(
-        `INSERT INTO charge_fact (client_id, invoice_id, code, category, amount, currency)
+        `INSERT INTO charge_fact (account_id, invoice_id, code, category, amount, currency)
          VALUES ($1, $2, '400', 'LINEHAUL', $3, 'USD')`,
         [opts.clientId, invoiceId, amount],
       );

@@ -19,12 +19,12 @@ export async function acceptContractRuleProposal(client: pg.PoolClient, untruste
   const input = inputSchema.parse(untrusted);
   const proposal = (await client.query<Proposal>(`SELECT p.id,p.rule_type,p.ast,p.ast_hash,p.expected_inputs,p.proposal_hash,
     p.verified_contract_version_id,(SELECT pc.contract_clause_id FROM contract_rule_proposal_clause pc
-      JOIN contract_clause cc ON cc.id=pc.contract_clause_id AND cc.client_id=pc.client_id
-      WHERE pc.client_id=p.client_id AND pc.proposal_id=p.id ORDER BY cc.clause_ref,cc.id LIMIT 1) contract_clause_id
-    FROM contract_rule_proposal p WHERE p.client_id=$1 AND p.id=$2`, [input.clientId, input.proposalId])).rows[0];
+      JOIN contract_clause cc ON cc.id=pc.contract_clause_id AND cc.account_id=pc.account_id
+      WHERE pc.account_id=p.account_id AND pc.proposal_id=p.id ORDER BY cc.clause_ref,cc.id LIMIT 1) contract_clause_id
+    FROM contract_rule_proposal p WHERE p.account_id=$1 AND p.id=$2`, [input.clientId, input.proposalId])).rows[0];
   if (!proposal) throw new ProposalAcceptanceError('PROPOSAL_NOT_FOUND');
   const backtest = (await client.query<{ id: string }>(`SELECT id FROM contract_rule_proposal_backtest
-    WHERE client_id=$1 AND id=$2 AND proposal_id=$3 AND proposal_hash=$4 AND ast_hash=$5 AND passed=true`,
+    WHERE account_id=$1 AND id=$2 AND proposal_id=$3 AND proposal_hash=$4 AND ast_hash=$5 AND passed=true`,
   [input.clientId, input.backtestId, input.proposalId, proposal.proposal_hash, proposal.ast_hash])).rows[0];
   if (!backtest) throw new ProposalAcceptanceError('PASSING_BACKTEST_REQUIRED');
   const slug = `contract-proposal-${proposal.id}`;
@@ -49,11 +49,11 @@ export async function acceptContractRuleProposal(client: pg.PoolClient, untruste
   const shadowId = shadowVersion.id;
   const acceptance = await insertIdempotent(client, {
     insertSql: `INSERT INTO contract_rule_proposal_acceptance
-    (client_id,proposal_id,backtest_id,shadow_rule_version_id,accepted_by,rationale) VALUES($1,$2,$3,$4,$5,$6)
-    ON CONFLICT(client_id,proposal_id) DO NOTHING`,
+    (account_id,proposal_id,backtest_id,shadow_rule_version_id,accepted_by,rationale) VALUES($1,$2,$3,$4,$5,$6)
+    ON CONFLICT(account_id,proposal_id) DO NOTHING`,
     insertParams: [input.clientId, proposal.id, backtest.id, shadowId, input.actorUserId, input.rationale],
     fallbackSql: `SELECT id FROM contract_rule_proposal_acceptance
-    WHERE client_id=$7 AND proposal_id=$8 AND backtest_id=$9 AND shadow_rule_version_id=$10 AND accepted_by=$11 AND rationale=$12`,
+    WHERE account_id=$7 AND proposal_id=$8 AND backtest_id=$9 AND shadow_rule_version_id=$10 AND accepted_by=$11 AND rationale=$12`,
     fallbackParams: [input.clientId, proposal.id, backtest.id, shadowId, input.actorUserId, input.rationale],
   });
   if (!acceptance) throw new ProposalAcceptanceError('ACCEPTANCE_CONFLICT');

@@ -28,28 +28,28 @@ describe.skipIf(!DATABASE_URL)('workflow_outbox_message (database)', () => {
 
   beforeAll(async () => {
     await getPool().query(
-      `INSERT INTO client (id, name, slug) VALUES ($1, 'Workflow Outbox Co', $2)`,
+      `INSERT INTO account (id, name, slug) VALUES ($1, 'Workflow Outbox Co', $2)`,
       [clientId, `workflow-outbox-${clientId}`],
     );
     await getPool().query(
-      `INSERT INTO workflow_instance (id, client_id, workflow_type, subject_entity, subject_entity_id, current_state)
+      `INSERT INTO workflow_instance (id, account_id, workflow_type, subject_entity, subject_entity_id, current_state)
        VALUES ($1, $2, 'dispute_resolution', 'dispute', $3, 'awaiting_response')`,
       [workflowInstanceId, clientId, randomUUID()],
     );
   });
 
   afterAll(async () => {
-    await getPool().query(`DELETE FROM workflow_outbox_message WHERE client_id = $1`, [clientId]);
-    await getPool().query(`DELETE FROM workflow_command WHERE client_id = $1`, [clientId]);
-    await getPool().query(`DELETE FROM audit_event WHERE client_id = $1`, [clientId]);
-    await getPool().query(`DELETE FROM workflow_instance WHERE client_id = $1`, [clientId]);
-    await getPool().query(`DELETE FROM client WHERE id = $1`, [clientId]);
+    await getPool().query(`DELETE FROM workflow_outbox_message WHERE account_id = $1`, [clientId]);
+    await getPool().query(`DELETE FROM workflow_command WHERE account_id = $1`, [clientId]);
+    await getPool().query(`DELETE FROM audit_event WHERE account_id = $1`, [clientId]);
+    await getPool().query(`DELETE FROM workflow_instance WHERE account_id = $1`, [clientId]);
+    await getPool().query(`DELETE FROM account WHERE id = $1`, [clientId]);
     await closePool();
   });
 
   async function seedCommand(): Promise<string> {
     const { rows } = await getPool().query<{ id: string }>(
-      `INSERT INTO workflow_command (client_id, workflow_instance_id, command_type, run_after)
+      `INSERT INTO workflow_command (account_id, workflow_instance_id, command_type, run_after)
        VALUES ($1, $2, 'notify_carrier', now() - interval '1 minute') RETURNING id`,
       [clientId, workflowInstanceId],
     );
@@ -106,7 +106,7 @@ describe.skipIf(!DATABASE_URL)('workflow_outbox_message (database)', () => {
       ).rejects.toThrow('simulated failure after both writes, before commit');
 
       const outboxAfterRollback = await getPool().query(
-        `SELECT id FROM workflow_outbox_message WHERE client_id = $1 AND dedupe_key = $2`,
+        `SELECT id FROM workflow_outbox_message WHERE account_id = $1 AND dedupe_key = $2`,
         [clientId, dedupeKey],
       );
       expect(outboxAfterRollback.rows).toHaveLength(0);

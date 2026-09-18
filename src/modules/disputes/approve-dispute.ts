@@ -48,8 +48,8 @@ export async function approveDispute(
   actorUserId: string,
   now: Date = new Date(),
 ): Promise<ApproveDisputeResult> {
-  const result = await client.query<{ id: string; client_id: string }>(
-    `UPDATE dispute SET status = 'sent' WHERE id = $1 AND status = 'draft' RETURNING id, client_id`,
+  const result = await client.query<{ id: string; account_id: string }>(
+    `UPDATE dispute SET status = 'sent' WHERE id = $1 AND status = 'draft' RETURNING id, account_id`,
     [disputeId],
   );
 
@@ -57,8 +57,8 @@ export async function approveDispute(
   if (!row) return { found: false };
 
   await writeAuditEvent(client, {
-    id: deterministicAuditEventId(row.client_id, row.id, 'dispute.approved'),
-    clientId: row.client_id,
+    id: deterministicAuditEventId(row.account_id, row.id, 'dispute.approved'),
+    clientId: row.account_id,
     entity: 'dispute',
     entityId: row.id,
     event: 'dispute.approved',
@@ -68,7 +68,7 @@ export async function approveDispute(
   });
 
   const workflowInstance = await createWorkflowInstance(client, {
-    clientId: row.client_id,
+    clientId: row.account_id,
     workflowType: DISPUTE_DELIVERY_WORKFLOW_TYPE,
     subjectEntity: 'dispute',
     subjectEntityId: row.id,
@@ -76,7 +76,7 @@ export async function approveDispute(
   });
 
   await scheduleWorkflowCommand(client, {
-    clientId: row.client_id,
+    clientId: row.account_id,
     workflowInstanceId: workflowInstance.id,
     commandType: DELIVER_DISPUTE_COMMAND_TYPE,
     payload: { disputeId: row.id },

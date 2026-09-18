@@ -17,7 +17,7 @@ const SUBJECT_ID = '33333333-3333-4333-8333-333333333333';
 const AUDIT_ID = '44444444-4444-4444-8444-444444444444';
 
 const rawRow = {
-  id: WF_ID, client_id: CLIENT_ID, workflow_type: 'claim_recovery',
+  id: WF_ID, account_id: CLIENT_ID, workflow_type: 'claim_recovery',
   subject_entity: 'claim', subject_entity_id: SUBJECT_ID, current_state: 'opened',
   created_at: new Date('2026-01-01T00:00:00Z'), updated_at: new Date('2026-01-01T00:00:00Z'),
 };

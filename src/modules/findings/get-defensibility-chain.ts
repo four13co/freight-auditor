@@ -34,12 +34,12 @@ export async function getDefensibilityChain(
     LEFT JOIN rate_cell rc ON rc.id = vf.rate_cell_id
     LEFT JOIN source_document sd ON sd.id = vf.source_document_id
     LEFT JOIN transport_document td ON td.id = vf.transport_document_id
-    WHERE vf.id = $1 AND vf.client_id = $2`, [findingId, clientId]);
+    WHERE vf.id = $1 AND vf.account_id = $2`, [findingId, clientId]);
   const row = result.rows[0];
   if (!row) return null;
   const members = row.alignment_id ? await client.query<{ charge_fact_id: string | null; expected_charge_id: string | null }>(
     `SELECT charge_fact_id, expected_charge_id FROM charge_alignment_member
-     WHERE alignment_id = $1 AND client_id = $2 ORDER BY coalesce(charge_fact_id::text, expected_charge_id::text)`,
+     WHERE alignment_id = $1 AND account_id = $2 ORDER BY coalesce(charge_fact_id::text, expected_charge_id::text)`,
     [row.alignment_id, clientId]) : { rows: [] };
   return {
     finding: { id: row.id, auditRunId: row.audit_run_id, classification: row.classification, varianceAmount: row.variance_amount, currency: row.currency, evaluatedExpr: row.evaluated_expr },

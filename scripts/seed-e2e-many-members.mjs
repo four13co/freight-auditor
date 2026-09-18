@@ -49,7 +49,7 @@ export async function seedManyTenantMembers({ pool } = {}) {
   const ownedPool = !pool;
   const ownerPool = pool ?? new pg.Pool({ connectionString: requireDatabaseUrl() });
   try {
-    const existing = await ownerPool.query(`SELECT id FROM client WHERE slug = $1`, [
+    const existing = await ownerPool.query(`SELECT id FROM account WHERE slug = $1`, [
       manyTenantSlug(MANY_TENANTS_COUNT),
     ]);
     if (existing.rows.length > 0) return;
@@ -58,7 +58,7 @@ export async function seedManyTenantMembers({ pool } = {}) {
       for (let i = 1; i <= MANY_TENANTS_COUNT; i++) {
         const secondsBeforeNow = MANY_TENANTS_COUNT - i;
         const clientRow = await client.query(
-          `INSERT INTO client (name, slug, created_at) VALUES ($1, $2, now() - ($3 || ' seconds')::interval) RETURNING id`,
+          `INSERT INTO account (name, slug, created_at) VALUES ($1, $2, now() - ($3 || ' seconds')::interval) RETURNING id`,
           [`E2E Many Tenant ${i}`, manyTenantSlug(i), secondsBeforeNow],
         );
         const clientId = clientRow.rows[0].id;
@@ -70,7 +70,7 @@ export async function seedManyTenantMembers({ pool } = {}) {
         const userId = userRow.rows[0].id;
 
         await client.query(
-          `INSERT INTO membership (user_id, client_id, role) VALUES ($1, $2, 'client_viewer')`,
+          `INSERT INTO membership (user_id, account_id, role) VALUES ($1, $2, 'account_viewer')`,
           [userId, clientId],
         );
       }

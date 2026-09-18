@@ -21,9 +21,9 @@ describe('createMembership (DB)', () => {
   afterAll(async () => {
     const owner = await pool.connect();
     try {
-      await owner.query(`DELETE FROM membership WHERE client_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM membership WHERE account_id = $1`, [clientId]);
       await owner.query(`DELETE FROM app_user WHERE id = ANY($1::uuid[])`, [createdUserIds]);
-      await owner.query(`DELETE FROM client WHERE id = $1`, [clientId]);
+      await owner.query(`DELETE FROM account WHERE id = $1`, [clientId]);
     } finally {
       owner.release();
     }
@@ -34,7 +34,7 @@ describe('createMembership (DB)', () => {
     pool = getPool();
     const owner = await pool.connect();
     try {
-      const created = await owner.query(`INSERT INTO client (name, slug) VALUES ('CM Client', $1) RETURNING id`, [tag]);
+      const created = await owner.query(`INSERT INTO account (name, slug) VALUES ('CM Client', $1) RETURNING id`, [tag]);
       clientId = created.rows[0].id;
 
       const existing = await owner.query(`INSERT INTO app_user (email, full_name) VALUES ($1, 'Existing User') RETURNING id`, [existingEmail]);
@@ -45,7 +45,7 @@ describe('createMembership (DB)', () => {
     }
 
     const result = await withTenantTx({ internal: true }, (client) =>
-      createMembership(client, { clientId, email: newEmail, fullName: 'New User', role: 'client_admin' }),
+      createMembership(client, { clientId, email: newEmail, fullName: 'New User', role: 'account_admin' }),
     );
     expect(result.created).toBe(true);
     if (result.created) {

@@ -71,9 +71,9 @@ export async function createDisputeFromFindings(
   const { rows } = await client.query<FindingRow>(
     `SELECT vf.id, vf.status, i.carrier_id, vf.currency, vf.variance_amount, vf.direction
        FROM variance_finding vf
-       JOIN audit_run ar ON ar.id = vf.audit_run_id AND ar.client_id = vf.client_id
-       JOIN invoice i ON i.id = ar.invoice_id AND i.client_id = vf.client_id
-      WHERE vf.client_id = $1 AND vf.id = ANY($2::uuid[])
+       JOIN audit_run ar ON ar.id = vf.audit_run_id AND ar.account_id = vf.account_id
+       JOIN invoice i ON i.id = ar.invoice_id AND i.account_id = vf.account_id
+      WHERE vf.account_id = $1 AND vf.id = ANY($2::uuid[])
       ORDER BY vf.id
         FOR UPDATE OF vf`,
     [input.clientId, input.findingIds],
@@ -87,7 +87,7 @@ export async function createDisputeFromFindings(
   );
 
   const dispute = await client.query<{ id: string }>(
-    `INSERT INTO dispute (client_id, carrier_id, status, amount_claimed, currency)
+    `INSERT INTO dispute (account_id, carrier_id, status, amount_claimed, currency)
      VALUES ($1,$2,'draft',$3,$4) RETURNING id`,
     [input.clientId, validated.carrierId, validated.amountClaimed, validated.currency],
   );
@@ -95,7 +95,7 @@ export async function createDisputeFromFindings(
 
   for (const findingRow of rows.filter((r) => validated.findingIds.includes(r.id))) {
     await client.query(
-      `INSERT INTO dispute_line (client_id, dispute_id, variance_finding_id, amount, currency)
+      `INSERT INTO dispute_line (account_id, dispute_id, variance_finding_id, amount, currency)
        VALUES ($1,$2,$3,$4,$5)`,
       [input.clientId, disputeId, findingRow.id, findingRow.variance_amount, findingRow.currency],
     );

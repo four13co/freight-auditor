@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
  * 86e36yrne: request-level coverage of the client portal's own
  * /api/portal/contracts surface -- same isolated-registration pattern as
  * portal-invoice-upload-routes.test.ts (86e36yj9d): mocks client-admin-
- * auth.js so this proves the route composes registerClientAdminAuthPreHandler
+ * auth.js so this proves the route composes registerAccountAdminAuthPreHandler
  * correctly (a non-client_admin caller is rejected with 401 before the
  * handler runs, matching the established client_admin-gated-route contract),
  * plus the two domain-error mappings uploadContractDocument's own callers
@@ -21,14 +21,14 @@ describe('portal contract upload route (client_admin-gated)', () => {
     app = undefined;
     vi.resetModules();
     vi.doUnmock('../../src/db/tenant-context.js');
-    vi.doUnmock('../../src/modules/identity/client-admin-auth.js');
+    vi.doUnmock('../../src/modules/identity/account-admin-auth.js');
     vi.doUnmock('../../src/modules/contracts/upload-contract-document.js');
     vi.doUnmock('../../src/modules/reference-data/object-store-config.js');
   });
 
   function mockClientAdminAuth(ctx: { clientIds: string[]; internal: boolean } | null) {
-    vi.doMock('../../src/modules/identity/client-admin-auth.js', () => ({
-      registerClientAdminAuthPreHandler: async (routes: FastifyInstance) => {
+    vi.doMock('../../src/modules/identity/account-admin-auth.js', () => ({
+      registerAccountAdminAuthPreHandler: async (routes: FastifyInstance) => {
         routes.addHook('preHandler', async (request: FastifyRequest, reply: FastifyReply) => {
           if (!ctx) {
             await reply.code(401).send({ error: 'unauthorized' });

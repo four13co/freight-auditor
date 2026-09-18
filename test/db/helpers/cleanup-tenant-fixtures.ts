@@ -8,8 +8,8 @@ import type pg from 'pg';
  * #163, #165, #167) at its root instead of relying on every new
  * `test/db/**` file's `afterAll` to hand-order its own DELETEs correctly.
  *
- * Scope is computed, not hand-maintained: every table with a `client_id`
- * column, plus `client` itself (the implicit root every such column
+ * Scope is computed, not hand-maintained: every table with a `account_id`
+ * column, plus `account` itself (the implicit root every such column
  * references). A schema change that adds or removes a tenant-scoped table
  * or FK is picked up automatically on the next run -- no second place to
  * remember to update.
@@ -25,10 +25,10 @@ export async function cleanupTenantFixtures(pool: pg.Pool, clientIds: string[]):
   try {
     const order = await computeTenantDeletionOrder(client);
     for (const table of order) {
-      if (table === 'client') {
-        await client.query(`DELETE FROM client WHERE id = ANY($1::uuid[])`, [clientIds]);
+      if (table === 'account') {
+        await client.query(`DELETE FROM account WHERE id = ANY($1::uuid[])`, [clientIds]);
       } else {
-        await client.query(`DELETE FROM "${table}" WHERE client_id = ANY($1::uuid[])`, [clientIds]);
+        await client.query(`DELETE FROM "${table}" WHERE account_id = ANY($1::uuid[])`, [clientIds]);
       }
     }
   } finally {
@@ -37,7 +37,7 @@ export async function cleanupTenantFixtures(pool: pg.Pool, clientIds: string[]):
 }
 
 /**
- * Topologically sorts { every table with a client_id column } ∪ { client }
+ * Topologically sorts { every table with a account_id column } ∪ { account }
  * by their foreign-key edges (child -> parent) so children precede the
  * parents they reference. Kahn's algorithm: a table with no remaining
  * incoming edge (nothing left in scope still references it) is safe to
@@ -51,10 +51,15 @@ export async function cleanupTenantFixtures(pool: pg.Pool, clientIds: string[]):
 async function computeTenantDeletionOrder(client: pg.PoolClient): Promise<string[]> {
   const { rows: scopeRows } = await client.query<{ table_name: string }>(
     `SELECT table_name FROM information_schema.columns
-      WHERE table_schema = 'public' AND column_name = 'client_id'`,
+      WHERE table_schema = 'public' AND column_name = 'account_id'
+        -- 86e3ankd7: better-auth's own ba_account.account_id is an unrelated
+        -- text column (which OAuth provider account it links to), not our
+        -- uuid tenant FK -- excluded the same way the migration's down-path
+        -- and the RLS schema guard both exclude ba_% from account_id scans.
+        AND table_name NOT LIKE 'ba_%'`,
   );
   const scope = new Set(scopeRows.map((r) => r.table_name));
-  scope.add('client');
+  scope.add('account');
 
   const { rows: edgeRows } = await client.query<{ child_table: string; parent_table: string }>(
     `SELECT DISTINCT

@@ -19,21 +19,21 @@ describe('contract rule proposal provenance (DB)', () => {
 
   beforeAll(async () => {
     pool = makePool();
-    clientId = (await pool.query(`INSERT INTO client(name,slug) VALUES('Proposal',$1) RETURNING id`, [tag])).rows[0].id;
-    otherClientId = (await pool.query(`INSERT INTO client(name,slug) VALUES('Other',$1) RETURNING id`, [`${tag}-other`])).rows[0].id;
+    clientId = (await pool.query(`INSERT INTO account(name,slug) VALUES('Proposal',$1) RETURNING id`, [tag])).rows[0].id;
+    otherClientId = (await pool.query(`INSERT INTO account(name,slug) VALUES('Other',$1) RETURNING id`, [`${tag}-other`])).rows[0].id;
     userId = (await pool.query(`INSERT INTO app_user(email) VALUES($1) RETURNING id`, [`${tag}@example.com`])).rows[0].id;
     carrierId = (await pool.query(`INSERT INTO carrier(name) VALUES($1) RETURNING id`, [tag])).rows[0].id;
-    sourceId = (await pool.query(`INSERT INTO source_document(client_id,sha256,content_type,byte_size,storage_uri)
+    sourceId = (await pool.query(`INSERT INTO source_document(account_id,sha256,content_type,byte_size,storage_uri)
       VALUES($1,$2,'application/pdf',1,$3) RETURNING id`, [clientId, sourceSha, `local://${tag}`])).rows[0].id;
-    contractId = (await pool.query(`INSERT INTO contract(client_id,carrier_id,name) VALUES($1,$2,'Proposal') RETURNING id`, [clientId, carrierId])).rows[0].id;
-    versionId = (await pool.query(`INSERT INTO contract_version(client_id,contract_id,valid_from,source_document_id)
+    contractId = (await pool.query(`INSERT INTO contract(account_id,carrier_id,name) VALUES($1,$2,'Proposal') RETURNING id`, [clientId, carrierId])).rows[0].id;
+    versionId = (await pool.query(`INSERT INTO contract_version(account_id,contract_id,valid_from,source_document_id)
       VALUES($1,$2,'2026-01-01',$3) RETURNING id`, [clientId, contractId, sourceId])).rows[0].id;
-    verifiedId = (await pool.query(`INSERT INTO verified_contract_version(client_id,contract_version_id,source_document_id,
+    verifiedId = (await pool.query(`INSERT INTO verified_contract_version(account_id,contract_version_id,source_document_id,
       extraction_response_hash,verification_hash,resolved_fields,verified_by) VALUES($1,$2,$3,$4,$5,'[]',$6) RETURNING id`,
     [clientId, versionId, sourceId, extractionHash, verificationHash, userId])).rows[0].id;
-    clauseId = (await pool.query(`INSERT INTO contract_clause(client_id,contract_version_id,clause_ref,text_excerpt,page_ref)
+    clauseId = (await pool.query(`INSERT INTO contract_clause(account_id,contract_version_id,clause_ref,text_excerpt,page_ref)
       VALUES($1,$2,'4.2','A fuel surcharge applies.','2') RETURNING id`, [clientId, versionId])).rows[0].id;
-    await pool.query(`INSERT INTO audit_event(client_id,entity,entity_id,event,actor_kind,detail)
+    await pool.query(`INSERT INTO audit_event(account_id,entity,entity_id,event,actor_kind,detail)
       VALUES($1,'contract_extraction',$2,'persisted','ai',$3::jsonb)`, [clientId, sourceId, JSON.stringify({ responseHash: extractionHash })]);
   });
 
@@ -53,14 +53,14 @@ describe('contract rule proposal provenance (DB)', () => {
   }
 
   afterAll(async () => {
-    await pool.query(`DELETE FROM audit_event WHERE client_id=$1`, [clientId]);
-    await pool.query(`DELETE FROM contract_rule_proposal_clause WHERE client_id=$1`, [clientId]);
-    await pool.query(`DELETE FROM contract_rule_proposal WHERE client_id=$1`, [clientId]);
+    await pool.query(`DELETE FROM audit_event WHERE account_id=$1`, [clientId]);
+    await pool.query(`DELETE FROM contract_rule_proposal_clause WHERE account_id=$1`, [clientId]);
+    await pool.query(`DELETE FROM contract_rule_proposal WHERE account_id=$1`, [clientId]);
     await pool.query(`DELETE FROM contract_clause WHERE id=$1`, [clauseId]);
     await pool.query(`DELETE FROM verified_contract_version WHERE id=$1`, [verifiedId]);
     await pool.query(`DELETE FROM contract_version WHERE id=$1`, [versionId]); await pool.query(`DELETE FROM contract WHERE id=$1`, [contractId]);
     await pool.query(`DELETE FROM source_document WHERE id=$1`, [sourceId]); await pool.query(`DELETE FROM app_user WHERE id=$1`, [userId]);
-    await pool.query(`DELETE FROM client WHERE id IN($1,$2)`, [clientId, otherClientId]);
+    await pool.query(`DELETE FROM account WHERE id IN($1,$2)`, [clientId, otherClientId]);
     await pool.query(`DELETE FROM carrier WHERE id=$1`, [carrierId]); await pool.end();
   });
 
@@ -75,7 +75,7 @@ describe('contract rule proposal provenance (DB)', () => {
       source_document_sha256: sourceSha, extraction_response_hash: extractionHash, verification_hash: verificationHash, actor_user_id: userId });
     expect((await pool.query(`SELECT contract_clause_id,citations FROM contract_rule_proposal_clause WHERE proposal_id=$1`, [first.proposalIds[0]])).rows[0])
       .toMatchObject({ contract_clause_id: clauseId, citations: [citation] });
-    expect((await pool.query(`SELECT count(*)::int count FROM audit_event WHERE client_id=$1 AND entity='contract_rule_proposals'
+    expect((await pool.query(`SELECT count(*)::int count FROM audit_event WHERE account_id=$1 AND entity='contract_rule_proposals'
       AND event='persisted'`, [clientId])).rows[0].count).toBe(1);
   });
 

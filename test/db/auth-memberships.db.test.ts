@@ -5,15 +5,15 @@ import { getPool, closePool } from '../../src/db/pool.js';
 
 /**
  * 86e2wb92b: a real (non-dev-header) session proves WHO a user is, but
- * nothing told the frontend WHICH client_id to send on subsequent requests
+ * nothing told the frontend WHICH account_id to send on subsequent requests
  * -- resolveViaSession still requires an explicit x-client-id header
  * (tenant-auth.ts). GET /api/auth/memberships (app.ts) is the new lookup:
- * given a verified session, return the client_id(s) that user has a
+ * given a verified session, return the account_id(s) that user has a
  * membership row for, so login can store one and start sending it as
  * x-client-id (option (b), decided on the ClickUp task).
  *
  * Real Postgres, real sign-up/sign-in round-trip -- membership carries
- * FORCE RLS keyed on client_id (migration 0009), so this can't be proven
+ * FORCE RLS keyed on account_id (migration 0009), so this can't be proven
  * with a mocked client.
  */
 describe('GET /api/auth/memberships (DB, e2e)', () => {
@@ -42,9 +42,9 @@ describe('GET /api/auth/memberships (DB, e2e)', () => {
     pool = getPool();
     const owner = await pool.connect();
     try {
-      const a = await owner.query(`INSERT INTO client (name, slug) VALUES ('AuthMem A', $1) RETURNING id`, [`${tag}-a`]);
+      const a = await owner.query(`INSERT INTO account (name, slug) VALUES ('AuthMem A', $1) RETURNING id`, [`${tag}-a`]);
       clientAId = a.rows[0].id;
-      const b = await owner.query(`INSERT INTO client (name, slug) VALUES ('AuthMem B', $1) RETURNING id`, [`${tag}-b`]);
+      const b = await owner.query(`INSERT INTO account (name, slug) VALUES ('AuthMem B', $1) RETURNING id`, [`${tag}-b`]);
       clientBId = b.rows[0].id;
     } finally {
       owner.release();
@@ -63,11 +63,11 @@ describe('GET /api/auth/memberships (DB, e2e)', () => {
     const owner = await pool.connect();
     try {
       await owner.query(`DELETE FROM audit_event WHERE actor_user_id IN (SELECT id FROM app_user WHERE email LIKE $1)`, [`${tag}%`]);
-      await owner.query(`DELETE FROM membership WHERE client_id IN ($1, $2)`, [clientAId, clientBId]);
+      await owner.query(`DELETE FROM membership WHERE account_id IN ($1, $2)`, [clientAId, clientBId]);
       await owner.query(`DELETE FROM ba_session WHERE user_id IN (SELECT id FROM app_user WHERE email LIKE $1)`, [`${tag}%`]);
       await owner.query(`DELETE FROM ba_account WHERE user_id IN (SELECT id FROM app_user WHERE email LIKE $1)`, [`${tag}%`]);
       await owner.query(`DELETE FROM app_user WHERE email LIKE $1`, [`${tag}%`]);
-      await owner.query(`DELETE FROM client WHERE id IN ($1, $2)`, [clientAId, clientBId]);
+      await owner.query(`DELETE FROM account WHERE id IN ($1, $2)`, [clientAId, clientBId]);
     } finally {
       owner.release();
     }
@@ -88,14 +88,14 @@ describe('GET /api/auth/memberships (DB, e2e)', () => {
     return signIn.cookies.map((c) => `${c.name}=${c.value}`).join('; ');
   }
 
-  it('AC1: returns the client_id for a user with exactly one membership row', async () => {
+  it('AC1: returns the account_id for a user with exactly one membership row', async () => {
     const email = `${tag}-single@example.com`;
     const cookieHeader = await signUpAndSignIn(email);
 
     const owner = await pool.connect();
     try {
       const u = await owner.query(`SELECT id FROM app_user WHERE email = $1`, [email]);
-      await owner.query(`INSERT INTO membership (user_id, client_id, role) VALUES ($1, $2, 'client_viewer')`, [
+      await owner.query(`INSERT INTO membership (user_id, account_id, role) VALUES ($1, $2, 'account_viewer')`, [
         u.rows[0].id,
         clientAId,
       ]);
@@ -163,7 +163,7 @@ describe('GET /api/auth/memberships (DB, e2e)', () => {
     const owner = await pool.connect();
     try {
       const u = await owner.query(`SELECT id FROM app_user WHERE email = $1`, [email]);
-      await owner.query(`INSERT INTO membership (user_id, client_id, role) VALUES ($1, $2, 'client_admin')`, [
+      await owner.query(`INSERT INTO membership (user_id, account_id, role) VALUES ($1, $2, 'account_admin')`, [
         u.rows[0].id,
         clientAId,
       ]);
@@ -176,18 +176,18 @@ describe('GET /api/auth/memberships (DB, e2e)', () => {
     expect(res.json()).toEqual({ clientIds: [clientAId], isInternal: false, role: 'client_admin', clientName: 'AuthMem A' });
   });
 
-  it('returns every client_id for a user with more than one membership row', async () => {
+  it('returns every account_id for a user with more than one membership row', async () => {
     const email = `${tag}-multi@example.com`;
     const cookieHeader = await signUpAndSignIn(email);
 
     const owner = await pool.connect();
     try {
       const u = await owner.query(`SELECT id FROM app_user WHERE email = $1`, [email]);
-      await owner.query(`INSERT INTO membership (user_id, client_id, role) VALUES ($1, $2, 'client_viewer')`, [
+      await owner.query(`INSERT INTO membership (user_id, account_id, role) VALUES ($1, $2, 'account_viewer')`, [
         u.rows[0].id,
         clientAId,
       ]);
-      await owner.query(`INSERT INTO membership (user_id, client_id, role) VALUES ($1, $2, 'client_viewer')`, [
+      await owner.query(`INSERT INTO membership (user_id, account_id, role) VALUES ($1, $2, 'account_viewer')`, [
         u.rows[0].id,
         clientBId,
       ]);

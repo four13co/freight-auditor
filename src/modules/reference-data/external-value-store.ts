@@ -70,7 +70,7 @@ export async function pinExternalValueForAudit(client: pg.PoolClient, input: {
 }): Promise<string> {
   const result = await client.query<{ id: string }>(
     `INSERT INTO audit_external_value_pin
-       (client_id, audit_run_id, external_value_id, publication_id, resolver_version, axis_key, published_for, value)
+       (account_id, audit_run_id, external_value_id, publication_id, resolver_version, axis_key, published_for, value)
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
      ON CONFLICT (audit_run_id, external_value_id) DO NOTHING
      RETURNING id`,

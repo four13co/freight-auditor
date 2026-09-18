@@ -28,9 +28,9 @@ describe('resolve-dispute (DB)', () => {
     pool = getPool();
     const owner = await pool.connect();
     try {
-      const c = await owner.query(`INSERT INTO client (name, slug) VALUES ('RD', $1) RETURNING id`, [tag]);
+      const c = await owner.query(`INSERT INTO account (name, slug) VALUES ('RD', $1) RETURNING id`, [tag]);
       clientId = c.rows[0].id;
-      const c2 = await owner.query(`INSERT INTO client (name, slug) VALUES ('RD-other', $1) RETURNING id`, [`${tag}-other`]);
+      const c2 = await owner.query(`INSERT INTO account (name, slug) VALUES ('RD-other', $1) RETURNING id`, [`${tag}-other`]);
       otherClientId = c2.rows[0].id;
       const u = await owner.query(`INSERT INTO app_user (email) VALUES ($1) RETURNING id`, [`${tag}@example.com`]);
       actorUserId = u.rows[0].id;
@@ -42,10 +42,10 @@ describe('resolve-dispute (DB)', () => {
   afterAll(async () => {
     const owner = await pool.connect();
     try {
-      await owner.query(`DELETE FROM audit_event WHERE client_id = ANY($1)`, [[clientId, otherClientId]]);
-      await owner.query(`DELETE FROM dispute WHERE client_id = ANY($1)`, [[clientId, otherClientId]]);
+      await owner.query(`DELETE FROM audit_event WHERE account_id = ANY($1)`, [[clientId, otherClientId]]);
+      await owner.query(`DELETE FROM dispute WHERE account_id = ANY($1)`, [[clientId, otherClientId]]);
       await owner.query(`DELETE FROM app_user WHERE id = $1`, [actorUserId]);
-      await owner.query(`DELETE FROM client WHERE id = ANY($1)`, [[clientId, otherClientId]]);
+      await owner.query(`DELETE FROM account WHERE id = ANY($1)`, [[clientId, otherClientId]]);
     } finally {
       owner.release();
     }
@@ -54,7 +54,7 @@ describe('resolve-dispute (DB)', () => {
 
   async function seedSentDispute(client: pg.PoolClient, ownerClientId: string, amountClaimed = '500.0000'): Promise<string> {
     const dispute = await client.query(
-      `INSERT INTO dispute (client_id, status, amount_claimed, currency) VALUES ($1, 'sent', $2, 'USD') RETURNING id`,
+      `INSERT INTO dispute (account_id, status, amount_claimed, currency) VALUES ($1, 'sent', $2, 'USD') RETURNING id`,
       [ownerClientId, amountClaimed],
     );
     return dispute.rows[0].id;

@@ -33,7 +33,7 @@ export interface AuthorizePaymentResult {
  * (this task's own Exclusions line) means in code.
  *
  * Idempotent via SELECT-then-INSERT inside the caller's transaction. (86e367r9x:
- * payment_gate_decision does have a UNIQUE (client_id, audit_run_id, action)
+ * payment_gate_decision does have a UNIQUE (account_id, audit_run_id, action)
  * constraint -- migration 0052's payment_gate_decision_run_action_uk -- that
  * makes this airtight across transactions too; an earlier version of this
  * comment claimed it was still "open, unmerged," which was stale. This still
@@ -46,14 +46,14 @@ export async function authorizePayment(
   const input = schema.parse(untrusted);
 
   const run = await client.query<{ invoice_id: string }>(
-    `SELECT invoice_id FROM audit_run WHERE client_id = $1 AND id = $2`,
+    `SELECT invoice_id FROM audit_run WHERE account_id = $1 AND id = $2`,
     [input.clientId, input.auditRunId],
   );
   if (!run.rowCount) throw new AuthorizePaymentError('AUDIT_RUN_NOT_FOUND');
   const invoiceId = run.rows[0]!.invoice_id;
 
   const existing = await client.query<{ id: string }>(
-    `SELECT id FROM payment_gate_decision WHERE client_id = $1 AND audit_run_id = $2 AND action = $3`,
+    `SELECT id FROM payment_gate_decision WHERE account_id = $1 AND audit_run_id = $2 AND action = $3`,
     [input.clientId, input.auditRunId, input.action],
   );
   if (existing.rows[0]) {
@@ -61,7 +61,7 @@ export async function authorizePayment(
   }
 
   const inserted = await client.query<{ id: string }>(
-    `INSERT INTO payment_gate_decision (client_id, invoice_id, audit_run_id, action, actor_kind, rationale)
+    `INSERT INTO payment_gate_decision (account_id, invoice_id, audit_run_id, action, actor_kind, rationale)
      VALUES ($1,$2,$3,$4,'analyst',$5) RETURNING id`,
     [input.clientId, invoiceId, input.auditRunId, input.action, input.rationale ?? null],
   );

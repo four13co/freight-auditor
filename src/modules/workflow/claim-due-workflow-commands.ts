@@ -48,7 +48,7 @@ export async function claimDueWorkflowCommands(
      SET status = 'claimed', attempts = attempts + 1, claimed_at = $2
      WHERE id IN (
        SELECT id FROM workflow_command
-       WHERE client_id = $1 AND status = 'pending' AND run_after <= $2
+       WHERE account_id = $1 AND status = 'pending' AND run_after <= $2
        ORDER BY run_after
        LIMIT $3
        FOR UPDATE SKIP LOCKED
@@ -84,7 +84,7 @@ export async function completeWorkflowCommand(
 
   const result = await client.query(
     `UPDATE workflow_command SET status = 'done'
-     WHERE client_id = $1 AND id = $2 AND status IN ('claimed', 'done')`,
+     WHERE account_id = $1 AND id = $2 AND status IN ('claimed', 'done')`,
     [input.clientId, input.commandId],
   );
 

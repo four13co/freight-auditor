@@ -8,7 +8,7 @@ export async function getRubricSnapshot(client: pg.PoolClient, auditRunId: strin
 
 export async function listResolutionConflicts(client: pg.PoolClient, auditRunId: string): Promise<unknown[]> {
   return (await client.query(`SELECT rc.id, rc.criterion_key, rc.conflict_type, rc.detail, rc.recorded_at
-    FROM audit_run ar JOIN resolution_conflict rc ON rc.tenant_id = ar.client_id OR rc.tenant_id IS NULL
+    FROM audit_run ar JOIN resolution_conflict rc ON rc.tenant_id = ar.account_id OR rc.tenant_id IS NULL
     WHERE ar.id = $1 ORDER BY rc.recorded_at, rc.id`, [auditRunId])).rows;
 }
 

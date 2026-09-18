@@ -23,7 +23,7 @@ function mockClient(opts: { outboxInsertRows?: unknown[]; disputeCommInsertRows?
     if (sql.startsWith('INSERT INTO workflow_outbox_message')) return Promise.resolve({ rows: outboxInsertRows });
     if (sql.includes('INSERT INTO audit_event')) return Promise.resolve({ rows: [{ id: 'audit-event-id', created: true }] });
     if (sql.startsWith('SELECT id FROM workflow_outbox_message')) return Promise.resolve({ rows: [{ id: OUTBOX_MESSAGE_ID }] });
-    if (sql.includes('SELECT client_id FROM dispute')) return Promise.resolve({ rowCount: 1, rows: [{ client_id: CLIENT_ID }] });
+    if (sql.includes('SELECT account_id FROM dispute')) return Promise.resolve({ rowCount: 1, rows: [{ account_id: CLIENT_ID }] });
     if (sql.startsWith('INSERT INTO dispute_comm')) return Promise.resolve({ rows: disputeCommInsertRows });
     if (sql.startsWith('SELECT id FROM dispute_comm')) return Promise.resolve({ rows: [{ id: DISPUTE_COMM_ID }] });
     throw new Error(`unexpected query: ${sql}`);

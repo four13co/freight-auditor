@@ -18,7 +18,7 @@ describe('handleClaimFollowUpJob', () => {
   it('parses the payload and delegates to generateClaimFollowUp', async () => {
     const query = vi.fn().mockImplementation(async (sql: string) => {
       if (sql.includes('FROM claim')) {
-        return { rows: [{ id: CLAIM_ID, client_id: CLIENT_ID, status: 'open', aging_deadline_at: new Date('2026-01-01T00:00:00Z') }] };
+        return { rows: [{ id: CLAIM_ID, account_id: CLIENT_ID, status: 'open', aging_deadline_at: new Date('2026-01-01T00:00:00Z') }] };
       }
       if (sql.includes('INSERT INTO audit_event')) return { rows: [{ id: 'audit-1', created: true }] };
       throw new Error(`unexpected query: ${sql}`);

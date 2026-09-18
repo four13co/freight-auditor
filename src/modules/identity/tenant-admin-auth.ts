@@ -5,7 +5,7 @@ import { readHeader, toFetchHeaders, lookupIsInternal } from '../findings/tenant
 /**
  * Own auth resolver for /api/internal/tenants* (86e38rdnm), a genuinely
  * cross-client surface -- creating or listing tenants can't be scoped to an
- * existing client_id the way registerTenantAuthPreHandler requires (the
+ * existing account_id the way registerTenantAuthPreHandler requires (the
  * caller has no membership in a tenant that doesn't exist yet). This item's
  * own body named registerTenantAuthPreHandler + registerAnalystOnlyPreHandler,
  * but that pairing structurally can't work here for the same reason

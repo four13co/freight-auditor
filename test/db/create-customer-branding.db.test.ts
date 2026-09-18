@@ -20,8 +20,8 @@ describe('createCustomerBranding (DB)', () => {
   afterAll(async () => {
     const owner = await pool.connect();
     try {
-      await owner.query(`DELETE FROM customer_branding WHERE client_id = $1`, [clientId]);
-      await owner.query(`DELETE FROM client WHERE id = $1`, [clientId]);
+      await owner.query(`DELETE FROM customer_branding WHERE account_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM account WHERE id = $1`, [clientId]);
     } finally {
       owner.release();
     }
@@ -32,7 +32,7 @@ describe('createCustomerBranding (DB)', () => {
     pool = getPool();
     const owner = await pool.connect();
     try {
-      const created = await owner.query(`INSERT INTO client (name, slug) VALUES ('CCB Client', $1) RETURNING id`, [tag]);
+      const created = await owner.query(`INSERT INTO account (name, slug) VALUES ('CCB Client', $1) RETURNING id`, [tag]);
       clientId = created.rows[0].id;
     } finally {
       owner.release();
@@ -44,7 +44,7 @@ describe('createCustomerBranding (DB)', () => {
     expect(result).toEqual({ logoUrl: 'https://cdn.example.com/logo.png', primaryColor: '#112233', secondaryColor: '#445566' });
 
     const readBack = await withTenantTx({ internal: true }, (client) =>
-      client.query(`SELECT domain, logo_url FROM customer_branding WHERE client_id = $1`, [clientId]),
+      client.query(`SELECT domain, logo_url FROM customer_branding WHERE account_id = $1`, [clientId]),
     );
     expect(readBack.rows[0]).toMatchObject({ domain, logo_url: 'https://cdn.example.com/logo.png' });
   });

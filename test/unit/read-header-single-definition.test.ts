@@ -16,8 +16,8 @@ describe('readHeader has a single definition', () => {
   const files = [
     'src/modules/findings/tenant-auth.ts',
     'src/modules/findings/internal-analyst-auth.ts',
-    'src/modules/identity/client-admin-auth.ts',
-    'src/modules/identity/client-viewer-auth.ts',
+    'src/modules/identity/account-admin-auth.ts',
+    'src/modules/identity/account-viewer-auth.ts',
   ];
 
   it('is defined in exactly one file (tenant-auth.ts)', () => {

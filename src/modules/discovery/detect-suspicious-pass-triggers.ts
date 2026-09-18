@@ -34,12 +34,12 @@ export async function detectSuspiciousPassTriggers(
 ): Promise<{ triggerIds: string[]; createdCount: number }> {
   const input = schema.parse(untrusted);
 
-  const run = await client.query(`SELECT 1 FROM audit_run WHERE client_id = $1 AND id = $2`, [input.clientId, input.auditRunId]);
+  const run = await client.query(`SELECT 1 FROM audit_run WHERE account_id = $1 AND id = $2`, [input.clientId, input.auditRunId]);
   if (!run.rowCount) throw new SuspiciousPassTriggerError('AUDIT_RUN_NOT_FOUND');
 
   const rows = (await client.query<Source>(
     `SELECT id, charge_index, marker_code, missing_fields FROM coverage_marker
-     WHERE client_id = $1 AND audit_run_id = $2 ORDER BY charge_index, marker_code`,
+     WHERE account_id = $1 AND audit_run_id = $2 ORDER BY charge_index, marker_code`,
     [input.clientId, input.auditRunId],
   )).rows;
 
@@ -48,10 +48,10 @@ export async function detectSuspiciousPassTriggers(
   for (const row of rows) {
     const detail = { chargeIndex: row.charge_index, missingFields: row.missing_fields };
     const result = await insertIdempotent(client, {
-      insertSql: `INSERT INTO suspicious_pass_trigger (client_id, audit_run_id, coverage_marker_id, marker_code, detail)
+      insertSql: `INSERT INTO suspicious_pass_trigger (account_id, audit_run_id, coverage_marker_id, marker_code, detail)
        VALUES ($1, $2, $3, $4, $5::jsonb) ON CONFLICT DO NOTHING`,
       insertParams: [input.clientId, input.auditRunId, row.id, row.marker_code, JSON.stringify(detail)],
-      fallbackSql: `SELECT id FROM suspicious_pass_trigger WHERE client_id = $6 AND coverage_marker_id = $7`,
+      fallbackSql: `SELECT id FROM suspicious_pass_trigger WHERE account_id = $6 AND coverage_marker_id = $7`,
       fallbackParams: [input.clientId, row.id],
     });
     if (result?.created) createdCount++;

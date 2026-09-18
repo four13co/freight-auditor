@@ -18,21 +18,21 @@ describe.skipIf(!DATABASE_URL)('claim aging/follow-up/escalation queues (databas
 
   beforeAll(async () => {
     await getPool().query(
-      `INSERT INTO client (id, name, slug) VALUES ($1, 'Claim Queues Co', $2)`,
+      `INSERT INTO account (id, name, slug) VALUES ($1, 'Claim Queues Co', $2)`,
       [clientId, `claim-queues-${clientId}`],
     );
   });
 
   afterAll(async () => {
-    await getPool().query(`DELETE FROM audit_event WHERE client_id = $1`, [clientId]);
-    await getPool().query(`DELETE FROM claim WHERE client_id = $1`, [clientId]);
-    await getPool().query(`DELETE FROM client WHERE id = $1`, [clientId]);
+    await getPool().query(`DELETE FROM audit_event WHERE account_id = $1`, [clientId]);
+    await getPool().query(`DELETE FROM claim WHERE account_id = $1`, [clientId]);
+    await getPool().query(`DELETE FROM account WHERE id = $1`, [clientId]);
     await closePool();
   });
 
   async function seedClaim(clientIdArg: string, agingDeadlineAt: string | null): Promise<string> {
     const { rows } = await getPool().query<{ id: string }>(
-      `INSERT INTO claim (client_id, amount_claimed, currency, status, opened_at, aging_deadline_at)
+      `INSERT INTO claim (account_id, amount_claimed, currency, status, opened_at, aging_deadline_at)
        VALUES ($1, '500.0000', 'USD', 'open', now(), $2) RETURNING id`,
       [clientIdArg, agingDeadlineAt],
     );
@@ -41,7 +41,7 @@ describe.skipIf(!DATABASE_URL)('claim aging/follow-up/escalation queues (databas
 
   async function writeTerminalEvent(clientIdArg: string, claimId: string, event: string, recordedAt: string) {
     await getPool().query(
-      `INSERT INTO audit_event (id, client_id, entity, entity_id, event, actor_kind, recorded_at)
+      `INSERT INTO audit_event (id, account_id, entity, entity_id, event, actor_kind, recorded_at)
        VALUES (gen_random_uuid(), $1, 'claim', $2, $3, 'system', $4)`,
       [clientIdArg, claimId, event, recordedAt],
     );

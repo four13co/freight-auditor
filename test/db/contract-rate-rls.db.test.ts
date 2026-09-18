@@ -21,35 +21,35 @@ describe('contract_rate RLS', () => {
     pool = makePool();
     const owner = await pool.connect();
     try {
-      const a = await owner.query(`INSERT INTO client (name, slug) VALUES ('RLS-A', $1) RETURNING id`, [`${tag}-a`]);
-      const b = await owner.query(`INSERT INTO client (name, slug) VALUES ('RLS-B', $1) RETURNING id`, [`${tag}-b`]);
+      const a = await owner.query(`INSERT INTO account (name, slug) VALUES ('RLS-A', $1) RETURNING id`, [`${tag}-a`]);
+      const b = await owner.query(`INSERT INTO account (name, slug) VALUES ('RLS-B', $1) RETURNING id`, [`${tag}-b`]);
       clientA = a.rows[0].id;
       clientB = b.rows[0].id;
       const carrier = await owner.query(`INSERT INTO carrier (name) VALUES ('RLS Carrier') RETURNING id`);
       const carrierId = carrier.rows[0].id;
       const contractA = await owner.query(
-        `INSERT INTO contract (client_id, carrier_id, name) VALUES ($1,$2,'A') RETURNING id`,
+        `INSERT INTO contract (account_id, carrier_id, name) VALUES ($1,$2,'A') RETURNING id`,
         [clientA, carrierId],
       );
       const contractB = await owner.query(
-        `INSERT INTO contract (client_id, carrier_id, name) VALUES ($1,$2,'B') RETURNING id`,
+        `INSERT INTO contract (account_id, carrier_id, name) VALUES ($1,$2,'B') RETURNING id`,
         [clientB, carrierId],
       );
       const verA = await owner.query(
-        `INSERT INTO contract_version (client_id, contract_id, version_label, valid_from) VALUES ($1,$2,'v1',CURRENT_DATE) RETURNING id`,
+        `INSERT INTO contract_version (account_id, contract_id, version_label, valid_from) VALUES ($1,$2,'v1',CURRENT_DATE) RETURNING id`,
         [clientA, contractA.rows[0].id],
       );
       const verB = await owner.query(
-        `INSERT INTO contract_version (client_id, contract_id, version_label, valid_from) VALUES ($1,$2,'v1',CURRENT_DATE) RETURNING id`,
+        `INSERT INTO contract_version (account_id, contract_id, version_label, valid_from) VALUES ($1,$2,'v1',CURRENT_DATE) RETURNING id`,
         [clientB, contractB.rows[0].id],
       );
       versionA = verA.rows[0].id;
       const rateA = await owner.query(
-        `INSERT INTO contract_rate (client_id, contract_version_id, category, rate, currency) VALUES ($1,$2,'LINEHAUL',900.00,'USD') RETURNING id`,
+        `INSERT INTO contract_rate (account_id, contract_version_id, category, rate, currency) VALUES ($1,$2,'LINEHAUL',900.00,'USD') RETURNING id`,
         [clientA, verA.rows[0].id],
       );
       const rateB = await owner.query(
-        `INSERT INTO contract_rate (client_id, contract_version_id, category, rate, currency) VALUES ($1,$2,'LINEHAUL',750.00,'USD') RETURNING id`,
+        `INSERT INTO contract_rate (account_id, contract_version_id, category, rate, currency) VALUES ($1,$2,'LINEHAUL',750.00,'USD') RETURNING id`,
         [clientB, verB.rows[0].id],
       );
       rateAId = rateA.rows[0].id;
@@ -62,10 +62,10 @@ describe('contract_rate RLS', () => {
   afterAll(async () => {
     const owner = await pool.connect();
     try {
-      await owner.query(`DELETE FROM contract_rate WHERE client_id = ANY($1)`, [[clientA, clientB]]);
-      await owner.query(`DELETE FROM contract_version WHERE client_id = ANY($1)`, [[clientA, clientB]]);
-      await owner.query(`DELETE FROM contract WHERE client_id = ANY($1)`, [[clientA, clientB]]);
-      await owner.query(`DELETE FROM client WHERE id = ANY($1)`, [[clientA, clientB]]);
+      await owner.query(`DELETE FROM contract_rate WHERE account_id = ANY($1)`, [[clientA, clientB]]);
+      await owner.query(`DELETE FROM contract_version WHERE account_id = ANY($1)`, [[clientA, clientB]]);
+      await owner.query(`DELETE FROM contract WHERE account_id = ANY($1)`, [[clientA, clientB]]);
+      await owner.query(`DELETE FROM account WHERE id = ANY($1)`, [[clientA, clientB]]);
     } finally {
       owner.release();
     }
@@ -87,13 +87,13 @@ describe('contract_rate RLS', () => {
 
   it('a session scoped to client A cannot see client B rows', async () => {
     const rows = await withAppTx(pool, { clientIds: [clientA], internal: false }, async (c) => {
-      const r = await c.query(`SELECT id, client_id FROM contract_rate WHERE contract_version_id = ANY($1)`, [
+      const r = await c.query(`SELECT id, account_id FROM contract_rate WHERE contract_version_id = ANY($1)`, [
         [versionA],
       ]);
       return r.rows;
     });
     expect(rows.length).toBeGreaterThanOrEqual(1);
-    expect(rows.every((r) => r.client_id === clientA)).toBe(true);
+    expect(rows.every((r) => r.account_id === clientA)).toBe(true);
 
     const bRows = await withAppTx(pool, { clientIds: [clientA], internal: false }, async (c) => {
       const r = await c.query(`SELECT id FROM contract_rate WHERE id = $1`, [rateBId]);
@@ -104,10 +104,10 @@ describe('contract_rate RLS', () => {
 
   it('an internal session sees rows across both clients', async () => {
     const seen = await withAppTx(pool, { internal: true }, async (c) => {
-      const r = await c.query(`SELECT DISTINCT client_id FROM contract_rate WHERE id = ANY($1)`, [
+      const r = await c.query(`SELECT DISTINCT account_id FROM contract_rate WHERE id = ANY($1)`, [
         [rateAId, rateBId],
       ]);
-      return new Set(r.rows.map((row) => row.client_id));
+      return new Set(r.rows.map((row) => row.account_id));
     });
     expect(seen.has(clientA)).toBe(true);
     expect(seen.has(clientB)).toBe(true);
@@ -117,7 +117,7 @@ describe('contract_rate RLS', () => {
     await expect(
       withAppTx(pool, { clientIds: [clientA], internal: false }, async (c) => {
         await c.query(
-          `INSERT INTO contract_rate (client_id, contract_version_id, category, rate, currency) VALUES ($1,$2,'FUEL',1.00,'USD')`,
+          `INSERT INTO contract_rate (account_id, contract_version_id, category, rate, currency) VALUES ($1,$2,'FUEL',1.00,'USD')`,
           [clientB, versionA],
         );
       }),
@@ -125,7 +125,7 @@ describe('contract_rate RLS', () => {
 
     await expect(
       withAppTx(pool, { clientIds: [clientA], internal: false }, async (c) => {
-        await c.query(`UPDATE contract_rate SET client_id = $1 WHERE id = $2`, [clientB, rateAId]);
+        await c.query(`UPDATE contract_rate SET account_id = $1 WHERE id = $2`, [clientB, rateAId]);
       }),
     ).rejects.toThrow(/row-level security|new row violates/i);
   });

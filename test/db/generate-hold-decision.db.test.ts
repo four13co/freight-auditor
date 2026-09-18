@@ -32,7 +32,7 @@ describe('generateHoldDecision (DB)', () => {
     pool = getPool();
     const owner = await pool.connect();
     try {
-      const c = await owner.query(`INSERT INTO client (name, slug) VALUES ('HOLD', $1) RETURNING id`, [tag]);
+      const c = await owner.query(`INSERT INTO account (name, slug) VALUES ('HOLD', $1) RETURNING id`, [tag]);
       clientId = c.rows[0].id;
     } finally {
       owner.release();
@@ -41,16 +41,16 @@ describe('generateHoldDecision (DB)', () => {
 
   afterAll(async () => {
     await cleanupTenantFixtures(pool, [clientId]);
-    // app_user has no client_id column, so cleanupTenantFixtures' generic
+    // app_user has no account_id column, so cleanupTenantFixtures' generic
     // scope doesn't reach the configurer seeded for the opt-out test below --
-    // must run after (client_payment_policy.configured_by FKs into it).
+    // must run after (account_payment_policy.configured_by FKs into it).
     await pool.query(`DELETE FROM app_user WHERE email = $1`, [`${tag}-configurer@example.com`]);
     await closePool();
   });
 
   // 86e367r9x: persistAuditRun now wires generateHoldDecision internally for
   // any SCORED run (the platform hold-then-approve default, no
-  // client_payment_policy row configured for this test's fresh client) --
+  // account_payment_policy row configured for this test's fresh client) --
   // so a subsequent explicit call is necessarily a no-op retry, not a fresh
   // create. This test proves that wiring; the next one proves
   // generateHoldDecision's own fresh-create behavior in isolation (the
@@ -65,7 +65,7 @@ describe('generateHoldDecision (DB)', () => {
       const p = await persistAuditRun(c, { clientId, invoice: inv, result, rubricSnapshotId: null });
       const retry = await generateHoldDecision(c, { clientId, auditRunId: p.auditRunId });
       const decisions = await c.query(
-        `SELECT action, actor_kind, amount, currency FROM payment_gate_decision WHERE client_id = $1 AND audit_run_id = $2`,
+        `SELECT action, actor_kind, amount, currency FROM payment_gate_decision WHERE account_id = $1 AND audit_run_id = $2`,
         [clientId, p.auditRunId],
       );
       return { retry, decisions: decisions.rows };
@@ -84,11 +84,11 @@ describe('generateHoldDecision (DB)', () => {
     let auditRunId: string;
     try {
       const invoice = await owner.query<{ id: string }>(
-        `INSERT INTO invoice (client_id, transaction_set, parser_version) VALUES ($1, '210', 'test') RETURNING id`,
+        `INSERT INTO invoice (account_id, transaction_set, parser_version) VALUES ($1, '210', 'test') RETURNING id`,
         [clientId],
       );
       const run = await owner.query<{ id: string }>(
-        `INSERT INTO audit_run (client_id, invoice_id, engine_spec_version, outcome) VALUES ($1, $2, 'test', 'SCORED') RETURNING id`,
+        `INSERT INTO audit_run (account_id, invoice_id, engine_spec_version, outcome) VALUES ($1, $2, 'test', 'SCORED') RETURNING id`,
         [clientId, invoice.rows[0]!.id],
       );
       auditRunId = run.rows[0]!.id;
@@ -107,7 +107,7 @@ describe('generateHoldDecision (DB)', () => {
     expect(row.retry.decisionId).toBe(row.first.decisionId);
   });
 
-  it('persistAuditRun does not wire a hold decision when the client has opted out via client_payment_policy', async () => {
+  it('persistAuditRun does not wire a hold decision when the client has opted out via account_payment_policy', async () => {
     const inv = parse210(GOLDEN_210, testCategorize);
     const result = evaluateInvoice(inv);
 
@@ -117,7 +117,7 @@ describe('generateHoldDecision (DB)', () => {
         `INSERT INTO app_user (email) VALUES ($1) RETURNING id`, [`${tag}-configurer@example.com`],
       );
       await owner.query(
-        `INSERT INTO client_payment_policy (client_id, hold_then_approve, configured_by) VALUES ($1, false, $2)`,
+        `INSERT INTO account_payment_policy (account_id, hold_then_approve, configured_by) VALUES ($1, false, $2)`,
         [clientId, configuredBy.rows[0]!.id],
       );
     } finally {
@@ -130,7 +130,7 @@ describe('generateHoldDecision (DB)', () => {
       // persistAuditRun itself respected the policy and created none either.
       const outcome = await generateHoldDecision(c, { clientId, auditRunId: p.auditRunId, holdThenApprove: false });
       const decisions = await c.query(
-        `SELECT action FROM payment_gate_decision WHERE client_id = $1 AND audit_run_id = $2`,
+        `SELECT action FROM payment_gate_decision WHERE account_id = $1 AND audit_run_id = $2`,
         [clientId, p.auditRunId],
       );
       return { outcome, decisions: decisions.rows };

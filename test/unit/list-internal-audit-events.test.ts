@@ -18,11 +18,11 @@ describe('listInternalAuditEvents (unit, mocked client)', () => {
     ]);
   });
 
-  it('issues no client_id predicate at all -- cross-client by design, safety is RLS alone', async () => {
+  it('issues no account_id predicate at all -- cross-client by design, safety is RLS alone', async () => {
     const { client, query } = mockClient();
     await listInternalAuditEvents(client);
     const [sql, params] = query.mock.calls[0] as [string, unknown[]];
-    expect(sql).not.toMatch(/client_id/);
+    expect(sql).not.toMatch(/account_id/);
     expect(sql).not.toMatch(/WHERE.*AND/);
     // Only limit/offset are bound when no filters are given.
     expect(params).toEqual([50, 0]);

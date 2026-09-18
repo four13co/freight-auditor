@@ -79,7 +79,7 @@ export async function writeAuditEvent(
   const result = await client.query<{ id: string; created: boolean }>(
     `WITH inserted AS (
        INSERT INTO audit_event
-         (id, client_id, entity, entity_id, event, actor_kind, actor_user_id,
+         (id, account_id, entity, entity_id, event, actor_kind, actor_user_id,
           rule_version_id, rubric_snapshot_id, detail)
        VALUES ($1, $2, $3, $4, $5, $6::actor_kind, $7, $8, $9, $10::jsonb)
        ON CONFLICT (id) DO NOTHING
@@ -89,7 +89,7 @@ export async function writeAuditEvent(
      UNION ALL
      SELECT id, false AS created FROM audit_event
      WHERE id = $1 AND NOT EXISTS (SELECT 1 FROM inserted)
-       AND client_id IS NOT DISTINCT FROM $2::uuid
+       AND account_id IS NOT DISTINCT FROM $2::uuid
        AND entity = $3 AND entity_id IS NOT DISTINCT FROM $4::uuid
        AND event = $5 AND actor_kind = $6::actor_kind
        AND actor_user_id IS NOT DISTINCT FROM $7::uuid

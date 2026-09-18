@@ -33,7 +33,7 @@ describe('generateDoNotPayDecision (DB)', () => {
     pool = getPool();
     const owner = await pool.connect();
     try {
-      const c = await owner.query(`INSERT INTO client (name, slug) VALUES ('DNP', $1) RETURNING id`, [tag]);
+      const c = await owner.query(`INSERT INTO account (name, slug) VALUES ('DNP', $1) RETURNING id`, [tag]);
       clientId = c.rows[0].id;
     } finally {
       owner.release();
@@ -55,7 +55,7 @@ describe('generateDoNotPayDecision (DB)', () => {
       const first = await generateDoNotPayDecision(c, { clientId, auditRunId: p.auditRunId });
       const retry = await generateDoNotPayDecision(c, { clientId, auditRunId: p.auditRunId });
       const decisions = await c.query(
-        `SELECT action, actor_kind, amount, currency, rationale FROM payment_gate_decision WHERE client_id = $1 AND audit_run_id = $2`,
+        `SELECT action, actor_kind, amount, currency, rationale FROM payment_gate_decision WHERE account_id = $1 AND audit_run_id = $2`,
         [clientId, p.auditRunId],
       );
       return { first, retry, decisions: decisions.rows };

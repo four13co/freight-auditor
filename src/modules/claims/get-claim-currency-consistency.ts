@@ -20,14 +20,14 @@ export async function getClaimCurrencyConsistency(
   claimId: string,
 ): Promise<CurrencyConsistencyResult> {
   const { rows: claimRows } = await client.query<{ currency: string | null }>(
-    `SELECT currency FROM claim WHERE client_id = $1 AND id = $2`,
+    `SELECT currency FROM claim WHERE account_id = $1 AND id = $2`,
     [clientId, claimId],
   );
   const claimRow = claimRows[0];
   if (!claimRow) throw new GetClaimCurrencyConsistencyError('CLAIM_NOT_FOUND');
 
   const { rows: eventRows } = await client.query<{ id: string; currency: string | null }>(
-    `SELECT id, currency FROM recovery_event WHERE client_id = $1 AND claim_id = $2`,
+    `SELECT id, currency FROM recovery_event WHERE account_id = $1 AND claim_id = $2`,
     [clientId, claimId],
   );
 

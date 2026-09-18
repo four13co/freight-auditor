@@ -19,19 +19,19 @@ describe('discovery proposal backtest and SHADOW acceptance (DB)', () => {
 
   beforeAll(async () => {
     pool = makePool();
-    clientId = (await pool.query(`INSERT INTO client(name,slug) VALUES('DiscoveryBacktest',$1) RETURNING id`, [tag])).rows[0].id;
-    otherClientId = (await pool.query(`INSERT INTO client(name,slug) VALUES('Other',$1) RETURNING id`, [`${tag}-other`])).rows[0].id;
+    clientId = (await pool.query(`INSERT INTO account(name,slug) VALUES('DiscoveryBacktest',$1) RETURNING id`, [tag])).rows[0].id;
+    otherClientId = (await pool.query(`INSERT INTO account(name,slug) VALUES('Other',$1) RETURNING id`, [`${tag}-other`])).rows[0].id;
     userId = (await pool.query(`INSERT INTO app_user(email) VALUES($1) RETURNING id`, [`${tag}@example.com`])).rows[0].id;
     carrierId = (await pool.query(`INSERT INTO carrier(name) VALUES($1) RETURNING id`, [tag])).rows[0].id;
-    invoiceId = (await pool.query(`INSERT INTO invoice(client_id,carrier_id,transaction_set,invoice_number,currency,parser_version)
+    invoiceId = (await pool.query(`INSERT INTO invoice(account_id,carrier_id,transaction_set,invoice_number,currency,parser_version)
       VALUES($1,$2,'210',$3,'USD','test') RETURNING id`, [clientId, carrierId, `INV-${tag}`])).rows[0].id;
-    auditRunId = (await pool.query(`INSERT INTO audit_run(client_id,invoice_id,engine_spec_version,outcome)
+    auditRunId = (await pool.query(`INSERT INTO audit_run(account_id,invoice_id,engine_spec_version,outcome)
       VALUES($1,$2,'test','DISCOVERY_PENDING') RETURNING id`, [clientId, invoiceId])).rows[0].id;
-    chargeFactId = (await pool.query(`INSERT INTO charge_fact(client_id,invoice_id,code,x12_element,amount,currency)
+    chargeFactId = (await pool.query(`INSERT INTO charge_fact(account_id,invoice_id,code,x12_element,amount,currency)
       VALUES($1,$2,'ZZZ','C302-02',10,'USD') RETURNING id`, [clientId, invoiceId])).rows[0].id;
-    unknownCodeTriggerId = (await pool.query(`INSERT INTO unknown_charge_code_trigger(client_id,audit_run_id,charge_fact_id,source_code,x12_element,detail)
+    unknownCodeTriggerId = (await pool.query(`INSERT INTO unknown_charge_code_trigger(account_id,audit_run_id,charge_fact_id,source_code,x12_element,detail)
       VALUES($1,$2,$3,'ZZZ','C302-02','{}'::jsonb) RETURNING id`, [clientId, auditRunId, chargeFactId])).rows[0].id;
-    proposalId = (await pool.query(`INSERT INTO discovery_rule_proposal(client_id,audit_run_id,unknown_charge_code_trigger_id,criterion_key,kind,
+    proposalId = (await pool.query(`INSERT INTO discovery_rule_proposal(account_id,audit_run_id,unknown_charge_code_trigger_id,criterion_key,kind,
       rule_type,description,ast,ast_hash,expected_inputs,proposal_schema_version,provider,model_id,prompt_version,provider_message_id,
       request_key,proposal_hash,actor_user_id)
       VALUES($1,$2,$3,'DISCOVERY.PROPOSED.UNKNOWN_CODE_ZZZ','SCORING','EXTERNAL_REFERENCE','Charge code ZZZ should resolve to a known category.',
@@ -54,21 +54,21 @@ describe('discovery proposal backtest and SHADOW acceptance (DB)', () => {
   }
 
   afterAll(async () => {
-    await pool.query(`DELETE FROM audit_event WHERE client_id=$1`, [clientId]);
-    await pool.query(`DELETE FROM discovery_rule_proposal_acceptance WHERE client_id=$1`, [clientId]);
+    await pool.query(`DELETE FROM audit_event WHERE account_id=$1`, [clientId]);
+    await pool.query(`DELETE FROM discovery_rule_proposal_acceptance WHERE account_id=$1`, [clientId]);
     await pool.query(`DELETE FROM rule_version WHERE source_discovery_rule_proposal_id=$1`, [proposalId]);
     await pool.query(`DELETE FROM rule WHERE slug=$1`, [`discovery-proposal-${proposalId}`]);
-    await pool.query(`DELETE FROM discovery_rule_proposal_backtest_case WHERE client_id=$1`, [clientId]);
-    await pool.query(`DELETE FROM discovery_rule_proposal_backtest WHERE client_id=$1`, [clientId]);
+    await pool.query(`DELETE FROM discovery_rule_proposal_backtest_case WHERE account_id=$1`, [clientId]);
+    await pool.query(`DELETE FROM discovery_rule_proposal_backtest WHERE account_id=$1`, [clientId]);
     await pool.query(`DELETE FROM discovery_rule_proposal WHERE id=$1`, [proposalId]);
-    await pool.query(`DELETE FROM unknown_charge_code_trigger WHERE client_id=$1`, [clientId]);
-    await pool.query(`DELETE FROM charge_fact WHERE client_id=$1`, [clientId]);
+    await pool.query(`DELETE FROM unknown_charge_code_trigger WHERE account_id=$1`, [clientId]);
+    await pool.query(`DELETE FROM charge_fact WHERE account_id=$1`, [clientId]);
     // 86e367r9x: persistAuditRun now wires a payment_gate_decision row per run.
-    await pool.query(`DELETE FROM payment_gate_decision WHERE client_id=$1`, [clientId]);
-    await pool.query(`DELETE FROM audit_run WHERE client_id=$1`, [clientId]);
-    await pool.query(`DELETE FROM invoice WHERE client_id=$1`, [clientId]);
+    await pool.query(`DELETE FROM payment_gate_decision WHERE account_id=$1`, [clientId]);
+    await pool.query(`DELETE FROM audit_run WHERE account_id=$1`, [clientId]);
+    await pool.query(`DELETE FROM invoice WHERE account_id=$1`, [clientId]);
     await pool.query(`DELETE FROM app_user WHERE id=$1`, [userId]);
-    await pool.query(`DELETE FROM client WHERE id IN($1,$2)`, [clientId, otherClientId]);
+    await pool.query(`DELETE FROM account WHERE id IN($1,$2)`, [clientId, otherClientId]);
     await pool.query(`DELETE FROM carrier WHERE id=$1`, [carrierId]); await pool.end();
   });
 
@@ -79,7 +79,7 @@ describe('discovery proposal backtest and SHADOW acceptance (DB)', () => {
     expect(first).toEqual({ backtestIds: retry.backtestIds, proposalCount: 1, passed: true, createdCount: 1 });
     expect(retry.createdCount).toBe(0);
     const row = (await pool.query(`SELECT * FROM discovery_rule_proposal_backtest WHERE id=$1`, [first.backtestIds[0]])).rows[0];
-    expect(row).toMatchObject({ client_id: clientId, proposal_id: proposalId, corpus_schema_version: 'discovery-proposal-backtest/1',
+    expect(row).toMatchObject({ account_id: clientId, proposal_id: proposalId, corpus_schema_version: 'discovery-proposal-backtest/1',
       proposal_hash: 'd'.repeat(64), ast_hash: astHash, passed: true, pass_count: 2, regression_count: 0, actor_user_id: userId });
     const cases = (await pool.query(`SELECT case_key,expected_verdict,actual_verdict,passed,evaluated_ast FROM
       discovery_rule_proposal_backtest_case WHERE backtest_id=$1 ORDER BY case_key`, [first.backtestIds[0]])).rows;
@@ -89,7 +89,7 @@ describe('discovery proposal backtest and SHADOW acceptance (DB)', () => {
       { case_key: 'fuel-present', expected_verdict: 'PASS', actual_verdict: 'PASS', passed: true },
     ]);
     expect(cases[1].evaluated_ast.value).toEqual({ kind: 'bool', value: true });
-    expect((await pool.query(`SELECT count(*)::int count FROM audit_event WHERE client_id=$1 AND entity='discovery_rule_proposals'
+    expect((await pool.query(`SELECT count(*)::int count FROM audit_event WHERE account_id=$1 AND entity='discovery_rule_proposals'
       AND entity_id=$2 AND event='backtested'`, [clientId, auditRunId])).rows[0].count).toBe(1);
   });
 
@@ -112,9 +112,9 @@ describe('discovery proposal backtest and SHADOW acceptance (DB)', () => {
     expect(shadow).toMatchObject({ lifecycle_state: 'SHADOW', hardness: 'AI_DOCS', ast_hash: astHash,
       source_discovery_rule_proposal_id: proposalId, source_discovery_rule_proposal_backtest_id: passingBacktestId,
       provenance: { clientId, proposalId, backtestId: passingBacktestId } });
-    expect((await pool.query(`SELECT count(*)::int count FROM discovery_rule_proposal_acceptance WHERE client_id=$1 AND proposal_id=$2`,
+    expect((await pool.query(`SELECT count(*)::int count FROM discovery_rule_proposal_acceptance WHERE account_id=$1 AND proposal_id=$2`,
       [clientId, proposalId])).rows[0].count).toBe(1);
-    expect((await pool.query(`SELECT count(*)::int count FROM audit_event WHERE client_id=$1 AND entity_id=$2
+    expect((await pool.query(`SELECT count(*)::int count FROM audit_event WHERE account_id=$1 AND entity_id=$2
       AND event='accepted_to_shadow'`, [clientId, proposalId])).rows[0].count).toBe(1);
   });
 

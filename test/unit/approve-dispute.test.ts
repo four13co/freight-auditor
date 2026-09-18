@@ -22,11 +22,11 @@ function mockClient(opts: { updateRows?: unknown[] }) {
     if (sql.startsWith('UPDATE dispute')) return Promise.resolve({ rows: updateRows });
     if (sql.includes('INSERT INTO audit_event')) return Promise.resolve({ rows: [{ id: 'audit-event-id', created: true }] });
     // createWorkflowInstance: idempotent-read-then-insert.
-    if (sql.startsWith('SELECT id, client_id, workflow_type')) return Promise.resolve({ rows: [] });
+    if (sql.startsWith('SELECT id, account_id, workflow_type')) return Promise.resolve({ rows: [] });
     if (sql.startsWith('INSERT INTO workflow_instance')) {
       return Promise.resolve({
         rows: [{
-          id: WORKFLOW_INSTANCE_ID, client_id: CLIENT_ID, workflow_type: 'dispute_delivery',
+          id: WORKFLOW_INSTANCE_ID, account_id: CLIENT_ID, workflow_type: 'dispute_delivery',
           subject_entity: 'dispute', subject_entity_id: DISPUTE_ID, current_state: 'pending_delivery',
           created_at: NOW, updated_at: NOW,
         }],
@@ -43,7 +43,7 @@ function mockClient(opts: { updateRows?: unknown[] }) {
 
 describe('approveDispute', () => {
   it('transitions a draft dispute to sent and writes an audit event', async () => {
-    const { client, query } = mockClient({ updateRows: [{ id: DISPUTE_ID, client_id: CLIENT_ID }] });
+    const { client, query } = mockClient({ updateRows: [{ id: DISPUTE_ID, account_id: CLIENT_ID }] });
     const result = await approveDispute(client, DISPUTE_ID, ACTOR_USER_ID, NOW);
     expect(result).toEqual({ found: true });
 
@@ -70,7 +70,7 @@ describe('approveDispute', () => {
   });
 
   it('creates a dispute_delivery workflow_instance for the approved dispute (P4.C.7)', async () => {
-    const { client, query } = mockClient({ updateRows: [{ id: DISPUTE_ID, client_id: CLIENT_ID }] });
+    const { client, query } = mockClient({ updateRows: [{ id: DISPUTE_ID, account_id: CLIENT_ID }] });
     await approveDispute(client, DISPUTE_ID, ACTOR_USER_ID, NOW);
 
     const insertInstanceCall = query.mock.calls.find((c: unknown[]) => (c[0] as string).startsWith('INSERT INTO workflow_instance')) as [string, unknown[]];
@@ -79,7 +79,7 @@ describe('approveDispute', () => {
   });
 
   it('schedules a deliver_dispute command against the new instance, due immediately (P4.C.7)', async () => {
-    const { client, query } = mockClient({ updateRows: [{ id: DISPUTE_ID, client_id: CLIENT_ID }] });
+    const { client, query } = mockClient({ updateRows: [{ id: DISPUTE_ID, account_id: CLIENT_ID }] });
     await approveDispute(client, DISPUTE_ID, ACTOR_USER_ID, NOW);
 
     const insertCommandCall = query.mock.calls.find((c: unknown[]) => (c[0] as string).startsWith('INSERT INTO workflow_command')) as [string, unknown[]];

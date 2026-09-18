@@ -41,7 +41,7 @@ export interface ShortPayDecisionResult {
  * shortPayEnabled is accepted as a PARAMETER, not read internally by this
  * function -- same treatment as generate-hold-decision.ts's holdThenApprove,
  * just defaulting the other direction (§10: short-pay is opt-in,
- * hold-then-approve is the default). (86e367r9x: client_payment_policy,
+ * hold-then-approve is the default). (86e367r9x: account_payment_policy,
  * migration 0058, is applied and readable -- an earlier version of this
  * comment claimed it was unmerged/absent, which was stale.)
  *
@@ -54,7 +54,7 @@ export interface ShortPayDecisionResult {
  * not-yet-built trigger point.
  *
  * Idempotent per (client, audit_run, 'short_pay'): payment_gate_decision
- * does have a unique constraint on (client_id, audit_run_id, action)
+ * does have a unique constraint on (account_id, audit_run_id, action)
  * (migration 0052's payment_gate_decision_run_action_uk -- an earlier
  * version of this comment claimed it was unmerged, which was also stale).
  * This still uses a plain SELECT-then-INSERT rather than ON CONFLICT; both
@@ -74,14 +74,14 @@ export async function generateShortPayDecision(
   }
 
   const run = await client.query<{ invoice_id: string }>(
-    `SELECT invoice_id FROM audit_run WHERE client_id = $1 AND id = $2 AND outcome = 'SCORED'`,
+    `SELECT invoice_id FROM audit_run WHERE account_id = $1 AND id = $2 AND outcome = 'SCORED'`,
     [input.clientId, input.auditRunId],
   );
   if (!run.rowCount) throw new GenerateShortPayError('AUDIT_RUN_NOT_SCORED');
   const invoiceId = run.rows[0]!.invoice_id;
 
   const existing = await client.query<{ id: string; amount: string; currency: string | null }>(
-    `SELECT id, amount, currency FROM payment_gate_decision WHERE client_id = $1 AND audit_run_id = $2 AND action = 'short_pay'`,
+    `SELECT id, amount, currency FROM payment_gate_decision WHERE account_id = $1 AND audit_run_id = $2 AND action = 'short_pay'`,
     [input.clientId, input.auditRunId],
   );
   if (existing.rows[0]) {
@@ -90,20 +90,20 @@ export async function generateShortPayDecision(
   }
 
   const { rows: chargeFacts } = await client.query<ChargeFactRow>(
-    `SELECT amount, currency FROM charge_fact WHERE client_id = $1 AND invoice_id = $2`,
+    `SELECT amount, currency FROM charge_fact WHERE account_id = $1 AND invoice_id = $2`,
     [input.clientId, invoiceId],
   );
   const { rows: findings } = await client.query<AcceptedOverchargeFindingRow>(
     `SELECT id, currency, variance_amount AS "varianceAmount"
        FROM variance_finding
-      WHERE client_id = $1 AND audit_run_id = $2 AND direction = 'OVERCHARGE' AND status = 'accepted'`,
+      WHERE account_id = $1 AND audit_run_id = $2 AND direction = 'OVERCHARGE' AND status = 'accepted'`,
     [input.clientId, input.auditRunId],
   );
 
   const decision = composeShortPayDecision(chargeFacts, findings);
 
   const inserted = await client.query<{ id: string }>(
-    `INSERT INTO payment_gate_decision (client_id, invoice_id, audit_run_id, action, amount, currency, actor_kind, rationale)
+    `INSERT INTO payment_gate_decision (account_id, invoice_id, audit_run_id, action, amount, currency, actor_kind, rationale)
      VALUES ($1,$2,$3,'short_pay',$4,$5,'system',$6) RETURNING id`,
     [
       input.clientId,

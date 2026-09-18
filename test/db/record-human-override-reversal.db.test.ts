@@ -27,7 +27,7 @@ describe('recordHumanOverrideReversal (DB, e2e) -- append-only enforcement + thr
     pool = getPool();
     const owner = await pool.connect();
     try {
-      const c = await owner.query(`INSERT INTO client (name, slug) VALUES ('HOR', $1) RETURNING id`, [tag]);
+      const c = await owner.query(`INSERT INTO account (name, slug) VALUES ('HOR', $1) RETURNING id`, [tag]);
       clientId = c.rows[0].id;
       const crit = await owner.query(
         `INSERT INTO criterion (criterion_key, kind) VALUES ($1, 'SCORING') RETURNING id`, [`${tag}-crit`],
@@ -44,7 +44,7 @@ describe('recordHumanOverrideReversal (DB, e2e) -- append-only enforcement + thr
       // max_reversals=1: the first reversal (sum=1) stays under threshold,
       // the second (sum=2) exceeds it -- covers both AC3 branches with one seed.
       await owner.query(
-        `INSERT INTO promotion_policy (client_id, rule_type, max_reversals) VALUES ($1, 'STRUCTURAL', 1)`,
+        `INSERT INTO promotion_policy (account_id, rule_type, max_reversals) VALUES ($1, 'STRUCTURAL', 1)`,
         [clientId],
       );
     } finally {
@@ -56,12 +56,12 @@ describe('recordHumanOverrideReversal (DB, e2e) -- append-only enforcement + thr
     const owner = await pool.connect();
     try {
       await owner.query(`DELETE FROM human_override WHERE criterion_id = $1`, [criterionId]);
-      await owner.query(`DELETE FROM promotion_policy WHERE client_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM promotion_policy WHERE account_id = $1`, [clientId]);
       await owner.query(`DELETE FROM promotion_event WHERE rule_version_id IN (SELECT id FROM rule_version WHERE rule_id = $1)`, [ruleId]);
       await owner.query(`DELETE FROM rule_version WHERE rule_id = $1`, [ruleId]);
       await owner.query(`DELETE FROM rule WHERE id = $1`, [ruleId]);
       await owner.query(`DELETE FROM criterion WHERE id = $1`, [criterionId]);
-      await owner.query(`DELETE FROM client WHERE id = $1`, [clientId]);
+      await owner.query(`DELETE FROM account WHERE id = $1`, [clientId]);
     } finally {
       owner.release();
     }
@@ -156,11 +156,11 @@ describe('POST /api/findings/:id/reverse (DB, e2e)', () => {
     pool = getPool();
     const owner = await pool.connect();
     try {
-      const c = await owner.query(`INSERT INTO client (name, slug) VALUES ('HORE', $1) RETURNING id`, [tag]);
+      const c = await owner.query(`INSERT INTO account (name, slug) VALUES ('HORE', $1) RETURNING id`, [tag]);
       clientId = c.rows[0].id;
       const u = await owner.query(`INSERT INTO app_user (email) VALUES ($1) RETURNING id`, [`${tag}@example.com`]);
       userId = u.rows[0].id;
-      await owner.query(`INSERT INTO membership (user_id, client_id, role) VALUES ($1, $2, 'analyst')`, [userId, clientId]);
+      await owner.query(`INSERT INTO membership (user_id, account_id, role) VALUES ($1, $2, 'analyst')`, [userId, clientId]);
       const carrier = await owner.query(`INSERT INTO carrier (name) VALUES ('HORE Carrier') RETURNING id`);
       carrierId = carrier.rows[0].id;
       const crit = await owner.query(`INSERT INTO criterion (criterion_key, kind) VALUES ($1, 'SCORING') RETURNING id`, [`${tag}-crit`]);
@@ -179,28 +179,28 @@ describe('POST /api/findings/:id/reverse (DB, e2e)', () => {
         [ruleId, tag.padEnd(64, '2').slice(0, 64)],
       );
       nonFirmRuleVersionId = rvOther.rows[0].id;
-      await owner.query(`INSERT INTO promotion_policy (client_id, rule_type, max_reversals) VALUES ($1, 'STRUCTURAL', 5)`, [clientId]);
+      await owner.query(`INSERT INTO promotion_policy (account_id, rule_type, max_reversals) VALUES ($1, 'STRUCTURAL', 5)`, [clientId]);
 
       await withTenantTx({ clientIds: [clientId], internal: true }, async (c) => {
         const invoice = await c.query(
-          `INSERT INTO invoice (client_id, carrier_id, transaction_set, invoice_number, currency, parser_version, status)
+          `INSERT INTO invoice (account_id, carrier_id, transaction_set, invoice_number, currency, parser_version, status)
            VALUES ($1, $2, '210', 'INV-HORE-1', 'USD', 'v1', 'ingested') RETURNING id`,
           [clientId, carrierId],
         );
         invoiceId = invoice.rows[0].id;
         const run = await c.query(
-          `INSERT INTO audit_run (client_id, invoice_id, engine_spec_version, outcome) VALUES ($1, $2, 'v1', 'SCORED') RETURNING id`,
+          `INSERT INTO audit_run (account_id, invoice_id, engine_spec_version, outcome) VALUES ($1, $2, 'v1', 'SCORED') RETURNING id`,
           [clientId, invoiceId],
         );
         auditRunId = run.rows[0].id;
         const finding = await c.query(
-          `INSERT INTO variance_finding (client_id, audit_run_id, criterion_id, rule_version_id, status, evaluated_expr)
+          `INSERT INTO variance_finding (account_id, audit_run_id, criterion_id, rule_version_id, status, evaluated_expr)
            VALUES ($1, $2, $3, $4, 'open', '{}'::jsonb) RETURNING id`,
           [clientId, auditRunId, criterionId, ruleVersionId],
         );
         findingId = finding.rows[0].id;
         const findingNonFirm = await c.query(
-          `INSERT INTO variance_finding (client_id, audit_run_id, criterion_id, rule_version_id, status, evaluated_expr)
+          `INSERT INTO variance_finding (account_id, audit_run_id, criterion_id, rule_version_id, status, evaluated_expr)
            VALUES ($1, $2, $3, $4, 'open', '{}'::jsonb) RETURNING id`,
           [clientId, auditRunId, criterionId, nonFirmRuleVersionId],
         );
@@ -218,18 +218,18 @@ describe('POST /api/findings/:id/reverse (DB, e2e)', () => {
     const owner = await pool.connect();
     try {
       await owner.query(`DELETE FROM human_override WHERE criterion_id = $1`, [criterionId]);
-      await owner.query(`DELETE FROM promotion_policy WHERE client_id = $1`, [clientId]);
-      await owner.query(`DELETE FROM variance_finding WHERE client_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM promotion_policy WHERE account_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM variance_finding WHERE account_id = $1`, [clientId]);
       // 86e367r9x: persistAuditRun now wires a payment_gate_decision row per run.
-      await owner.query(`DELETE FROM payment_gate_decision WHERE client_id = $1`, [clientId]);
-      await owner.query(`DELETE FROM audit_run WHERE client_id = $1`, [clientId]);
-      await owner.query(`DELETE FROM invoice WHERE client_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM payment_gate_decision WHERE account_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM audit_run WHERE account_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM invoice WHERE account_id = $1`, [clientId]);
       await owner.query(`DELETE FROM rule_version WHERE rule_id = $1`, [ruleId]);
       await owner.query(`DELETE FROM rule WHERE id = $1`, [ruleId]);
       await owner.query(`DELETE FROM criterion WHERE id = $1`, [criterionId]);
-      await owner.query(`DELETE FROM membership WHERE client_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM membership WHERE account_id = $1`, [clientId]);
       await owner.query(`DELETE FROM app_user WHERE id = $1`, [userId]);
-      await owner.query(`DELETE FROM client WHERE id = $1`, [clientId]);
+      await owner.query(`DELETE FROM account WHERE id = $1`, [clientId]);
       await owner.query(`DELETE FROM carrier WHERE id = $1`, [carrierId]);
     } finally {
       owner.release();

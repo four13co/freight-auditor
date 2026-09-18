@@ -61,11 +61,11 @@ describe.skipIf(!DATABASE_URL)('outbox delivery job pipeline (database)', () => 
     await registerJobConsumers(boss);
 
     clientId = (await getPool().query(
-      `INSERT INTO client (name, slug) VALUES ('Outbox Delivery Pipeline Co', $1) RETURNING id`,
+      `INSERT INTO account (name, slug) VALUES ('Outbox Delivery Pipeline Co', $1) RETURNING id`,
       [tag],
     )).rows[0].id;
     workflowInstanceId = (await getPool().query(
-      `INSERT INTO workflow_instance (client_id, workflow_type, subject_entity, subject_entity_id, current_state)
+      `INSERT INTO workflow_instance (account_id, workflow_type, subject_entity, subject_entity_id, current_state)
        VALUES ($1, 'dispute_resolution', 'dispute', $2, 'awaiting_response') RETURNING id`,
       [clientId, randomUUID()],
     )).rows[0].id;
@@ -75,12 +75,12 @@ describe.skipIf(!DATABASE_URL)('outbox delivery job pipeline (database)', () => 
     // this suite so the scan sees only the one this test controls.
     // Non-destructive: flipped back in afterAll.
     const others = await getPool().query<{ id: string }>(
-      `SELECT id FROM client WHERE is_active = true AND id != $1`,
+      `SELECT id FROM account WHERE is_active = true AND id != $1`,
       [clientId],
     );
     reactivateOtherClientsAfter = others.rows.map((row) => row.id);
     if (reactivateOtherClientsAfter.length > 0) {
-      await getPool().query(`UPDATE client SET is_active = false WHERE id = ANY($1::uuid[])`, [reactivateOtherClientsAfter]);
+      await getPool().query(`UPDATE account SET is_active = false WHERE id = ANY($1::uuid[])`, [reactivateOtherClientsAfter]);
     }
   });
 
@@ -89,24 +89,24 @@ describe.skipIf(!DATABASE_URL)('outbox delivery job pipeline (database)', () => 
   });
 
   afterEach(async () => {
-    await getPool().query(`DELETE FROM workflow_outbox_message WHERE client_id = $1`, [clientId]);
-    await getPool().query(`DELETE FROM workflow_command WHERE client_id = $1`, [clientId]);
-    await getPool().query(`DELETE FROM audit_event WHERE client_id = $1`, [clientId]);
+    await getPool().query(`DELETE FROM workflow_outbox_message WHERE account_id = $1`, [clientId]);
+    await getPool().query(`DELETE FROM workflow_command WHERE account_id = $1`, [clientId]);
+    await getPool().query(`DELETE FROM audit_event WHERE account_id = $1`, [clientId]);
   });
 
   afterAll(async () => {
     await boss.stop({ graceful: false, close: true });
     if (reactivateOtherClientsAfter.length > 0) {
-      await getPool().query(`UPDATE client SET is_active = true WHERE id = ANY($1::uuid[])`, [reactivateOtherClientsAfter]);
+      await getPool().query(`UPDATE account SET is_active = true WHERE id = ANY($1::uuid[])`, [reactivateOtherClientsAfter]);
     }
-    await getPool().query(`DELETE FROM workflow_instance WHERE client_id = $1`, [clientId]);
-    await getPool().query(`DELETE FROM client WHERE id = $1`, [clientId]);
+    await getPool().query(`DELETE FROM workflow_instance WHERE account_id = $1`, [clientId]);
+    await getPool().query(`DELETE FROM account WHERE id = $1`, [clientId]);
     await closePool();
   });
 
   async function seedCommand(): Promise<string> {
     const { rows } = await getPool().query<{ id: string }>(
-      `INSERT INTO workflow_command (client_id, workflow_instance_id, command_type, run_after)
+      `INSERT INTO workflow_command (account_id, workflow_instance_id, command_type, run_after)
        VALUES ($1, $2, 'notify_carrier', now() - interval '1 minute') RETURNING id`,
       [clientId, workflowInstanceId],
     );
@@ -139,7 +139,7 @@ describe.skipIf(!DATABASE_URL)('outbox delivery job pipeline (database)', () => 
     let found = false;
     while (Date.now() < deadline && !found) {
       const { rows } = await getPool().query(
-        `SELECT 1 FROM audit_event WHERE client_id = $1 AND entity = 'workflow_outbox_message' AND entity_id = $2 AND event = 'workflow.outbox_message_sent'`,
+        `SELECT 1 FROM audit_event WHERE account_id = $1 AND entity = 'workflow_outbox_message' AND entity_id = $2 AND event = 'workflow.outbox_message_sent'`,
         [clientId, outboxMessageId],
       );
       found = rows.length > 0;
@@ -233,7 +233,7 @@ describe.skipIf(!DATABASE_URL)('outbox delivery job pipeline (database)', () => 
     let found = false;
     while (Date.now() < deadline && !found) {
       const { rows } = await getPool().query(
-        `SELECT 1 FROM audit_event WHERE client_id = $1 AND entity = 'workflow_outbox_message' AND entity_id = $2 AND event = 'workflow.outbox_message_sent'`,
+        `SELECT 1 FROM audit_event WHERE account_id = $1 AND entity = 'workflow_outbox_message' AND entity_id = $2 AND event = 'workflow.outbox_message_sent'`,
         [clientId, outboxMessageId],
       );
       found = rows.length > 0;

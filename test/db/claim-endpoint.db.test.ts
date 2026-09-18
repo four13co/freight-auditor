@@ -26,19 +26,19 @@ describe('POST /api/disputes/:id/claim (DB, e2e)', () => {
     pool = getPool();
     const owner = await pool.connect();
     try {
-      const c = await owner.query(`INSERT INTO client (name, slug) VALUES ('CLAIM', $1) RETURNING id`, [tag]);
+      const c = await owner.query(`INSERT INTO account (name, slug) VALUES ('CLAIM', $1) RETURNING id`, [tag]);
       clientId = c.rows[0].id;
       const u = await owner.query(`INSERT INTO app_user (email) VALUES ($1) RETURNING id`, [`${tag}@example.com`]);
       userId = u.rows[0].id;
-      await owner.query(`INSERT INTO membership (user_id, client_id, role) VALUES ($1, $2, 'analyst')`, [userId, clientId]);
+      await owner.query(`INSERT INTO membership (user_id, account_id, role) VALUES ($1, $2, 'analyst')`, [userId, clientId]);
       await withTenantTx({ clientIds: [clientId], internal: true }, async (c2) => {
         const accepted = await c2.query(
-          `INSERT INTO dispute (client_id, status, amount_claimed, currency) VALUES ($1, 'accepted', '400.0000', 'USD') RETURNING id`,
+          `INSERT INTO dispute (account_id, status, amount_claimed, currency) VALUES ($1, 'accepted', '400.0000', 'USD') RETURNING id`,
           [clientId],
         );
         acceptedDisputeId = accepted.rows[0].id;
         const sent = await c2.query(
-          `INSERT INTO dispute (client_id, status, amount_claimed, currency) VALUES ($1, 'sent', '100.0000', 'USD') RETURNING id`,
+          `INSERT INTO dispute (account_id, status, amount_claimed, currency) VALUES ($1, 'sent', '100.0000', 'USD') RETURNING id`,
           [clientId],
         );
         sentDisputeId = sent.rows[0].id;
@@ -54,12 +54,12 @@ describe('POST /api/disputes/:id/claim (DB, e2e)', () => {
     await app.close();
     const owner = await pool.connect();
     try {
-      await owner.query(`DELETE FROM audit_event WHERE client_id = $1`, [clientId]);
-      await owner.query(`DELETE FROM claim WHERE client_id = $1`, [clientId]);
-      await owner.query(`DELETE FROM dispute WHERE client_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM audit_event WHERE account_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM claim WHERE account_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM dispute WHERE account_id = $1`, [clientId]);
       await owner.query(`DELETE FROM membership WHERE user_id = $1`, [userId]);
       await owner.query(`DELETE FROM app_user WHERE id = $1`, [userId]);
-      await owner.query(`DELETE FROM client WHERE id = $1`, [clientId]);
+      await owner.query(`DELETE FROM account WHERE id = $1`, [clientId]);
     } finally {
       owner.release();
     }

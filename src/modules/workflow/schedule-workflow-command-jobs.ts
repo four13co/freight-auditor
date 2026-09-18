@@ -49,7 +49,7 @@ export async function scheduleWorkflowCommandJobs(
   now: Date = new Date(),
 ): Promise<ScheduleWorkflowCommandJobsResult> {
   const clients = await client.query<{ id: string }>(
-    `SELECT id FROM client WHERE is_active = true`,
+    `SELECT id FROM account WHERE is_active = true`,
   );
 
   let enqueued = 0;

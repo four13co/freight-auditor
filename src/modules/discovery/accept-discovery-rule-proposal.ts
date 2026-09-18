@@ -24,10 +24,10 @@ export async function acceptDiscoveryRuleProposal(client: pg.PoolClient, untrust
 }> {
   const input = inputSchema.parse(untrusted);
   const proposal = (await client.query<Proposal>(`SELECT id,rule_type,ast,ast_hash,expected_inputs,proposal_hash
-    FROM discovery_rule_proposal WHERE client_id=$1 AND id=$2`, [input.clientId, input.proposalId])).rows[0];
+    FROM discovery_rule_proposal WHERE account_id=$1 AND id=$2`, [input.clientId, input.proposalId])).rows[0];
   if (!proposal) throw new DiscoveryProposalAcceptanceError('PROPOSAL_NOT_FOUND');
   const backtest = (await client.query<{ id: string }>(`SELECT id FROM discovery_rule_proposal_backtest
-    WHERE client_id=$1 AND id=$2 AND proposal_id=$3 AND proposal_hash=$4 AND ast_hash=$5 AND passed=true`,
+    WHERE account_id=$1 AND id=$2 AND proposal_id=$3 AND proposal_hash=$4 AND ast_hash=$5 AND passed=true`,
   [input.clientId, input.backtestId, input.proposalId, proposal.proposal_hash, proposal.ast_hash])).rows[0];
   if (!backtest) throw new DiscoveryProposalAcceptanceError('PASSING_BACKTEST_REQUIRED');
   const slug = `discovery-proposal-${proposal.id}`;
@@ -52,11 +52,11 @@ export async function acceptDiscoveryRuleProposal(client: pg.PoolClient, untrust
   const shadowId = shadowVersion.id;
   const acceptance = await insertIdempotent(client, {
     insertSql: `INSERT INTO discovery_rule_proposal_acceptance
-    (client_id,proposal_id,backtest_id,shadow_rule_version_id,accepted_by,rationale) VALUES($1,$2,$3,$4,$5,$6)
-    ON CONFLICT(client_id,proposal_id) DO NOTHING`,
+    (account_id,proposal_id,backtest_id,shadow_rule_version_id,accepted_by,rationale) VALUES($1,$2,$3,$4,$5,$6)
+    ON CONFLICT(account_id,proposal_id) DO NOTHING`,
     insertParams: [input.clientId, proposal.id, backtest.id, shadowId, input.actorUserId, input.rationale],
     fallbackSql: `SELECT id FROM discovery_rule_proposal_acceptance
-    WHERE client_id=$7 AND proposal_id=$8 AND backtest_id=$9 AND shadow_rule_version_id=$10 AND accepted_by=$11 AND rationale=$12`,
+    WHERE account_id=$7 AND proposal_id=$8 AND backtest_id=$9 AND shadow_rule_version_id=$10 AND accepted_by=$11 AND rationale=$12`,
     fallbackParams: [input.clientId, proposal.id, backtest.id, shadowId, input.actorUserId, input.rationale],
   });
   if (!acceptance) throw new DiscoveryProposalAcceptanceError('ACCEPTANCE_CONFLICT');

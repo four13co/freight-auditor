@@ -21,9 +21,9 @@ describe('listFindings (DB)', () => {
     pool = getPool();
     const owner = await pool.connect();
     try {
-      const a = await owner.query(`INSERT INTO client (name, slug) VALUES ('LF-A', $1) RETURNING id`, [`${tag}-a`]);
+      const a = await owner.query(`INSERT INTO account (name, slug) VALUES ('LF-A', $1) RETURNING id`, [`${tag}-a`]);
       clientAId = a.rows[0].id;
-      const b = await owner.query(`INSERT INTO client (name, slug) VALUES ('LF-B', $1) RETURNING id`, [`${tag}-b`]);
+      const b = await owner.query(`INSERT INTO account (name, slug) VALUES ('LF-B', $1) RETURNING id`, [`${tag}-b`]);
       clientBId = b.rows[0].id;
       const carrier = await owner.query(`INSERT INTO carrier (name) VALUES ($1) RETURNING id`, [`Carrier-${tag}`]);
       carrierId = carrier.rows[0].id;
@@ -35,17 +35,17 @@ describe('listFindings (DB)', () => {
   afterAll(async () => {
     const owner = await pool.connect();
     try {
-      await owner.query(`DELETE FROM variance_finding WHERE client_id IN ($1, $2)`, [clientAId, clientBId]);
-      await owner.query(`DELETE FROM expected_charge WHERE client_id IN ($1, $2)`, [clientAId, clientBId]);
-      await owner.query(`DELETE FROM charge_fact WHERE client_id IN ($1, $2)`, [clientAId, clientBId]);
+      await owner.query(`DELETE FROM variance_finding WHERE account_id IN ($1, $2)`, [clientAId, clientBId]);
+      await owner.query(`DELETE FROM expected_charge WHERE account_id IN ($1, $2)`, [clientAId, clientBId]);
+      await owner.query(`DELETE FROM charge_fact WHERE account_id IN ($1, $2)`, [clientAId, clientBId]);
       // 86e367r9x: persistAuditRun now wires a payment_gate_decision row per run.
-      await owner.query(`DELETE FROM payment_gate_decision WHERE client_id IN ($1, $2)`, [clientAId, clientBId]);
-      await owner.query(`DELETE FROM audit_run WHERE client_id IN ($1, $2)`, [clientAId, clientBId]);
-      await owner.query(`DELETE FROM invoice WHERE client_id IN ($1, $2)`, [clientAId, clientBId]);
+      await owner.query(`DELETE FROM payment_gate_decision WHERE account_id IN ($1, $2)`, [clientAId, clientBId]);
+      await owner.query(`DELETE FROM audit_run WHERE account_id IN ($1, $2)`, [clientAId, clientBId]);
+      await owner.query(`DELETE FROM invoice WHERE account_id IN ($1, $2)`, [clientAId, clientBId]);
       await owner.query(`DELETE FROM carrier WHERE id = ANY($1::uuid[])`, [[carrierId, ...extraCarrierIds]]);
       await owner.query(`DELETE FROM criterion_version WHERE criterion_id IN (SELECT id FROM criterion WHERE criterion_key LIKE $1)`, [`${tag}%`]);
       await owner.query(`DELETE FROM criterion WHERE criterion_key LIKE $1`, [`${tag}%`]);
-      await owner.query(`DELETE FROM client WHERE id IN ($1, $2)`, [clientAId, clientBId]);
+      await owner.query(`DELETE FROM account WHERE id IN ($1, $2)`, [clientAId, clientBId]);
     } finally {
       owner.release();
     }
@@ -78,7 +78,7 @@ describe('listFindings (DB)', () => {
     },
   ): Promise<{ id: string; chargeFactId: string; auditRunId: string }> {
     const inv = await client.query(
-      `INSERT INTO invoice (client_id, carrier_id, transaction_set, invoice_number, currency, parser_version)
+      `INSERT INTO invoice (account_id, carrier_id, transaction_set, invoice_number, currency, parser_version)
        VALUES ($1, $2, '210', $3, 'USD', 'test') RETURNING id`,
       [
         opts.clientId,
@@ -89,28 +89,28 @@ describe('listFindings (DB)', () => {
     const invoiceId = inv.rows[0].id;
 
     const run = await client.query(
-      `INSERT INTO audit_run (client_id, invoice_id, engine_spec_version, outcome)
+      `INSERT INTO audit_run (account_id, invoice_id, engine_spec_version, outcome)
        VALUES ($1, $2, 'test', 'SCORED') RETURNING id`,
       [opts.clientId, invoiceId],
     );
     const auditRunId = run.rows[0].id;
 
     const cf = await client.query(
-      `INSERT INTO charge_fact (client_id, invoice_id, code, category, amount, currency)
+      `INSERT INTO charge_fact (account_id, invoice_id, code, category, amount, currency)
        VALUES ($1, $2, '400', $3, $4, 'USD') RETURNING id`,
       [opts.clientId, invoiceId, opts.category ?? 'LINEHAUL', opts.billed ?? '1000.0000'],
     );
     const chargeFactId = cf.rows[0].id;
 
     await client.query(
-      `INSERT INTO expected_charge (client_id, audit_run_id, charge_fact_id, category, expected_amount, currency, created_at)
+      `INSERT INTO expected_charge (account_id, audit_run_id, charge_fact_id, category, expected_amount, currency, created_at)
        VALUES ($1, $2, $3, $4, $5, 'USD', now() - interval '1 minute')`,
       [opts.clientId, auditRunId, chargeFactId, opts.category ?? 'LINEHAUL', opts.expected ?? '900.0000'],
     );
 
     const vf = await client.query(
       `INSERT INTO variance_finding
-         (client_id, audit_run_id, charge_fact_id, criterion_id, rule_version_id, direction, variance_amount, currency, status, evaluated_expr, created_at)
+         (account_id, audit_run_id, charge_fact_id, criterion_id, rule_version_id, direction, variance_amount, currency, status, evaluated_expr, created_at)
        SELECT $1, $2, $3, COALESCE($4::uuid, c.id), rv.id, $5, $6, 'USD', $7, '{}'::jsonb, COALESCE($8::timestamptz, now())
        FROM criterion c JOIN rule r ON r.slug = 'contract-rate_variance'
        JOIN rule_version rv ON rv.rule_id = r.id
@@ -132,7 +132,7 @@ describe('listFindings (DB)', () => {
   it('AC1: returns seeded rows with invoice/carrier/billed/expected/variance/status', async () => {
     // 86e34dee2: internal:true grants portfolio-wide (cross-client) RLS
     // visibility BY DESIGN (migrations/0009) -- listFindings never adds its
-    // own client_id filter (RLS is the only boundary, see this function's
+    // own account_id filter (RLS is the only boundary, see this function's
     // own doc comment), so an exact toHaveLength(1) assertion under
     // internal:true is only ever true when the WHOLE database contains
     // exactly one variance_finding row. On a DB reused across other
@@ -185,22 +185,22 @@ describe('listFindings (DB)', () => {
     let pollutionClientId = '';
     try {
       const pc = await owner.query(
-        `INSERT INTO client (name, slug) VALUES ('LF-AC3-Pollution', $1) RETURNING id`,
+        `INSERT INTO account (name, slug) VALUES ('LF-AC3-Pollution', $1) RETURNING id`,
         [`${tag}-ac3-pollution`],
       );
       pollutionClientId = pc.rows[0].id;
       const inv = await owner.query(
-        `INSERT INTO invoice (client_id, carrier_id, transaction_set, invoice_number, currency, parser_version)
+        `INSERT INTO invoice (account_id, carrier_id, transaction_set, invoice_number, currency, parser_version)
          VALUES ($1, $2, '210', $3, 'USD', 'test') RETURNING id`,
         [pollutionClientId, carrierId, `INV-${tag}-ac3-pollution`],
       );
       const run = await owner.query(
-        `INSERT INTO audit_run (client_id, invoice_id, engine_spec_version, outcome)
+        `INSERT INTO audit_run (account_id, invoice_id, engine_spec_version, outcome)
          VALUES ($1, $2, 'test', 'SCORED') RETURNING id`,
         [pollutionClientId, inv.rows[0].id],
       );
       await owner.query(
-        `INSERT INTO variance_finding (client_id, audit_run_id, criterion_id, rule_version_id, direction, variance_amount, currency, status, evaluated_expr)
+        `INSERT INTO variance_finding (account_id, audit_run_id, criterion_id, rule_version_id, direction, variance_amount, currency, status, evaluated_expr)
          SELECT $1, $2, c.id, rv.id, 'OVERCHARGE', '10.0000', 'USD', 'closed', '{}'::jsonb
          FROM criterion c JOIN rule r ON r.slug = 'contract-rate_variance'
          JOIN rule_version rv ON rv.rule_id = r.id
@@ -226,12 +226,12 @@ describe('listFindings (DB)', () => {
       expect(rows.length).toBeGreaterThanOrEqual(1);
       expect(rows.every((r) => r.status === 'closed')).toBe(true);
     } finally {
-      await owner.query(`DELETE FROM variance_finding WHERE client_id = $1`, [pollutionClientId]);
+      await owner.query(`DELETE FROM variance_finding WHERE account_id = $1`, [pollutionClientId]);
       // 86e367r9x: persistAuditRun now wires a payment_gate_decision row per run.
-      await owner.query(`DELETE FROM payment_gate_decision WHERE client_id = $1`, [pollutionClientId]);
-      await owner.query(`DELETE FROM audit_run WHERE client_id = $1`, [pollutionClientId]);
-      await owner.query(`DELETE FROM invoice WHERE client_id = $1`, [pollutionClientId]);
-      await owner.query(`DELETE FROM client WHERE id = $1`, [pollutionClientId]);
+      await owner.query(`DELETE FROM payment_gate_decision WHERE account_id = $1`, [pollutionClientId]);
+      await owner.query(`DELETE FROM audit_run WHERE account_id = $1`, [pollutionClientId]);
+      await owner.query(`DELETE FROM invoice WHERE account_id = $1`, [pollutionClientId]);
+      await owner.query(`DELETE FROM account WHERE id = $1`, [pollutionClientId]);
       owner.release();
     }
   });
@@ -283,7 +283,7 @@ describe('listFindings (DB)', () => {
         variance: '150.0000',
       });
       await c.query(
-        `INSERT INTO expected_charge (client_id, audit_run_id, charge_fact_id, category, expected_amount, currency, created_at)
+        `INSERT INTO expected_charge (account_id, audit_run_id, charge_fact_id, category, expected_amount, currency, created_at)
          VALUES ($1, $2, $3, 'LINEHAUL', '850.0000', 'USD', now())`,
         [clientAId, auditRunId, chargeFactId],
       );
@@ -376,16 +376,16 @@ describe('listFindings (DB)', () => {
     it('a variance_finding row with charge_fact_id NULL still appears, with invoice/carrier resolved via audit_run', async () => {
       const rows = await withTenantTx({ clientIds: [clientAId], internal: true }, async (c) => {
         const inv = await c.query(
-          `INSERT INTO invoice (client_id, carrier_id, transaction_set, invoice_number, currency, parser_version)
+          `INSERT INTO invoice (account_id, carrier_id, transaction_set, invoice_number, currency, parser_version)
            VALUES ($1, $2, '210', $3, 'USD', 'test') RETURNING id`,
           [clientAId, carrierId, `INV-${tag}-null-charge`],
         );
         const run = await c.query(
-          `INSERT INTO audit_run (client_id, invoice_id, engine_spec_version, outcome) VALUES ($1, $2, 'test', 'SCORED') RETURNING id`,
+          `INSERT INTO audit_run (account_id, invoice_id, engine_spec_version, outcome) VALUES ($1, $2, 'test', 'SCORED') RETURNING id`,
           [clientAId, inv.rows[0].id],
         );
         await c.query(
-          `INSERT INTO variance_finding (client_id, audit_run_id, charge_fact_id, criterion_id, rule_version_id, direction, variance_amount, currency, status, evaluated_expr)
+          `INSERT INTO variance_finding (account_id, audit_run_id, charge_fact_id, criterion_id, rule_version_id, direction, variance_amount, currency, status, evaluated_expr)
            SELECT $1, $2, NULL, c.id, rv.id, 'OVERCHARGE', '250.0000', 'USD', 'open', '{}'::jsonb
            FROM criterion c JOIN rule r ON r.slug = 'contract-rate_variance'
            JOIN rule_version rv ON rv.rule_id = r.id
@@ -409,16 +409,16 @@ describe('listFindings (DB)', () => {
     it('client B never sees client A a NULL-charge_fact_id row (RLS isolation still holds under the relaxed JOIN)', async () => {
       await withTenantTx({ clientIds: [clientAId], internal: true }, async (c) => {
         const inv = await c.query(
-          `INSERT INTO invoice (client_id, carrier_id, transaction_set, invoice_number, currency, parser_version)
+          `INSERT INTO invoice (account_id, carrier_id, transaction_set, invoice_number, currency, parser_version)
            VALUES ($1, $2, '210', $3, 'USD', 'test') RETURNING id`,
           [clientAId, carrierId, `INV-${tag}-null-charge-rls`],
         );
         const run = await c.query(
-          `INSERT INTO audit_run (client_id, invoice_id, engine_spec_version, outcome) VALUES ($1, $2, 'test', 'SCORED') RETURNING id`,
+          `INSERT INTO audit_run (account_id, invoice_id, engine_spec_version, outcome) VALUES ($1, $2, 'test', 'SCORED') RETURNING id`,
           [clientAId, inv.rows[0].id],
         );
         await c.query(
-          `INSERT INTO variance_finding (client_id, audit_run_id, charge_fact_id, criterion_id, rule_version_id, direction, variance_amount, currency, status, evaluated_expr)
+          `INSERT INTO variance_finding (account_id, audit_run_id, charge_fact_id, criterion_id, rule_version_id, direction, variance_amount, currency, status, evaluated_expr)
            SELECT $1, $2, NULL, c.id, rv.id, 'OVERCHARGE', '250.0000', 'USD', 'open', '{}'::jsonb
            FROM criterion c JOIN rule r ON r.slug = 'contract-rate_variance'
            JOIN rule_version rv ON rv.rule_id = r.id
@@ -445,7 +445,7 @@ describe('listFindings (DB)', () => {
     beforeAll(async () => {
       const owner = await pool.connect();
       try {
-        const c = await owner.query(`INSERT INTO client (name, slug) VALUES ('LF-Sort', $1) RETURNING id`, [sortTag]);
+        const c = await owner.query(`INSERT INTO account (name, slug) VALUES ('LF-Sort', $1) RETURNING id`, [sortTag]);
         sortClientId = c.rows[0].id;
         const carrier = await owner.query(`INSERT INTO carrier (name) VALUES ($1) RETURNING id`, [`Carrier-${sortTag}`]);
         sortCarrierId = carrier.rows[0].id;
@@ -460,7 +460,7 @@ describe('listFindings (DB)', () => {
         // the DESC test -- if either test were still relying on
         // internal:true's portfolio-wide RLS visibility instead of scoping
         // to sortClientId via internal:false.
-        const pc = await owner.query(`INSERT INTO client (name, slug) VALUES ('LF-Sort-Pollution', $1) RETURNING id`, [`${sortTag}-pollution`]);
+        const pc = await owner.query(`INSERT INTO account (name, slug) VALUES ('LF-Sort-Pollution', $1) RETURNING id`, [`${sortTag}-pollution`]);
         pollutionClientId = pc.rows[0].id;
         const pCarrier = await owner.query(`INSERT INTO carrier (name) VALUES ($1) RETURNING id`, [`Carrier-${sortTag}-pollution`]);
         pollutionCarrierId = pCarrier.rows[0].id;
@@ -476,14 +476,14 @@ describe('listFindings (DB)', () => {
       const owner = await pool.connect();
       try {
         const bothClients = [sortClientId, pollutionClientId];
-        await owner.query(`DELETE FROM variance_finding WHERE client_id = ANY($1::uuid[])`, [bothClients]);
-        await owner.query(`DELETE FROM charge_fact WHERE client_id = ANY($1::uuid[])`, [bothClients]);
+        await owner.query(`DELETE FROM variance_finding WHERE account_id = ANY($1::uuid[])`, [bothClients]);
+        await owner.query(`DELETE FROM charge_fact WHERE account_id = ANY($1::uuid[])`, [bothClients]);
         // 86e367r9x: persistAuditRun now wires a payment_gate_decision row per run.
-        await owner.query(`DELETE FROM payment_gate_decision WHERE client_id = ANY($1::uuid[])`, [bothClients]);
-        await owner.query(`DELETE FROM audit_run WHERE client_id = ANY($1::uuid[])`, [bothClients]);
-        await owner.query(`DELETE FROM invoice WHERE client_id = ANY($1::uuid[])`, [bothClients]);
+        await owner.query(`DELETE FROM payment_gate_decision WHERE account_id = ANY($1::uuid[])`, [bothClients]);
+        await owner.query(`DELETE FROM audit_run WHERE account_id = ANY($1::uuid[])`, [bothClients]);
+        await owner.query(`DELETE FROM invoice WHERE account_id = ANY($1::uuid[])`, [bothClients]);
         await owner.query(`DELETE FROM carrier WHERE id = ANY($1::uuid[])`, [[sortCarrierId, pollutionCarrierId]]);
-        await owner.query(`DELETE FROM client WHERE id = ANY($1::uuid[])`, [bothClients]);
+        await owner.query(`DELETE FROM account WHERE id = ANY($1::uuid[])`, [bothClients]);
       } finally {
         owner.release();
       }
@@ -503,17 +503,17 @@ describe('listFindings (DB)', () => {
     ): Promise<void> {
       for (const amount of amounts) {
         const inv = await owner.query(
-          `INSERT INTO invoice (client_id, carrier_id, transaction_set, invoice_number, currency, parser_version)
+          `INSERT INTO invoice (account_id, carrier_id, transaction_set, invoice_number, currency, parser_version)
            VALUES ($1, $2, '210', $3, 'USD', 'test') RETURNING id`,
           [clientId, carrierId, `INV-${sortTag}-pollution-${amount}`],
         );
         const run = await owner.query(
-          `INSERT INTO audit_run (client_id, invoice_id, engine_spec_version, outcome)
+          `INSERT INTO audit_run (account_id, invoice_id, engine_spec_version, outcome)
            VALUES ($1, $2, 'test', 'SCORED') RETURNING id`,
           [clientId, inv.rows[0].id],
         );
         await owner.query(
-          `INSERT INTO variance_finding (client_id, audit_run_id, criterion_id, rule_version_id, direction, variance_amount, currency, status, evaluated_expr)
+          `INSERT INTO variance_finding (account_id, audit_run_id, criterion_id, rule_version_id, direction, variance_amount, currency, status, evaluated_expr)
            SELECT $1, $2, c.id, rv.id, 'OVERCHARGE', $3, 'USD', 'open', '{}'::jsonb
            FROM criterion c JOIN rule r ON r.slug = 'contract-rate_variance'
            JOIN rule_version rv ON rv.rule_id = r.id
@@ -533,7 +533,7 @@ describe('listFindings (DB)', () => {
      */
     async function seedFillerRows(client: pg.PoolClient, count: number): Promise<void> {
       // Each row needs its own invoice_number, so it gets its own two params
-      // ($1/$2 = shared client_id/carrier_id would only work for a single
+      // ($1/$2 = shared account_id/carrier_id would only work for a single
       // row) -- $3, $5, $7... are the per-row invoice_number placeholders.
       const invoiceValues = Array.from(
         { length: count },
@@ -541,7 +541,7 @@ describe('listFindings (DB)', () => {
       ).join(', ');
       const invoiceNumbers = Array.from({ length: count }, (_, i) => `INV-${sortTag}-filler-${i}`);
       const invoices = await client.query<{ id: string }>(
-        `INSERT INTO invoice (client_id, carrier_id, transaction_set, invoice_number, currency, parser_version)
+        `INSERT INTO invoice (account_id, carrier_id, transaction_set, invoice_number, currency, parser_version)
          VALUES ${invoiceValues}
          RETURNING id`,
         [sortClientId, sortCarrierId, ...invoiceNumbers],
@@ -550,7 +550,7 @@ describe('listFindings (DB)', () => {
 
       const runValues = invoiceIds.map((_, i) => `($1, $${i + 2}, 'test', 'SCORED')`).join(', ');
       const runs = await client.query<{ id: string }>(
-        `INSERT INTO audit_run (client_id, invoice_id, engine_spec_version, outcome)
+        `INSERT INTO audit_run (account_id, invoice_id, engine_spec_version, outcome)
          VALUES ${runValues}
          RETURNING id`,
         [sortClientId, ...invoiceIds],
@@ -562,7 +562,7 @@ describe('listFindings (DB)', () => {
       // correctness is unambiguous regardless of direction.
       const vfValues = runIds.map((_, i) => `($1, $${i + 2}, (SELECT id FROM criterion WHERE criterion_key = 'CONTRACT.RATE_VARIANCE'), (SELECT rv.id FROM rule_version rv JOIN rule r ON r.id = rv.rule_id WHERE r.slug = 'contract-rate_variance' ORDER BY rv.recorded_at DESC LIMIT 1), 'OVERCHARGE', ${(i + 1).toFixed(2)}, 'USD', 'open', '{}'::jsonb)`).join(', ');
       await client.query(
-        `INSERT INTO variance_finding (client_id, audit_run_id, criterion_id, rule_version_id, direction, variance_amount, currency, status, evaluated_expr)
+        `INSERT INTO variance_finding (account_id, audit_run_id, criterion_id, rule_version_id, direction, variance_amount, currency, status, evaluated_expr)
          VALUES ${vfValues}`,
         [sortClientId, ...runIds],
       );
@@ -590,17 +590,17 @@ describe('listFindings (DB)', () => {
         // was created -- proving sort now operates on the full result set,
         // not just whatever the default page happened to contain.
         const inv = await c.query(
-          `INSERT INTO invoice (client_id, carrier_id, transaction_set, invoice_number, currency, parser_version)
+          `INSERT INTO invoice (account_id, carrier_id, transaction_set, invoice_number, currency, parser_version)
            VALUES ($1, $2, '210', $3, 'USD', 'test') RETURNING id`,
           [sortClientId, sortCarrierId, `INV-${sortTag}-BIGGEST`],
         );
         const run = await c.query(
-          `INSERT INTO audit_run (client_id, invoice_id, engine_spec_version, outcome, created_at)
+          `INSERT INTO audit_run (account_id, invoice_id, engine_spec_version, outcome, created_at)
            VALUES ($1, $2, 'test', 'SCORED', NOW() - INTERVAL '1 day') RETURNING id`,
           [sortClientId, inv.rows[0].id],
         );
         await c.query(
-          `INSERT INTO variance_finding (client_id, audit_run_id, criterion_id, rule_version_id, direction, variance_amount, currency, status, evaluated_expr, created_at)
+          `INSERT INTO variance_finding (account_id, audit_run_id, criterion_id, rule_version_id, direction, variance_amount, currency, status, evaluated_expr, created_at)
            SELECT $1, $2, c.id, rv.id, 'OVERCHARGE', '99999.0000', 'USD', 'open', '{}'::jsonb, NOW() - INTERVAL '1 day'
            FROM criterion c JOIN rule r ON r.slug = 'contract-rate_variance'
            JOIN rule_version rv ON rv.rule_id = r.id
@@ -681,16 +681,16 @@ describe('listFindings (DB)', () => {
         // once a category filter is set (86e2v17p5's relaxed JOIN otherwise
         // surfaces it for unfiltered/other-filter queries).
         const inv = await c.query(
-          `INSERT INTO invoice (client_id, carrier_id, transaction_set, invoice_number, currency, parser_version)
+          `INSERT INTO invoice (account_id, carrier_id, transaction_set, invoice_number, currency, parser_version)
            VALUES ($1, $2, '210', $3, 'USD', 'test') RETURNING id`,
           [clientAId, carrierId, `INV-${tag}-cat-null-charge`],
         );
         const run = await c.query(
-          `INSERT INTO audit_run (client_id, invoice_id, engine_spec_version, outcome) VALUES ($1, $2, 'test', 'SCORED') RETURNING id`,
+          `INSERT INTO audit_run (account_id, invoice_id, engine_spec_version, outcome) VALUES ($1, $2, 'test', 'SCORED') RETURNING id`,
           [clientAId, inv.rows[0].id],
         );
         await c.query(
-          `INSERT INTO variance_finding (client_id, audit_run_id, charge_fact_id, criterion_id, rule_version_id, direction, variance_amount, currency, status, evaluated_expr)
+          `INSERT INTO variance_finding (account_id, audit_run_id, charge_fact_id, criterion_id, rule_version_id, direction, variance_amount, currency, status, evaluated_expr)
            SELECT $1, $2, NULL, c.id, rv.id, 'OVERCHARGE', '75.0000', 'USD', 'open', '{}'::jsonb
            FROM criterion c JOIN rule r ON r.slug = 'contract-rate_variance'
            JOIN rule_version rv ON rv.rule_id = r.id

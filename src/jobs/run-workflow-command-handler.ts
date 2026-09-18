@@ -94,7 +94,7 @@ const defaultDeps: RunWorkflowCommandDeps = { handlers, complete: completeWorkfl
  * performs the actual send against the committed row.
  *
  * ctx carries commandId (P4.C.7) so a handler can call recordOutboxMessage,
- * whose own FK guard (`workflow_command WHERE client_id = $1 AND id = $2`)
+ * whose own FK guard (`workflow_command WHERE account_id = $1 AND id = $2`)
  * requires it -- nothing before this task's first live handler ever needed
  * it in ctx.
  */

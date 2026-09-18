@@ -64,7 +64,7 @@ export interface KeysetAnchorOptions {
   /**
    * Extra predicate(s) ANDed into the anchor subquery's own WHERE, for a
    * caller that must scope the anchor row explicitly rather than relying on
-   * RLS alone (e.g. list-claims.ts's "cursor_row.client_id = $1"). Must
+   * RLS alone (e.g. list-claims.ts's "cursor_row.account_id = $1"). Must
    * reference only params already bound before this call.
    */
   extraAnchorPredicate?: string;

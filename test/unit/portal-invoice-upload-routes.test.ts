@@ -5,10 +5,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
  * 86e36yj9d: request-level coverage of the client portal's own
  * /api/portal/invoice-drafts surface -- same isolated-registration pattern
  * as invoice-drafts-routes.test.ts (registers only this module, not the
- * full buildApp()), but mocks client-admin-auth.js instead of
+ * full buildApp()), but mocks account-admin-auth.js instead of
  * tenant-auth.js, so this proves the route composes
- * registerClientAdminAuthPreHandler correctly (AC2's unit half: a
- * non-client_admin caller -- resolveClientAdminContext resolving null,
+ * registerAccountAdminAuthPreHandler correctly (AC2's unit half: a
+ * non-client_admin caller -- resolveAccountAdminContext resolving null,
  * exactly what it does for a client_viewer role -- is rejected with 401
  * before the handler runs).
  */
@@ -20,14 +20,14 @@ describe('portal invoice-drafts routes (client_admin-gated)', () => {
     app = undefined;
     vi.resetModules();
     vi.doUnmock('../../src/db/tenant-context.js');
-    vi.doUnmock('../../src/modules/identity/client-admin-auth.js');
+    vi.doUnmock('../../src/modules/identity/account-admin-auth.js');
     vi.doUnmock('../../src/modules/ingestion/invoice-draft.js');
     vi.doUnmock('../../src/modules/reference-data/object-store-config.js');
   });
 
   function mockClientAdminAuth(ctx: { clientIds: string[]; internal: boolean } | null) {
-    vi.doMock('../../src/modules/identity/client-admin-auth.js', () => ({
-      registerClientAdminAuthPreHandler: async (routes: FastifyInstance) => {
+    vi.doMock('../../src/modules/identity/account-admin-auth.js', () => ({
+      registerAccountAdminAuthPreHandler: async (routes: FastifyInstance) => {
         routes.addHook('preHandler', async (request: FastifyRequest, reply: FastifyReply) => {
           if (!ctx) {
             await reply.code(401).send({ error: 'unauthorized' });
@@ -145,14 +145,14 @@ describe('portal invoice-drafts routes: /:id/confirm and /:id/reject', () => {
     app = undefined;
     vi.resetModules();
     vi.doUnmock('../../src/db/tenant-context.js');
-    vi.doUnmock('../../src/modules/identity/client-admin-auth.js');
+    vi.doUnmock('../../src/modules/identity/account-admin-auth.js');
     vi.doUnmock('../../src/modules/ingestion/invoice-draft.js');
     vi.doUnmock('../../src/modules/reference-data/object-store-config.js');
   });
 
   function mockClientAdminAuth() {
-    vi.doMock('../../src/modules/identity/client-admin-auth.js', () => ({
-      registerClientAdminAuthPreHandler: async (routes: FastifyInstance) => {
+    vi.doMock('../../src/modules/identity/account-admin-auth.js', () => ({
+      registerAccountAdminAuthPreHandler: async (routes: FastifyInstance) => {
         routes.addHook('preHandler', async (request: FastifyRequest, _reply: FastifyReply) => {
           request.tenantContext = { clientIds: ['11111111-1111-1111-1111-111111111111'], internal: false } as never;
         });

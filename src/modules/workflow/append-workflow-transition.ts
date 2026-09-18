@@ -55,8 +55,8 @@ export async function appendWorkflowTransition(
 ): Promise<AppendWorkflowTransitionResult> {
   const input = schema.parse(untrusted);
 
-  const current = await client.query<{ client_id: string; current_state: string }>(
-    `SELECT client_id, current_state FROM workflow_instance WHERE client_id = $1 AND id = $2 FOR UPDATE`,
+  const current = await client.query<{ account_id: string; current_state: string }>(
+    `SELECT account_id, current_state FROM workflow_instance WHERE account_id = $1 AND id = $2 FOR UPDATE`,
     [input.clientId, input.workflowInstanceId],
   );
   const instance = current.rows[0];
@@ -64,23 +64,23 @@ export async function appendWorkflowTransition(
 
   validateWorkflowTransition(instance.current_state, input.toState, allowedTransitions);
 
-  const result = await client.query<{ id: string; client_id: string; from_state: string; transition_id: string }>(
+  const result = await client.query<{ id: string; account_id: string; from_state: string; transition_id: string }>(
     `WITH old AS (
-       SELECT id, client_id, current_state AS from_state FROM workflow_instance WHERE client_id = $1 AND id = $2
+       SELECT id, account_id, current_state AS from_state FROM workflow_instance WHERE account_id = $1 AND id = $2
      ),
      updated AS (
        UPDATE workflow_instance
        SET current_state = $3, updated_at = now()
        WHERE id = (SELECT id FROM old)
-       RETURNING id, client_id
+       RETURNING id, account_id
      ),
      logged AS (
-       INSERT INTO workflow_transition (client_id, workflow_instance_id, from_state, to_state)
-       SELECT updated.client_id, updated.id, old.from_state, $3
+       INSERT INTO workflow_transition (account_id, workflow_instance_id, from_state, to_state)
+       SELECT updated.account_id, updated.id, old.from_state, $3
        FROM updated JOIN old ON true
        RETURNING id
      )
-     SELECT updated.id, updated.client_id, (SELECT from_state FROM old) AS from_state,
+     SELECT updated.id, updated.account_id, (SELECT from_state FROM old) AS from_state,
        (SELECT id FROM logged) AS transition_id
      FROM updated`,
     [input.clientId, input.workflowInstanceId, input.toState],
@@ -90,8 +90,8 @@ export async function appendWorkflowTransition(
   if (!row) return { found: false };
 
   await writeAuditEvent(client, {
-    id: deterministicAuditEventId(row.client_id, row.transition_id, 'workflow.transitioned'),
-    clientId: row.client_id,
+    id: deterministicAuditEventId(row.account_id, row.transition_id, 'workflow.transitioned'),
+    clientId: row.account_id,
     entity: 'workflow_instance',
     entityId: row.id,
     event: 'workflow.transitioned',

@@ -210,16 +210,16 @@ export async function listDiscoveryEvidence(client: pg.PoolClient, untrusted: z.
   const input = listInputSchema.parse(untrusted);
   const rows = (await client.query<{ trigger_kind: DiscoveryTriggerKind; trigger_id: string; detail: unknown }>(`
     SELECT 'UNASSESSABLE_RESULT' AS trigger_kind, dt.id AS trigger_id, dt.detail FROM discovery_trigger dt
-      WHERE dt.client_id=$1 AND dt.audit_run_id=$2
-        AND NOT EXISTS (SELECT 1 FROM discovery_rule_proposal p WHERE p.client_id=dt.client_id AND p.discovery_trigger_id=dt.id)
+      WHERE dt.account_id=$1 AND dt.audit_run_id=$2
+        AND NOT EXISTS (SELECT 1 FROM discovery_rule_proposal p WHERE p.account_id=dt.account_id AND p.discovery_trigger_id=dt.id)
     UNION ALL
     SELECT 'UNKNOWN_CHARGE_CODE', ct.id, ct.detail FROM unknown_charge_code_trigger ct
-      WHERE ct.client_id=$1 AND ct.audit_run_id=$2
-        AND NOT EXISTS (SELECT 1 FROM discovery_rule_proposal p WHERE p.client_id=ct.client_id AND p.unknown_charge_code_trigger_id=ct.id)
+      WHERE ct.account_id=$1 AND ct.audit_run_id=$2
+        AND NOT EXISTS (SELECT 1 FROM discovery_rule_proposal p WHERE p.account_id=ct.account_id AND p.unknown_charge_code_trigger_id=ct.id)
     UNION ALL
     SELECT 'SUSPICIOUS_PASS', sp.id, sp.detail FROM suspicious_pass_trigger sp
-      WHERE sp.client_id=$1 AND sp.audit_run_id=$2
-        AND NOT EXISTS (SELECT 1 FROM discovery_rule_proposal p WHERE p.client_id=sp.client_id AND p.suspicious_pass_trigger_id=sp.id)
+      WHERE sp.account_id=$1 AND sp.audit_run_id=$2
+        AND NOT EXISTS (SELECT 1 FROM discovery_rule_proposal p WHERE p.account_id=sp.account_id AND p.suspicious_pass_trigger_id=sp.id)
     ORDER BY trigger_kind, trigger_id`, [input.clientId, input.auditRunId])).rows;
   return rows.map((row) => ({ triggerKind: row.trigger_kind, triggerId: row.trigger_id, detail: row.detail }));
 }
@@ -238,11 +238,11 @@ const persistInputSchema = z.object({
 interface ResolvedTrigger { column: 'discovery_trigger_id' | 'unknown_charge_code_trigger_id' | 'suspicious_pass_trigger_id'; }
 
 async function resolveTrigger(client: pg.PoolClient, clientId: string, auditRunId: string, triggerId: string): Promise<ResolvedTrigger | null> {
-  const discovery = await client.query(`SELECT 1 FROM discovery_trigger WHERE client_id=$1 AND audit_run_id=$2 AND id=$3`, [clientId, auditRunId, triggerId]);
+  const discovery = await client.query(`SELECT 1 FROM discovery_trigger WHERE account_id=$1 AND audit_run_id=$2 AND id=$3`, [clientId, auditRunId, triggerId]);
   if (discovery.rowCount) return { column: 'discovery_trigger_id' };
-  const unknownCode = await client.query(`SELECT 1 FROM unknown_charge_code_trigger WHERE client_id=$1 AND audit_run_id=$2 AND id=$3`, [clientId, auditRunId, triggerId]);
+  const unknownCode = await client.query(`SELECT 1 FROM unknown_charge_code_trigger WHERE account_id=$1 AND audit_run_id=$2 AND id=$3`, [clientId, auditRunId, triggerId]);
   if (unknownCode.rowCount) return { column: 'unknown_charge_code_trigger_id' };
-  const suspiciousPass = await client.query(`SELECT 1 FROM suspicious_pass_trigger WHERE client_id=$1 AND audit_run_id=$2 AND id=$3`, [clientId, auditRunId, triggerId]);
+  const suspiciousPass = await client.query(`SELECT 1 FROM suspicious_pass_trigger WHERE account_id=$1 AND audit_run_id=$2 AND id=$3`, [clientId, auditRunId, triggerId]);
   if (suspiciousPass.rowCount) return { column: 'suspicious_pass_trigger_id' };
   return null;
 }
@@ -251,7 +251,7 @@ export async function persistDiscoveryRuleProposals(client: pg.PoolClient, untru
   proposalIds: string[]; proposalCount: number; createdCount: number;
 }> {
   const input = persistInputSchema.parse(untrusted);
-  const run = (await client.query(`SELECT 1 FROM audit_run WHERE client_id=$1 AND id=$2`, [input.clientId, input.auditRunId])).rowCount;
+  const run = (await client.query(`SELECT 1 FROM audit_run WHERE account_id=$1 AND id=$2`, [input.clientId, input.auditRunId])).rowCount;
   if (!run) throw new DiscoveryRuleProposalError('AUDIT_RUN_NOT_FOUND');
 
   const proposalIds: string[] = []; let createdCount = 0;
@@ -277,13 +277,13 @@ export async function persistDiscoveryRuleProposals(client: pg.PoolClient, untru
       input.result.provider, input.result.modelId, input.result.promptVersion, input.result.providerMessageId, input.result.requestKey,
       proposalHash, input.actorUserId];
     const inserted = await client.query<{ id: string }>(`INSERT INTO discovery_rule_proposal
-      (client_id,audit_run_id,discovery_trigger_id,unknown_charge_code_trigger_id,suspicious_pass_trigger_id,criterion_key,kind,rule_type,
+      (account_id,audit_run_id,discovery_trigger_id,unknown_charge_code_trigger_id,suspicious_pass_trigger_id,criterion_key,kind,rule_type,
        description,ast,ast_hash,expected_inputs,proposal_schema_version,provider,model_id,prompt_version,provider_message_id,request_key,
        proposal_hash,actor_user_id)
       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb,$11,$12::jsonb,$13,$14,$15,$16,$17,$18,$19,$20)
-      ON CONFLICT (client_id,proposal_hash) DO NOTHING RETURNING id`, params);
+      ON CONFLICT (account_id,proposal_hash) DO NOTHING RETURNING id`, params);
     let id = inserted.rows[0]?.id; if (id) createdCount += 1;
-    if (!id) id = (await client.query<{ id: string }>(`SELECT id FROM discovery_rule_proposal WHERE client_id=$1 AND proposal_hash=$2`,
+    if (!id) id = (await client.query<{ id: string }>(`SELECT id FROM discovery_rule_proposal WHERE account_id=$1 AND proposal_hash=$2`,
       [input.clientId, proposalHash])).rows[0]?.id;
     if (!id) throw new DiscoveryRuleProposalError('PARTIAL_CONFLICT');
     proposalIds.push(id);

@@ -34,7 +34,7 @@ describe('claim aging job pipeline (database)', () => {
     await registerJobConsumers(boss);
 
     clientId = (await getPool().query(
-      `INSERT INTO client (name, slug) VALUES ('Aging Pipeline Co', $1) RETURNING id`,
+      `INSERT INTO account (name, slug) VALUES ('Aging Pipeline Co', $1) RETURNING id`,
       [tag],
     )).rows[0].id;
 
@@ -43,32 +43,32 @@ describe('claim aging job pipeline (database)', () => {
     // fixture) for the duration of this suite so the scan sees only the one
     // this test controls. Non-destructive: flipped back in afterAll.
     const others = await getPool().query<{ id: string }>(
-      `SELECT id FROM client WHERE is_active = true AND id != $1`,
+      `SELECT id FROM account WHERE is_active = true AND id != $1`,
       [clientId],
     );
     reactivateOtherClientsAfter = others.rows.map((row) => row.id);
     if (reactivateOtherClientsAfter.length > 0) {
-      await getPool().query(`UPDATE client SET is_active = false WHERE id = ANY($1::uuid[])`, [reactivateOtherClientsAfter]);
+      await getPool().query(`UPDATE account SET is_active = false WHERE id = ANY($1::uuid[])`, [reactivateOtherClientsAfter]);
     }
   });
 
   afterEach(async () => {
-    await getPool().query(`DELETE FROM audit_event WHERE client_id = $1`, [clientId]);
-    await getPool().query(`DELETE FROM claim WHERE client_id = $1`, [clientId]);
+    await getPool().query(`DELETE FROM audit_event WHERE account_id = $1`, [clientId]);
+    await getPool().query(`DELETE FROM claim WHERE account_id = $1`, [clientId]);
   });
 
   afterAll(async () => {
     await boss.stop({ graceful: false, close: true });
     if (reactivateOtherClientsAfter.length > 0) {
-      await getPool().query(`UPDATE client SET is_active = true WHERE id = ANY($1::uuid[])`, [reactivateOtherClientsAfter]);
+      await getPool().query(`UPDATE account SET is_active = true WHERE id = ANY($1::uuid[])`, [reactivateOtherClientsAfter]);
     }
-    await getPool().query(`DELETE FROM client WHERE id = $1`, [clientId]);
+    await getPool().query(`DELETE FROM account WHERE id = $1`, [clientId]);
     await closePool();
   });
 
   async function seedClaimPastDeadline(): Promise<string> {
     const { rows } = await getPool().query<{ id: string }>(
-      `INSERT INTO claim (client_id, amount_claimed, currency, status, opened_at, aging_deadline_at)
+      `INSERT INTO claim (account_id, amount_claimed, currency, status, opened_at, aging_deadline_at)
        VALUES ($1, '500.0000', 'USD', 'open', now(), '2020-01-01T00:00:00Z') RETURNING id`,
       [clientId],
     );
@@ -77,13 +77,13 @@ describe('claim aging job pipeline (database)', () => {
 
   async function seedClaimPastGracePeriod(): Promise<string> {
     const { rows } = await getPool().query<{ id: string }>(
-      `INSERT INTO claim (client_id, amount_claimed, currency, status, opened_at)
+      `INSERT INTO claim (account_id, amount_claimed, currency, status, opened_at)
        VALUES ($1, '500.0000', 'USD', 'open', now()) RETURNING id`,
       [clientId],
     );
     const claimId = rows[0]!.id;
     await getPool().query(
-      `INSERT INTO audit_event (id, client_id, entity, entity_id, event, actor_kind, recorded_at)
+      `INSERT INTO audit_event (id, account_id, entity, entity_id, event, actor_kind, recorded_at)
        VALUES (gen_random_uuid(), $1, 'claim', $2, 'claim.follow_up_sent', 'system', now() - interval '30 days')`,
       [clientId, claimId],
     );
@@ -105,7 +105,7 @@ describe('claim aging job pipeline (database)', () => {
     let found = false;
     while (Date.now() < deadline && !found) {
       const { rows } = await getPool().query(
-        `SELECT 1 FROM audit_event WHERE client_id = $1 AND entity = 'claim' AND entity_id = $2 AND event = 'claim.follow_up_sent'`,
+        `SELECT 1 FROM audit_event WHERE account_id = $1 AND entity = 'claim' AND entity_id = $2 AND event = 'claim.follow_up_sent'`,
         [clientId, claimId],
       );
       found = rows.length > 0;
@@ -125,7 +125,7 @@ describe('claim aging job pipeline (database)', () => {
     let found = false;
     while (Date.now() < deadline && !found) {
       const { rows } = await getPool().query(
-        `SELECT 1 FROM audit_event WHERE client_id = $1 AND entity = 'claim' AND entity_id = $2 AND event = 'claim.escalated'`,
+        `SELECT 1 FROM audit_event WHERE account_id = $1 AND entity = 'claim' AND entity_id = $2 AND event = 'claim.escalated'`,
         [clientId, claimId],
       );
       found = rows.length > 0;

@@ -21,7 +21,7 @@ export interface DisputeResponseQueueEntry {
  * is outbound and older than `thresholdDays`.
  *
  * The INNER LATERAL join to each dispute's latest dispute_comm row (ordered
- * by recorded_at DESC, dispute_comm is indexed on (client_id, dispute_id,
+ * by recorded_at DESC, dispute_comm is indexed on (account_id, dispute_id,
  * recorded_at DESC)) means a dispute with no dispute_comm rows at all
  * (still 'draft', never sent) produces no joined row and is silently
  * excluded -- there is nothing yet to be overdue on.
@@ -41,11 +41,11 @@ export async function listDisputesDueForResponse(
      JOIN LATERAL (
        SELECT direction, recorded_at
        FROM dispute_comm dc
-       WHERE dc.client_id = d.client_id AND dc.dispute_id = d.id
+       WHERE dc.account_id = d.account_id AND dc.dispute_id = d.id
        ORDER BY dc.recorded_at DESC
        LIMIT 1
      ) lc ON true
-     WHERE d.client_id = $1
+     WHERE d.account_id = $1
        AND d.status = ANY($4::dispute_status[])
        AND lc.direction = 'outbound'
        AND lc.recorded_at <= $2::timestamptz - make_interval(days => $3)

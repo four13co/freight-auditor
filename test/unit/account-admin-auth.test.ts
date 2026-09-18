@@ -2,7 +2,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import type { FastifyRequest } from 'fastify';
 
 /**
- * Unit coverage of resolveClientAdminContext's header/session-gating and
+ * Unit coverage of resolveAccountAdminContext's header/session-gating and
  * role logic via a mocked withTenantTx -- no live DB. The real
  * membership.role lookup against real Postgres, plus the RLS proof that a
  * non-client_admin role can't see rows through this scope, is covered by
@@ -21,7 +21,7 @@ function mockRequest(
   return { headers, method } as unknown as FastifyRequest;
 }
 
-describe('resolveClientAdminContext (DEV_AUTH_HEADERS set)', () => {
+describe('resolveAccountAdminContext (DEV_AUTH_HEADERS set)', () => {
   let originalFlag: string | undefined;
 
   const setup = () => {
@@ -40,9 +40,9 @@ describe('resolveClientAdminContext (DEV_AUTH_HEADERS set)', () => {
     setup();
     const withTenantTx = vi.fn();
     vi.doMock('../../src/db/tenant-context.js', () => ({ withTenantTx }));
-    const { resolveClientAdminContext } = await import('../../src/modules/identity/client-admin-auth.js');
+    const { resolveAccountAdminContext } = await import('../../src/modules/identity/account-admin-auth.js');
 
-    const ctx = await resolveClientAdminContext(mockRequest({ 'x-user-id': 'user-1' }));
+    const ctx = await resolveAccountAdminContext(mockRequest({ 'x-user-id': 'user-1' }));
     expect(ctx).toBeNull();
     expect(withTenantTx).not.toHaveBeenCalled();
   });
@@ -51,21 +51,21 @@ describe('resolveClientAdminContext (DEV_AUTH_HEADERS set)', () => {
     setup();
     const withTenantTx = vi.fn();
     vi.doMock('../../src/db/tenant-context.js', () => ({ withTenantTx }));
-    const { resolveClientAdminContext } = await import('../../src/modules/identity/client-admin-auth.js');
+    const { resolveAccountAdminContext } = await import('../../src/modules/identity/account-admin-auth.js');
 
-    const ctx = await resolveClientAdminContext(mockRequest({ 'x-client-id': 'client-1' }));
+    const ctx = await resolveAccountAdminContext(mockRequest({ 'x-client-id': 'client-1' }));
     expect(ctx).toBeNull();
     expect(withTenantTx).not.toHaveBeenCalled();
   });
 
   it('grants { clientIds: [clientId], internal: false } under an internal-scoped transaction when the role is client_admin', async () => {
     setup();
-    const query = vi.fn().mockResolvedValue({ rows: [{ role: 'client_admin' }] });
+    const query = vi.fn().mockResolvedValue({ rows: [{ role: 'account_admin' }] });
     const withTenantTx = vi.fn(async (ctx, fn) => fn({ query }));
     vi.doMock('../../src/db/tenant-context.js', () => ({ withTenantTx }));
-    const { resolveClientAdminContext } = await import('../../src/modules/identity/client-admin-auth.js');
+    const { resolveAccountAdminContext } = await import('../../src/modules/identity/account-admin-auth.js');
 
-    const ctx = await resolveClientAdminContext(mockRequest({ 'x-client-id': 'client-1', 'x-user-id': 'user-1' }));
+    const ctx = await resolveAccountAdminContext(mockRequest({ 'x-client-id': 'client-1', 'x-user-id': 'user-1' }));
 
     expect(withTenantTx).toHaveBeenCalledWith({ internal: true }, expect.any(Function));
     expect(query).toHaveBeenCalledWith(expect.stringContaining('FROM membership'), ['user-1', 'client-1']);
@@ -74,12 +74,12 @@ describe('resolveClientAdminContext (DEV_AUTH_HEADERS set)', () => {
 
   it('returns null when the membership role is client_viewer -- a sibling capability, out of scope here', async () => {
     setup();
-    const query = vi.fn().mockResolvedValue({ rows: [{ role: 'client_viewer' }] });
+    const query = vi.fn().mockResolvedValue({ rows: [{ role: 'account_viewer' }] });
     const withTenantTx = vi.fn(async (_ctx, fn) => fn({ query }));
     vi.doMock('../../src/db/tenant-context.js', () => ({ withTenantTx }));
-    const { resolveClientAdminContext } = await import('../../src/modules/identity/client-admin-auth.js');
+    const { resolveAccountAdminContext } = await import('../../src/modules/identity/account-admin-auth.js');
 
-    const ctx = await resolveClientAdminContext(mockRequest({ 'x-client-id': 'client-1', 'x-user-id': 'user-1' }));
+    const ctx = await resolveAccountAdminContext(mockRequest({ 'x-client-id': 'client-1', 'x-user-id': 'user-1' }));
     expect(ctx).toBeNull();
   });
 
@@ -88,9 +88,9 @@ describe('resolveClientAdminContext (DEV_AUTH_HEADERS set)', () => {
     const query = vi.fn().mockResolvedValue({ rows: [{ role: 'analyst' }] });
     const withTenantTx = vi.fn(async (_ctx, fn) => fn({ query }));
     vi.doMock('../../src/db/tenant-context.js', () => ({ withTenantTx }));
-    const { resolveClientAdminContext } = await import('../../src/modules/identity/client-admin-auth.js');
+    const { resolveAccountAdminContext } = await import('../../src/modules/identity/account-admin-auth.js');
 
-    const ctx = await resolveClientAdminContext(mockRequest({ 'x-client-id': 'client-1', 'x-user-id': 'user-1' }));
+    const ctx = await resolveAccountAdminContext(mockRequest({ 'x-client-id': 'client-1', 'x-user-id': 'user-1' }));
     expect(ctx).toBeNull();
   });
 
@@ -99,20 +99,20 @@ describe('resolveClientAdminContext (DEV_AUTH_HEADERS set)', () => {
     const query = vi.fn().mockResolvedValue({ rows: [] });
     const withTenantTx = vi.fn(async (_ctx, fn) => fn({ query }));
     vi.doMock('../../src/db/tenant-context.js', () => ({ withTenantTx }));
-    const { resolveClientAdminContext } = await import('../../src/modules/identity/client-admin-auth.js');
+    const { resolveAccountAdminContext } = await import('../../src/modules/identity/account-admin-auth.js');
 
-    const ctx = await resolveClientAdminContext(mockRequest({ 'x-client-id': 'client-1', 'x-user-id': 'user-1' }));
+    const ctx = await resolveAccountAdminContext(mockRequest({ 'x-client-id': 'client-1', 'x-user-id': 'user-1' }));
     expect(ctx).toBeNull();
   });
 
   it('takes the first value when x-client-id/x-user-id are sent multiple times', async () => {
     setup();
-    const query = vi.fn().mockResolvedValue({ rows: [{ role: 'client_admin' }] });
+    const query = vi.fn().mockResolvedValue({ rows: [{ role: 'account_admin' }] });
     const withTenantTx = vi.fn(async (_ctx, fn) => fn({ query }));
     vi.doMock('../../src/db/tenant-context.js', () => ({ withTenantTx }));
-    const { resolveClientAdminContext } = await import('../../src/modules/identity/client-admin-auth.js');
+    const { resolveAccountAdminContext } = await import('../../src/modules/identity/account-admin-auth.js');
 
-    await resolveClientAdminContext(
+    await resolveAccountAdminContext(
       mockRequest({ 'x-client-id': ['client-a', 'client-b'], 'x-user-id': ['user-a', 'user-b'] }),
     );
     expect(query).toHaveBeenCalledWith(expect.any(String), ['user-a', 'client-a']);
@@ -126,7 +126,7 @@ describe('resolveClientAdminContext (DEV_AUTH_HEADERS set)', () => {
  * resolving a real session must propagate (500), not collapse into a
  * silent 401.
  */
-describe('resolveClientAdminContext (DEV_AUTH_HEADERS unset -- the prod default)', () => {
+describe('resolveAccountAdminContext (DEV_AUTH_HEADERS unset -- the prod default)', () => {
   let originalFlag: string | undefined;
 
   const setup = () => {
@@ -147,9 +147,9 @@ describe('resolveClientAdminContext (DEV_AUTH_HEADERS unset -- the prod default)
     const withTenantTx = vi.fn();
     vi.doMock('../../src/auth/better-auth.js', () => ({ getAuth: () => ({ api: { getSession } }) }));
     vi.doMock('../../src/db/tenant-context.js', () => ({ withTenantTx }));
-    const { resolveClientAdminContext } = await import('../../src/modules/identity/client-admin-auth.js');
+    const { resolveAccountAdminContext } = await import('../../src/modules/identity/account-admin-auth.js');
 
-    const ctx = await resolveClientAdminContext(
+    const ctx = await resolveAccountAdminContext(
       mockRequest({ 'x-client-id': 'client-1', 'x-user-id': 'user-1' }),
     );
     expect(ctx).toBeNull();
@@ -163,9 +163,9 @@ describe('resolveClientAdminContext (DEV_AUTH_HEADERS unset -- the prod default)
     const withTenantTx = vi.fn();
     vi.doMock('../../src/auth/better-auth.js', () => ({ getAuth: () => ({ api: { getSession } }) }));
     vi.doMock('../../src/db/tenant-context.js', () => ({ withTenantTx }));
-    const { resolveClientAdminContext } = await import('../../src/modules/identity/client-admin-auth.js');
+    const { resolveAccountAdminContext } = await import('../../src/modules/identity/account-admin-auth.js');
 
-    const ctx = await resolveClientAdminContext(mockRequest({}));
+    const ctx = await resolveAccountAdminContext(mockRequest({}));
     expect(ctx).toBeNull();
     expect(getSession).not.toHaveBeenCalled();
     expect(withTenantTx).not.toHaveBeenCalled();
@@ -177,9 +177,9 @@ describe('resolveClientAdminContext (DEV_AUTH_HEADERS unset -- the prod default)
     const withTenantTx = vi.fn();
     vi.doMock('../../src/auth/better-auth.js', () => ({ getAuth: () => ({ api: { getSession } }) }));
     vi.doMock('../../src/db/tenant-context.js', () => ({ withTenantTx }));
-    const { resolveClientAdminContext } = await import('../../src/modules/identity/client-admin-auth.js');
+    const { resolveAccountAdminContext } = await import('../../src/modules/identity/account-admin-auth.js');
 
-    const ctx = await resolveClientAdminContext(
+    const ctx = await resolveAccountAdminContext(
       mockRequest({ cookie: 'better-auth.session_token=stale', 'x-client-id': 'client-1' }),
     );
     expect(ctx).toBeNull();
@@ -192,9 +192,9 @@ describe('resolveClientAdminContext (DEV_AUTH_HEADERS unset -- the prod default)
     const withTenantTx = vi.fn();
     vi.doMock('../../src/auth/better-auth.js', () => ({ getAuth: () => ({ api: { getSession } }) }));
     vi.doMock('../../src/db/tenant-context.js', () => ({ withTenantTx }));
-    const { resolveClientAdminContext } = await import('../../src/modules/identity/client-admin-auth.js');
+    const { resolveAccountAdminContext } = await import('../../src/modules/identity/account-admin-auth.js');
 
-    const ctx = await resolveClientAdminContext(mockRequest({ cookie: 'better-auth.session_token=valid' }));
+    const ctx = await resolveAccountAdminContext(mockRequest({ cookie: 'better-auth.session_token=valid' }));
     expect(ctx).toBeNull();
     expect(withTenantTx).not.toHaveBeenCalled();
   });
@@ -202,13 +202,13 @@ describe('resolveClientAdminContext (DEV_AUTH_HEADERS unset -- the prod default)
   it('resolves via a verified session + a client_admin membership row', async () => {
     setup();
     const getSession = vi.fn().mockResolvedValue({ user: { id: 'session-user-1' }, session: {} });
-    const query = vi.fn().mockResolvedValue({ rows: [{ role: 'client_admin' }] });
+    const query = vi.fn().mockResolvedValue({ rows: [{ role: 'account_admin' }] });
     const withTenantTx = vi.fn(async (_ctx, fn) => fn({ query }));
     vi.doMock('../../src/auth/better-auth.js', () => ({ getAuth: () => ({ api: { getSession } }) }));
     vi.doMock('../../src/db/tenant-context.js', () => ({ withTenantTx }));
-    const { resolveClientAdminContext } = await import('../../src/modules/identity/client-admin-auth.js');
+    const { resolveAccountAdminContext } = await import('../../src/modules/identity/account-admin-auth.js');
 
-    const ctx = await resolveClientAdminContext(
+    const ctx = await resolveAccountAdminContext(
       mockRequest({ cookie: 'better-auth.session_token=valid', 'x-client-id': 'client-1' }),
     );
 
@@ -219,13 +219,13 @@ describe('resolveClientAdminContext (DEV_AUTH_HEADERS unset -- the prod default)
   it('rejects a valid session whose membership role is client_viewer', async () => {
     setup();
     const getSession = vi.fn().mockResolvedValue({ user: { id: 'session-user-1' }, session: {} });
-    const query = vi.fn().mockResolvedValue({ rows: [{ role: 'client_viewer' }] });
+    const query = vi.fn().mockResolvedValue({ rows: [{ role: 'account_viewer' }] });
     const withTenantTx = vi.fn(async (_ctx, fn) => fn({ query }));
     vi.doMock('../../src/auth/better-auth.js', () => ({ getAuth: () => ({ api: { getSession } }) }));
     vi.doMock('../../src/db/tenant-context.js', () => ({ withTenantTx }));
-    const { resolveClientAdminContext } = await import('../../src/modules/identity/client-admin-auth.js');
+    const { resolveAccountAdminContext } = await import('../../src/modules/identity/account-admin-auth.js');
 
-    const ctx = await resolveClientAdminContext(
+    const ctx = await resolveAccountAdminContext(
       mockRequest({ cookie: 'better-auth.session_token=valid', 'x-client-id': 'client-1' }),
     );
     expect(ctx).toBeNull();
@@ -235,15 +235,15 @@ describe('resolveClientAdminContext (DEV_AUTH_HEADERS unset -- the prod default)
     setup();
     const getSession = vi.fn().mockRejectedValue(new Error('DATABASE_URL is not set'));
     vi.doMock('../../src/auth/better-auth.js', () => ({ getAuth: () => ({ api: { getSession } }) }));
-    const { resolveClientAdminContext } = await import('../../src/modules/identity/client-admin-auth.js');
+    const { resolveAccountAdminContext } = await import('../../src/modules/identity/account-admin-auth.js');
 
     await expect(
-      resolveClientAdminContext(mockRequest({ cookie: 'better-auth.session_token=valid', 'x-client-id': 'client-1' })),
+      resolveAccountAdminContext(mockRequest({ cookie: 'better-auth.session_token=valid', 'x-client-id': 'client-1' })),
     ).rejects.toThrow('DATABASE_URL is not set');
   });
 });
 
-describe.each(['0', 'false'])('resolveClientAdminContext (DEV_AUTH_HEADERS=%s)', (flag) => {
+describe.each(['0', 'false'])('resolveAccountAdminContext (DEV_AUTH_HEADERS=%s)', (flag) => {
   const originalFlag = process.env.DEV_AUTH_HEADERS;
 
   afterEach(() => {
@@ -260,23 +260,23 @@ describe.each(['0', 'false'])('resolveClientAdminContext (DEV_AUTH_HEADERS=%s)',
     const withTenantTx = vi.fn();
     vi.doMock('../../src/auth/better-auth.js', () => ({ getAuth: () => ({ api: { getSession } }) }));
     vi.doMock('../../src/db/tenant-context.js', () => ({ withTenantTx }));
-    const { resolveClientAdminContext } = await import('../../src/modules/identity/client-admin-auth.js');
+    const { resolveAccountAdminContext } = await import('../../src/modules/identity/account-admin-auth.js');
 
-    const ctx = await resolveClientAdminContext(mockRequest({ 'x-client-id': 'client-1', 'x-user-id': 'user-1' }));
+    const ctx = await resolveAccountAdminContext(mockRequest({ 'x-client-id': 'client-1', 'x-user-id': 'user-1' }));
     expect(ctx).toBeNull();
     expect(withTenantTx).not.toHaveBeenCalled();
   });
 });
 
 /**
- * registerClientAdminAuthPreHandler's own body, exercised through a real
- * Fastify instance -- mocking resolveClientAdminContext from outside would
+ * registerAccountAdminAuthPreHandler's own body, exercised through a real
+ * Fastify instance -- mocking resolveAccountAdminContext from outside would
  * NOT exercise this function's real body (same same-module-call ESM
  * self-reference pitfall documented on tenant-auth.test.ts's own
  * registerTenantAuthPreHandler suite), so withTenantTx is mocked instead,
  * the same seam every describe block above already uses.
  */
-describe('registerClientAdminAuthPreHandler', () => {
+describe('registerAccountAdminAuthPreHandler', () => {
   let originalFlag: string | undefined;
 
   const setup = () => {
@@ -293,13 +293,13 @@ describe('registerClientAdminAuthPreHandler', () => {
 
   it('sets tenantContext and lets a GET through for a client_admin', async () => {
     setup();
-    const query = vi.fn().mockResolvedValue({ rows: [{ role: 'client_admin' }] });
+    const query = vi.fn().mockResolvedValue({ rows: [{ role: 'account_admin' }] });
     const withTenantTx = vi.fn(async (_ctx: unknown, fn: (client: { query: typeof query }) => unknown) => fn({ query }));
     vi.doMock('../../src/db/tenant-context.js', () => ({ withTenantTx }));
-    const { registerClientAdminAuthPreHandler } = await import('../../src/modules/identity/client-admin-auth.js');
+    const { registerAccountAdminAuthPreHandler } = await import('../../src/modules/identity/account-admin-auth.js');
     const Fastify = (await import('fastify')).default;
     const app = Fastify();
-    await registerClientAdminAuthPreHandler(app);
+    await registerAccountAdminAuthPreHandler(app);
     app.get('/probe', async (request) => ({ tenantContext: request.tenantContext }));
 
     const res = await app.inject({
@@ -315,14 +315,14 @@ describe('registerClientAdminAuthPreHandler', () => {
 
   it('lets a POST through for a client_admin -- unlike client_viewer, this role is not read-only', async () => {
     setup();
-    const query = vi.fn().mockResolvedValue({ rows: [{ role: 'client_admin' }] });
+    const query = vi.fn().mockResolvedValue({ rows: [{ role: 'account_admin' }] });
     const withTenantTx = vi.fn(async (_ctx: unknown, fn: (client: { query: typeof query }) => unknown) => fn({ query }));
     vi.doMock('../../src/db/tenant-context.js', () => ({ withTenantTx }));
-    const { registerClientAdminAuthPreHandler } = await import('../../src/modules/identity/client-admin-auth.js');
+    const { registerAccountAdminAuthPreHandler } = await import('../../src/modules/identity/account-admin-auth.js');
     const Fastify = (await import('fastify')).default;
     const app = Fastify();
     const handler = vi.fn().mockResolvedValue({ ok: true });
-    await registerClientAdminAuthPreHandler(app);
+    await registerAccountAdminAuthPreHandler(app);
     app.post('/probe', handler);
 
     const res = await app.inject({
@@ -340,11 +340,11 @@ describe('registerClientAdminAuthPreHandler', () => {
     setup();
     const withTenantTx = vi.fn();
     vi.doMock('../../src/db/tenant-context.js', () => ({ withTenantTx }));
-    const { registerClientAdminAuthPreHandler } = await import('../../src/modules/identity/client-admin-auth.js');
+    const { registerAccountAdminAuthPreHandler } = await import('../../src/modules/identity/account-admin-auth.js');
     const Fastify = (await import('fastify')).default;
     const app = Fastify();
     const handler = vi.fn().mockResolvedValue({ ok: true });
-    await registerClientAdminAuthPreHandler(app);
+    await registerAccountAdminAuthPreHandler(app);
     app.post('/probe', handler);
 
     const res = await app.inject({ method: 'POST', url: '/probe' });
@@ -356,14 +356,14 @@ describe('registerClientAdminAuthPreHandler', () => {
 
   it('replies 401 and never reaches the route handler for a client_viewer caller', async () => {
     setup();
-    const query = vi.fn().mockResolvedValue({ rows: [{ role: 'client_viewer' }] });
+    const query = vi.fn().mockResolvedValue({ rows: [{ role: 'account_viewer' }] });
     const withTenantTx = vi.fn(async (_ctx: unknown, fn: (client: { query: typeof query }) => unknown) => fn({ query }));
     vi.doMock('../../src/db/tenant-context.js', () => ({ withTenantTx }));
-    const { registerClientAdminAuthPreHandler } = await import('../../src/modules/identity/client-admin-auth.js');
+    const { registerAccountAdminAuthPreHandler } = await import('../../src/modules/identity/account-admin-auth.js');
     const Fastify = (await import('fastify')).default;
     const app = Fastify();
     const handler = vi.fn().mockResolvedValue({ ok: true });
-    await registerClientAdminAuthPreHandler(app);
+    await registerAccountAdminAuthPreHandler(app);
     app.get('/probe', handler);
 
     const res = await app.inject({

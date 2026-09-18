@@ -35,7 +35,7 @@ export interface CreateClaimResult {
  * validates it as claimable (accepted status, positive amount/currency --
  * see validate-claimable-dispute.ts), and opens one claim row against it.
  *
- * Idempotent per dispute via a real UNIQUE(client_id, dispute_id) partial
+ * Idempotent per dispute via a real UNIQUE(account_id, dispute_id) partial
  * index (migration 0055): INSERT ... ON CONFLICT DO NOTHING, then a
  * fallback SELECT for the winning row if this call lost a concurrent race
  * -- the pattern used elsewhere this session (createWorkflowInstance) once
@@ -57,7 +57,7 @@ export async function createClaimFromDispute(
   const { rows: disputeRows } = await client.query<ClaimableDisputeRow>(
     `SELECT id, status::text AS status, amount_claimed AS "amountClaimed", currency
        FROM dispute
-      WHERE client_id = $1 AND id = $2`,
+      WHERE account_id = $1 AND id = $2`,
     [input.clientId, input.disputeId],
   );
   const disputeRow = disputeRows[0];
@@ -71,9 +71,9 @@ export async function createClaimFromDispute(
   await detectDuplicateClaimedFinding(client, input.clientId, input.disputeId);
 
   const { rows: inserted } = await client.query<{ id: string }>(
-    `INSERT INTO claim (client_id, dispute_id, amount_claimed, currency, status)
+    `INSERT INTO claim (account_id, dispute_id, amount_claimed, currency, status)
      VALUES ($1, $2, $3, $4, 'open')
-     ON CONFLICT (client_id, dispute_id) WHERE dispute_id IS NOT NULL DO NOTHING
+     ON CONFLICT (account_id, dispute_id) WHERE dispute_id IS NOT NULL DO NOTHING
      RETURNING id`,
     [input.clientId, validated.disputeId, validated.amountClaimed, validated.currency],
   );
@@ -113,7 +113,7 @@ async function selectExistingClaim(
   disputeId: string,
 ): Promise<Omit<CreateClaimResult, 'created'> | null> {
   const { rows } = await client.query<{ id: string; amount_claimed: string; currency: string | null }>(
-    `SELECT id, amount_claimed, currency FROM claim WHERE client_id = $1 AND dispute_id = $2 LIMIT 1`,
+    `SELECT id, amount_claimed, currency FROM claim WHERE account_id = $1 AND dispute_id = $2 LIMIT 1`,
     [clientId, disputeId],
   );
   const row = rows[0];

@@ -29,16 +29,16 @@ describe.skipIf(!DATABASE_URL)('reclaim stale outbox messages (database)', () =>
 
   beforeAll(async () => {
     await getPool().query(
-      `INSERT INTO client (id, name, slug) VALUES ($1, 'Outbox Recovery Co', $2)`,
+      `INSERT INTO account (id, name, slug) VALUES ($1, 'Outbox Recovery Co', $2)`,
       [clientId, `outbox-recovery-${clientId}`],
     );
     await getPool().query(
-      `INSERT INTO workflow_instance (id, client_id, workflow_type, subject_entity, subject_entity_id, current_state)
+      `INSERT INTO workflow_instance (id, account_id, workflow_type, subject_entity, subject_entity_id, current_state)
        VALUES ($1, $2, 'dispute_resolution', 'dispute', $3, 'awaiting_response')`,
       [workflowInstanceId, clientId, randomUUID()],
     );
     commandId = (await getPool().query<{ id: string }>(
-      `INSERT INTO workflow_command (client_id, workflow_instance_id, command_type, run_after)
+      `INSERT INTO workflow_command (account_id, workflow_instance_id, command_type, run_after)
        VALUES ($1, $2, 'notify_carrier', now() - interval '1 minute') RETURNING id`,
       [clientId, workflowInstanceId],
     )).rows[0]!.id;
@@ -49,23 +49,23 @@ describe.skipIf(!DATABASE_URL)('reclaim stale outbox messages (database)', () =>
     // it only ever sees the one this test controls. Non-destructive: flipped
     // back in afterAll.
     const others = await getPool().query<{ id: string }>(
-      `SELECT id FROM client WHERE is_active = true AND id != $1`,
+      `SELECT id FROM account WHERE is_active = true AND id != $1`,
       [clientId],
     );
     reactivateOtherClientsAfter = others.rows.map((row) => row.id);
     if (reactivateOtherClientsAfter.length > 0) {
-      await getPool().query(`UPDATE client SET is_active = false WHERE id = ANY($1::uuid[])`, [reactivateOtherClientsAfter]);
+      await getPool().query(`UPDATE account SET is_active = false WHERE id = ANY($1::uuid[])`, [reactivateOtherClientsAfter]);
     }
   });
 
   afterAll(async () => {
-    await getPool().query(`DELETE FROM workflow_outbox_message WHERE client_id = $1`, [clientId]);
-    await getPool().query(`DELETE FROM workflow_command WHERE client_id = $1`, [clientId]);
-    await getPool().query(`DELETE FROM audit_event WHERE client_id = $1`, [clientId]);
-    await getPool().query(`DELETE FROM workflow_instance WHERE client_id = $1`, [clientId]);
-    await getPool().query(`DELETE FROM client WHERE id = $1`, [clientId]);
+    await getPool().query(`DELETE FROM workflow_outbox_message WHERE account_id = $1`, [clientId]);
+    await getPool().query(`DELETE FROM workflow_command WHERE account_id = $1`, [clientId]);
+    await getPool().query(`DELETE FROM audit_event WHERE account_id = $1`, [clientId]);
+    await getPool().query(`DELETE FROM workflow_instance WHERE account_id = $1`, [clientId]);
+    await getPool().query(`DELETE FROM account WHERE id = $1`, [clientId]);
     if (reactivateOtherClientsAfter.length > 0) {
-      await getPool().query(`UPDATE client SET is_active = true WHERE id = ANY($1::uuid[])`, [reactivateOtherClientsAfter]);
+      await getPool().query(`UPDATE account SET is_active = true WHERE id = ANY($1::uuid[])`, [reactivateOtherClientsAfter]);
     }
     await closePool();
   });
@@ -73,7 +73,7 @@ describe.skipIf(!DATABASE_URL)('reclaim stale outbox messages (database)', () =>
   async function seedClaimedMessage(opts: { attempts: number; claimedMinutesAgo: number }): Promise<string> {
     const dedupeKey = `notify:${randomUUID()}`;
     const { rows } = await getPool().query<{ id: string }>(
-      `INSERT INTO workflow_outbox_message (client_id, workflow_instance_id, command_id, dedupe_key, payload, status, attempts, claimed_at)
+      `INSERT INTO workflow_outbox_message (account_id, workflow_instance_id, command_id, dedupe_key, payload, status, attempts, claimed_at)
        VALUES ($1, $2, $3, $4, '{}'::jsonb, 'claimed', $5, now() - ($6 * interval '1 minute'))
        RETURNING id`,
       [clientId, workflowInstanceId, commandId, dedupeKey, opts.attempts, opts.claimedMinutesAgo],
@@ -144,13 +144,13 @@ describe.skipIf(!DATABASE_URL)('reclaim stale outbox messages (database)', () =>
     expect(result).toEqual({ reclaimed: 1, failed: 1 });
 
     const { rows: reclaimedEvents } = await getPool().query(
-      `SELECT event FROM audit_event WHERE client_id = $1 AND entity_id = $2`,
+      `SELECT event FROM audit_event WHERE account_id = $1 AND entity_id = $2`,
       [clientId, reclaimable],
     );
     expect(reclaimedEvents.map((r) => r.event)).toContain('workflow.outbox_message_reclaimed');
 
     const { rows: failedEvents } = await getPool().query(
-      `SELECT event FROM audit_event WHERE client_id = $1 AND entity_id = $2`,
+      `SELECT event FROM audit_event WHERE account_id = $1 AND entity_id = $2`,
       [clientId, dying],
     );
     expect(failedEvents.map((r) => r.event)).toContain('workflow.outbox_message_failed');

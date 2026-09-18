@@ -37,15 +37,15 @@ export async function listContractRuleProposalPreviews(client: pg.PoolClient): P
     acc.recorded_at AS acceptance_recorded_at,rat.id AS ratification_id,rat.active_rule_version_id,rat.ratified_by,
     rat.rationale AS ratification_rationale,rat.recorded_at AS ratification_recorded_at
     FROM contract_rule_proposal p
-    JOIN verified_contract_version vv ON vv.id=p.verified_contract_version_id AND vv.client_id=p.client_id
-    JOIN contract_version cv ON cv.id=vv.contract_version_id AND cv.client_id=p.client_id
-    JOIN contract c ON c.id=cv.contract_id AND c.client_id=p.client_id
+    JOIN verified_contract_version vv ON vv.id=p.verified_contract_version_id AND vv.account_id=p.account_id
+    JOIN contract_version cv ON cv.id=vv.contract_version_id AND cv.account_id=p.account_id
+    JOIN contract c ON c.id=cv.contract_id AND c.account_id=p.account_id
     LEFT JOIN LATERAL (SELECT jsonb_agg(jsonb_build_object('clauseId',cc.id,'clauseRef',cc.clause_ref,
       'textExcerpt',cc.text_excerpt,'pageRef',cc.page_ref,'citations',pc.citations) ORDER BY cc.clause_ref,cc.id) AS clauses
-      FROM contract_rule_proposal_clause pc JOIN contract_clause cc ON cc.id=pc.contract_clause_id AND cc.client_id=pc.client_id
-      WHERE pc.client_id=p.client_id AND pc.proposal_id=p.id) cl ON true
+      FROM contract_rule_proposal_clause pc JOIN contract_clause cc ON cc.id=pc.contract_clause_id AND cc.account_id=pc.account_id
+      WHERE pc.account_id=p.account_id AND pc.proposal_id=p.id) cl ON true
     LEFT JOIN LATERAL (SELECT b.id,b.passed,b.pass_count,b.regression_count,b.corpus_hash,b.recorded_at
-      FROM contract_rule_proposal_backtest b WHERE b.client_id=p.client_id AND b.proposal_id=p.id
+      FROM contract_rule_proposal_backtest b WHERE b.account_id=p.account_id AND b.proposal_id=p.id
       ORDER BY b.recorded_at DESC,b.id DESC LIMIT 1) bt ON true
     LEFT JOIN LATERAL (SELECT rv.ast,rv.ast_hash,cvb.description FROM criterion cb
       JOIN criterion_version cvb ON cvb.criterion_id=cb.id
@@ -53,8 +53,8 @@ export async function listContractRuleProposalPreviews(client: pg.PoolClient): P
       JOIN rule_version rv ON rv.rule_id=cr.rule_id AND rv.lifecycle_state='ACTIVE'
       WHERE cb.criterion_key=p.criterion_key
       ORDER BY cvb.recorded_at DESC,cr.rank,rv.recorded_at DESC LIMIT 1) base ON true
-    LEFT JOIN contract_rule_proposal_acceptance acc ON acc.client_id=p.client_id AND acc.proposal_id=p.id
-    LEFT JOIN contract_rule_proposal_ratification rat ON rat.client_id=p.client_id AND rat.acceptance_id=acc.id
+    LEFT JOIN contract_rule_proposal_acceptance acc ON acc.account_id=p.account_id AND acc.proposal_id=p.id
+    LEFT JOIN contract_rule_proposal_ratification rat ON rat.account_id=p.account_id AND rat.acceptance_id=acc.id
     ORDER BY p.recorded_at,p.id`)).rows;
   return rows.map((row) => {
     const astChanged = row.baseline_ast_hash !== null && row.baseline_ast_hash !== row.ast_hash;

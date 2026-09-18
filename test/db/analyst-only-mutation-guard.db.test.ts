@@ -44,7 +44,7 @@ describe('registerAnalystOnlyPreHandler (DB): dispute, finding, and payment muta
     pool = getPool();
     const owner = await pool.connect();
     try {
-      const c = await owner.query(`INSERT INTO client (name, slug) VALUES ('AOMG', $1) RETURNING id`, [tag]);
+      const c = await owner.query(`INSERT INTO account (name, slug) VALUES ('AOMG', $1) RETURNING id`, [tag]);
       clientId = c.rows[0].id;
 
       const uViewer = await owner.query(`INSERT INTO app_user (email) VALUES ($1) RETURNING id`, [`${tag}-viewer@example.com`]);
@@ -54,9 +54,9 @@ describe('registerAnalystOnlyPreHandler (DB): dispute, finding, and payment muta
       const uAnalyst = await owner.query(`INSERT INTO app_user (email) VALUES ($1) RETURNING id`, [`${tag}-analyst@example.com`]);
       analystUserId = uAnalyst.rows[0].id;
 
-      await owner.query(`INSERT INTO membership (user_id, client_id, role) VALUES ($1, $2, 'client_viewer')`, [viewerUserId, clientId]);
-      await owner.query(`INSERT INTO membership (user_id, client_id, role) VALUES ($1, $2, 'client_admin')`, [adminUserId, clientId]);
-      await owner.query(`INSERT INTO membership (user_id, client_id, role) VALUES ($1, $2, 'analyst')`, [analystUserId, clientId]);
+      await owner.query(`INSERT INTO membership (user_id, account_id, role) VALUES ($1, $2, 'account_viewer')`, [viewerUserId, clientId]);
+      await owner.query(`INSERT INTO membership (user_id, account_id, role) VALUES ($1, $2, 'account_admin')`, [adminUserId, clientId]);
+      await owner.query(`INSERT INTO membership (user_id, account_id, role) VALUES ($1, $2, 'analyst')`, [analystUserId, clientId]);
     } finally {
       owner.release();
     }
@@ -70,12 +70,12 @@ describe('registerAnalystOnlyPreHandler (DB): dispute, finding, and payment muta
     const owner = await pool.connect();
     try {
       // 86e367r9x's PUT /api/payment-policy pass-through test (AC2) writes a
-      // real client_payment_policy row with configured_by = analystUserId --
+      // real account_payment_policy row with configured_by = analystUserId --
       // must clear before deleting the referenced app_user rows.
-      await owner.query(`DELETE FROM client_payment_policy WHERE client_id = $1`, [clientId]);
-      await owner.query(`DELETE FROM membership WHERE client_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM account_payment_policy WHERE account_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM membership WHERE account_id = $1`, [clientId]);
       await owner.query(`DELETE FROM app_user WHERE id = ANY($1)`, [[viewerUserId, adminUserId, analystUserId]]);
-      await owner.query(`DELETE FROM client WHERE id = $1`, [clientId]);
+      await owner.query(`DELETE FROM account WHERE id = $1`, [clientId]);
     } finally {
       owner.release();
     }

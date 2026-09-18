@@ -21,7 +21,7 @@ const RESOLVED_STATUSES = ['accepted', 'rejected', 'partial'];
 
 interface DisputeRow {
   id: string;
-  client_id: string;
+  account_id: string;
   status: string;
   amount_claimed: string | null;
 }
@@ -42,7 +42,7 @@ async function selectRespondableDispute(
   fromStatuses: readonly string[],
 ): Promise<DisputeRow | null> {
   const { rows } = await client.query<DisputeRow>(
-    `SELECT id, client_id, status, amount_claimed FROM dispute WHERE id = $1`,
+    `SELECT id, account_id, status, amount_claimed FROM dispute WHERE id = $1`,
     [disputeId],
   );
   const row = rows[0];
@@ -52,7 +52,7 @@ async function selectRespondableDispute(
 
 async function writeTransitionAuditEvent(
   client: pg.PoolClient,
-  row: { id: string; client_id: string },
+  row: { id: string; account_id: string },
   fromStatus: string,
   toStatus: string,
   event: string,
@@ -60,8 +60,8 @@ async function writeTransitionAuditEvent(
   extraDetail: Record<string, unknown> = {},
 ): Promise<void> {
   await writeAuditEvent(client, {
-    id: deterministicAuditEventId(row.client_id, row.id, event),
-    clientId: row.client_id,
+    id: deterministicAuditEventId(row.account_id, row.id, event),
+    clientId: row.account_id,
     entity: 'dispute',
     entityId: row.id,
     event,
@@ -80,8 +80,8 @@ export async function acceptDispute(
   const disputeRow = await selectRespondableDispute(client, disputeId, RESPONDABLE_STATUSES);
   if (!disputeRow) return { found: false };
 
-  const result = await client.query<{ id: string; client_id: string }>(
-    `UPDATE dispute SET status = 'accepted' WHERE id = $1 AND status = ANY($2::dispute_status[]) RETURNING id, client_id`,
+  const result = await client.query<{ id: string; account_id: string }>(
+    `UPDATE dispute SET status = 'accepted' WHERE id = $1 AND status = ANY($2::dispute_status[]) RETURNING id, account_id`,
     [disputeId, RESPONDABLE_STATUSES],
   );
   const row = result.rows[0];
@@ -100,8 +100,8 @@ export async function rejectDispute(
   const disputeRow = await selectRespondableDispute(client, disputeId, RESPONDABLE_STATUSES);
   if (!disputeRow) return { found: false };
 
-  const result = await client.query<{ id: string; client_id: string }>(
-    `UPDATE dispute SET status = 'rejected' WHERE id = $1 AND status = ANY($2::dispute_status[]) RETURNING id, client_id`,
+  const result = await client.query<{ id: string; account_id: string }>(
+    `UPDATE dispute SET status = 'rejected' WHERE id = $1 AND status = ANY($2::dispute_status[]) RETURNING id, account_id`,
     [disputeId, RESPONDABLE_STATUSES],
   );
   const row = result.rows[0];
@@ -134,8 +134,8 @@ export async function partiallyAcceptDispute(
     throw new DisputeTransitionError('ACCEPTED_AMOUNT_EXCEEDS_CLAIMED');
   }
 
-  const result = await client.query<{ id: string; client_id: string }>(
-    `UPDATE dispute SET status = 'partial', accepted_amount = $2 WHERE id = $1 AND status = ANY($3::dispute_status[]) RETURNING id, client_id`,
+  const result = await client.query<{ id: string; account_id: string }>(
+    `UPDATE dispute SET status = 'partial', accepted_amount = $2 WHERE id = $1 AND status = ANY($3::dispute_status[]) RETURNING id, account_id`,
     [disputeId, acceptedAmount, RESPONDABLE_STATUSES],
   );
   const row = result.rows[0];
@@ -154,8 +154,8 @@ export async function closeDispute(
   const disputeRow = await selectRespondableDispute(client, disputeId, RESOLVED_STATUSES);
   if (!disputeRow) return { found: false };
 
-  const result = await client.query<{ id: string; client_id: string }>(
-    `UPDATE dispute SET status = 'closed' WHERE id = $1 AND status = ANY($2::dispute_status[]) RETURNING id, client_id`,
+  const result = await client.query<{ id: string; account_id: string }>(
+    `UPDATE dispute SET status = 'closed' WHERE id = $1 AND status = ANY($2::dispute_status[]) RETURNING id, account_id`,
     [disputeId, RESOLVED_STATUSES],
   );
   const row = result.rows[0];

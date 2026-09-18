@@ -1,6 +1,6 @@
 import type pg from 'pg';
 
-export interface ClientAuditEventRow {
+export interface AccountAuditEventRow {
   id: string;
   entity: string;
   entityId: string | null;
@@ -9,7 +9,7 @@ export interface ClientAuditEventRow {
   recordedAt: Date;
 }
 
-export interface ListClientAuditEventsOptions {
+export interface ListAccountAuditEventsOptions {
   entity?: string;
   event?: string;
   from?: Date;
@@ -28,22 +28,22 @@ const DEFAULT_LIMIT = 50;
  * AC branch needs it; entity/event/actorKind/recordedAt is the reviewable
  * surface for "browse the audit trail."
  *
- * `client_id = $1` is NOT merely defense-in-depth here, unlike this
- * surface's sibling modules -- audit_event.client_id is NULLABLE ("NULL for
+ * `account_id = $1` is NOT merely defense-in-depth here, unlike this
+ * surface's sibling modules -- audit_event.account_id is NULLABLE ("NULL for
  * system-global events", migration 0008), and the tenant_isolation RLS
  * policy's own USING clause admits a NULL-client row unconditionally
- * (`client_id IS NULL OR app_is_internal() OR ...`, migration 0009). Under
+ * (`account_id IS NULL OR app_is_internal() OR ...`, migration 0009). Under
  * RLS alone, every system-global audit event across every tenant's
  * operations would leak into a client_viewer's result set. This predicate
  * is what actually enforces client-scoping on this table, not a backstop
  * against a misconfigured internal scope.
  */
-export async function listClientAuditEvents(
+export async function listAccountAuditEvents(
   client: pg.PoolClient,
   clientId: string,
-  options: ListClientAuditEventsOptions = {},
-): Promise<ClientAuditEventRow[]> {
-  const conditions: string[] = ['client_id = $1'];
+  options: ListAccountAuditEventsOptions = {},
+): Promise<AccountAuditEventRow[]> {
+  const conditions: string[] = ['account_id = $1'];
   const params: unknown[] = [clientId];
 
   if (options.entity) {

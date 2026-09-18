@@ -16,10 +16,10 @@ export type UpdateTenantMembershipResult =
  * surface, restricted to client_viewer/client_admin, single-tenant caller,
  * RLS-scoped) -- this is the internal-admin surface reached via
  * tenant-admin-auth.ts's {internal: true} context. `app_is_internal()`
- * admits every row regardless of client_id for an internal caller
+ * admits every row regardless of account_id for an internal caller
  * (migrations/0009_rls_policies.sql), so RLS gives this query no cross-tenant
  * protection the way it does update-portal-member-role.ts -- the explicit
- * `client_id = $2` in this UPDATE's own WHERE clause IS the boundary here,
+ * `account_id = $2` in this UPDATE's own WHERE clause IS the boundary here,
  * same convention remove-membership.ts already relies on for this same
  * internal surface.
  *
@@ -54,7 +54,7 @@ export async function updateTenantMembership(
 
   if (sets.length === 0) {
     const { rows } = await client.query<{ id: string; role: string; is_active: boolean }>(
-      `SELECT id, role, is_active FROM membership WHERE id = $1 AND client_id = $2`,
+      `SELECT id, role, is_active FROM membership WHERE id = $1 AND account_id = $2`,
       [membershipId, clientId],
     );
     const row = rows[0];
@@ -62,20 +62,20 @@ export async function updateTenantMembership(
   }
 
   const result = await client.query<{
-    id: string; client_id: string; role: string; is_active: boolean; from_role: string;
+    id: string; account_id: string; role: string; is_active: boolean; from_role: string;
   }>(
     `WITH old AS (
-       SELECT id, client_id, role AS from_role
+       SELECT id, account_id, role AS from_role
          FROM membership
-        WHERE id = $1 AND client_id = $2
+        WHERE id = $1 AND account_id = $2
      ),
      updated AS (
        UPDATE membership
           SET ${sets.join(', ')}
         WHERE id = (SELECT id FROM old)
-        RETURNING id, client_id, role, is_active
+        RETURNING id, account_id, role, is_active
      )
-     SELECT updated.id, updated.client_id, updated.role, updated.is_active, (SELECT from_role FROM old) AS from_role
+     SELECT updated.id, updated.account_id, updated.role, updated.is_active, (SELECT from_role FROM old) AS from_role
        FROM updated`,
     params,
   );
@@ -86,8 +86,8 @@ export async function updateTenantMembership(
   if (input.role !== undefined && input.role !== row.from_role) {
     const event = `membership.role_changed_to_${row.role}`;
     await writeAuditEvent(client, {
-      id: deterministicAuditEventId(row.client_id, row.id, event),
-      clientId: row.client_id,
+      id: deterministicAuditEventId(row.account_id, row.id, event),
+      clientId: row.account_id,
       entity: 'membership',
       entityId: row.id,
       event,

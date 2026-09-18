@@ -17,7 +17,7 @@ import { PaymentPolicyValidationError } from '../modules/payments/payment-policy
  *
  * Deliberately excludes do_not_pay (system-generated, P4.B.4).
  *
- * 86e367r9x: client_payment_policy (migration 0058) is applied and
+ * 86e367r9x: account_payment_policy (migration 0058) is applied and
  * upsertPaymentPolicy already worked against it -- it just had no route.
  * PUT /api/payment-policy below is that route (configuration write only,
  * matching upsertPaymentPolicy's own boundary -- it never reads/enforces

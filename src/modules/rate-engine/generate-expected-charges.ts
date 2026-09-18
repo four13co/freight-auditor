@@ -100,10 +100,10 @@ export async function persistExpectedCharges(
   for (const charge of input.charges) {
     const inserted = await client.query<{ id: string }>(
       `INSERT INTO expected_charge
-         (client_id, audit_run_id, charge_fact_id, category, expected_amount, currency,
+         (account_id, audit_run_id, charge_fact_id, category, expected_amount, currency,
           idempotency_key, source_key, calculation, clause_id, rate_cell_id, source_document_id)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
-       ON CONFLICT (client_id, audit_run_id, idempotency_key) WHERE idempotency_key IS NOT NULL
+       ON CONFLICT (account_id, audit_run_id, idempotency_key) WHERE idempotency_key IS NOT NULL
        DO NOTHING RETURNING id`,
       [input.clientId, input.auditRunId, charge.chargeFactId, charge.category, charge.expectedAmount,
         charge.currency, charge.idempotencyKey, charge.sourceKey, JSON.stringify(charge.calculation), charge.clauseId,
@@ -120,7 +120,7 @@ export async function persistExpectedCharges(
     }>(
       `SELECT id, category, currency, expected_amount, source_key, calculation, charge_fact_id, clause_id, rate_cell_id, source_document_id
        FROM expected_charge
-       WHERE client_id = $1 AND audit_run_id = $2 AND idempotency_key = $3`,
+       WHERE account_id = $1 AND audit_run_id = $2 AND idempotency_key = $3`,
       [input.clientId, input.auditRunId, charge.idempotencyKey],
     );
     const row = existing.rows[0];

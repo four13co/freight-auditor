@@ -19,8 +19,8 @@
  */
 export async function upsertAnalystMembership(client, { userId, clientId }) {
   await client.query(
-    `INSERT INTO membership (user_id, client_id, role) VALUES ($1, $2, 'analyst')
-     ON CONFLICT (user_id, client_id) DO UPDATE SET role = EXCLUDED.role`,
+    `INSERT INTO membership (user_id, account_id, role) VALUES ($1, $2, 'analyst')
+     ON CONFLICT (user_id, account_id) DO UPDATE SET role = EXCLUDED.role`,
     [userId, clientId],
   );
 }

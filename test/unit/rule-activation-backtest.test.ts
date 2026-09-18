@@ -7,7 +7,7 @@ import type { AstNode } from '../../src/modules/rule-engine/ast.js';
 const AST: AstNode = { type: 'compare', op: 'gte', left: { type: 'fact', key: 'amount' }, right: { type: 'lit', value: 100 } };
 
 describe('runAndPersistRuleActivationBacktest', () => {
-  it('persists a global (client_id NULL) rule_backtest row when every supplied case passes', async () => {
+  it('persists a global (account_id NULL) rule_backtest row when every supplied case passes', async () => {
     const query = vi.fn()
       .mockResolvedValueOnce({ rows: [{ ast: AST }] }) // SELECT ast
       .mockResolvedValueOnce({ rows: [{ id: 'bt-1' }] }) // persistBacktest INSERT rule_backtest

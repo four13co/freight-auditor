@@ -45,15 +45,15 @@ export async function scheduleWorkflowCommand(
   const input = schema.parse(untrusted);
 
   const instance = await client.query(
-    `SELECT 1 FROM workflow_instance WHERE client_id = $1 AND id = $2`,
+    `SELECT 1 FROM workflow_instance WHERE account_id = $1 AND id = $2`,
     [input.clientId, input.workflowInstanceId],
   );
   if (!instance.rowCount) throw new ScheduleWorkflowCommandError('INSTANCE_NOT_FOUND');
 
   const inserted = await client.query<{ id: string }>(
-    `INSERT INTO workflow_command (client_id, workflow_instance_id, command_type, payload, run_after)
+    `INSERT INTO workflow_command (account_id, workflow_instance_id, command_type, payload, run_after)
      VALUES ($1, $2, $3, $4::jsonb, $5)
-     ON CONFLICT (client_id, workflow_instance_id, command_type, run_after) DO NOTHING
+     ON CONFLICT (account_id, workflow_instance_id, command_type, run_after) DO NOTHING
      RETURNING id`,
     [input.clientId, input.workflowInstanceId, input.commandType, JSON.stringify(input.payload), input.runAfter.toISOString()],
   );
@@ -78,7 +78,7 @@ export async function scheduleWorkflowCommand(
 
   const existing = await client.query<{ id: string }>(
     `SELECT id FROM workflow_command
-     WHERE client_id = $1 AND workflow_instance_id = $2 AND command_type = $3 AND run_after = $4`,
+     WHERE account_id = $1 AND workflow_instance_id = $2 AND command_type = $3 AND run_after = $4`,
     [input.clientId, input.workflowInstanceId, input.commandType, input.runAfter.toISOString()],
   );
   return { commandId: existing.rows[0]!.id, created: false };

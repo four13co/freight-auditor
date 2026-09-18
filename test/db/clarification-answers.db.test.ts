@@ -22,25 +22,25 @@ describe('clarification answers (DB)', () => {
 
   beforeAll(async () => {
     pool = makePool();
-    clientId = (await pool.query(`INSERT INTO client (name,slug) VALUES ('Answers',$1) RETURNING id`, [tag])).rows[0].id;
-    otherClientId = (await pool.query(`INSERT INTO client (name,slug) VALUES ('Other',$1) RETURNING id`, [`${tag}-other`])).rows[0].id;
+    clientId = (await pool.query(`INSERT INTO account (name,slug) VALUES ('Answers',$1) RETURNING id`, [tag])).rows[0].id;
+    otherClientId = (await pool.query(`INSERT INTO account (name,slug) VALUES ('Other',$1) RETURNING id`, [`${tag}-other`])).rows[0].id;
     userId = (await pool.query(`INSERT INTO app_user (email) VALUES ($1) RETURNING id`, [`${tag}@example.com`])).rows[0].id;
     sourceDocumentId = (await pool.query(`INSERT INTO source_document
-      (client_id,sha256,content_type,byte_size,storage_uri) VALUES ($1,$2,'application/pdf',1,$3) RETURNING id`,
+      (account_id,sha256,content_type,byte_size,storage_uri) VALUES ($1,$2,'application/pdf',1,$3) RETURNING id`,
     [clientId, 'a'.repeat(64), `local://${tag}`])).rows[0].id;
     questionId = (await pool.query(`INSERT INTO clarifying_question
-      (client_id,source_document_id,field_path,question,extraction_response_hash,abstention_status,
+      (account_id,source_document_id,field_path,question,extraction_response_hash,abstention_status,
        abstention_reason,policy_version,question_hash) VALUES ($1,$2,'contract.currency','Which currency?',
        $3,'NOT_FOUND','MISSING_REQUIRED_FIELD','abstention/1',$4) RETURNING id`,
     [clientId, sourceDocumentId, 'b'.repeat(64), 'c'.repeat(64)])).rows[0].id;
   });
 
   afterAll(async () => {
-    await pool.query(`DELETE FROM audit_event WHERE client_id=$1`, [clientId]);
-    await pool.query(`DELETE FROM clarifying_question WHERE client_id=$1`, [clientId]);
+    await pool.query(`DELETE FROM audit_event WHERE account_id=$1`, [clientId]);
+    await pool.query(`DELETE FROM clarifying_question WHERE account_id=$1`, [clientId]);
     await pool.query(`DELETE FROM source_document WHERE id=$1`, [sourceDocumentId]);
     await pool.query(`DELETE FROM app_user WHERE id=$1`, [userId]);
-    await pool.query(`DELETE FROM client WHERE id IN ($1,$2)`, [clientId, otherClientId]);
+    await pool.query(`DELETE FROM account WHERE id IN ($1,$2)`, [clientId, otherClientId]);
     await pool.end();
   });
 
@@ -92,7 +92,7 @@ describe('clarification answers (DB)', () => {
   // thing stopping a cross-tenant read/write were RLS, an `internal: true`
   // caller passing the WRONG clientId here would still see/mutate this row.
   // The explicit predicate is what fails these closed regardless of RLS.
-  it('the explicit client_id predicate rejects a mismatched clientId even under an internal (cross-client) RLS scope', async () => {
+  it('the explicit account_id predicate rejects a mismatched clientId even under an internal (cross-client) RLS scope', async () => {
     expect(await withAppTx(pool, { internal: true }, (client) => listClarifyingQuestions(client, sourceDocumentId, otherClientId)))
       .toEqual([]);
     await expect(withAppTx(pool, { internal: true }, (client) => answerClarifyingQuestion(client, {
@@ -101,7 +101,7 @@ describe('clarification answers (DB)', () => {
     }))).rejects.toBeInstanceOf(ClarifyingQuestionNotFoundError);
   });
 
-  it('the explicit client_id predicate still finds the row under an internal scope when the clientId matches', async () => {
+  it('the explicit account_id predicate still finds the row under an internal scope when the clientId matches', async () => {
     expect(await withAppTx(pool, { internal: true }, (client) => listClarifyingQuestions(client, sourceDocumentId, clientId)))
       .toHaveLength(1);
   });

@@ -20,9 +20,9 @@ describe('resolveClaim (DB)', () => {
     await seedCriteria({ client: pool });
     const owner = await pool.connect();
     try {
-      const a = await owner.query(`INSERT INTO client (name, slug) VALUES ('RC-A', $1) RETURNING id`, [`${tag}-a`]);
+      const a = await owner.query(`INSERT INTO account (name, slug) VALUES ('RC-A', $1) RETURNING id`, [`${tag}-a`]);
       clientAId = a.rows[0].id;
-      const b = await owner.query(`INSERT INTO client (name, slug) VALUES ('RC-B', $1) RETURNING id`, [`${tag}-b`]);
+      const b = await owner.query(`INSERT INTO account (name, slug) VALUES ('RC-B', $1) RETURNING id`, [`${tag}-b`]);
       clientBId = b.rows[0].id;
     } finally {
       owner.release();
@@ -32,16 +32,16 @@ describe('resolveClaim (DB)', () => {
   afterAll(async () => {
     const owner = await pool.connect();
     try {
-      await owner.query(`DELETE FROM audit_event WHERE client_id IN ($1, $2)`, [clientAId, clientBId]);
-      await owner.query(`DELETE FROM finding_status_event WHERE client_id IN ($1, $2)`, [clientAId, clientBId]);
-      await owner.query(`DELETE FROM recovery_event WHERE client_id IN ($1, $2)`, [clientAId, clientBId]);
-      await owner.query(`DELETE FROM claim WHERE client_id IN ($1, $2)`, [clientAId, clientBId]);
-      await owner.query(`DELETE FROM variance_finding WHERE client_id IN ($1, $2)`, [clientAId, clientBId]);
+      await owner.query(`DELETE FROM audit_event WHERE account_id IN ($1, $2)`, [clientAId, clientBId]);
+      await owner.query(`DELETE FROM finding_status_event WHERE account_id IN ($1, $2)`, [clientAId, clientBId]);
+      await owner.query(`DELETE FROM recovery_event WHERE account_id IN ($1, $2)`, [clientAId, clientBId]);
+      await owner.query(`DELETE FROM claim WHERE account_id IN ($1, $2)`, [clientAId, clientBId]);
+      await owner.query(`DELETE FROM variance_finding WHERE account_id IN ($1, $2)`, [clientAId, clientBId]);
       // 86e367r9x: persistAuditRun now wires a payment_gate_decision row per run.
-      await owner.query(`DELETE FROM payment_gate_decision WHERE client_id IN ($1, $2)`, [clientAId, clientBId]);
-      await owner.query(`DELETE FROM audit_run WHERE client_id IN ($1, $2)`, [clientAId, clientBId]);
-      await owner.query(`DELETE FROM invoice WHERE client_id IN ($1, $2)`, [clientAId, clientBId]);
-      await owner.query(`DELETE FROM client WHERE id IN ($1, $2)`, [clientAId, clientBId]);
+      await owner.query(`DELETE FROM payment_gate_decision WHERE account_id IN ($1, $2)`, [clientAId, clientBId]);
+      await owner.query(`DELETE FROM audit_run WHERE account_id IN ($1, $2)`, [clientAId, clientBId]);
+      await owner.query(`DELETE FROM invoice WHERE account_id IN ($1, $2)`, [clientAId, clientBId]);
+      await owner.query(`DELETE FROM account WHERE id IN ($1, $2)`, [clientAId, clientBId]);
     } finally {
       owner.release();
     }
@@ -50,7 +50,7 @@ describe('resolveClaim (DB)', () => {
 
   async function seedClaim(client: pg.PoolClient, opts: { clientId: string; amountClaimed?: string }): Promise<string> {
     const { rows } = await client.query<{ id: string }>(
-      `INSERT INTO claim (client_id, amount_claimed, currency, status) VALUES ($1, $2, 'USD', 'open') RETURNING id`,
+      `INSERT INTO claim (account_id, amount_claimed, currency, status) VALUES ($1, $2, 'USD', 'open') RETURNING id`,
       [opts.clientId, opts.amountClaimed ?? '500.0000'],
     );
     return rows[0]!.id;
@@ -58,15 +58,15 @@ describe('resolveClaim (DB)', () => {
 
   async function seedFinding(client: pg.PoolClient, opts: { clientId: string }): Promise<string> {
     const inv = await client.query<{ id: string }>(
-      `INSERT INTO invoice (client_id, transaction_set, parser_version) VALUES ($1, '210', 'test') RETURNING id`,
+      `INSERT INTO invoice (account_id, transaction_set, parser_version) VALUES ($1, '210', 'test') RETURNING id`,
       [opts.clientId],
     );
     const run = await client.query<{ id: string }>(
-      `INSERT INTO audit_run (client_id, invoice_id, engine_spec_version, outcome) VALUES ($1, $2, 'test', 'SCORED') RETURNING id`,
+      `INSERT INTO audit_run (account_id, invoice_id, engine_spec_version, outcome) VALUES ($1, $2, 'test', 'SCORED') RETURNING id`,
       [opts.clientId, inv.rows[0]!.id],
     );
     const vf = await client.query<{ id: string }>(
-      `INSERT INTO variance_finding (client_id, audit_run_id, criterion_id, rule_version_id, status, evaluated_expr)
+      `INSERT INTO variance_finding (account_id, audit_run_id, criterion_id, rule_version_id, status, evaluated_expr)
        SELECT $1, $2, c.id, rv.id, 'open', '{}'::jsonb
        FROM criterion c JOIN rule r ON r.slug = 'contract-rate_variance'
        JOIN rule_version rv ON rv.rule_id = r.id
@@ -108,7 +108,7 @@ describe('resolveClaim (DB)', () => {
     const row = await withTenantTx({ clientIds: [clientAId] }, async (client) => {
       const claimId = await seedClaim(client, { clientId: clientAId });
       await client.query(
-        `INSERT INTO recovery_event (client_id, claim_id, amount_recovered, currency) VALUES ($1, $2, '100.0000', 'USD')`,
+        `INSERT INTO recovery_event (account_id, claim_id, amount_recovered, currency) VALUES ($1, $2, '100.0000', 'USD')`,
         [clientAId, claimId],
       );
       const result = await resolveClaim(client, { clientId: clientAId, claimId, kind: 'WRITE_OFF' });

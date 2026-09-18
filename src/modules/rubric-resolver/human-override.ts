@@ -30,10 +30,10 @@ export async function resolveHumanOverride(
   const request = parsed.data;
   const row = (await client.query<{ id: string; asserted_value: unknown; recorded_at: Date | string }>(
     `SELECT id, asserted_value, recorded_at FROM human_override
-     WHERE (client_id = $1 OR client_id IS NULL)
+     WHERE (account_id = $1 OR account_id IS NULL)
        AND criterion_id = $2 AND case_fingerprint = $3
        AND recorded_at <= $4::timestamptz
-     ORDER BY (client_id = $1) DESC, recorded_at DESC, id DESC
+     ORDER BY (account_id = $1) DESC, recorded_at DESC, id DESC
      LIMIT 1`,
     [request.clientId, request.criterionId, request.caseFingerprint, request.recordedAsOf],
   )).rows[0];

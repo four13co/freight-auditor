@@ -20,7 +20,7 @@ describe('buildForeignKeyGraph', () => {
       );
       CREATE TABLE audit_run (
         id uuid PRIMARY KEY,
-        client_id uuid NOT NULL REFERENCES client(id)
+        account_id uuid NOT NULL REFERENCES client(id)
       );
     `;
     const graph = buildForeignKeyGraph([sql]);
@@ -63,8 +63,8 @@ describe('extractAfterAllDeleteOrder', () => {
       describe('x', () => {
         beforeAll(async () => { /* setup */ });
         afterAll(async () => {
-          await owner.query(\`DELETE FROM variance_finding WHERE client_id = $1\`, [clientId]);
-          await owner.query(\`DELETE FROM audit_run WHERE client_id = $1\`, [clientId]);
+          await owner.query(\`DELETE FROM variance_finding WHERE account_id = $1\`, [clientId]);
+          await owner.query(\`DELETE FROM audit_run WHERE account_id = $1\`, [clientId]);
         });
       });
     `;
@@ -79,7 +79,7 @@ describe('extractAfterAllDeleteOrder', () => {
     const content = `
       beforeEach(async () => { await q(\`DELETE FROM scratch\`); });
       afterAll(async () => {
-        await q(\`DELETE FROM audit_run WHERE client_id = $1\`, [clientId]);
+        await q(\`DELETE FROM audit_run WHERE account_id = $1\`, [clientId]);
       });
     `;
     expect(extractAfterAllDeleteOrder(content)).toEqual(['audit_run']);

@@ -23,9 +23,9 @@ describe('recordExportAcknowledgement (DB)', () => {
     pool = getPool();
     const owner = await pool.connect();
     try {
-      const a = await owner.query(`INSERT INTO client (name, slug) VALUES ('XACK-A', $1) RETURNING id`, [`${tag}-a`]);
+      const a = await owner.query(`INSERT INTO account (name, slug) VALUES ('XACK-A', $1) RETURNING id`, [`${tag}-a`]);
       clientAId = a.rows[0].id;
-      const b = await owner.query(`INSERT INTO client (name, slug) VALUES ('XACK-B', $1) RETURNING id`, [`${tag}-b`]);
+      const b = await owner.query(`INSERT INTO account (name, slug) VALUES ('XACK-B', $1) RETURNING id`, [`${tag}-b`]);
       clientBId = b.rows[0].id;
     } finally {
       owner.release();
@@ -35,12 +35,12 @@ describe('recordExportAcknowledgement (DB)', () => {
   afterAll(async () => {
     const owner = await pool.connect();
     try {
-      await owner.query(`DELETE FROM audit_event WHERE client_id IN ($1, $2)`, [clientAId, clientBId]);
-      await owner.query(`DELETE FROM export_acknowledgement WHERE client_id IN ($1, $2)`, [clientAId, clientBId]);
-      await owner.query(`DELETE FROM claim WHERE client_id IN ($1, $2)`, [clientAId, clientBId]);
-      await owner.query(`DELETE FROM payment_gate_decision WHERE client_id IN ($1, $2)`, [clientAId, clientBId]);
-      await owner.query(`DELETE FROM invoice WHERE client_id IN ($1, $2)`, [clientAId, clientBId]);
-      await owner.query(`DELETE FROM client WHERE id IN ($1, $2)`, [clientAId, clientBId]);
+      await owner.query(`DELETE FROM audit_event WHERE account_id IN ($1, $2)`, [clientAId, clientBId]);
+      await owner.query(`DELETE FROM export_acknowledgement WHERE account_id IN ($1, $2)`, [clientAId, clientBId]);
+      await owner.query(`DELETE FROM claim WHERE account_id IN ($1, $2)`, [clientAId, clientBId]);
+      await owner.query(`DELETE FROM payment_gate_decision WHERE account_id IN ($1, $2)`, [clientAId, clientBId]);
+      await owner.query(`DELETE FROM invoice WHERE account_id IN ($1, $2)`, [clientAId, clientBId]);
+      await owner.query(`DELETE FROM account WHERE id IN ($1, $2)`, [clientAId, clientBId]);
     } finally {
       owner.release();
     }
@@ -49,7 +49,7 @@ describe('recordExportAcknowledgement (DB)', () => {
 
   async function seedClaim(client: pg.PoolClient, clientId: string): Promise<string> {
     const { rows } = await client.query<{ id: string }>(
-      `INSERT INTO claim (client_id, amount_claimed, currency, status) VALUES ($1, '500.0000', 'USD', 'open') RETURNING id`,
+      `INSERT INTO claim (account_id, amount_claimed, currency, status) VALUES ($1, '500.0000', 'USD', 'open') RETURNING id`,
       [clientId],
     );
     return rows[0]!.id;
@@ -57,12 +57,12 @@ describe('recordExportAcknowledgement (DB)', () => {
 
   async function seedPaymentGateDecision(client: pg.PoolClient, clientId: string): Promise<string> {
     const inv = await client.query<{ id: string }>(
-      `INSERT INTO invoice (client_id, transaction_set, invoice_number, currency, parser_version)
+      `INSERT INTO invoice (account_id, transaction_set, invoice_number, currency, parser_version)
        VALUES ($1, '210', $2, 'USD', 'test') RETURNING id`,
       [clientId, `INV-${tag}-${Math.random().toString(36).slice(2)}`],
     );
     const { rows } = await client.query<{ id: string }>(
-      `INSERT INTO payment_gate_decision (client_id, invoice_id, action, actor_kind, rationale)
+      `INSERT INTO payment_gate_decision (account_id, invoice_id, action, actor_kind, rationale)
        VALUES ($1, $2, 'hold', 'system', 'test') RETURNING id`,
       [clientId, inv.rows[0]!.id],
     );
@@ -157,7 +157,7 @@ describe('recordExportAcknowledgement (DB)', () => {
       });
 
       const rows = await client.query(
-        `SELECT id FROM export_acknowledgement WHERE client_id = $1 AND dedupe_key = $2 AND status = 'ACKNOWLEDGED'`,
+        `SELECT id FROM export_acknowledgement WHERE account_id = $1 AND dedupe_key = $2 AND status = 'ACKNOWLEDGED'`,
         [clientAId, dedupeKey],
       );
       return { firstRecorded, secondRecorded, count: rows.rows.length };
@@ -188,7 +188,7 @@ describe('recordExportAcknowledgement (DB)', () => {
       });
 
       const rows = await client.query(
-        `SELECT id FROM export_acknowledgement WHERE client_id = $1 AND dedupe_key = $2 AND status = 'FAILED'`,
+        `SELECT id FROM export_acknowledgement WHERE account_id = $1 AND dedupe_key = $2 AND status = 'FAILED'`,
         [clientAId, dedupeKey],
       );
       return { first, second, count: rows.rows.length };

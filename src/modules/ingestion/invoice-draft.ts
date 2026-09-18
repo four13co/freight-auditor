@@ -110,7 +110,7 @@ export async function createInvoiceDraft(
     : 'extracted';
 
   const inserted = await client.query<{ id: string }>(
-    `INSERT INTO invoice_draft (client_id, source_document_id, status, extracted_payload, carrier_candidates, resolved_carrier_id, extraction_model)
+    `INSERT INTO invoice_draft (account_id, source_document_id, status, extracted_payload, carrier_candidates, resolved_carrier_id, extraction_model)
      VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
     [
       input.clientId,
@@ -158,7 +158,7 @@ export interface ConfirmDraftResult extends PersistedRun {
 
 interface DraftRow {
   id: string;
-  client_id: string;
+  account_id: string;
   status: string;
   source_document_id: string;
   source_document_sha256: string;
@@ -169,7 +169,7 @@ interface DraftRow {
 
 async function loadDraft(client: pg.PoolClient, draftId: string): Promise<DraftRow> {
   const res = await client.query<DraftRow>(
-    `SELECT d.id, d.client_id, d.status, d.source_document_id, d.extracted_payload,
+    `SELECT d.id, d.account_id, d.status, d.source_document_id, d.extracted_payload,
        d.corrected_payload, d.resolved_carrier_id, sd.sha256 AS source_document_sha256
      FROM invoice_draft d JOIN source_document sd ON sd.id = d.source_document_id
      WHERE d.id = $1`,
@@ -273,8 +273,8 @@ export async function rejectInvoiceDraft(
     [draftId],
   );
   await writeAuditEvent(client, {
-    id: deterministicAuditEventId(draft.client_id, draft.id, 'invoice_draft.rejected'),
-    clientId: draft.client_id,
+    id: deterministicAuditEventId(draft.account_id, draft.id, 'invoice_draft.rejected'),
+    clientId: draft.account_id,
     entity: 'invoice_draft',
     entityId: draft.id,
     event: 'invoice_draft.rejected',
@@ -317,7 +317,7 @@ async function recordCorrectionDiff(
   async function writeDiff(fieldPath: string, before: unknown, after: unknown): Promise<void> {
     if (JSON.stringify(before) === JSON.stringify(after)) return;
     await client.query(
-      `INSERT INTO extraction_field (client_id, source_document_id, field_path, ai_value, human_value, model_version)
+      `INSERT INTO extraction_field (account_id, source_document_id, field_path, ai_value, human_value, model_version)
        VALUES ($1, $2, $3, $4, $5, $6)`,
       [
         args.clientId,

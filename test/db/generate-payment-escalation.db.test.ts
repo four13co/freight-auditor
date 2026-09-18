@@ -27,17 +27,17 @@ describe('generatePaymentEscalation (DB)', () => {
     pool = getPool();
     const owner = await pool.connect();
     try {
-      const c = await owner.query(`INSERT INTO client (name, slug) VALUES ('ESC', $1) RETURNING id`, [tag]);
+      const c = await owner.query(`INSERT INTO account (name, slug) VALUES ('ESC', $1) RETURNING id`, [tag]);
       clientId = c.rows[0].id;
       // 86e367r9x: persistAuditRun now wires its own default 'hold' decision
       // for a SCORED run -- this suite's own insertHold() helper needs to be
       // the ONLY hold row (it backdates recorded_at to simulate an elapsed
-      // grace period), so opt this client out via client_payment_policy.
+      // grace period), so opt this client out via account_payment_policy.
       const configuredBy = await owner.query<{ id: string }>(
         `INSERT INTO app_user (email) VALUES ($1) RETURNING id`, [`${tag}-configurer@example.com`],
       );
       await owner.query(
-        `INSERT INTO client_payment_policy (client_id, hold_then_approve, configured_by) VALUES ($1, false, $2)`,
+        `INSERT INTO account_payment_policy (account_id, hold_then_approve, configured_by) VALUES ($1, false, $2)`,
         [clientId, configuredBy.rows[0]!.id],
       );
     } finally {
@@ -48,20 +48,20 @@ describe('generatePaymentEscalation (DB)', () => {
   afterAll(async () => {
     const owner = await pool.connect();
     try {
-      await owner.query(`DELETE FROM audit_event WHERE client_id = $1`, [clientId]);
-      await owner.query(`DELETE FROM payment_gate_decision WHERE client_id = $1`, [clientId]);
-      await owner.query(`DELETE FROM audit_replay_manifest WHERE client_id = $1`, [clientId]);
-      await owner.query(`DELETE FROM finding_status_event WHERE client_id = $1`, [clientId]);
-      await owner.query(`DELETE FROM variance_finding WHERE client_id = $1`, [clientId]);
-      await owner.query(`DELETE FROM scorecard WHERE client_id = $1`, [clientId]);
-      await owner.query(`DELETE FROM gate_failure WHERE client_id = $1`, [clientId]);
-      await owner.query(`DELETE FROM charge_finding WHERE client_id = $1`, [clientId]);
-      await owner.query(`DELETE FROM audit_run WHERE client_id = $1`, [clientId]);
-      await owner.query(`DELETE FROM charge_fact WHERE client_id = $1`, [clientId]);
-      await owner.query(`DELETE FROM invoice WHERE client_id = $1`, [clientId]);
-      await owner.query(`DELETE FROM client_payment_policy WHERE client_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM audit_event WHERE account_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM payment_gate_decision WHERE account_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM audit_replay_manifest WHERE account_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM finding_status_event WHERE account_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM variance_finding WHERE account_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM scorecard WHERE account_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM gate_failure WHERE account_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM charge_finding WHERE account_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM audit_run WHERE account_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM charge_fact WHERE account_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM invoice WHERE account_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM account_payment_policy WHERE account_id = $1`, [clientId]);
       await owner.query(`DELETE FROM app_user WHERE email = $1`, [`${tag}-configurer@example.com`]);
-      await owner.query(`DELETE FROM client WHERE id = $1`, [clientId]);
+      await owner.query(`DELETE FROM account WHERE id = $1`, [clientId]);
     } finally {
       owner.release();
     }
@@ -78,7 +78,7 @@ describe('generatePaymentEscalation (DB)', () => {
   async function insertHold(c: pg.PoolClient, auditRunId: string, recordedAt: string): Promise<void> {
     const run = await c.query<{ invoice_id: string }>(`SELECT invoice_id FROM audit_run WHERE id = $1`, [auditRunId]);
     await c.query(
-      `INSERT INTO payment_gate_decision (client_id, invoice_id, audit_run_id, action, actor_kind, rationale, recorded_at)
+      `INSERT INTO payment_gate_decision (account_id, invoice_id, audit_run_id, action, actor_kind, rationale, recorded_at)
        VALUES ($1,$2,$3,'hold','system','Held by default.',$4::timestamptz)`,
       [clientId, run.rows[0]!.invoice_id, auditRunId, recordedAt],
     );
@@ -93,7 +93,7 @@ describe('generatePaymentEscalation (DB)', () => {
       const retry = await generatePaymentEscalation(c, clientId, auditRunId, new Date('2026-08-10T00:00:00.000Z'));
 
       const holdRows = await c.query(
-        `SELECT action FROM payment_gate_decision WHERE client_id = $1 AND audit_run_id = $2`,
+        `SELECT action FROM payment_gate_decision WHERE account_id = $1 AND audit_run_id = $2`,
         [clientId, auditRunId],
       );
       return { first, retry, holdRows: holdRows.rows };
@@ -121,7 +121,7 @@ describe('generatePaymentEscalation (DB)', () => {
       await insertHold(c, auditRunId, '2026-08-01T00:00:00.000Z');
       const run = await c.query<{ invoice_id: string }>(`SELECT invoice_id FROM audit_run WHERE id = $1`, [auditRunId]);
       await c.query(
-        `INSERT INTO payment_gate_decision (client_id, invoice_id, audit_run_id, action, actor_kind, rationale)
+        `INSERT INTO payment_gate_decision (account_id, invoice_id, audit_run_id, action, actor_kind, rationale)
          VALUES ($1,$2,$3,'approve','analyst','Approved by analyst.')`,
         [clientId, run.rows[0]!.invoice_id, auditRunId],
       );

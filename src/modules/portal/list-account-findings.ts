@@ -3,13 +3,13 @@ import type pg from 'pg';
 /**
  * One row of the client portal's findings list (P6.B.2) -- same join shape
  * as the internal listFindings (../findings/list-findings.ts), with an
- * added explicit `client_id` predicate (86e31a9ch/#216 precedent: on top
+ * added explicit `account_id` predicate (86e31a9ch/#216 precedent: on top
  * of RLS, not a replacement for it). `clientIds` (list-findings.ts's own
  * API-symmetry-only, unused-as-a-filter field) is deliberately dropped from
  * this options shape -- the client scope here is bound structurally by the
  * caller's resolved clientId param, never by a caller-supplied filter.
  */
-export interface ClientFindingRow {
+export interface AccountFindingRow {
   id: string;
   auditRunId: string;
   invoiceId: string;
@@ -24,17 +24,17 @@ export interface ClientFindingRow {
   ruleDescription: string | null;
 }
 
-export type ClientFindingsSortKey = 'variance' | 'age';
-export type ClientFindingsSortDir = 'asc' | 'desc';
+export type AccountFindingsSortKey = 'variance' | 'age';
+export type AccountFindingsSortDir = 'asc' | 'desc';
 
-export interface ListClientFindingsOptions {
+export interface ListAccountFindingsOptions {
   carrier?: string;
   status?: string;
   minAmount?: string;
   limit?: number;
   offset?: number;
-  sort?: ClientFindingsSortKey;
-  sortDir?: ClientFindingsSortDir;
+  sort?: AccountFindingsSortKey;
+  sortDir?: AccountFindingsSortDir;
 }
 
 const DEFAULT_LIMIT = 50;
@@ -42,7 +42,7 @@ const DEFAULT_LIMIT = 50;
 // Mirrors list-findings.ts's own ORDER_COLUMNS allowlist exactly -- the same
 // injection-boundary reasoning applies (sort/sortDir feed an ORDER BY, which
 // can't be parameter-bound).
-const ORDER_COLUMNS: Record<ClientFindingsSortKey, string> = {
+const ORDER_COLUMNS: Record<AccountFindingsSortKey, string> = {
   variance: 'variance_finding.variance_amount',
   age: 'variance_finding.created_at',
 };
@@ -50,16 +50,16 @@ const ORDER_COLUMNS: Record<ClientFindingsSortKey, string> = {
 /**
  * List variance_finding rows for the given client, joined to their
  * billed/expected amounts and carrier -- same query shape as
- * listFindings, plus an explicit `variance_finding.client_id = $1`
+ * listFindings, plus an explicit `variance_finding.account_id = $1`
  * predicate so a caller resolving a broader-than-intended scope still
  * can't leak another tenant's findings through this function.
  */
-export async function listClientFindings(
+export async function listAccountFindings(
   client: pg.PoolClient,
   clientId: string,
-  options: ListClientFindingsOptions = {},
-): Promise<ClientFindingRow[]> {
-  const conditions: string[] = ['variance_finding.client_id = $1'];
+  options: ListAccountFindingsOptions = {},
+): Promise<AccountFindingRow[]> {
+  const conditions: string[] = ['variance_finding.account_id = $1'];
   const params: unknown[] = [clientId];
 
   if (options.carrier) {

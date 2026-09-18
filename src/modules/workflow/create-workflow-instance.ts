@@ -22,7 +22,7 @@ export interface WorkflowInstanceRow {
 
 /**
  * Create a workflow_instance (P4.A.1, 86e2zfgyc). Idempotent on
- * (client_id, workflow_type, subject_entity, subject_entity_id): a retry with
+ * (account_id, workflow_type, subject_entity, subject_entity_id): a retry with
  * the same subject returns the existing row rather than erroring or
  * duplicating, via SELECT-then-INSERT under the caller's withTenantTx (RLS
  * enforces the tenant boundary; the UNIQUE constraint is the fail-safe floor
@@ -37,18 +37,18 @@ export async function createWorkflowInstance(
   input: CreateWorkflowInstanceInput,
 ): Promise<WorkflowInstanceRow> {
   const existing = await client.query<RawRow>(
-    `SELECT id, client_id, workflow_type, subject_entity, subject_entity_id, current_state, created_at, updated_at
+    `SELECT id, account_id, workflow_type, subject_entity, subject_entity_id, current_state, created_at, updated_at
      FROM workflow_instance
-     WHERE client_id = $1 AND workflow_type = $2 AND subject_entity = $3 AND subject_entity_id = $4`,
+     WHERE account_id = $1 AND workflow_type = $2 AND subject_entity = $3 AND subject_entity_id = $4`,
     [input.clientId, input.workflowType, input.subjectEntity, input.subjectEntityId],
   );
   if (existing.rows[0]) return toRow(existing.rows[0]);
 
   const inserted = await client.query<RawRow>(
-    `INSERT INTO workflow_instance (client_id, workflow_type, subject_entity, subject_entity_id, current_state)
+    `INSERT INTO workflow_instance (account_id, workflow_type, subject_entity, subject_entity_id, current_state)
      VALUES ($1, $2, $3, $4, $5)
-     ON CONFLICT (client_id, workflow_type, subject_entity, subject_entity_id) DO NOTHING
-     RETURNING id, client_id, workflow_type, subject_entity, subject_entity_id, current_state, created_at, updated_at`,
+     ON CONFLICT (account_id, workflow_type, subject_entity, subject_entity_id) DO NOTHING
+     RETURNING id, account_id, workflow_type, subject_entity, subject_entity_id, current_state, created_at, updated_at`,
     [input.clientId, input.workflowType, input.subjectEntity, input.subjectEntityId, input.initialState],
   );
 
@@ -56,9 +56,9 @@ export async function createWorkflowInstance(
   if (!row) {
     // Lost the race to a concurrent insert -- read back the winner's row.
     const raced = await client.query<RawRow>(
-      `SELECT id, client_id, workflow_type, subject_entity, subject_entity_id, current_state, created_at, updated_at
+      `SELECT id, account_id, workflow_type, subject_entity, subject_entity_id, current_state, created_at, updated_at
        FROM workflow_instance
-       WHERE client_id = $1 AND workflow_type = $2 AND subject_entity = $3 AND subject_entity_id = $4`,
+       WHERE account_id = $1 AND workflow_type = $2 AND subject_entity = $3 AND subject_entity_id = $4`,
       [input.clientId, input.workflowType, input.subjectEntity, input.subjectEntityId],
     );
     const racedRow = raced.rows[0];
@@ -67,8 +67,8 @@ export async function createWorkflowInstance(
   }
 
   await writeAuditEvent(client, {
-    id: deterministicAuditEventId(row.client_id, row.id, 'workflow.created'),
-    clientId: row.client_id,
+    id: deterministicAuditEventId(row.account_id, row.id, 'workflow.created'),
+    clientId: row.account_id,
     entity: 'workflow_instance',
     entityId: row.id,
     event: 'workflow.created',
@@ -88,7 +88,7 @@ export async function getWorkflowInstance(
   workflowInstanceId: string,
 ): Promise<WorkflowInstanceRow | null> {
   const result = await client.query<RawRow>(
-    `SELECT id, client_id, workflow_type, subject_entity, subject_entity_id, current_state, created_at, updated_at
+    `SELECT id, account_id, workflow_type, subject_entity, subject_entity_id, current_state, created_at, updated_at
      FROM workflow_instance WHERE id = $1`,
     [workflowInstanceId],
   );
@@ -98,7 +98,7 @@ export async function getWorkflowInstance(
 
 interface RawRow {
   id: string;
-  client_id: string;
+  account_id: string;
   workflow_type: string;
   subject_entity: string;
   subject_entity_id: string;
@@ -110,7 +110,7 @@ interface RawRow {
 function toRow(row: RawRow): WorkflowInstanceRow {
   return {
     id: row.id,
-    clientId: row.client_id,
+    clientId: row.account_id,
     workflowType: row.workflow_type,
     subjectEntity: row.subject_entity,
     subjectEntityId: row.subject_entity_id,

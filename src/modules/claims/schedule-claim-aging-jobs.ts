@@ -35,7 +35,7 @@ export async function scheduleClaimAgingJobs(
   now: Date = new Date(),
 ): Promise<ScheduleClaimAgingJobsResult> {
   const clients = await client.query<{ id: string }>(
-    `SELECT id FROM client WHERE is_active = true`,
+    `SELECT id FROM account WHERE is_active = true`,
   );
 
   let followUpEnqueued = 0;

@@ -4,14 +4,14 @@ import type { FastifyInstance } from 'fastify';
 import { getPool, closePool } from '../../src/db/pool.js';
 import { withTenantTx } from '../../src/db/tenant-context.js';
 import { buildApp } from '../../src/server/app.js';
-import { listClientInvoices } from '../../src/modules/portal/list-client-invoices.js';
-import { getClientAuditRunScorecard } from '../../src/modules/portal/get-client-audit-run-scorecard.js';
-import { listClientFindings } from '../../src/modules/portal/list-client-findings.js';
-import { getClientDisputeDetail } from '../../src/modules/portal/get-client-dispute-detail.js';
-import { listClientDisputeCommunications } from '../../src/modules/portal/list-client-dispute-communications.js';
+import { listAccountInvoices } from '../../src/modules/portal/list-account-invoices.js';
+import { getAccountAuditRunScorecard } from '../../src/modules/portal/get-account-audit-run-scorecard.js';
+import { listAccountFindings } from '../../src/modules/portal/list-account-findings.js';
+import { getAccountDisputeDetail } from '../../src/modules/portal/get-account-dispute-detail.js';
+import { listAccountDisputeCommunications } from '../../src/modules/portal/list-account-dispute-communications.js';
 import { getClaimDetail } from '../../src/modules/claims/get-claim-detail.js';
-import { listClientClaimDocuments } from '../../src/modules/portal/list-client-claim-documents.js';
-import { listClientAuditEvents } from '../../src/modules/portal/list-client-audit-events.js';
+import { listAccountClaimDocuments } from '../../src/modules/portal/list-account-claim-documents.js';
+import { listAccountAuditEvents } from '../../src/modules/portal/list-account-audit-events.js';
 
 /**
  * P6.B.1: GET /api/portal/invoices and GET /api/portal/scorecard/:auditRunId,
@@ -55,23 +55,23 @@ describe('client portal content APIs (DB, e2e)', () => {
     pool = getPool();
     const owner = await pool.connect();
     try {
-      const c = await owner.query(`INSERT INTO client (name, slug) VALUES ('PCR', $1) RETURNING id`, [tag]);
+      const c = await owner.query(`INSERT INTO account (name, slug) VALUES ('PCR', $1) RETURNING id`, [tag]);
       clientId = c.rows[0].id;
       const uViewer = await owner.query(`INSERT INTO app_user (email) VALUES ($1) RETURNING id`, [`${tag}-viewer@example.com`]);
       viewerUserId = uViewer.rows[0].id;
       const uAdmin = await owner.query(`INSERT INTO app_user (email) VALUES ($1) RETURNING id`, [`${tag}-admin@example.com`]);
       adminUserId = uAdmin.rows[0].id;
-      await owner.query(`INSERT INTO membership (user_id, client_id, role) VALUES ($1, $2, 'client_viewer')`, [viewerUserId, clientId]);
-      await owner.query(`INSERT INTO membership (user_id, client_id, role) VALUES ($1, $2, 'client_admin')`, [adminUserId, clientId]);
+      await owner.query(`INSERT INTO membership (user_id, account_id, role) VALUES ($1, $2, 'account_viewer')`, [viewerUserId, clientId]);
+      await owner.query(`INSERT INTO membership (user_id, account_id, role) VALUES ($1, $2, 'account_admin')`, [adminUserId, clientId]);
       const carrier = await owner.query(`INSERT INTO carrier (name) VALUES ('Acme Freight') RETURNING id`);
       carrierId = carrier.rows[0].id;
 
-      const other = await owner.query(`INSERT INTO client (name, slug) VALUES ('PCR-Other', $1) RETURNING id`, [`${tag}-other`]);
+      const other = await owner.query(`INSERT INTO account (name, slug) VALUES ('PCR-Other', $1) RETURNING id`, [`${tag}-other`]);
       otherClientId = other.rows[0].id;
 
       await withTenantTx({ clientIds: [clientId, otherClientId], internal: true }, async (c2) => {
         const invoice = await c2.query(
-          `INSERT INTO invoice (client_id, carrier_id, transaction_set, invoice_number, currency, parser_version, status)
+          `INSERT INTO invoice (account_id, carrier_id, transaction_set, invoice_number, currency, parser_version, status)
            VALUES ($1, $2, '210', 'INV-1', 'USD', 'v1', 'ingested') RETURNING id`,
           [clientId, carrierId],
         );
@@ -83,35 +83,35 @@ describe('client portal content APIs (DB, e2e)', () => {
         // default would give them IDENTICAL timestamps and make "the LATERAL
         // join picks the newest run" test below non-deterministic.
         const run = await c2.query(
-          `INSERT INTO audit_run (client_id, invoice_id, engine_spec_version, outcome, created_at)
+          `INSERT INTO audit_run (account_id, invoice_id, engine_spec_version, outcome, created_at)
            VALUES ($1, $2, 'v1', 'SCORED', now() - interval '1 hour') RETURNING id`,
           [clientId, invoiceId],
         );
         auditRunId = run.rows[0].id;
         await c2.query(
-          `INSERT INTO scorecard (client_id, audit_run_id, conformed_count, variance_count, unassessable_count, total_overcharge, total_undercharge, currency)
+          `INSERT INTO scorecard (account_id, audit_run_id, conformed_count, variance_count, unassessable_count, total_overcharge, total_undercharge, currency)
            VALUES ($1, $2, 8, 2, 0, '150.0000', '10.0000', 'USD')`,
           [clientId, auditRunId],
         );
 
         // A second, later audit_run on the SAME invoice with no scorecard row
-        // (REJECTED_REWORK never produces one) -- proves listClientInvoices' LATERAL
+        // (REJECTED_REWORK never produces one) -- proves listAccountInvoices' LATERAL
         // join picks the newest run (this one, not the SCORED run above), and
         // proves the scorecard route's "no data yet" (empty) case.
         const unscoredRun = await c2.query(
-          `INSERT INTO audit_run (client_id, invoice_id, engine_spec_version, outcome) VALUES ($1, $2, 'v1', 'REJECTED_REWORK') RETURNING id`,
+          `INSERT INTO audit_run (account_id, invoice_id, engine_spec_version, outcome) VALUES ($1, $2, 'v1', 'REJECTED_REWORK') RETURNING id`,
           [clientId, invoiceId],
         );
         unscoredAuditRunId = unscoredRun.rows[0].id;
 
         const otherInvoice = await c2.query(
-          `INSERT INTO invoice (client_id, carrier_id, transaction_set, invoice_number, currency, parser_version, status)
+          `INSERT INTO invoice (account_id, carrier_id, transaction_set, invoice_number, currency, parser_version, status)
            VALUES ($1, $2, '210', 'INV-OTHER', 'USD', 'v1', 'ingested') RETURNING id`,
           [otherClientId, carrierId],
         );
         otherInvoiceId = otherInvoice.rows[0].id;
         const otherRun = await c2.query(
-          `INSERT INTO audit_run (client_id, invoice_id, engine_spec_version, outcome) VALUES ($1, $2, 'v1', 'SCORED') RETURNING id`,
+          `INSERT INTO audit_run (account_id, invoice_id, engine_spec_version, outcome) VALUES ($1, $2, 'v1', 'SCORED') RETURNING id`,
           [otherClientId, otherInvoiceId],
         );
         otherAuditRunId = otherRun.rows[0].id;
@@ -120,19 +120,19 @@ describe('client portal content APIs (DB, e2e)', () => {
         // criterion -> rule -> rule_version FK chain as
         // build-evidence-packet.db.test.ts's seedDisputeWithFinding helper.
         const cf = await c2.query(
-          `INSERT INTO charge_fact (client_id, invoice_id, code, category, amount, currency)
+          `INSERT INTO charge_fact (account_id, invoice_id, code, category, amount, currency)
            VALUES ($1, $2, '400', 'LINEHAUL', '1000.0000', 'USD') RETURNING id`,
           [clientId, invoiceId],
         );
         const chargeFactId = cf.rows[0].id;
         await c2.query(
-          `INSERT INTO expected_charge (client_id, audit_run_id, charge_fact_id, category, expected_amount, currency)
+          `INSERT INTO expected_charge (account_id, audit_run_id, charge_fact_id, category, expected_amount, currency)
            VALUES ($1, $2, $3, 'LINEHAUL', '900.0000', 'USD')`,
           [clientId, auditRunId, chargeFactId],
         );
         const vf = await c2.query<{ id: string }>(
           `INSERT INTO variance_finding
-             (client_id, audit_run_id, charge_fact_id, criterion_id, rule_version_id, direction, variance_amount, currency, status, evaluated_expr)
+             (account_id, audit_run_id, charge_fact_id, criterion_id, rule_version_id, direction, variance_amount, currency, status, evaluated_expr)
            SELECT $1, $2, $3, c.id, rv.id, 'OVERCHARGE', '100.0000', 'USD', 'open', '{}'::jsonb
            FROM criterion c JOIN rule r ON r.slug = 'contract-rate_variance'
            JOIN rule_version rv ON rv.rule_id = r.id
@@ -142,13 +142,13 @@ describe('client portal content APIs (DB, e2e)', () => {
         findingId = vf.rows[0]!.id;
 
         const otherCf = await c2.query(
-          `INSERT INTO charge_fact (client_id, invoice_id, code, category, amount, currency)
+          `INSERT INTO charge_fact (account_id, invoice_id, code, category, amount, currency)
            VALUES ($1, $2, '400', 'LINEHAUL', '500.0000', 'USD') RETURNING id`,
           [otherClientId, otherInvoiceId],
         );
         const otherVf = await c2.query<{ id: string }>(
           `INSERT INTO variance_finding
-             (client_id, audit_run_id, charge_fact_id, criterion_id, rule_version_id, direction, variance_amount, currency, status, evaluated_expr)
+             (account_id, audit_run_id, charge_fact_id, criterion_id, rule_version_id, direction, variance_amount, currency, status, evaluated_expr)
            SELECT $1, $2, $3, c.id, rv.id, 'OVERCHARGE', '50.0000', 'USD', 'open', '{}'::jsonb
            FROM criterion c JOIN rule r ON r.slug = 'contract-rate_variance'
            JOIN rule_version rv ON rv.rule_id = r.id
@@ -159,28 +159,28 @@ describe('client portal content APIs (DB, e2e)', () => {
 
         // P6.B.3: one real dispute + communication per client.
         const dispute = await c2.query<{ id: string }>(
-          `INSERT INTO dispute (client_id, carrier_id, status, amount_claimed, currency)
+          `INSERT INTO dispute (account_id, carrier_id, status, amount_claimed, currency)
            VALUES ($1, $2, 'draft', '500.0000', 'USD') RETURNING id`,
           [clientId, carrierId],
         );
         disputeId = dispute.rows[0]!.id;
         await c2.query(
-          `INSERT INTO dispute_line (client_id, dispute_id, amount, currency) VALUES ($1, $2, '500.0000', 'USD')`,
+          `INSERT INTO dispute_line (account_id, dispute_id, amount, currency) VALUES ($1, $2, '500.0000', 'USD')`,
           [clientId, disputeId],
         );
         await c2.query(
-          `INSERT INTO dispute_comm (client_id, dispute_id, direction, body, dedupe_key) VALUES ($1, $2, 'outbound', 'Delivery initiated.', $3)`,
+          `INSERT INTO dispute_comm (account_id, dispute_id, direction, body, dedupe_key) VALUES ($1, $2, 'outbound', 'Delivery initiated.', $3)`,
           [clientId, disputeId, `${tag}-comm-1`],
         );
 
         const otherDispute = await c2.query<{ id: string }>(
-          `INSERT INTO dispute (client_id, carrier_id, status, amount_claimed, currency)
+          `INSERT INTO dispute (account_id, carrier_id, status, amount_claimed, currency)
            VALUES ($1, $2, 'draft', '250.0000', 'USD') RETURNING id`,
           [otherClientId, carrierId],
         );
         otherDisputeId = otherDispute.rows[0]!.id;
         await c2.query(
-          `INSERT INTO dispute_comm (client_id, dispute_id, direction, body, dedupe_key) VALUES ($1, $2, 'outbound', 'Other client delivery.', $3)`,
+          `INSERT INTO dispute_comm (account_id, dispute_id, direction, body, dedupe_key) VALUES ($1, $2, 'outbound', 'Other client delivery.', $3)`,
           [otherClientId, otherDisputeId, `${tag}-comm-other`],
         );
       });
@@ -195,20 +195,20 @@ describe('client portal content APIs (DB, e2e)', () => {
     await app.close();
     const owner = await pool.connect();
     try {
-      await owner.query(`DELETE FROM dispute_comm WHERE client_id = ANY($1)`, [[clientId, otherClientId]]);
-      await owner.query(`DELETE FROM dispute_line WHERE client_id = ANY($1)`, [[clientId, otherClientId]]);
-      await owner.query(`DELETE FROM dispute WHERE client_id = ANY($1)`, [[clientId, otherClientId]]);
-      await owner.query(`DELETE FROM variance_finding WHERE client_id = ANY($1)`, [[clientId, otherClientId]]);
-      await owner.query(`DELETE FROM expected_charge WHERE client_id = ANY($1)`, [[clientId, otherClientId]]);
-      await owner.query(`DELETE FROM charge_fact WHERE client_id = ANY($1)`, [[clientId, otherClientId]]);
-      await owner.query(`DELETE FROM scorecard WHERE client_id = ANY($1)`, [[clientId, otherClientId]]);
+      await owner.query(`DELETE FROM dispute_comm WHERE account_id = ANY($1)`, [[clientId, otherClientId]]);
+      await owner.query(`DELETE FROM dispute_line WHERE account_id = ANY($1)`, [[clientId, otherClientId]]);
+      await owner.query(`DELETE FROM dispute WHERE account_id = ANY($1)`, [[clientId, otherClientId]]);
+      await owner.query(`DELETE FROM variance_finding WHERE account_id = ANY($1)`, [[clientId, otherClientId]]);
+      await owner.query(`DELETE FROM expected_charge WHERE account_id = ANY($1)`, [[clientId, otherClientId]]);
+      await owner.query(`DELETE FROM charge_fact WHERE account_id = ANY($1)`, [[clientId, otherClientId]]);
+      await owner.query(`DELETE FROM scorecard WHERE account_id = ANY($1)`, [[clientId, otherClientId]]);
       // 86e367r9x: persistAuditRun now wires a payment_gate_decision row per run.
-      await owner.query(`DELETE FROM payment_gate_decision WHERE client_id = ANY($1)`, [[clientId, otherClientId]]);
-      await owner.query(`DELETE FROM audit_run WHERE client_id = ANY($1)`, [[clientId, otherClientId]]);
-      await owner.query(`DELETE FROM invoice WHERE client_id = ANY($1)`, [[clientId, otherClientId]]);
-      await owner.query(`DELETE FROM membership WHERE client_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM payment_gate_decision WHERE account_id = ANY($1)`, [[clientId, otherClientId]]);
+      await owner.query(`DELETE FROM audit_run WHERE account_id = ANY($1)`, [[clientId, otherClientId]]);
+      await owner.query(`DELETE FROM invoice WHERE account_id = ANY($1)`, [[clientId, otherClientId]]);
+      await owner.query(`DELETE FROM membership WHERE account_id = $1`, [clientId]);
       await owner.query(`DELETE FROM app_user WHERE id = ANY($1)`, [[viewerUserId, adminUserId]]);
-      await owner.query(`DELETE FROM client WHERE id = ANY($1)`, [[clientId, otherClientId]]);
+      await owner.query(`DELETE FROM account WHERE id = ANY($1)`, [[clientId, otherClientId]]);
       await owner.query(`DELETE FROM carrier WHERE id = $1`, [carrierId]);
     } finally {
       owner.release();
@@ -525,15 +525,15 @@ describe('client portal content APIs (DB, e2e)', () => {
 });
 
 /**
- * Direct module coverage of the explicit client_id predicate on
- * listClientInvoices/getClientAuditRunScorecard, independent of RLS -- same
+ * Direct module coverage of the explicit account_id predicate on
+ * listAccountInvoices/getAccountAuditRunScorecard, independent of RLS -- same
  * shape as claim-recovery-endpoint.db.test.ts's own "explicit predicate"
  * describe block (86e31a9ch/#216 precedent). An internal (cross-client)
  * scope grants RLS-level visibility across every client, so these tests
  * prove the explicit predicate -- not RLS -- is what rejects a mismatched
  * clientId.
  */
-describe('portal content query modules: explicit client_id predicate (DB)', () => {
+describe('portal content query modules: explicit account_id predicate (DB)', () => {
   let pool: pg.Pool;
   let clientAId: string;
   let carrierId: string;
@@ -549,39 +549,39 @@ describe('portal content query modules: explicit client_id predicate (DB)', () =
     pool = getPool();
     const owner = await pool.connect();
     try {
-      const a = await owner.query(`INSERT INTO client (name, slug) VALUES ('PCP-A', $1) RETURNING id`, [`${tag}-a`]);
+      const a = await owner.query(`INSERT INTO account (name, slug) VALUES ('PCP-A', $1) RETURNING id`, [`${tag}-a`]);
       clientAId = a.rows[0].id;
       const carrier = await owner.query(`INSERT INTO carrier (name) VALUES ('PCP Carrier') RETURNING id`);
       carrierId = carrier.rows[0].id;
 
       await withTenantTx({ clientIds: [clientAId], internal: true }, async (c) => {
         const invoice = await c.query(
-          `INSERT INTO invoice (client_id, carrier_id, transaction_set, invoice_number, currency, parser_version, status)
+          `INSERT INTO invoice (account_id, carrier_id, transaction_set, invoice_number, currency, parser_version, status)
            VALUES ($1, $2, '210', 'INV-A', 'USD', 'v1', 'ingested') RETURNING id`,
           [clientAId, carrierId],
         );
         invoiceId = invoice.rows[0].id;
 
         const run = await c.query(
-          `INSERT INTO audit_run (client_id, invoice_id, engine_spec_version, outcome) VALUES ($1, $2, 'v1', 'SCORED') RETURNING id`,
+          `INSERT INTO audit_run (account_id, invoice_id, engine_spec_version, outcome) VALUES ($1, $2, 'v1', 'SCORED') RETURNING id`,
           [clientAId, invoiceId],
         );
         auditRunId = run.rows[0].id;
         await c.query(
-          `INSERT INTO scorecard (client_id, audit_run_id, conformed_count, variance_count, unassessable_count, total_overcharge, total_undercharge, currency)
+          `INSERT INTO scorecard (account_id, audit_run_id, conformed_count, variance_count, unassessable_count, total_overcharge, total_undercharge, currency)
            VALUES ($1, $2, 4, 1, 0, '50.0000', '5.0000', 'USD')`,
           [clientAId, auditRunId],
         );
 
         const cf = await c.query(
-          `INSERT INTO charge_fact (client_id, invoice_id, code, category, amount, currency)
+          `INSERT INTO charge_fact (account_id, invoice_id, code, category, amount, currency)
            VALUES ($1, $2, '400', 'LINEHAUL', '200.0000', 'USD') RETURNING id`,
           [clientAId, invoiceId],
         );
         chargeFactId = cf.rows[0].id;
         const vf = await c.query<{ id: string }>(
           `INSERT INTO variance_finding
-             (client_id, audit_run_id, charge_fact_id, criterion_id, rule_version_id, direction, variance_amount, currency, status, evaluated_expr)
+             (account_id, audit_run_id, charge_fact_id, criterion_id, rule_version_id, direction, variance_amount, currency, status, evaluated_expr)
            SELECT $1, $2, $3, crit.id, rv.id, 'OVERCHARGE', '20.0000', 'USD', 'open', '{}'::jsonb
            FROM criterion crit JOIN rule r ON r.slug = 'contract-rate_variance'
            JOIN rule_version rv ON rv.rule_id = r.id
@@ -591,22 +591,22 @@ describe('portal content query modules: explicit client_id predicate (DB)', () =
         findingId = vf.rows[0]!.id;
 
         const dispute = await c.query<{ id: string }>(
-          `INSERT INTO dispute (client_id, carrier_id, status, amount_claimed, currency)
+          `INSERT INTO dispute (account_id, carrier_id, status, amount_claimed, currency)
            VALUES ($1, $2, 'draft', '75.0000', 'USD') RETURNING id`,
           [clientAId, carrierId],
         );
         disputeId = dispute.rows[0]!.id;
         await c.query(
-          `INSERT INTO dispute_comm (client_id, dispute_id, direction, body, dedupe_key) VALUES ($1, $2, 'outbound', 'PCP comm.', $3)`,
+          `INSERT INTO dispute_comm (account_id, dispute_id, direction, body, dedupe_key) VALUES ($1, $2, 'outbound', 'PCP comm.', $3)`,
           [clientAId, disputeId, `${tag}-comm`],
         );
         await c.query(
-          `INSERT INTO dispute_line (client_id, dispute_id, variance_finding_id, amount, currency) VALUES ($1, $2, $3, '20.0000', 'USD')`,
+          `INSERT INTO dispute_line (account_id, dispute_id, variance_finding_id, amount, currency) VALUES ($1, $2, $3, '20.0000', 'USD')`,
           [clientAId, disputeId, findingId],
         );
 
         const claim = await c.query<{ id: string }>(
-          `INSERT INTO claim (client_id, dispute_id, amount_claimed, currency, status) VALUES ($1, $2, '20.0000', 'USD', 'open') RETURNING id`,
+          `INSERT INTO claim (account_id, dispute_id, amount_claimed, currency, status) VALUES ($1, $2, '20.0000', 'USD', 'open') RETURNING id`,
           [clientAId, disputeId],
         );
         claimId = claim.rows[0]!.id;
@@ -619,18 +619,18 @@ describe('portal content query modules: explicit client_id predicate (DB)', () =
   afterAll(async () => {
     const owner = await pool.connect();
     try {
-      await owner.query(`DELETE FROM claim WHERE client_id = $1`, [clientAId]);
-      await owner.query(`DELETE FROM dispute_line WHERE client_id = $1`, [clientAId]);
-      await owner.query(`DELETE FROM dispute_comm WHERE client_id = $1`, [clientAId]);
-      await owner.query(`DELETE FROM dispute WHERE client_id = $1`, [clientAId]);
-      await owner.query(`DELETE FROM variance_finding WHERE client_id = $1`, [clientAId]);
-      await owner.query(`DELETE FROM charge_fact WHERE client_id = $1`, [clientAId]);
-      await owner.query(`DELETE FROM scorecard WHERE client_id = $1`, [clientAId]);
+      await owner.query(`DELETE FROM claim WHERE account_id = $1`, [clientAId]);
+      await owner.query(`DELETE FROM dispute_line WHERE account_id = $1`, [clientAId]);
+      await owner.query(`DELETE FROM dispute_comm WHERE account_id = $1`, [clientAId]);
+      await owner.query(`DELETE FROM dispute WHERE account_id = $1`, [clientAId]);
+      await owner.query(`DELETE FROM variance_finding WHERE account_id = $1`, [clientAId]);
+      await owner.query(`DELETE FROM charge_fact WHERE account_id = $1`, [clientAId]);
+      await owner.query(`DELETE FROM scorecard WHERE account_id = $1`, [clientAId]);
       // 86e367r9x: persistAuditRun now wires a payment_gate_decision row per run.
-      await owner.query(`DELETE FROM payment_gate_decision WHERE client_id = $1`, [clientAId]);
-      await owner.query(`DELETE FROM audit_run WHERE client_id = $1`, [clientAId]);
-      await owner.query(`DELETE FROM invoice WHERE client_id = $1`, [clientAId]);
-      await owner.query(`DELETE FROM client WHERE id = $1`, [clientAId]);
+      await owner.query(`DELETE FROM payment_gate_decision WHERE account_id = $1`, [clientAId]);
+      await owner.query(`DELETE FROM audit_run WHERE account_id = $1`, [clientAId]);
+      await owner.query(`DELETE FROM invoice WHERE account_id = $1`, [clientAId]);
+      await owner.query(`DELETE FROM account WHERE id = $1`, [clientAId]);
       await owner.query(`DELETE FROM carrier WHERE id = $1`, [carrierId]);
     } finally {
       owner.release();
@@ -640,33 +640,33 @@ describe('portal content query modules: explicit client_id predicate (DB)', () =
 
   const otherClientId = '00000000-0000-4000-8000-000000000099';
 
-  it('the explicit predicate rejects a mismatched clientId on listClientInvoices, even under an internal (cross-client) RLS scope', async () => {
-    const rows = await withTenantTx({ internal: true }, (c) => listClientInvoices(c, otherClientId));
+  it('the explicit predicate rejects a mismatched clientId on listAccountInvoices, even under an internal (cross-client) RLS scope', async () => {
+    const rows = await withTenantTx({ internal: true }, (c) => listAccountInvoices(c, otherClientId));
     expect(rows.some((r) => r.id === invoiceId)).toBe(false);
   });
 
-  it('the explicit predicate rejects a mismatched clientId on getClientAuditRunScorecard, even under an internal (cross-client) RLS scope', async () => {
-    const scorecard = await withTenantTx({ internal: true }, (c) => getClientAuditRunScorecard(c, otherClientId, auditRunId));
+  it('the explicit predicate rejects a mismatched clientId on getAccountAuditRunScorecard, even under an internal (cross-client) RLS scope', async () => {
+    const scorecard = await withTenantTx({ internal: true }, (c) => getAccountAuditRunScorecard(c, otherClientId, auditRunId));
     expect(scorecard).toBeNull();
   });
 
-  it('the explicit predicate rejects a mismatched clientId on listClientFindings, even under an internal (cross-client) RLS scope', async () => {
-    const rows = await withTenantTx({ internal: true }, (c) => listClientFindings(c, otherClientId));
+  it('the explicit predicate rejects a mismatched clientId on listAccountFindings, even under an internal (cross-client) RLS scope', async () => {
+    const rows = await withTenantTx({ internal: true }, (c) => listAccountFindings(c, otherClientId));
     expect(rows.some((r) => r.id === findingId)).toBe(false);
   });
 
-  it('the explicit predicate rejects a mismatched clientId on getClientDisputeDetail, even under an internal (cross-client) RLS scope', async () => {
-    const detail = await withTenantTx({ internal: true }, (c) => getClientDisputeDetail(c, otherClientId, disputeId));
+  it('the explicit predicate rejects a mismatched clientId on getAccountDisputeDetail, even under an internal (cross-client) RLS scope', async () => {
+    const detail = await withTenantTx({ internal: true }, (c) => getAccountDisputeDetail(c, otherClientId, disputeId));
     expect(detail).toBeNull();
   });
 
-  it('the explicit predicate rejects a mismatched clientId on listClientDisputeCommunications, even under an internal (cross-client) RLS scope', async () => {
-    const comms = await withTenantTx({ internal: true }, (c) => listClientDisputeCommunications(c, otherClientId, disputeId));
+  it('the explicit predicate rejects a mismatched clientId on listAccountDisputeCommunications, even under an internal (cross-client) RLS scope', async () => {
+    const comms = await withTenantTx({ internal: true }, (c) => listAccountDisputeCommunications(c, otherClientId, disputeId));
     expect(comms).toEqual([]);
   });
 
-  it('the explicit predicate rejects a mismatched clientId on listClientClaimDocuments, even under an internal (cross-client) RLS scope', async () => {
-    const documents = await withTenantTx({ internal: true }, (c) => listClientClaimDocuments(c, otherClientId, claimId));
+  it('the explicit predicate rejects a mismatched clientId on listAccountClaimDocuments, even under an internal (cross-client) RLS scope', async () => {
+    const documents = await withTenantTx({ internal: true }, (c) => listAccountClaimDocuments(c, otherClientId, claimId));
     expect(documents).toBeNull();
   });
 
@@ -676,29 +676,29 @@ describe('portal content query modules: explicit client_id predicate (DB)', () =
   });
 
   it('the explicit predicate still finds the rows under an internal scope when the clientId matches', async () => {
-    const rows = await withTenantTx({ internal: true }, (c) => listClientInvoices(c, clientAId));
+    const rows = await withTenantTx({ internal: true }, (c) => listAccountInvoices(c, clientAId));
     expect(rows.some((r) => r.id === invoiceId)).toBe(true);
 
-    const scorecard = await withTenantTx({ internal: true }, (c) => getClientAuditRunScorecard(c, clientAId, auditRunId));
+    const scorecard = await withTenantTx({ internal: true }, (c) => getAccountAuditRunScorecard(c, clientAId, auditRunId));
     expect(scorecard).not.toBeNull();
     expect(scorecard!.currency).toBe('USD');
     expect(scorecard!.conformedCount).toBe(4);
 
-    const findings = await withTenantTx({ internal: true }, (c) => listClientFindings(c, clientAId));
+    const findings = await withTenantTx({ internal: true }, (c) => listAccountFindings(c, clientAId));
     expect(findings.some((f) => f.id === findingId)).toBe(true);
 
-    const detail = await withTenantTx({ internal: true }, (c) => getClientDisputeDetail(c, clientAId, disputeId));
+    const detail = await withTenantTx({ internal: true }, (c) => getAccountDisputeDetail(c, clientAId, disputeId));
     expect(detail).not.toBeNull();
     expect(detail!.status).toBe('draft');
 
-    const comms = await withTenantTx({ internal: true }, (c) => listClientDisputeCommunications(c, clientAId, disputeId));
+    const comms = await withTenantTx({ internal: true }, (c) => listAccountDisputeCommunications(c, clientAId, disputeId));
     expect(comms).toHaveLength(1);
 
     const claim = await withTenantTx({ internal: true }, (c) => getClaimDetail(c, clientAId, claimId));
     expect(claim).not.toBeNull();
     expect(claim!.status).toBe('open');
 
-    const documents = await withTenantTx({ internal: true }, (c) => listClientClaimDocuments(c, clientAId, claimId));
+    const documents = await withTenantTx({ internal: true }, (c) => listAccountClaimDocuments(c, clientAId, claimId));
     expect(documents).not.toBeNull();
     expect(documents).toEqual([]); // this fixture's finding has no source_document_id
   });
@@ -739,35 +739,35 @@ describe('client portal claim + document APIs (P6.B.4, DB, e2e)', () => {
     pool = getPool();
     const owner = await pool.connect();
     try {
-      const c1 = await owner.query(`INSERT INTO client (name, slug) VALUES ('PCC', $1) RETURNING id`, [tag]);
+      const c1 = await owner.query(`INSERT INTO account (name, slug) VALUES ('PCC', $1) RETURNING id`, [tag]);
       clientId = c1.rows[0].id;
       const uViewer = await owner.query(`INSERT INTO app_user (email) VALUES ($1) RETURNING id`, [`${tag}-viewer@example.com`]);
       viewerUserId = uViewer.rows[0].id;
       const uAdmin = await owner.query(`INSERT INTO app_user (email) VALUES ($1) RETURNING id`, [`${tag}-admin@example.com`]);
       adminUserId = uAdmin.rows[0].id;
-      await owner.query(`INSERT INTO membership (user_id, client_id, role) VALUES ($1, $2, 'client_viewer')`, [viewerUserId, clientId]);
-      await owner.query(`INSERT INTO membership (user_id, client_id, role) VALUES ($1, $2, 'client_admin')`, [adminUserId, clientId]);
+      await owner.query(`INSERT INTO membership (user_id, account_id, role) VALUES ($1, $2, 'account_viewer')`, [viewerUserId, clientId]);
+      await owner.query(`INSERT INTO membership (user_id, account_id, role) VALUES ($1, $2, 'account_admin')`, [adminUserId, clientId]);
       const carrier = await owner.query(`INSERT INTO carrier (name) VALUES ('PCC Carrier') RETURNING id`);
       carrierId = carrier.rows[0].id;
 
-      const other = await owner.query(`INSERT INTO client (name, slug) VALUES ('PCC-Other', $1) RETURNING id`, [`${tag}-other`]);
+      const other = await owner.query(`INSERT INTO account (name, slug) VALUES ('PCC-Other', $1) RETURNING id`, [`${tag}-other`]);
       otherClientId = other.rows[0].id;
 
       await withTenantTx({ clientIds: [clientId, otherClientId], internal: true }, async (c) => {
         const invoice = await c.query(
-          `INSERT INTO invoice (client_id, carrier_id, transaction_set, invoice_number, currency, parser_version, status)
+          `INSERT INTO invoice (account_id, carrier_id, transaction_set, invoice_number, currency, parser_version, status)
            VALUES ($1, $2, '210', 'INV-1', 'USD', 'v1', 'ingested') RETURNING id`,
           [clientId, carrierId],
         );
         invoiceId = invoice.rows[0].id;
         const run = await c.query(
-          `INSERT INTO audit_run (client_id, invoice_id, engine_spec_version, outcome) VALUES ($1, $2, 'v1', 'SCORED') RETURNING id`,
+          `INSERT INTO audit_run (account_id, invoice_id, engine_spec_version, outcome) VALUES ($1, $2, 'v1', 'SCORED') RETURNING id`,
           [clientId, invoiceId],
         );
         auditRunId = run.rows[0].id;
 
         const doc = await c.query<{ id: string }>(
-          `INSERT INTO source_document (client_id, sha256, storage_uri) VALUES ($1, $2, $3) RETURNING id`,
+          `INSERT INTO source_document (account_id, sha256, storage_uri) VALUES ($1, $2, $3) RETURNING id`,
           [clientId, tag.padEnd(64, '0').slice(0, 64), `r2://${tag}/doc-1`],
         );
         sourceDocumentId = doc.rows[0]!.id;
@@ -775,13 +775,13 @@ describe('client portal claim + document APIs (P6.B.4, DB, e2e)', () => {
         // The finding WITH a source document -- this is the one whose
         // document must surface in the documents view.
         const cfGood = await c.query(
-          `INSERT INTO charge_fact (client_id, invoice_id, code, category, amount, currency)
+          `INSERT INTO charge_fact (account_id, invoice_id, code, category, amount, currency)
            VALUES ($1, $2, '400', 'LINEHAUL', '1000.0000', 'USD') RETURNING id`,
           [clientId, invoiceId],
         );
         const vfGood = await c.query<{ id: string }>(
           `INSERT INTO variance_finding
-             (client_id, audit_run_id, charge_fact_id, criterion_id, rule_version_id, source_document_id, direction, variance_amount, currency, status, evaluated_expr)
+             (account_id, audit_run_id, charge_fact_id, criterion_id, rule_version_id, source_document_id, direction, variance_amount, currency, status, evaluated_expr)
            SELECT $1, $2, $3, crit.id, rv.id, $4, 'OVERCHARGE', '100.0000', 'USD', 'open', '{}'::jsonb
            FROM criterion crit JOIN rule r ON r.slug = 'contract-rate_variance'
            JOIN rule_version rv ON rv.rule_id = r.id
@@ -791,24 +791,24 @@ describe('client portal claim + document APIs (P6.B.4, DB, e2e)', () => {
         const findingWithDocId = vfGood.rows[0]!.id;
 
         const dispute = await c.query<{ id: string }>(
-          `INSERT INTO dispute (client_id, carrier_id, status, amount_claimed, currency) VALUES ($1, $2, 'accepted', '100.0000', 'USD') RETURNING id`,
+          `INSERT INTO dispute (account_id, carrier_id, status, amount_claimed, currency) VALUES ($1, $2, 'accepted', '100.0000', 'USD') RETURNING id`,
           [clientId, carrierId],
         );
         const disputeId = dispute.rows[0]!.id;
         await c.query(
-          `INSERT INTO dispute_line (client_id, dispute_id, variance_finding_id, amount, currency) VALUES ($1, $2, $3, '100.0000', 'USD')`,
+          `INSERT INTO dispute_line (account_id, dispute_id, variance_finding_id, amount, currency) VALUES ($1, $2, $3, '100.0000', 'USD')`,
           [clientId, disputeId, findingWithDocId],
         );
         // A second line with NO variance_finding_id at all -- proves the
         // good line's document still surfaces (list-client-claim-documents.ts's
         // own header comment: a direct join drops this line, not the whole request).
         await c.query(
-          `INSERT INTO dispute_line (client_id, dispute_id, amount, currency) VALUES ($1, $2, '25.0000', 'USD')`,
+          `INSERT INTO dispute_line (account_id, dispute_id, amount, currency) VALUES ($1, $2, '25.0000', 'USD')`,
           [clientId, disputeId],
         );
 
         const claim = await c.query<{ id: string }>(
-          `INSERT INTO claim (client_id, dispute_id, amount_claimed, currency, status) VALUES ($1, $2, '100.0000', 'USD', 'open') RETURNING id`,
+          `INSERT INTO claim (account_id, dispute_id, amount_claimed, currency, status) VALUES ($1, $2, '100.0000', 'USD', 'open') RETURNING id`,
           [clientId, disputeId],
         );
         claimId = claim.rows[0]!.id;
@@ -818,13 +818,13 @@ describe('client portal claim + document APIs (P6.B.4, DB, e2e)', () => {
         // on the column default would make the ORDER BY assertion
         // non-deterministic -- same trap round 73 hit on audit_run).
         const eventOlder = await c.query<{ id: string }>(
-          `INSERT INTO recovery_event (client_id, claim_id, variance_finding_id, amount_recovered, currency, recorded_at)
+          `INSERT INTO recovery_event (account_id, claim_id, variance_finding_id, amount_recovered, currency, recorded_at)
            VALUES ($1, $2, $3, '30.0000', 'USD', now() - interval '2 hours') RETURNING id`,
           [clientId, claimId, findingWithDocId],
         );
         recoveryEventOlderId = eventOlder.rows[0]!.id;
         const eventNewer = await c.query<{ id: string }>(
-          `INSERT INTO recovery_event (client_id, claim_id, variance_finding_id, amount_recovered, currency, recorded_at)
+          `INSERT INTO recovery_event (account_id, claim_id, variance_finding_id, amount_recovered, currency, recorded_at)
            VALUES ($1, $2, $3, '20.0000', 'USD', now() - interval '1 hour') RETURNING id`,
           [clientId, claimId, findingWithDocId],
         );
@@ -833,13 +833,13 @@ describe('client portal claim + document APIs (P6.B.4, DB, e2e)', () => {
         // A second claim with NO originating dispute at all -- AC4's "no
         // data yet" case for the documents view (empty array, not an error).
         const claimNoDispute = await c.query<{ id: string }>(
-          `INSERT INTO claim (client_id, dispute_id, amount_claimed, currency, status) VALUES ($1, NULL, '10.0000', 'USD', 'open') RETURNING id`,
+          `INSERT INTO claim (account_id, dispute_id, amount_claimed, currency, status) VALUES ($1, NULL, '10.0000', 'USD', 'open') RETURNING id`,
           [clientId],
         );
         claimNoDisputeId = claimNoDispute.rows[0]!.id;
 
         const otherClaim = await c.query<{ id: string }>(
-          `INSERT INTO claim (client_id, dispute_id, amount_claimed, currency, status) VALUES ($1, NULL, '5.0000', 'USD', 'open') RETURNING id`,
+          `INSERT INTO claim (account_id, dispute_id, amount_claimed, currency, status) VALUES ($1, NULL, '5.0000', 'USD', 'open') RETURNING id`,
           [otherClientId],
         );
         otherClaimId = otherClaim.rows[0]!.id;
@@ -855,20 +855,20 @@ describe('client portal claim + document APIs (P6.B.4, DB, e2e)', () => {
     await app.close();
     const owner = await pool.connect();
     try {
-      await owner.query(`DELETE FROM recovery_event WHERE client_id = ANY($1)`, [[clientId, otherClientId]]);
-      await owner.query(`DELETE FROM claim WHERE client_id = ANY($1)`, [[clientId, otherClientId]]);
-      await owner.query(`DELETE FROM dispute_line WHERE client_id = ANY($1)`, [[clientId, otherClientId]]);
-      await owner.query(`DELETE FROM dispute WHERE client_id = ANY($1)`, [[clientId, otherClientId]]);
-      await owner.query(`DELETE FROM variance_finding WHERE client_id = ANY($1)`, [[clientId, otherClientId]]);
-      await owner.query(`DELETE FROM charge_fact WHERE client_id = ANY($1)`, [[clientId, otherClientId]]);
-      await owner.query(`DELETE FROM source_document WHERE client_id = ANY($1)`, [[clientId, otherClientId]]);
+      await owner.query(`DELETE FROM recovery_event WHERE account_id = ANY($1)`, [[clientId, otherClientId]]);
+      await owner.query(`DELETE FROM claim WHERE account_id = ANY($1)`, [[clientId, otherClientId]]);
+      await owner.query(`DELETE FROM dispute_line WHERE account_id = ANY($1)`, [[clientId, otherClientId]]);
+      await owner.query(`DELETE FROM dispute WHERE account_id = ANY($1)`, [[clientId, otherClientId]]);
+      await owner.query(`DELETE FROM variance_finding WHERE account_id = ANY($1)`, [[clientId, otherClientId]]);
+      await owner.query(`DELETE FROM charge_fact WHERE account_id = ANY($1)`, [[clientId, otherClientId]]);
+      await owner.query(`DELETE FROM source_document WHERE account_id = ANY($1)`, [[clientId, otherClientId]]);
       // 86e367r9x: persistAuditRun now wires a payment_gate_decision row per run.
-      await owner.query(`DELETE FROM payment_gate_decision WHERE client_id = ANY($1)`, [[clientId, otherClientId]]);
-      await owner.query(`DELETE FROM audit_run WHERE client_id = ANY($1)`, [[clientId, otherClientId]]);
-      await owner.query(`DELETE FROM invoice WHERE client_id = ANY($1)`, [[clientId, otherClientId]]);
-      await owner.query(`DELETE FROM membership WHERE client_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM payment_gate_decision WHERE account_id = ANY($1)`, [[clientId, otherClientId]]);
+      await owner.query(`DELETE FROM audit_run WHERE account_id = ANY($1)`, [[clientId, otherClientId]]);
+      await owner.query(`DELETE FROM invoice WHERE account_id = ANY($1)`, [[clientId, otherClientId]]);
+      await owner.query(`DELETE FROM membership WHERE account_id = $1`, [clientId]);
       await owner.query(`DELETE FROM app_user WHERE id = ANY($1)`, [[viewerUserId, adminUserId]]);
-      await owner.query(`DELETE FROM client WHERE id = ANY($1)`, [[clientId, otherClientId]]);
+      await owner.query(`DELETE FROM account WHERE id = ANY($1)`, [[clientId, otherClientId]]);
       await owner.query(`DELETE FROM carrier WHERE id = $1`, [carrierId]);
     } finally {
       owner.release();
@@ -1002,9 +1002,9 @@ describe('client portal claim + document APIs (P6.B.4, DB, e2e)', () => {
 
 /**
  * P6.B.6: GET /api/portal/audit-log, in its own describe block/fixture
- * (not folded into the first block) because it needs a client_id IS NULL
+ * (not folded into the first block) because it needs a account_id IS NULL
  * ("system-global") audit_event row -- a shape no other portal-content
- * fixture seeds, and the one this route's explicit client_id predicate
+ * fixture seeds, and the one this route's explicit account_id predicate
  * exists to exclude (see list-client-audit-events.ts's own header comment:
  * RLS alone admits NULL-client rows, so this predicate is load-bearing
  * here, not defense-in-depth).
@@ -1030,16 +1030,16 @@ describe('client portal audit-log API (P6.B.6, DB, e2e)', () => {
     pool = getPool();
     const owner = await pool.connect();
     try {
-      const c = await owner.query(`INSERT INTO client (name, slug) VALUES ('PCA', $1) RETURNING id`, [tag]);
+      const c = await owner.query(`INSERT INTO account (name, slug) VALUES ('PCA', $1) RETURNING id`, [tag]);
       clientId = c.rows[0].id;
       const uViewer = await owner.query(`INSERT INTO app_user (email) VALUES ($1) RETURNING id`, [`${tag}-viewer@example.com`]);
       viewerUserId = uViewer.rows[0].id;
       const uAdmin = await owner.query(`INSERT INTO app_user (email) VALUES ($1) RETURNING id`, [`${tag}-admin@example.com`]);
       adminUserId = uAdmin.rows[0].id;
-      await owner.query(`INSERT INTO membership (user_id, client_id, role) VALUES ($1, $2, 'client_viewer')`, [viewerUserId, clientId]);
-      await owner.query(`INSERT INTO membership (user_id, client_id, role) VALUES ($1, $2, 'client_admin')`, [adminUserId, clientId]);
+      await owner.query(`INSERT INTO membership (user_id, account_id, role) VALUES ($1, $2, 'account_viewer')`, [viewerUserId, clientId]);
+      await owner.query(`INSERT INTO membership (user_id, account_id, role) VALUES ($1, $2, 'account_admin')`, [adminUserId, clientId]);
 
-      const other = await owner.query(`INSERT INTO client (name, slug) VALUES ('PCA-Other', $1) RETURNING id`, [`${tag}-other`]);
+      const other = await owner.query(`INSERT INTO account (name, slug) VALUES ('PCA-Other', $1) RETURNING id`, [`${tag}-other`]);
       otherClientId = other.rows[0].id;
 
       // Staggered recorded_at (explicit, not the column default -- now() is
@@ -1048,45 +1048,45 @@ describe('client portal audit-log API (P6.B.6, DB, e2e)', () => {
       // newest-first ORDER BY assertion is deterministic. All four actor_kind
       // values are represented (AC2).
       const eAnalyst = await owner.query<{ id: string }>(
-        `INSERT INTO audit_event (client_id, entity, event, actor_kind, recorded_at)
+        `INSERT INTO audit_event (account_id, entity, event, actor_kind, recorded_at)
          VALUES ($1, 'dispute', 'created', 'analyst', now() - interval '4 hours') RETURNING id`,
         [clientId],
       );
       eventAnalystId = eAnalyst.rows[0]!.id;
       const eAi = await owner.query<{ id: string }>(
-        `INSERT INTO audit_event (client_id, entity, event, actor_kind, recorded_at)
+        `INSERT INTO audit_event (account_id, entity, event, actor_kind, recorded_at)
          VALUES ($1, 'invoice', 'scored', 'ai', now() - interval '3 hours') RETURNING id`,
         [clientId],
       );
       eventAiId = eAi.rows[0]!.id;
       const eSystem = await owner.query<{ id: string }>(
-        `INSERT INTO audit_event (client_id, entity, event, actor_kind, recorded_at)
+        `INSERT INTO audit_event (account_id, entity, event, actor_kind, recorded_at)
          VALUES ($1, 'claim', 'opened', 'system', now() - interval '2 hours') RETURNING id`,
         [clientId],
       );
       eventSystemId = eSystem.rows[0]!.id;
       const eClient = await owner.query<{ id: string }>(
-        `INSERT INTO audit_event (client_id, entity, event, actor_kind, recorded_at)
+        `INSERT INTO audit_event (account_id, entity, event, actor_kind, recorded_at)
          VALUES ($1, 'dispute', 'commented', 'client', now() - interval '1 hour') RETURNING id`,
         [clientId],
       );
       eventClientId = eClient.rows[0]!.id;
 
       const eOther = await owner.query<{ id: string }>(
-        `INSERT INTO audit_event (client_id, entity, event, actor_kind, recorded_at)
+        `INSERT INTO audit_event (account_id, entity, event, actor_kind, recorded_at)
          VALUES ($1, 'dispute', 'created', 'analyst', now()) RETURNING id`,
         [otherClientId],
       );
       otherClientEventId = eOther.rows[0]!.id;
 
-      // System-global event: client_id IS NULL. RLS's own USING clause
-      // admits this row unconditionally (client_id IS NULL OR ...) -- only
-      // this route's explicit client_id = $N predicate keeps it out of a
+      // System-global event: account_id IS NULL. RLS's own USING clause
+      // admits this row unconditionally (account_id IS NULL OR ...) -- only
+      // this route's explicit account_id = $N predicate keeps it out of a
       // client_viewer's result set. This is the discriminating case the
       // rest of this task's cross-tenant test can't exercise (a NULL client
       // is not "a different tenant", it's no tenant).
       await owner.query(
-        `INSERT INTO audit_event (client_id, entity, event, actor_kind, recorded_at)
+        `INSERT INTO audit_event (account_id, entity, event, actor_kind, recorded_at)
          VALUES (NULL, 'system', 'migration_run', 'system', now())`,
       );
     } finally {
@@ -1100,10 +1100,10 @@ describe('client portal audit-log API (P6.B.6, DB, e2e)', () => {
     await app.close();
     const owner = await pool.connect();
     try {
-      await owner.query(`DELETE FROM audit_event WHERE client_id = ANY($1) OR client_id IS NULL`, [[clientId, otherClientId]]);
-      await owner.query(`DELETE FROM membership WHERE client_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM audit_event WHERE account_id = ANY($1) OR account_id IS NULL`, [[clientId, otherClientId]]);
+      await owner.query(`DELETE FROM membership WHERE account_id = $1`, [clientId]);
       await owner.query(`DELETE FROM app_user WHERE id = ANY($1)`, [[viewerUserId, adminUserId]]);
-      await owner.query(`DELETE FROM client WHERE id = ANY($1)`, [[clientId, otherClientId]]);
+      await owner.query(`DELETE FROM account WHERE id = ANY($1)`, [[clientId, otherClientId]]);
     } finally {
       owner.release();
     }
@@ -1213,13 +1213,13 @@ describe('client portal audit-log API (P6.B.6, DB, e2e)', () => {
 });
 
 /**
- * Module-level proof that listClientAuditEvents' explicit client_id
+ * Module-level proof that listAccountAuditEvents' explicit account_id
  * predicate is load-bearing (not defense-in-depth) against a NULL-client
  * "system-global" row -- exercised directly against the module (not just
  * through the route) since this is the one predicate on this whole surface
  * where RLS alone would NOT have caught the leak.
  */
-describe('listClientAuditEvents: explicit client_id predicate excludes NULL-client rows (DB)', () => {
+describe('listAccountAuditEvents: explicit account_id predicate excludes NULL-client rows (DB)', () => {
   let pool: pg.Pool;
   let clientId: string;
   const tag = `pcan-${Date.now()}`;
@@ -1228,14 +1228,14 @@ describe('listClientAuditEvents: explicit client_id predicate excludes NULL-clie
     pool = getPool();
     const owner = await pool.connect();
     try {
-      const c = await owner.query(`INSERT INTO client (name, slug) VALUES ('PCAN', $1) RETURNING id`, [tag]);
+      const c = await owner.query(`INSERT INTO account (name, slug) VALUES ('PCAN', $1) RETURNING id`, [tag]);
       clientId = c.rows[0].id;
       await owner.query(
-        `INSERT INTO audit_event (client_id, entity, event, actor_kind) VALUES ($1, 'dispute', 'created', 'analyst')`,
+        `INSERT INTO audit_event (account_id, entity, event, actor_kind) VALUES ($1, 'dispute', 'created', 'analyst')`,
         [clientId],
       );
       await owner.query(
-        `INSERT INTO audit_event (client_id, entity, event, actor_kind) VALUES (NULL, 'system', 'migration_run', 'system')`,
+        `INSERT INTO audit_event (account_id, entity, event, actor_kind) VALUES (NULL, 'system', 'migration_run', 'system')`,
       );
     } finally {
       owner.release();
@@ -1245,8 +1245,8 @@ describe('listClientAuditEvents: explicit client_id predicate excludes NULL-clie
   afterAll(async () => {
     const owner = await pool.connect();
     try {
-      await owner.query(`DELETE FROM audit_event WHERE client_id = $1 OR client_id IS NULL`, [clientId]);
-      await owner.query(`DELETE FROM client WHERE id = $1`, [clientId]);
+      await owner.query(`DELETE FROM audit_event WHERE account_id = $1 OR account_id IS NULL`, [clientId]);
+      await owner.query(`DELETE FROM account WHERE id = $1`, [clientId]);
     } finally {
       owner.release();
     }
@@ -1255,7 +1255,7 @@ describe('listClientAuditEvents: explicit client_id predicate excludes NULL-clie
 
   it('never returns the NULL-client system-global row for a real clientId, even with RLS scoped to that client only', async () => {
     const rows = await withTenantTx({ clientIds: [clientId], internal: false }, (client) =>
-      listClientAuditEvents(client, clientId),
+      listAccountAuditEvents(client, clientId),
     );
     expect(rows).toHaveLength(1);
     expect(rows[0]!.entity).toBe('dispute');

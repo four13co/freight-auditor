@@ -10,7 +10,7 @@ export interface DisputeCommRow {
 /**
  * Tenant-scoped read of a dispute's append-only communications log
  * (P4.C.8), newest first -- mirrors dispute_comm_dispute_idx's own
- * (client_id, dispute_id, recorded_at DESC) shape, so this is an index-only
+ * (account_id, dispute_id, recorded_at DESC) shape, so this is an index-only
  * scan rather than a sort.
  *
  * Returns an empty array for a dispute that doesn't exist or isn't visible

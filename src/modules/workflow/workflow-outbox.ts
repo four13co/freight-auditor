@@ -56,15 +56,15 @@ export async function recordOutboxMessage(
   const input = recordSchema.parse(untrusted);
 
   const command = await client.query(
-    `SELECT 1 FROM workflow_command WHERE client_id = $1 AND id = $2`,
+    `SELECT 1 FROM workflow_command WHERE account_id = $1 AND id = $2`,
     [input.clientId, input.commandId],
   );
   if (!command.rowCount) throw new RecordOutboxMessageError('COMMAND_NOT_FOUND');
 
   const inserted = await client.query<{ id: string }>(
-    `INSERT INTO workflow_outbox_message (client_id, workflow_instance_id, command_id, dedupe_key, payload, message_type)
+    `INSERT INTO workflow_outbox_message (account_id, workflow_instance_id, command_id, dedupe_key, payload, message_type)
      VALUES ($1, $2, $3, $4, $5::jsonb, $6)
-     ON CONFLICT (client_id, dedupe_key) DO NOTHING
+     ON CONFLICT (account_id, dedupe_key) DO NOTHING
      RETURNING id`,
     [input.clientId, input.workflowInstanceId, input.commandId, input.dedupeKey, JSON.stringify(input.payload), input.messageType],
   );
@@ -84,7 +84,7 @@ export async function recordOutboxMessage(
   }
 
   const existing = await client.query<{ id: string }>(
-    `SELECT id FROM workflow_outbox_message WHERE client_id = $1 AND dedupe_key = $2`,
+    `SELECT id FROM workflow_outbox_message WHERE account_id = $1 AND dedupe_key = $2`,
     [input.clientId, input.dedupeKey],
   );
   return { outboxMessageId: existing.rows[0]!.id, created: false };
@@ -138,7 +138,7 @@ export async function claimDueOutboxMessages(
      SET status = 'claimed', attempts = attempts + 1, claimed_at = $2
      WHERE id IN (
        SELECT id FROM workflow_outbox_message
-       WHERE client_id = $1 AND status = 'pending' AND created_at <= $2
+       WHERE account_id = $1 AND status = 'pending' AND created_at <= $2
        ORDER BY created_at
        LIMIT $3
        FOR UPDATE SKIP LOCKED
@@ -176,7 +176,7 @@ export async function completeOutboxMessage(
 
   const result = await client.query(
     `UPDATE workflow_outbox_message SET status = 'delivered'
-     WHERE client_id = $1 AND id = $2 AND status IN ('claimed', 'delivered')`,
+     WHERE account_id = $1 AND id = $2 AND status IN ('claimed', 'delivered')`,
     [input.clientId, input.outboxMessageId],
   );
 

@@ -1,12 +1,17 @@
 import type pg from 'pg';
+import { roleDbToWire } from './role-wire-mapping.js';
 
 /**
  * One row of the client portal's own membership roster (P6.A.4). Runs
  * inside the caller's withTenantTx -- RLS is FORCE-enabled on membership
  * (migration 0009), so a query issued outside that transaction silently
  * returns zero rows, never an error, matching list-claims.ts's own
- * convention. `clientId` is an explicit predicate on top of RLS, not a
+ * convention. `accountId` is an explicit predicate on top of RLS, not a
  * replacement for it (86e31a9ch/#216 precedent).
+ *
+ * 86e3ankd7: `role` here is the wire-frozen value ('client_viewer'/
+ * 'client_admin') -- translated from the DB's account_viewer/account_admin
+ * enum labels in the .map() below, per AC5/the No-go on touching web/.
  */
 export interface PortalMemberRow {
   id: string;
@@ -31,7 +36,7 @@ const DEFAULT_LIMIT = 50;
 // a client-facing member roster. This is P6.A.4's own tenant/role boundary,
 // enforced in the query itself, not left to a route-level filter a future
 // caller could bypass.
-const PORTAL_ROLES = ['client_viewer', 'client_admin'] as const;
+const PORTAL_ROLES = ['account_viewer', 'account_admin'] as const;
 
 /**
  * List this client's own portal-role membership rows (client_viewer/
@@ -44,7 +49,7 @@ export async function listPortalMembers(
   clientId: string,
   options: ListPortalMembersOptions = {},
 ): Promise<PortalMemberRow[]> {
-  const conditions: string[] = ['membership.client_id = $1', 'membership.role = ANY($2::membership_role[])'];
+  const conditions: string[] = ['membership.account_id = $1', 'membership.role = ANY($2::membership_role[])'];
   const params: unknown[] = [clientId, PORTAL_ROLES];
 
   let fromClause = 'FROM membership JOIN app_user ON app_user.id = membership.user_id';
@@ -59,7 +64,7 @@ export async function listPortalMembers(
     fromClause += `, (
       SELECT created_at AS anchor_created_at, id AS anchor_id
         FROM membership AS cursor_row
-       WHERE cursor_row.id = $${cursorIdIdx} AND cursor_row.client_id = $1
+       WHERE cursor_row.id = $${cursorIdIdx} AND cursor_row.account_id = $1
     ) cursor_anchor`;
     conditions.push('(membership.created_at < cursor_anchor.anchor_created_at OR (membership.created_at = cursor_anchor.anchor_created_at AND membership.id > cursor_anchor.anchor_id))');
   }
@@ -76,7 +81,7 @@ export async function listPortalMembers(
   }
 
   const { rows } = await client.query<{
-    id: string; user_id: string; email: string; role: 'client_viewer' | 'client_admin'; created_at: Date;
+    id: string; user_id: string; email: string; role: 'account_viewer' | 'account_admin'; created_at: Date;
   }>(
     `SELECT membership.id, membership.user_id, app_user.email, membership.role, membership.created_at
        ${fromClause}
@@ -86,5 +91,11 @@ export async function listPortalMembers(
     params,
   );
 
-  return rows.map((r) => ({ id: r.id, userId: r.user_id, email: r.email, role: r.role, createdAt: r.created_at }));
+  return rows.map((r) => ({
+    id: r.id,
+    userId: r.user_id,
+    email: r.email,
+    role: roleDbToWire(r.role) as 'client_viewer' | 'client_admin',
+    createdAt: r.created_at,
+  }));
 }

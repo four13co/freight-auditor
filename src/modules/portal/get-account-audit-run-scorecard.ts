@@ -3,7 +3,7 @@ import type pg from 'pg';
 /**
  * One audit_run's scorecard for the client portal (P6.B.1) -- same join
  * shape as the internal getInvoiceScorecard (read-audit-evidence.ts), with
- * an added explicit `client_id` predicate (86e31a9ch/#216 precedent: on top
+ * an added explicit `account_id` predicate (86e31a9ch/#216 precedent: on top
  * of RLS, not a replacement for it). scorecard.audit_run_id is UNIQUE
  * (migration 0008), so this is always a single row or none -- unlike
  * get-client-scorecard-summary.ts's now-removed client-wide rollup, there
@@ -16,7 +16,7 @@ import type pg from 'pg';
  * context back, with the count/total fields null, matching
  * InvoiceScorecard's own nullable shape.
  */
-export interface ClientAuditRunScorecard {
+export interface AccountAuditRunScorecard {
   auditRunId: string;
   invoiceId: string;
   invoiceNumber: string | null;
@@ -37,11 +37,11 @@ export interface ClientAuditRunScorecard {
  * distinguish "doesn't exist" from "belongs to another client", matching
  * get-claim-detail.ts's own not-found convention.
  */
-export async function getClientAuditRunScorecard(
+export async function getAccountAuditRunScorecard(
   client: pg.PoolClient,
   clientId: string,
   auditRunId: string,
-): Promise<ClientAuditRunScorecard | null> {
+): Promise<AccountAuditRunScorecard | null> {
   const { rows } = await client.query<{
     audit_run_id: string; invoice_id: string; invoice_number: string | null; outcome: string;
     conformed_count: number | null; variance_count: number | null; unassessable_count: number | null;
@@ -53,7 +53,7 @@ export async function getClientAuditRunScorecard(
        FROM audit_run ar
        JOIN invoice i ON i.id = ar.invoice_id
        LEFT JOIN scorecard sc ON sc.audit_run_id = ar.id
-      WHERE ar.id = $1 AND ar.client_id = $2`,
+      WHERE ar.id = $1 AND ar.account_id = $2`,
     [auditRunId, clientId],
   );
 

@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { withTenantTx } from '../db/tenant-context.js';
-import { registerClientAdminAuthPreHandler } from '../modules/identity/client-admin-auth.js';
+import { registerAccountAdminAuthPreHandler } from '../modules/identity/account-admin-auth.js';
 import { runtimeObjectStore } from '../modules/reference-data/object-store-config.js';
 import {
   createInvoiceDraft,
@@ -22,7 +22,7 @@ import type { ParsedInvoice } from '../modules/ingestion/charge-fact.js';
  * 86e36yj9d: the client portal's own Uploads-section entry point onto the
  * invoice-draft pipeline (86e2xb911, invoice-drafts-routes.ts) -- a
  * separate plugin registration under /api/portal/invoice-drafts, gated by
- * client-admin-auth.ts's registerClientAdminAuthPreHandler, per this task's
+ * client-admin-auth.ts's registerAccountAdminAuthPreHandler, per this task's
  * own Solution ("not the generic registerTenantAuthPreHandler") and Rabbit
  * holes ("the new client_admin-gated upload route(s) belong in their own
  * file/plugin registration, not bolted onto [portal-content-routes.ts]").
@@ -39,7 +39,7 @@ import type { ParsedInvoice } from '../modules/ingestion/charge-fact.js';
 export async function registerPortalInvoiceUploadRoutes(app: FastifyInstance): Promise<void> {
   await app.register(async (routes) => {
     registerBufferContentTypeParser(routes, ['application/pdf']);
-    await registerClientAdminAuthPreHandler(routes);
+    await registerAccountAdminAuthPreHandler(routes);
 
     routes.post('/api/portal/invoice-drafts', async (request, reply) => {
       const ctx = request.tenantContext!;

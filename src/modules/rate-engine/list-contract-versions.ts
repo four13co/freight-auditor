@@ -24,7 +24,7 @@ export async function listContractVersionsForTenant(client: pg.PoolClient, clien
             cv.version_label, cv.valid_from, cv.valid_to
        FROM contract_version cv
        JOIN contract c ON c.id = cv.contract_id
-      WHERE cv.client_id = $1
+      WHERE cv.account_id = $1
       ORDER BY c.name ASC, cv.valid_from DESC`,
     [clientId],
   );

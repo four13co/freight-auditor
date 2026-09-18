@@ -51,7 +51,7 @@ export async function listClaims(
   clientId: string,
   options: ListClaimsOptions = {},
 ): Promise<ClaimRow[]> {
-  const conditions: string[] = ['client_id = $1'];
+  const conditions: string[] = ['account_id = $1'];
   const params: unknown[] = [clientId];
 
   if (options.status) {
@@ -63,12 +63,12 @@ export async function listClaims(
   if (options.cursor) {
     // cursor_anchor re-reads the anchor row's OWN opened_at from the DB
     // (see ListClaimsOptions.cursor's comment for why) -- gated by the same
-    // explicit client_id predicate as the outer query, not RLS alone.
+    // explicit account_id predicate as the outer query, not RLS alone.
     const anchor = buildKeysetAnchorFrom(params, {
       table: 'claim',
       tsColumn: 'opened_at',
       cursorId: options.cursor.id,
-      extraAnchorPredicate: 'cursor_row.client_id = $1',
+      extraAnchorPredicate: 'cursor_row.account_id = $1',
     });
     fromClause = `FROM claim${anchor.fromClauseAddition}`;
     conditions.push(buildKeysetTieBreak('opened_at', 'id', anchor.anchorTsAlias));

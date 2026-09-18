@@ -6,7 +6,7 @@ const CLIENT_ID = '10000000-0000-4000-8000-000000000001';
 const CLAIM_ID = '10000000-0000-4000-8000-000000000002';
 
 function mockClient(opts: {
-  claimRow?: { id: string; client_id: string; status: string } | null;
+  claimRow?: { id: string; account_id: string; status: string } | null;
   followUpRow?: { recorded_at: Date } | null;
   auditResult?: { id: string; created: boolean };
 }) {
@@ -26,7 +26,7 @@ describe('generateClaimEscalation (unit, mocked client)', () => {
     const followUpAt = new Date('2026-01-01T00:00:00Z');
     const now = new Date('2026-01-10T00:00:00Z'); // 9 days later, past the 7-day default grace period
     const { client, query } = mockClient({
-      claimRow: { id: CLAIM_ID, client_id: CLIENT_ID, status: 'open' },
+      claimRow: { id: CLAIM_ID, account_id: CLIENT_ID, status: 'open' },
       followUpRow: { recorded_at: followUpAt },
     });
 
@@ -45,7 +45,7 @@ describe('generateClaimEscalation (unit, mocked client)', () => {
     const followUpAt = new Date('2026-01-01T00:00:00Z');
     const now = new Date('2026-01-10T00:00:00Z');
     const { client } = mockClient({
-      claimRow: { id: CLAIM_ID, client_id: CLIENT_ID, status: 'open' },
+      claimRow: { id: CLAIM_ID, account_id: CLIENT_ID, status: 'open' },
       followUpRow: { recorded_at: followUpAt },
       auditResult: { id: 'audit-1', created: false },
     });
@@ -60,13 +60,13 @@ describe('generateClaimEscalation (unit, mocked client)', () => {
   });
 
   it.each(['recovered', 'denied', 'written_off'])('throws CLAIM_TERMINAL for a %s claim', async (status) => {
-    const { client } = mockClient({ claimRow: { id: CLAIM_ID, client_id: CLIENT_ID, status } });
+    const { client } = mockClient({ claimRow: { id: CLAIM_ID, account_id: CLIENT_ID, status } });
     await expect(generateClaimEscalation(client, CLIENT_ID, CLAIM_ID)).rejects.toMatchObject({ code: 'CLAIM_TERMINAL' });
   });
 
   it('throws NO_FOLLOW_UP_SENT when the claim has no follow-up marker (escalation cannot skip the follow-up stage)', async () => {
     const { client } = mockClient({
-      claimRow: { id: CLAIM_ID, client_id: CLIENT_ID, status: 'open' },
+      claimRow: { id: CLAIM_ID, account_id: CLIENT_ID, status: 'open' },
       followUpRow: null,
     });
     await expect(generateClaimEscalation(client, CLIENT_ID, CLAIM_ID)).rejects.toMatchObject({ code: 'NO_FOLLOW_UP_SENT' });
@@ -76,7 +76,7 @@ describe('generateClaimEscalation (unit, mocked client)', () => {
     const followUpAt = new Date('2026-01-08T00:00:00Z');
     const now = new Date('2026-01-10T00:00:00Z'); // only 2 days later, default grace is 7
     const { client } = mockClient({
-      claimRow: { id: CLAIM_ID, client_id: CLIENT_ID, status: 'open' },
+      claimRow: { id: CLAIM_ID, account_id: CLIENT_ID, status: 'open' },
       followUpRow: { recorded_at: followUpAt },
     });
     await expect(generateClaimEscalation(client, CLIENT_ID, CLAIM_ID, now)).rejects.toMatchObject({ code: 'GRACE_PERIOD_NOT_ELAPSED' });
@@ -86,7 +86,7 @@ describe('generateClaimEscalation (unit, mocked client)', () => {
     const followUpAt = new Date('2026-01-01T00:00:00Z');
     const now = new Date('2026-01-03T00:00:00Z'); // 2 days later
     const { client } = mockClient({
-      claimRow: { id: CLAIM_ID, client_id: CLIENT_ID, status: 'open' },
+      claimRow: { id: CLAIM_ID, account_id: CLIENT_ID, status: 'open' },
       followUpRow: { recorded_at: followUpAt },
     });
     const result = await generateClaimEscalation(client, CLIENT_ID, CLAIM_ID, now, 1);

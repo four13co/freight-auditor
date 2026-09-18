@@ -43,11 +43,11 @@ describe('Phase 0 foundations (runtime)', () => {
     const owner = await pool.connect();
     try {
       const a = await owner.query(
-        `INSERT INTO client (name, slug) VALUES ('Alpha', $1) RETURNING id`,
+        `INSERT INTO account (name, slug) VALUES ('Alpha', $1) RETURNING id`,
         [`${tag}-a`],
       );
       const b = await owner.query(
-        `INSERT INTO client (name, slug) VALUES ('Bravo', $1) RETURNING id`,
+        `INSERT INTO account (name, slug) VALUES ('Bravo', $1) RETURNING id`,
         [`${tag}-b`],
       );
       clientA = a.rows[0].id;
@@ -66,11 +66,11 @@ describe('Phase 0 foundations (runtime)', () => {
         [`${tag}-ub@x.test`],
       );
       await owner.query(
-        `INSERT INTO membership (user_id, client_id, role) VALUES ($1,$2,'analyst')`,
+        `INSERT INTO membership (user_id, account_id, role) VALUES ($1,$2,'analyst')`,
         [ua.rows[0].id, clientA],
       );
       await owner.query(
-        `INSERT INTO membership (user_id, client_id, role) VALUES ($1,$2,'analyst')`,
+        `INSERT INTO membership (user_id, account_id, role) VALUES ($1,$2,'analyst')`,
         [ub.rows[0].id, clientB],
       );
 
@@ -79,7 +79,7 @@ describe('Phase 0 foundations (runtime)', () => {
       //   rank 4 client+carrier+code (for clientA only).
       await owner.query(
         `INSERT INTO charge_code_crosswalk
-           (client_id, carrier_id, source_code, canonical_category, precedence_rank)
+           (account_id, carrier_id, source_code, canonical_category, precedence_rank)
          VALUES
            (NULL, NULL, 'FSC', 'FUEL_GLOBAL', 1),
            (NULL, $1, 'FSC', 'FUEL_CARRIER', 3),
@@ -96,13 +96,13 @@ describe('Phase 0 foundations (runtime)', () => {
     try {
       // Tear down seeded rows (children first). Scoped by the run tag / ids.
       await owner.query(`DELETE FROM charge_code_crosswalk WHERE carrier_id = $1`, [carrierId]);
-      await owner.query(`DELETE FROM source_document WHERE client_id = ANY($1)`, [
+      await owner.query(`DELETE FROM source_document WHERE account_id = ANY($1)`, [
         [clientA, clientB],
       ]);
-      await owner.query(`DELETE FROM membership WHERE client_id = ANY($1)`, [[clientA, clientB]]);
+      await owner.query(`DELETE FROM membership WHERE account_id = ANY($1)`, [[clientA, clientB]]);
       await owner.query(`DELETE FROM app_user WHERE email LIKE $1`, [`${tag}-%`]);
       await owner.query(`DELETE FROM carrier WHERE id = $1`, [carrierId]);
-      await owner.query(`DELETE FROM client WHERE id = ANY($1)`, [[clientA, clientB]]);
+      await owner.query(`DELETE FROM account WHERE id = ANY($1)`, [[clientA, clientB]]);
     } finally {
       owner.release();
     }
@@ -112,18 +112,18 @@ describe('Phase 0 foundations (runtime)', () => {
 
   it('AC1: a non-internal request scoped to A cannot see B rows (RLS blocks cross-tenant)', async () => {
     const rows = await withTenantTx({ clientIds: [clientA], internal: false }, async (c) => {
-      const r = await c.query(`SELECT client_id FROM membership`);
+      const r = await c.query(`SELECT account_id FROM membership`);
       return r.rows;
     });
     // Only A's membership is visible; B is invisible.
     expect(rows.length).toBeGreaterThanOrEqual(1);
-    expect(rows.every((r) => r.client_id === clientA)).toBe(true);
-    expect(rows.some((r) => r.client_id === clientB)).toBe(false);
+    expect(rows.every((r) => r.account_id === clientA)).toBe(true);
+    expect(rows.some((r) => r.account_id === clientB)).toBe(false);
   });
 
   it('AC1b: scoping to A returns zero of B specifically', async () => {
     const count = await withTenantTx({ clientIds: [clientA], internal: false }, async (c) => {
-      const r = await c.query(`SELECT count(*)::int AS n FROM membership WHERE client_id = $1`, [
+      const r = await c.query(`SELECT count(*)::int AS n FROM membership WHERE account_id = $1`, [
         clientB,
       ]);
       return r.rows[0].n as number;
@@ -133,10 +133,10 @@ describe('Phase 0 foundations (runtime)', () => {
 
   it('AC2: an internal analyst sees rows across clients A and B (portfolio access)', async () => {
     const seen = await withTenantTx({ internal: true }, async (c) => {
-      const r = await c.query(`SELECT DISTINCT client_id FROM membership WHERE client_id = ANY($1)`, [
+      const r = await c.query(`SELECT DISTINCT account_id FROM membership WHERE account_id = ANY($1)`, [
         [clientA, clientB],
       ]);
-      return new Set(r.rows.map((row) => row.client_id));
+      return new Set(r.rows.map((row) => row.account_id));
     });
     expect(seen.has(clientA)).toBe(true);
     expect(seen.has(clientB)).toBe(true);
@@ -253,9 +253,9 @@ describe('Phase 0 foundations (runtime)', () => {
     // Cleanup the committed onboarding rows (they're outside the tag-scoped seed teardown paths above for client id).
     const owner = await pool.connect();
     try {
-      await owner.query(`DELETE FROM source_document WHERE client_id = $1`, [result.cl.id]);
+      await owner.query(`DELETE FROM source_document WHERE account_id = $1`, [result.cl.id]);
       await owner.query(`DELETE FROM carrier WHERE id = $1`, [result.car.id]);
-      await owner.query(`DELETE FROM client WHERE id = $1`, [result.cl.id]);
+      await owner.query(`DELETE FROM account WHERE id = $1`, [result.cl.id]);
     } finally {
       owner.release();
     }

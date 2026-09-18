@@ -32,7 +32,7 @@ export async function getCarrierRecoveryReport(
     `SELECT d.carrier_id, c.id AS claim_id, c.amount_claimed, c.currency, c.status
        FROM claim c
        LEFT JOIN dispute d ON d.id = c.dispute_id
-      WHERE c.client_id = $1
+      WHERE c.account_id = $1
         AND ($2::uuid IS NULL OR d.carrier_id = $2::uuid)`,
     [input.clientId, input.carrierId ?? null],
   );
@@ -41,7 +41,7 @@ export async function getCarrierRecoveryReport(
 
   const claimIds = claimRows.map((r) => r.claim_id);
   const { rows: eventRows } = await client.query<{ claim_id: string; amount_recovered: string; currency: string | null }>(
-    `SELECT claim_id, amount_recovered, currency FROM recovery_event WHERE client_id = $1 AND claim_id = ANY($2::uuid[])`,
+    `SELECT claim_id, amount_recovered, currency FROM recovery_event WHERE account_id = $1 AND claim_id = ANY($2::uuid[])`,
     [input.clientId, claimIds],
   );
 

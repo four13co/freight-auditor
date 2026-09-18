@@ -10,9 +10,9 @@ const DATABASE_URL = process.env.DATABASE_URL;
 /**
  * 86e37r2rv, against real Postgres. Same regression shape as
  * get-cross-client-portfolio.db.test.ts (P5.C.3 / PR #247): listInternalAuditEvents
- * has no client_id filter at all, so its cross-client visibility -- and its
+ * has no account_id filter at all, so its cross-client visibility -- and its
  * safety -- is entirely the tenant_isolation RLS policy (migration 0009)
- * reading the transaction's app.is_internal / app.current_client_ids GUCs.
+ * reading the transaction's app.is_internal / app.current_account_ids GUCs.
  * The second test is the critical assertion: a normal, single-client
  * (non-internal) transaction running this exact query must see ONLY its own
  * client's events.
@@ -24,8 +24,8 @@ describe.skipIf(!DATABASE_URL)('listInternalAuditEvents (database)', () => {
   const eventBId = randomUUID();
 
   beforeAll(async () => {
-    await getPool().query(`INSERT INTO client (id, name, slug) VALUES ($1, 'Internal Audit Co A', $2)`, [clientAId, `iac-a-${clientAId}`]);
-    await getPool().query(`INSERT INTO client (id, name, slug) VALUES ($1, 'Internal Audit Co B', $2)`, [clientBId, `iac-b-${clientBId}`]);
+    await getPool().query(`INSERT INTO account (id, name, slug) VALUES ($1, 'Internal Audit Co A', $2)`, [clientAId, `iac-a-${clientAId}`]);
+    await getPool().query(`INSERT INTO account (id, name, slug) VALUES ($1, 'Internal Audit Co B', $2)`, [clientBId, `iac-b-${clientBId}`]);
     await withTenantTx({ clientIds: [clientAId], internal: false }, (client) => writeAuditEvent(client, {
       id: eventAId, clientId: clientAId, entity: 'dispute', entityId: null, event: 'created', actorKind: 'analyst',
     }));
@@ -36,7 +36,7 @@ describe.skipIf(!DATABASE_URL)('listInternalAuditEvents (database)', () => {
 
   afterAll(async () => {
     await getPool().query(`DELETE FROM audit_event WHERE id = ANY($1::uuid[])`, [[eventAId, eventBId]]);
-    await getPool().query(`DELETE FROM client WHERE id = ANY($1::uuid[])`, [[clientAId, clientBId]]);
+    await getPool().query(`DELETE FROM account WHERE id = ANY($1::uuid[])`, [[clientAId, clientBId]]);
     await closePool();
   });
 

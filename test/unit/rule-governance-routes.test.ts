@@ -5,7 +5,7 @@ import { RuleActivationBacktestRegressionError, activationCasesSchema } from '..
 
 /**
  * 86e32tfvq: POST /api/rules/:id/ratify and /activate act on the GLOBAL
- * rule/rule_version tables (no client_id, outside RLS) but were gated only
+ * rule/rule_version tables (no account_id, outside RLS) but were gated only
  * by the generic any-tenant-membership preHandler -- any client-member
  * could un-quarantine or promote a rule affecting every tenant. This file
  * proves the swap to registerInternalAnalystAuthPreHandler took effect (a

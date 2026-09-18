@@ -16,8 +16,8 @@ describe('raw OCR/layout persistence (DB)', () => {
 
   beforeAll(async () => {
     pool = getPool();
-    clientA = (await pool.query(`INSERT INTO client (name, slug) VALUES ('A',$1) RETURNING id`, [`${tag}-a`])).rows[0].id;
-    clientB = (await pool.query(`INSERT INTO client (name, slug) VALUES ('B',$1) RETURNING id`, [`${tag}-b`])).rows[0].id;
+    clientA = (await pool.query(`INSERT INTO account (name, slug) VALUES ('A',$1) RETURNING id`, [`${tag}-a`])).rows[0].id;
+    clientB = (await pool.query(`INSERT INTO account (name, slug) VALUES ('B',$1) RETURNING id`, [`${tag}-b`])).rows[0].id;
     sourceId = await withTenantTx({ clientIds: [clientA] }, async (client) =>
       (await storeSourceDocument(client, new LocalDiskObjectStore(`/tmp/${tag}`), {
         clientId: clientA, bytes: Buffer.from(tag), contentType: 'application/pdf',
@@ -26,10 +26,10 @@ describe('raw OCR/layout persistence (DB)', () => {
   });
 
   afterAll(async () => {
-    await pool.query(`DELETE FROM audit_event WHERE client_id = $1`, [clientA]);
-    await pool.query(`DELETE FROM raw_document_analysis WHERE client_id = $1`, [clientA]);
-    await pool.query(`DELETE FROM source_document WHERE client_id = $1`, [clientA]);
-    await pool.query(`DELETE FROM client WHERE id IN ($1,$2)`, [clientA, clientB]);
+    await pool.query(`DELETE FROM audit_event WHERE account_id = $1`, [clientA]);
+    await pool.query(`DELETE FROM raw_document_analysis WHERE account_id = $1`, [clientA]);
+    await pool.query(`DELETE FROM source_document WHERE account_id = $1`, [clientA]);
+    await pool.query(`DELETE FROM account WHERE id IN ($1,$2)`, [clientA, clientB]);
     await closePool();
   });
 

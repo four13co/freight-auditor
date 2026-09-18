@@ -255,8 +255,8 @@ describe('listMembershipClientIds', () => {
     vi.resetModules();
   });
 
-  it('runs the query in an internal-scoped transaction and maps rows to client_id strings', async () => {
-    const query = vi.fn().mockResolvedValue({ rows: [{ client_id: 'c1' }, { client_id: 'c2' }] });
+  it('runs the query in an internal-scoped transaction and maps rows to account_id strings', async () => {
+    const query = vi.fn().mockResolvedValue({ rows: [{ account_id: 'c1' }, { account_id: 'c2' }] });
     const withTenantTx = vi.fn(async (ctx: unknown, fn: (client: { query: typeof query }) => unknown) => {
       expect(ctx).toEqual({ internal: true });
       return fn({ query });

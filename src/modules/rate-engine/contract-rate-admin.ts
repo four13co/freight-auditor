@@ -33,7 +33,7 @@ export async function listContractRates(client: pg.PoolClient, clientId: string)
        FROM contract_rate r
        JOIN contract_version cv ON cv.id = r.contract_version_id
        JOIN contract c ON c.id = cv.contract_id
-      WHERE r.client_id = $1
+      WHERE r.account_id = $1
       ORDER BY r.created_at DESC, r.id ASC`,
     [clientId],
   );
@@ -56,11 +56,11 @@ export class ContractRateNotFoundError extends Error { readonly code = 'CONTRACT
 export async function createContractRate(client: pg.PoolClient, clientId: string, input: {
   contractVersionId: string; category: string; amount: string; currency: string; clauseId?: string | null;
 }): Promise<{ id: string }> {
-  const owned = await client.query(`SELECT 1 FROM contract_version WHERE id = $1 AND client_id = $2`, [input.contractVersionId, clientId]);
+  const owned = await client.query(`SELECT 1 FROM contract_version WHERE id = $1 AND account_id = $2`, [input.contractVersionId, clientId]);
   if (owned.rowCount === 0) throw new ContractRateNotFoundError('contract version not found for this tenant');
 
   const { rows } = await client.query<{ id: string }>(
-    `INSERT INTO contract_rate (client_id, contract_version_id, category, rate, currency, clause_id)
+    `INSERT INTO contract_rate (account_id, contract_version_id, category, rate, currency, clause_id)
      VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
     [clientId, input.contractVersionId, input.category, input.amount, input.currency, input.clauseId ?? null],
   );
@@ -97,18 +97,18 @@ export async function updateContractRate(client: pg.PoolClient, clientId: string
   }
 
   if (sets.length === 0) {
-    const { rowCount } = await client.query(`SELECT 1 FROM contract_rate WHERE id = $1 AND client_id = $2`, [rateId, clientId]);
+    const { rowCount } = await client.query(`SELECT 1 FROM contract_rate WHERE id = $1 AND account_id = $2`, [rateId, clientId]);
     return (rowCount ?? 0) > 0;
   }
 
   const { rowCount } = await client.query(
-    `UPDATE contract_rate SET ${sets.join(', ')} WHERE id = $1 AND client_id = $2`,
+    `UPDATE contract_rate SET ${sets.join(', ')} WHERE id = $1 AND account_id = $2`,
     params,
   );
   return (rowCount ?? 0) > 0;
 }
 
 export async function deleteContractRate(client: pg.PoolClient, clientId: string, rateId: string): Promise<boolean> {
-  const { rowCount } = await client.query(`DELETE FROM contract_rate WHERE id = $1 AND client_id = $2`, [rateId, clientId]);
+  const { rowCount } = await client.query(`DELETE FROM contract_rate WHERE id = $1 AND account_id = $2`, [rateId, clientId]);
   return (rowCount ?? 0) > 0;
 }

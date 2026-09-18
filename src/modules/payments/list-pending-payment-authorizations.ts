@@ -36,7 +36,7 @@ const DEFAULT_LIMIT = 50;
  *
  * A NOT EXISTS against every other payment_gate_action, rather than a
  * "latest decision" window function, because payment_gate_decision has at
- * most ONE row per (client_id, audit_run_id, action) (0052's
+ * most ONE row per (account_id, audit_run_id, action) (0052's
  * payment_gate_decision_run_action_uk) -- there is no chronological
  * sequence of holds to rank, only a fixed set of independent action rows
  * per audit run to check for.

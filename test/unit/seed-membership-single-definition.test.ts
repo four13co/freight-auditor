@@ -16,7 +16,7 @@ const ROOT = join(__dirname, '../..');
 describe('the membership upsert SQL has a single definition', () => {
   const CANONICAL = 'scripts/seed-membership.mjs';
   const seedScripts = ['scripts/seed-admin-user.mjs', 'scripts/seed-dev-tenant.mjs', 'scripts/seed-e2e-auth-user.mjs'];
-  const SQL_FRAGMENT = 'ON CONFLICT (user_id, client_id) DO UPDATE SET role = EXCLUDED.role';
+  const SQL_FRAGMENT = 'ON CONFLICT (user_id, account_id) DO UPDATE SET role = EXCLUDED.role';
 
   it('is defined only in seed-membership.mjs', () => {
     const files = [CANONICAL, ...seedScripts];

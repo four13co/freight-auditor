@@ -22,12 +22,12 @@ describe('listPendingPaymentAuthorizations (DB)', () => {
   async function makeAuditRun(client: pg.PoolClient, forClientId: string, invoiceNumber: string): Promise<string> {
     const carrier = await client.query(`INSERT INTO carrier (name) VALUES ($1) RETURNING id`, [`Carrier-${invoiceNumber}`]);
     const inv = await client.query(
-      `INSERT INTO invoice (client_id, carrier_id, transaction_set, invoice_number, currency, parser_version)
+      `INSERT INTO invoice (account_id, carrier_id, transaction_set, invoice_number, currency, parser_version)
        VALUES ($1, $2, '210', $3, 'USD', 'test') RETURNING id`,
       [forClientId, carrier.rows[0].id, invoiceNumber],
     );
     const run = await client.query(
-      `INSERT INTO audit_run (client_id, invoice_id, engine_spec_version, outcome) VALUES ($1, $2, 'test', 'SCORED') RETURNING id`,
+      `INSERT INTO audit_run (account_id, invoice_id, engine_spec_version, outcome) VALUES ($1, $2, 'test', 'SCORED') RETURNING id`,
       [forClientId, inv.rows[0].id],
     );
     return run.rows[0].id;
@@ -37,9 +37,9 @@ describe('listPendingPaymentAuthorizations (DB)', () => {
     pool = getPool();
     const owner = await pool.connect();
     try {
-      const a = await owner.query(`INSERT INTO client (name, slug) VALUES ('LPPA-A', $1) RETURNING id`, [`${tag}-a`]);
+      const a = await owner.query(`INSERT INTO account (name, slug) VALUES ('LPPA-A', $1) RETURNING id`, [`${tag}-a`]);
       clientAId = a.rows[0].id;
-      const b = await owner.query(`INSERT INTO client (name, slug) VALUES ('LPPA-B', $1) RETURNING id`, [`${tag}-b`]);
+      const b = await owner.query(`INSERT INTO account (name, slug) VALUES ('LPPA-B', $1) RETURNING id`, [`${tag}-b`]);
       clientBId = b.rows[0].id;
       const u = await owner.query(`INSERT INTO app_user (email) VALUES ($1) RETURNING id`, [`${tag}@example.com`]);
       userId = u.rows[0].id;
@@ -51,12 +51,12 @@ describe('listPendingPaymentAuthorizations (DB)', () => {
   afterAll(async () => {
     const owner = await pool.connect();
     try {
-      await owner.query(`DELETE FROM audit_event WHERE client_id IN ($1, $2)`, [clientAId, clientBId]);
-      await owner.query(`DELETE FROM payment_gate_decision WHERE client_id IN ($1, $2)`, [clientAId, clientBId]);
-      await owner.query(`DELETE FROM audit_run WHERE client_id IN ($1, $2)`, [clientAId, clientBId]);
-      await owner.query(`DELETE FROM invoice WHERE client_id IN ($1, $2)`, [clientAId, clientBId]);
+      await owner.query(`DELETE FROM audit_event WHERE account_id IN ($1, $2)`, [clientAId, clientBId]);
+      await owner.query(`DELETE FROM payment_gate_decision WHERE account_id IN ($1, $2)`, [clientAId, clientBId]);
+      await owner.query(`DELETE FROM audit_run WHERE account_id IN ($1, $2)`, [clientAId, clientBId]);
+      await owner.query(`DELETE FROM invoice WHERE account_id IN ($1, $2)`, [clientAId, clientBId]);
       await owner.query(`DELETE FROM app_user WHERE id = $1`, [userId]);
-      await owner.query(`DELETE FROM client WHERE id IN ($1, $2)`, [clientAId, clientBId]);
+      await owner.query(`DELETE FROM account WHERE id IN ($1, $2)`, [clientAId, clientBId]);
     } finally {
       owner.release();
     }
@@ -89,7 +89,7 @@ describe('listPendingPaymentAuthorizations (DB)', () => {
     expect(rowsAfter.some((r) => r.invoiceNumber === `INV-${tag}-2`)).toBe(false);
 
     const stillHasHoldRow = await withTenantTx({ clientIds: [clientAId], internal: true }, (c) =>
-      c.query(`SELECT 1 FROM payment_gate_decision WHERE client_id = $1 AND action = 'hold'`, [clientAId]),
+      c.query(`SELECT 1 FROM payment_gate_decision WHERE account_id = $1 AND action = 'hold'`, [clientAId]),
     );
     expect((stillHasHoldRow as unknown as pg.QueryResult).rowCount).toBeGreaterThan(0);
   });
@@ -118,7 +118,7 @@ describe('listPendingPaymentAuthorizations (DB)', () => {
     const owner = await pool.connect();
     try {
       await owner.query(
-        `UPDATE payment_gate_decision SET recorded_at = now() - interval '1 hour' WHERE client_id = $1 AND audit_run_id = $2`,
+        `UPDATE payment_gate_decision SET recorded_at = now() - interval '1 hour' WHERE account_id = $1 AND audit_run_id = $2`,
         [clientAId, firstRunId],
       );
     } finally {

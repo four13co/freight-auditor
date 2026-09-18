@@ -48,7 +48,7 @@ describe('discovery metrics', () => {
     expect(metrics.proposalsByLifecycle).toEqual([]);
   });
 
-  it('renders scrape-compatible metrics for every required signal, with no client_id dimension anywhere', () => {
+  it('renders scrape-compatible metrics for every required signal, with no account_id dimension anywhere', () => {
     const text = renderDiscoveryMetrics({
       aiProposalsByModel: [{ modelId: 'claude-sonnet-5', promptVersion: 'v3', count: 7 }],
       abstentionsByReason: [{ abstentionReason: 'LOW_CONFIDENCE', count: 4 }],
@@ -68,7 +68,7 @@ describe('discovery metrics', () => {
     expect(text).toContain('freight_contract_rule_proposals_total{lifecycle_stage="PROPOSED"} 7');
     expect(text).toContain('freight_contract_rule_proposals_total{lifecycle_stage="ACCEPTED"} 3');
     expect(text).toContain('freight_contract_rule_proposals_total{lifecycle_stage="RATIFIED"} 2');
-    expect(text).not.toMatch(/client_id/);
+    expect(text).not.toMatch(/account_id/);
   });
 
   it('escapes label values containing quotes or backslashes', () => {

@@ -1,5 +1,4 @@
 import type pg from 'pg';
-import { roleDbToWire } from './role-wire-mapping.js';
 
 /**
  * One row of the client portal's own membership roster (P6.A.4). Runs
@@ -9,15 +8,14 @@ import { roleDbToWire } from './role-wire-mapping.js';
  * convention. `accountId` is an explicit predicate on top of RLS, not a
  * replacement for it (86e31a9ch/#216 precedent).
  *
- * 86e3ankd7: `role` here is the wire-frozen value ('client_viewer'/
- * 'client_admin') -- translated from the DB's account_viewer/account_admin
- * enum labels in the .map() below, per AC5/the No-go on touching web/.
+ * 86e3aq0h7: `role` is the DB's own account_viewer/account_admin value,
+ * returned as-is -- 86e3ankd7's wire-boundary translation is gone.
  */
 export interface PortalMemberRow {
   id: string;
   userId: string;
   email: string;
-  role: 'client_viewer' | 'client_admin';
+  role: 'account_viewer' | 'account_admin';
   createdAt: Date;
 }
 
@@ -95,7 +93,7 @@ export async function listPortalMembers(
     id: r.id,
     userId: r.user_id,
     email: r.email,
-    role: roleDbToWire(r.role) as 'client_viewer' | 'client_admin',
+    role: r.role,
     createdAt: r.created_at,
   }));
 }

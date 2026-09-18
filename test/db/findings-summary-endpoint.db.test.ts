@@ -8,7 +8,7 @@ import { buildApp } from '../../src/server/app.js';
 /**
  * 86e2u7j0j AC1-2, exercised at the HTTP layer (GET /api/findings/summary).
  *
- * AC2's original contract ("no x-client-id -> 200 with zeros") is superseded
+ * AC2's original contract ("no x-account-id -> 200 with zeros") is superseded
  * by 86e2u7j2y AC3 ("missing header(s) -> 401") -- membership validation now
  * gates these routes, so an unscoped/unauthenticated request is rejected
  * outright rather than silently scoped to nothing. Updated in place per that
@@ -98,13 +98,13 @@ describe('GET /api/findings/summary (DB, e2e)', () => {
     const res = await app.inject({
       method: 'GET',
       url: '/api/findings/summary',
-      headers: { 'x-client-id': clientId, 'x-user-id': userId },
+      headers: { 'x-account-id': clientId, 'x-user-id': userId },
     });
     expect(res.statusCode).toBe(200);
     expect(res.json()).toMatchObject({ recoverableOpen: '250.0000', flaggedToday: 1, withCarriers: 0 });
   });
 
-  it('AC2 (superseded by 86e2u7j2y AC3): a request with no x-client-id header is rejected, not silently scoped to zero', async () => {
+  it('AC2 (superseded by 86e2u7j2y AC3): a request with no x-account-id header is rejected, not silently scoped to zero', async () => {
     const res = await app.inject({ method: 'GET', url: '/api/findings/summary' });
     expect(res.statusCode).toBe(401);
   });

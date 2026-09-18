@@ -123,7 +123,7 @@ describe('86e36beq2 + 86e367r9x: analyst-only gate on payment-authorization and 
     vi.doUnmock('../../src/db/tenant-context.js');
   });
 
-  it.each(['client_viewer', 'client_admin'])(
+  it.each(['account_viewer', 'account_admin'])(
     'rejects %s with 403 on POST /api/audit-runs/:id/payment-authorization',
     async (role) => {
       mockAuth(role);
@@ -142,7 +142,7 @@ describe('86e36beq2 + 86e367r9x: analyst-only gate on payment-authorization and 
     },
   );
 
-  it.each(['client_viewer', 'client_admin'])('rejects %s with 403 on PUT /api/payment-policy', async (role) => {
+  it.each(['account_viewer', 'account_admin'])('rejects %s with 403 on PUT /api/payment-policy', async (role) => {
     mockAuth(role);
     vi.doMock('../../src/db/tenant-context.js', () => ({ withTenantTx: vi.fn(async (_ctx, fn) => fn({})) }));
     const { registerPaymentRoutes } = await import('../../src/server/payment-routes.js');

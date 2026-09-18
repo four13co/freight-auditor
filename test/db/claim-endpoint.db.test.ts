@@ -70,7 +70,7 @@ describe('POST /api/disputes/:id/claim (DB, e2e)', () => {
     const first = await app.inject({
       method: 'POST',
       url: `/api/disputes/${acceptedDisputeId}/claim`,
-      headers: { 'x-client-id': clientId, 'x-user-id': userId },
+      headers: { 'x-account-id': clientId, 'x-user-id': userId },
     });
     expect(first.statusCode).toBe(201);
     const firstBody = first.json();
@@ -79,7 +79,7 @@ describe('POST /api/disputes/:id/claim (DB, e2e)', () => {
     const retry = await app.inject({
       method: 'POST',
       url: `/api/disputes/${acceptedDisputeId}/claim`,
-      headers: { 'x-client-id': clientId, 'x-user-id': userId },
+      headers: { 'x-account-id': clientId, 'x-user-id': userId },
     });
     expect(retry.statusCode).toBe(200);
     expect(retry.json()).toEqual(firstBody);
@@ -97,7 +97,7 @@ describe('POST /api/disputes/:id/claim (DB, e2e)', () => {
     const res = await app.inject({
       method: 'POST',
       url: `/api/disputes/${sentDisputeId}/claim`,
-      headers: { 'x-client-id': clientId, 'x-user-id': userId },
+      headers: { 'x-account-id': clientId, 'x-user-id': userId },
     });
     expect(res.statusCode).toBe(409);
   });
@@ -114,7 +114,7 @@ describe('POST /api/disputes/:id/claim (DB, e2e)', () => {
     const res = await app.inject({
       method: 'POST',
       url: `/api/disputes/00000000-0000-0000-0000-000000000000/claim`,
-      headers: { 'x-client-id': clientId, 'x-user-id': userId },
+      headers: { 'x-account-id': clientId, 'x-user-id': userId },
     });
     expect(res.statusCode).toBe(404);
   });

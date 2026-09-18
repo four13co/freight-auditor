@@ -1,9 +1,9 @@
 import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { authClient, useSession, signOut as authSignOut } from '@/lib/auth-client';
 import {
-  CLIENT_ID_STORAGE_KEY,
+  ACCOUNT_ID_STORAGE_KEY,
   fetchActorContext,
-  fetchAndStoreClientId,
+  fetchAndStoreAccountId,
   type ActorContext,
 } from '@/lib/api';
 import { devHeaderPathActive } from '@/lib/dev-auth';
@@ -32,7 +32,7 @@ export interface AuthUser {
   name: string | null;
   role: AppRole;
   isInternal: boolean;
-  clientName: string | null;
+  accountName: string | null;
 }
 
 export interface LoginResult {
@@ -49,7 +49,7 @@ interface AuthContextValue {
 }
 
 /**
- * Backend membership roles (client_viewer/client_admin, per
+ * Backend membership roles (account_viewer/account_admin, per
  * src/server/auth-routes.ts) don't yet distinguish grand_client/vendor from
  * this item's four-role model -- every non-internal actor maps to 'account'
  * until the backend exposes that distinction. See this PR's Uncertainties.
@@ -64,7 +64,7 @@ const DEV_USER: AuthUser = {
   name: 'Dev Dashboard User',
   role: 'employee',
   isInternal: true,
-  clientName: null,
+  accountName: null,
 };
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -84,7 +84,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (devMode || !sessionUserId) return;
     setActorLoading(true);
     setActorContext(null);
-    Promise.all([fetchAndStoreClientId().catch(() => {}), fetchActorContext()]).then(
+    Promise.all([fetchAndStoreAccountId().catch(() => {}), fetchActorContext()]).then(
       ([, ctx]) => {
         setActorContext(ctx);
         setActorLoading(false);
@@ -114,7 +114,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             name: sessionUser.name ?? null,
             role: mapActorToRole(actorContext),
             isInternal: actorContext.isInternal,
-            clientName: actorContext.clientName,
+            accountName: actorContext.accountName,
           }
         : null;
 
@@ -128,7 +128,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return { error: error?.message ?? null };
       },
       logout: async () => {
-        sessionStorage.removeItem(CLIENT_ID_STORAGE_KEY);
+        sessionStorage.removeItem(ACCOUNT_ID_STORAGE_KEY);
         await authSignOut();
       },
     };

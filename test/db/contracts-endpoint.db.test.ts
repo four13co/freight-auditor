@@ -47,7 +47,7 @@ describe('contract document upload API (DB)', () => {
   });
 
   const headers = () => ({
-    'x-client-id': clientId, 'x-user-id': userId, 'content-type': 'application/pdf',
+    'x-account-id': clientId, 'x-user-id': userId, 'content-type': 'application/pdf',
   });
 
   it('creates an immutable contract/version/source chain and append-only audit event', async () => {
@@ -83,7 +83,7 @@ describe('contract document upload API (DB)', () => {
     const response = await app.inject({
       method: 'POST',
       url: `/api/contracts?carrier_id=${carrierId}&name=Forbidden&valid_from=2030-01-01`,
-      headers: { ...headers(), 'x-client-id': otherClientId }, payload: Buffer.from(`PDF-${tag}-forbidden`),
+      headers: { ...headers(), 'x-account-id': otherClientId }, payload: Buffer.from(`PDF-${tag}-forbidden`),
     });
     expect(response.statusCode).toBe(401);
   });

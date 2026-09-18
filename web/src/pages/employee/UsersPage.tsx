@@ -28,7 +28,7 @@ import {
 /**
  * 86e3a6rde: the requirements spreadsheet's role vocabulary is
  * Employee/Client/Grand Client/Vendor, but the backend's real membership
- * roles are analyst/lead/client_viewer/client_admin (MEMBERSHIP_ROLES,
+ * roles are analyst/lead/account_viewer/account_admin (MEMBERSHIP_ROLES,
  * tenant-admin-routes.ts) -- the same role-vocabulary gap already flagged
  * by 86e3a6r53 and pushed to Bridge (role-vocab-gap-86e3a6r53). Mapped here
  * for display; there is no backend concept of a Grand Client or Vendor
@@ -38,8 +38,8 @@ import {
 const ROLE_LABELS: Record<MembershipRole, string> = {
   analyst: 'Employee (Analyst)',
   lead: 'Employee (Lead)',
-  client_viewer: 'Client (Viewer)',
-  client_admin: 'Client (Admin)',
+  account_viewer: 'Client (Viewer)',
+  account_admin: 'Client (Admin)',
 };
 
 function CreateUserDialog({

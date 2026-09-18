@@ -129,7 +129,7 @@ describe('dispute review routes', () => {
       ['reject', () => rejectDispute],
       ['close', () => closeDispute],
     ] as const)('rejects a client_viewer accepting/rejecting/closing (%s) with 403, without calling the resolver', async (action, resolverFn) => {
-      mockAuth('client_viewer');
+      mockAuth('account_viewer');
       vi.doMock('../../src/db/tenant-context.js', () => ({ withTenantTx: vi.fn(async (_ctx, fn) => fn({})) }));
       mockResolveDispute();
       const { registerDisputeReviewRoutes } = await import('../../src/server/dispute-review-routes.js');
@@ -143,7 +143,7 @@ describe('dispute review routes', () => {
     });
 
     it('rejects a client_admin partially-accepting a dispute with 403, without calling the resolver', async () => {
-      mockAuth('client_admin');
+      mockAuth('account_admin');
       vi.doMock('../../src/db/tenant-context.js', () => ({ withTenantTx: vi.fn(async (_ctx, fn) => fn({})) }));
       mockResolveDispute();
       const { registerDisputeReviewRoutes } = await import('../../src/server/dispute-review-routes.js');

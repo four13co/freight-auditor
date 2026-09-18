@@ -51,7 +51,7 @@ describe('GET /api/invoices', () => {
     expect(response.statusCode).toBe(401);
   });
 
-  it.each(['client_viewer', 'client_admin'])('rejects %s (portal session) with 403', async (role) => {
+  it.each(['account_viewer', 'account_admin'])('rejects %s (portal session) with 403', async (role) => {
     mockAuth(role);
     vi.doMock('../../src/db/tenant-context.js', () => ({ withTenantReadTx: vi.fn(async (_ctx, fn) => fn({})) }));
     const { registerInvoicesRoutes } = await import('../../src/server/invoices-routes.js');

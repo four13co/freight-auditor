@@ -77,7 +77,7 @@ describe('/api/auth/* mount (unit, mocked getAuth)', () => {
     expect(res.headers['set-cookie']).toEqual(['a=1; Path=/', 'b=2; Path=/']);
   });
 
-  it('is not gated behind tenant-auth (reachable with no x-client-id/x-user-id headers)', async () => {
+  it('is not gated behind tenant-auth (reachable with no x-account-id/x-user-id headers)', async () => {
     const handler = vi.fn().mockResolvedValue(new Response(JSON.stringify({ ok: true }), { status: 200 }));
     vi.doMock('../../src/auth/better-auth.js', () => ({ getAuth: () => ({ handler }) }));
     const { buildApp } = await import('../../src/server/app.js');
@@ -202,13 +202,13 @@ describe('POST /api/auth/sign-up/email public-signup gate (unit, mocked getAuth)
 
 /**
  * 86e2wb92b: unit coverage of GET /api/auth/memberships, with getAuth() and
- * listMembershipClientIds mocked so this runs with no live Postgres.
+ * listMembershipAccountIds mocked so this runs with no live Postgres.
  * Complements test/db/auth-memberships.db.test.ts, which covers the real
  * membership-lookup query against real Postgres and stays the source of
  * truth there -- this file only exercises the route's own session-check +
  * response-shape logic.
  */
-describe('GET /api/auth/memberships (unit, mocked getAuth + listMembershipClientIds)', () => {
+describe('GET /api/auth/memberships (unit, mocked getAuth + listMembershipAccountIds)', () => {
   let app: FastifyInstance | undefined;
 
   afterEach(async () => {
@@ -219,17 +219,17 @@ describe('GET /api/auth/memberships (unit, mocked getAuth + listMembershipClient
     vi.doUnmock('../../src/modules/findings/tenant-auth.js');
   });
 
-  it('AC1: returns { clientIds, isInternal, role } for a valid session', async () => {
+  it('AC1: returns { accountIds, isInternal, role } for a valid session', async () => {
     const getSession = vi.fn().mockResolvedValue({ user: { id: 'user-1' } });
     vi.doMock('../../src/auth/better-auth.js', () => ({ getAuth: () => ({ api: { getSession } }) }));
-    const listMembershipClientIds = vi.fn().mockResolvedValue(['client-1']);
-    const lookupActorType = vi.fn().mockResolvedValue({ isInternal: false, role: 'client_viewer' });
-    const lookupClientName = vi.fn().mockResolvedValue('Acme Corp');
+    const listMembershipAccountIds = vi.fn().mockResolvedValue(['client-1']);
+    const lookupActorType = vi.fn().mockResolvedValue({ isInternal: false, role: 'account_viewer' });
+    const lookupAccountName = vi.fn().mockResolvedValue('Acme Corp');
     vi.doMock('../../src/modules/findings/tenant-auth.js', async (importOriginal) => ({
       ...(await importOriginal<object>()),
-      listMembershipClientIds,
+      listMembershipAccountIds,
       lookupActorType,
-      lookupClientName,
+      lookupAccountName,
     }));
     const { buildApp } = await import('../../src/server/app.js');
     app = buildApp();
@@ -237,23 +237,23 @@ describe('GET /api/auth/memberships (unit, mocked getAuth + listMembershipClient
     const res = await app.inject({ method: 'GET', url: '/api/auth/memberships', headers: { cookie: 'session=x' } });
 
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual({ clientIds: ['client-1'], isInternal: false, role: 'client_viewer', clientName: 'Acme Corp' });
+    expect(res.json()).toEqual({ accountIds: ['client-1'], isInternal: false, role: 'account_viewer', accountName: 'Acme Corp' });
     expect(getSession).toHaveBeenCalledTimes(1);
-    expect(listMembershipClientIds).toHaveBeenCalledWith('user-1');
+    expect(listMembershipAccountIds).toHaveBeenCalledWith('user-1');
     expect(lookupActorType).toHaveBeenCalledWith('user-1');
   });
 
   it('86e2zfjmb AC4: returns isInternal:true and role:null for an internal analyst', async () => {
     const getSession = vi.fn().mockResolvedValue({ user: { id: 'user-internal' } });
     vi.doMock('../../src/auth/better-auth.js', () => ({ getAuth: () => ({ api: { getSession } }) }));
-    const listMembershipClientIds = vi.fn().mockResolvedValue([]);
+    const listMembershipAccountIds = vi.fn().mockResolvedValue([]);
     const lookupActorType = vi.fn().mockResolvedValue({ isInternal: true, role: null });
-    const lookupClientName = vi.fn().mockResolvedValue(null);
+    const lookupAccountName = vi.fn().mockResolvedValue(null);
     vi.doMock('../../src/modules/findings/tenant-auth.js', async (importOriginal) => ({
       ...(await importOriginal<object>()),
-      listMembershipClientIds,
+      listMembershipAccountIds,
       lookupActorType,
-      lookupClientName,
+      lookupAccountName,
     }));
     const { buildApp } = await import('../../src/server/app.js');
     app = buildApp();
@@ -261,21 +261,21 @@ describe('GET /api/auth/memberships (unit, mocked getAuth + listMembershipClient
     const res = await app.inject({ method: 'GET', url: '/api/auth/memberships', headers: { cookie: 'session=x' } });
 
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual({ clientIds: [], isInternal: true, role: null, clientName: null });
+    expect(res.json()).toEqual({ accountIds: [], isInternal: true, role: null, accountName: null });
     expect(lookupActorType).toHaveBeenCalledWith('user-internal');
   });
 
   it('86e38pz8e: returns the caller\'s org/tenant name for a portal member with a membership', async () => {
     const getSession = vi.fn().mockResolvedValue({ user: { id: 'user-portal' } });
     vi.doMock('../../src/auth/better-auth.js', () => ({ getAuth: () => ({ api: { getSession } }) }));
-    const listMembershipClientIds = vi.fn().mockResolvedValue(['client-9']);
-    const lookupActorType = vi.fn().mockResolvedValue({ isInternal: false, role: 'client_admin' });
-    const lookupClientName = vi.fn().mockResolvedValue('Northwind Freight');
+    const listMembershipAccountIds = vi.fn().mockResolvedValue(['client-9']);
+    const lookupActorType = vi.fn().mockResolvedValue({ isInternal: false, role: 'account_admin' });
+    const lookupAccountName = vi.fn().mockResolvedValue('Northwind Freight');
     vi.doMock('../../src/modules/findings/tenant-auth.js', async (importOriginal) => ({
       ...(await importOriginal<object>()),
-      listMembershipClientIds,
+      listMembershipAccountIds,
       lookupActorType,
-      lookupClientName,
+      lookupAccountName,
     }));
     const { buildApp } = await import('../../src/server/app.js');
     app = buildApp();
@@ -283,21 +283,21 @@ describe('GET /api/auth/memberships (unit, mocked getAuth + listMembershipClient
     const res = await app.inject({ method: 'GET', url: '/api/auth/memberships', headers: { cookie: 'session=x' } });
 
     expect(res.statusCode).toBe(200);
-    expect(res.json().clientName).toBe('Northwind Freight');
-    expect(lookupClientName).toHaveBeenCalledWith('user-portal');
+    expect(res.json().accountName).toBe('Northwind Freight');
+    expect(lookupAccountName).toHaveBeenCalledWith('user-portal');
   });
 
-  it('AC3: returns 401 without calling listMembershipClientIds/lookupActorType/lookupClientName when there is no valid session', async () => {
+  it('AC3: returns 401 without calling listMembershipAccountIds/lookupActorType/lookupAccountName when there is no valid session', async () => {
     const getSession = vi.fn().mockResolvedValue(null);
     vi.doMock('../../src/auth/better-auth.js', () => ({ getAuth: () => ({ api: { getSession } }) }));
-    const listMembershipClientIds = vi.fn();
+    const listMembershipAccountIds = vi.fn();
     const lookupActorType = vi.fn();
-    const lookupClientName = vi.fn();
+    const lookupAccountName = vi.fn();
     vi.doMock('../../src/modules/findings/tenant-auth.js', async (importOriginal) => ({
       ...(await importOriginal<object>()),
-      listMembershipClientIds,
+      listMembershipAccountIds,
       lookupActorType,
-      lookupClientName,
+      lookupAccountName,
     }));
     const { buildApp } = await import('../../src/server/app.js');
     app = buildApp();
@@ -305,8 +305,8 @@ describe('GET /api/auth/memberships (unit, mocked getAuth + listMembershipClient
     const res = await app.inject({ method: 'GET', url: '/api/auth/memberships' });
 
     expect(res.statusCode).toBe(401);
-    expect(listMembershipClientIds).not.toHaveBeenCalled();
+    expect(listMembershipAccountIds).not.toHaveBeenCalled();
     expect(lookupActorType).not.toHaveBeenCalled();
-    expect(lookupClientName).not.toHaveBeenCalled();
+    expect(lookupAccountName).not.toHaveBeenCalled();
   });
 });

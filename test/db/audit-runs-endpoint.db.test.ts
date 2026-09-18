@@ -103,7 +103,7 @@ describe('POST /api/audit-runs (DB, e2e)', () => {
       method: 'POST',
       url: '/api/audit-runs',
       headers: {
-        'x-client-id': clientId,
+        'x-account-id': clientId,
         'x-user-id': userId,
         'content-type': 'application/edi-x12',
       },
@@ -134,7 +134,7 @@ describe('POST /api/audit-runs (DB, e2e)', () => {
     const replay = await app.inject({
       method: 'POST',
       url: `/api/audit-runs/${body.id}/replay`,
-      headers: { 'x-client-id': clientId, 'x-user-id': userId },
+      headers: { 'x-account-id': clientId, 'x-user-id': userId },
     });
     expect(replay.statusCode).toBe(200);
     expect(replay.json()).toMatchObject({
@@ -162,7 +162,7 @@ describe('POST /api/audit-runs (DB, e2e)', () => {
     const get = await app.inject({
       method: 'GET',
       url: '/api/findings',
-      headers: { 'x-client-id': clientId, 'x-user-id': userId },
+      headers: { 'x-account-id': clientId, 'x-user-id': userId },
     });
     expect(get.statusCode).toBe(200);
     expect(Array.isArray(get.json().findings)).toBe(true);
@@ -173,7 +173,7 @@ describe('POST /api/audit-runs (DB, e2e)', () => {
       method: 'POST',
       url: `/api/audit-runs?contract_version_id=${contractVersionId}`,
       headers: {
-        'x-client-id': clientId,
+        'x-account-id': clientId,
         'x-user-id': userId,
         'content-type': 'application/edi-x12',
       },
@@ -187,7 +187,7 @@ describe('POST /api/audit-runs (DB, e2e)', () => {
     const get = await app.inject({
       method: 'GET',
       url: '/api/findings',
-      headers: { 'x-client-id': clientId, 'x-user-id': userId },
+      headers: { 'x-account-id': clientId, 'x-user-id': userId },
     });
     expect(get.statusCode).toBe(200);
     const findings = get.json().findings as Array<{
@@ -204,7 +204,7 @@ describe('POST /api/audit-runs (DB, e2e)', () => {
     const res = await app.inject({
       method: 'POST',
       url: '/api/audit-runs?contract_version_id=not-a-uuid',
-      headers: { 'x-client-id': clientId, 'x-user-id': userId, 'content-type': 'application/edi-x12' },
+      headers: { 'x-account-id': clientId, 'x-user-id': userId, 'content-type': 'application/edi-x12' },
       payload: GOLDEN_210,
     });
     expect(res.statusCode).toBe(400);
@@ -223,7 +223,7 @@ describe('POST /api/audit-runs (DB, e2e)', () => {
     const res = await app.inject({
       method: 'POST',
       url: `/api/audit-runs?contract_version_id=${nonExistentUuid}`,
-      headers: { 'x-client-id': clientId, 'x-user-id': userId, 'content-type': 'application/edi-x12' },
+      headers: { 'x-account-id': clientId, 'x-user-id': userId, 'content-type': 'application/edi-x12' },
       payload: GOLDEN_210,
     });
     // A rate-lookup miss is an honest UNASSESSABLE verdict on the affected
@@ -249,7 +249,7 @@ describe('POST /api/audit-runs (DB, e2e)', () => {
       method: 'POST',
       url: '/api/audit-runs',
       headers: {
-        'x-client-id': clientId,
+        'x-account-id': clientId,
         'x-user-id': userId,
         'content-type': 'application/edi-x12',
       },
@@ -270,7 +270,7 @@ describe('POST /api/audit-runs (DB, e2e)', () => {
       method: 'POST',
       url: '/api/audit-runs',
       headers: {
-        'x-client-id': clientId,
+        'x-account-id': clientId,
         'x-user-id': userId,
         'content-type': 'application/edi-x12',
       },
@@ -288,7 +288,7 @@ describe('POST /api/audit-runs (DB, e2e)', () => {
       method: 'POST',
       url: '/api/audit-runs',
       headers: {
-        'x-client-id': clientId,
+        'x-account-id': clientId,
         'x-user-id': userId,
         'content-type': 'application/edi-x12',
       },
@@ -315,7 +315,7 @@ describe('POST /api/audit-runs (DB, e2e)', () => {
       method: 'POST',
       url: '/api/audit-runs',
       headers: {
-        'x-client-id': clientId,
+        'x-account-id': clientId,
         'x-user-id': userId,
         'content-type': 'application/edi-x12',
       },

@@ -167,7 +167,7 @@ describe('GET /api/disputes/queues (DB, e2e)', () => {
     );
 
     const res = await app.inject({
-      method: 'GET', url: '/api/disputes/queues', headers: { 'x-client-id': clientId, 'x-user-id': userId },
+      method: 'GET', url: '/api/disputes/queues', headers: { 'x-account-id': clientId, 'x-user-id': userId },
     });
 
     expect(res.statusCode).toBe(200);
@@ -195,7 +195,7 @@ describe('GET /api/disputes/queues (DB, e2e)', () => {
     );
 
     const res = await app.inject({
-      method: 'GET', url: '/api/disputes/queues', headers: { 'x-client-id': clientId, 'x-user-id': userId },
+      method: 'GET', url: '/api/disputes/queues', headers: { 'x-account-id': clientId, 'x-user-id': userId },
     });
 
     expect(res.statusCode).toBe(200);

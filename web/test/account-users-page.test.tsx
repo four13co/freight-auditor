@@ -16,8 +16,8 @@ vi.mock('@/lib/api', async () => {
 });
 
 const MEMBERS = [
-  { id: 'm1', userId: 'u1', email: 'dana@acme.test', role: 'client_admin' as const, createdAt: '2026-03-01T00:00:00Z' },
-  { id: 'm2', userId: 'u2', email: 'val@acme.test', role: 'client_viewer' as const, createdAt: '2026-03-05T00:00:00Z' },
+  { id: 'm1', userId: 'u1', email: 'dana@acme.test', role: 'account_admin' as const, createdAt: '2026-03-01T00:00:00Z' },
+  { id: 'm2', userId: 'u2', email: 'val@acme.test', role: 'account_viewer' as const, createdAt: '2026-03-05T00:00:00Z' },
 ];
 
 beforeEach(() => {
@@ -53,7 +53,7 @@ describe('client UsersPage', () => {
     const row = screen.getByText('val@acme.test').closest('tr')!;
     await user.click(within(row).getByRole('button', { name: 'Make Admin' }));
 
-    await waitFor(() => expect(updatePortalMemberRoleMock).toHaveBeenCalledWith('m2', 'client_admin'));
+    await waitFor(() => expect(updatePortalMemberRoleMock).toHaveBeenCalledWith('m2', 'account_admin'));
     expect(fetchPortalMembersMock).toHaveBeenCalledTimes(2);
   });
 

@@ -13,7 +13,7 @@ import { GOLDEN_210, testCategorize } from '../fixtures/edi-golden.js';
 /**
  * 86e2u7j0d AC1-3, exercised at the HTTP layer (GET /api/findings).
  *
- * AC2's original contract ("no x-client-id -> 200, empty tenant scope") is
+ * AC2's original contract ("no x-account-id -> 200, empty tenant scope") is
  * superseded by 86e2u7j2y AC3 ("missing header(s) -> 401") -- membership
  * validation now gates this route, so an unscoped/unauthenticated request is
  * rejected outright rather than silently scoped to nothing. Updated in place
@@ -112,7 +112,7 @@ describe('GET /api/findings (DB, e2e)', () => {
     const res = await app.inject({
       method: 'GET',
       url: '/api/findings',
-      headers: { 'x-client-id': clientId, 'x-user-id': userId },
+      headers: { 'x-account-id': clientId, 'x-user-id': userId },
     });
     expect(res.statusCode).toBe(200);
     const body = res.json();
@@ -120,7 +120,7 @@ describe('GET /api/findings (DB, e2e)', () => {
     expect(body.findings[0]).toMatchObject({ carrierName: `Carrier-${tag}`, billed: '1000.0000', status: 'open' });
   });
 
-  it('AC2 (superseded by 86e2u7j2y AC3): a request with no x-client-id header is rejected, not silently scoped to zero', async () => {
+  it('AC2 (superseded by 86e2u7j2y AC3): a request with no x-account-id header is rejected, not silently scoped to zero', async () => {
     const res = await app.inject({ method: 'GET', url: '/api/findings' });
     expect(res.statusCode).toBe(401);
   });
@@ -129,7 +129,7 @@ describe('GET /api/findings (DB, e2e)', () => {
     const res = await app.inject({
       method: 'GET',
       url: '/api/findings?status=closed',
-      headers: { 'x-client-id': clientId, 'x-user-id': userId },
+      headers: { 'x-account-id': clientId, 'x-user-id': userId },
     });
     expect(res.statusCode).toBe(200);
     expect(res.json().findings).toHaveLength(0);
@@ -146,7 +146,7 @@ describe('GET /api/findings (DB, e2e)', () => {
     const res = await app.inject({
       method: 'GET',
       url: '/api/findings?min-amount=150',
-      headers: { 'x-client-id': clientId, 'x-user-id': userId },
+      headers: { 'x-account-id': clientId, 'x-user-id': userId },
     });
     expect(res.statusCode).toBe(200);
     expect(res.json().findings).toHaveLength(0); // seeded finding's variance_amount is 100.0000
@@ -156,7 +156,7 @@ describe('GET /api/findings (DB, e2e)', () => {
     const res = await app.inject({
       method: 'GET',
       url: '/api/findings?min-amount=100',
-      headers: { 'x-client-id': clientId, 'x-user-id': userId },
+      headers: { 'x-account-id': clientId, 'x-user-id': userId },
     });
     expect(res.statusCode).toBe(200);
     expect(res.json().findings).toHaveLength(1);
@@ -180,7 +180,7 @@ describe('GET /api/findings (DB, e2e)', () => {
     const res = await app.inject({
       method: 'GET',
       url: '/api/findings',
-      headers: { 'x-client-id': clientId, 'x-user-id': userId },
+      headers: { 'x-account-id': clientId, 'x-user-id': userId },
     });
     expect(res.statusCode).toBe(200);
     const findings = res.json().findings as Array<{ invoiceNumber: string; direction: string; varianceAmount: string }>;

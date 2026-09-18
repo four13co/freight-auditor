@@ -171,7 +171,7 @@ describe('PATCH /api/findings/:id/assign (unit, mocked withTenantTx + tenant-aut
 
   // 86e37r2t8 AC4
   it('AC4: rejects a client_viewer (portal) session with 403, without calling assignFinding', async () => {
-    mockAuthorized('client_viewer');
+    mockAuthorized('account_viewer');
     vi.doMock('../../src/db/tenant-context.js', () => ({
       withTenantTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
     }));
@@ -189,7 +189,7 @@ describe('PATCH /api/findings/:id/assign (unit, mocked withTenantTx + tenant-aut
   });
 
   it('AC4: rejects a client_admin (portal) session with 403, without calling assignFinding', async () => {
-    mockAuthorized('client_admin');
+    mockAuthorized('account_admin');
     vi.doMock('../../src/db/tenant-context.js', () => ({
       withTenantTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
     }));

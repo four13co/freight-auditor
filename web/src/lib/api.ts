@@ -16,72 +16,72 @@ const DEV_CLIENT_ID = '11111111-1111-4111-8111-111111111111';
 const DEV_USER_ID = '22222222-2222-4222-8222-222222222222';
 
 /**
- * Set once fetchAndStoreClientId() resolves, on the real-session path only.
- * sessionStorage (not localStorage) so a stale client_id from a previous,
+ * Set once fetchAndStoreAccountId() resolves, on the real-session path only.
+ * sessionStorage (not localStorage) so a stale account_id from a previous,
  * now-signed-out session in the same tab never outlives that session -- a
  * fresh sign-in re-fetches and re-stores it.
  */
-export const CLIENT_ID_STORAGE_KEY = 'freight-auditor:client-id';
+export const ACCOUNT_ID_STORAGE_KEY = 'freight-auditor:account-id';
 
 export function authHeaders(): HeadersInit {
   if (!devHeaderPathActive()) {
     // Real-session path: the backend derives identity from the session
-    // cookie itself. Only x-client-id is sent, and only once App has
+    // cookie itself. Only x-account-id is sent, and only once App has
     // fetched and stored it; absent that, no header is sent and the
     // backend fails closed (401).
-    const clientId = sessionStorage.getItem(CLIENT_ID_STORAGE_KEY);
-    return clientId ? { 'x-client-id': clientId } : {};
+    const accountId = sessionStorage.getItem(ACCOUNT_ID_STORAGE_KEY);
+    return accountId ? { 'x-account-id': accountId } : {};
   }
   return {
-    'x-client-id': DEV_CLIENT_ID,
+    'x-account-id': DEV_CLIENT_ID,
     'x-user-id': DEV_USER_ID,
   };
 }
 
 /**
  * Called once by AuthProvider after a real (non-dev-header) session is
- * established, so subsequent requests' authHeaders() has a client_id to
+ * established, so subsequent requests' authHeaders() has an account_id to
  * send. Single-membership-per-user only. Fails closed: a user with zero
  * memberships (or a failed lookup) stores nothing, so authHeaders() sends
- * no x-client-id and the backend fails closed, rather than this throwing
+ * no x-account-id and the backend fails closed, rather than this throwing
  * and blocking the app render.
  */
-export async function fetchAndStoreClientId(): Promise<void> {
+export async function fetchAndStoreAccountId(): Promise<void> {
   const res = await fetch('/api/auth/memberships');
   if (!res.ok) return;
-  const body = (await res.json()) as { clientIds: string[] };
-  if (body.clientIds[0]) sessionStorage.setItem(CLIENT_ID_STORAGE_KEY, body.clientIds[0]);
+  const body = (await res.json()) as { accountIds: string[] };
+  if (body.accountIds[0]) sessionStorage.setItem(ACCOUNT_ID_STORAGE_KEY, body.accountIds[0]);
 }
 
 /**
  * 86e3a6rgc/rgu/rh4/rhj/rhv/rj8/rjr (Client UI epic): the Client role's own
- * client id, for scoping the shared in-memory-hierarchy-store (`client:<id>`)
+ * account id, for scoping the shared in-memory-hierarchy-store (`client:<id>`)
  * and for any page that needs it directly -- same two sources authHeaders()
  * already reads (the dev-header pair, or the real-session sessionStorage
- * value fetchAndStoreClientId() populates), just exposed for callers that
+ * value fetchAndStoreAccountId() populates), just exposed for callers that
  * need the id itself rather than a ready-made headers object.
  */
-export function getOwnClientId(): string | null {
-  if (!devHeaderPathActive()) return sessionStorage.getItem(CLIENT_ID_STORAGE_KEY);
+export function getOwnAccountId(): string | null {
+  if (!devHeaderPathActive()) return sessionStorage.getItem(ACCOUNT_ID_STORAGE_KEY);
   return DEV_CLIENT_ID;
 }
 
 /**
  * The actor-type half of GET /api/auth/memberships' response.
  * isInternal===true means an app_user.is_internal analyst; otherwise role
- * is the backend's portal membership role (currently 'client_viewer' /
- * 'client_admin' -- see the Uncertainties note in this PR's body about the
+ * is the backend's portal membership role ('account_viewer' /
+ * 'account_admin' -- see the Uncertainties note in this PR's body about the
  * gap between that vocabulary and this item's employee/account/grand_client/
  * vendor role model).
  *
- * Fails closed the same way fetchAndStoreClientId does: an unresolved
+ * Fails closed the same way fetchAndStoreAccountId does: an unresolved
  * lookup never claims isInternal, and a 200 with a non-JSON body would
  * otherwise throw out of res.json() -- caught here.
  */
 export interface ActorContext {
   isInternal: boolean;
   role: string | null;
-  clientName: string | null;
+  accountName: string | null;
 }
 
 export interface TenantOption {
@@ -187,7 +187,7 @@ export async function fetchClients(): Promise<TenantOption[]> {
 }
 
 /** Backend membership roles (tenant-admin-routes.ts's MEMBERSHIP_ROLES) -- the real role vocabulary today. */
-export const MEMBERSHIP_ROLES = ['analyst', 'lead', 'client_viewer', 'client_admin'] as const;
+export const MEMBERSHIP_ROLES = ['analyst', 'lead', 'account_viewer', 'account_admin'] as const;
 export type MembershipRole = (typeof MEMBERSHIP_ROLES)[number];
 
 export interface TenantMember {
@@ -214,8 +214,8 @@ interface AllTenantMembersPage {
     fullName: string | null;
     role: MembershipRole;
     isActive: boolean;
-    clientId: string;
-    clientName: string;
+    accountId: string;
+    accountName: string;
     createdAt: string;
   }[];
   nextCursor: string | null;
@@ -246,8 +246,8 @@ export async function fetchAllUsers(): Promise<UserRow[]> {
         fullName: m.fullName,
         role: m.role,
         isActive: m.isActive,
-        tenantId: m.clientId,
-        tenantName: m.clientName,
+        tenantId: m.accountId,
+        tenantName: m.accountName,
         createdAt: m.createdAt,
       });
     }
@@ -492,8 +492,8 @@ export async function deleteContractRate(tenantId: string, rateId: string): Prom
 
 /**
  * One row of the client's own portal roster -- GET /api/portal/members
- * (portal-admin-routes.ts), available to client_viewer or client_admin,
- * scoped server-side to the caller's own client_id via requireSingleClientId.
+ * (portal-admin-routes.ts), available to account_viewer or account_admin,
+ * scoped server-side to the caller's own account id via requireSingleClientId.
  * Deliberately thin: no fullName/status/lastLogin columns exist on this
  * endpoint (list-portal-members.ts's PortalMemberRow is
  * id/userId/email/role/createdAt only) -- rendered as-is rather than
@@ -503,7 +503,7 @@ export interface PortalMember {
   id: string;
   userId: string;
   email: string;
-  role: 'client_viewer' | 'client_admin';
+  role: 'account_viewer' | 'account_admin';
   createdAt: string;
 }
 
@@ -519,8 +519,8 @@ export async function fetchPortalMembers(): Promise<PortalMember[]> {
 }
 
 /**
- * PATCH /api/portal/members/:id/role -- client_admin only server-side
- * (registerClientAdminAuthPreHandler); a client_viewer's attempt 403s and
+ * PATCH /api/portal/members/:id/role -- account_admin only server-side
+ * (registerAccountAdminAuthPreHandler); an account_viewer's attempt 403s and
  * this surfaces that error via the same {ok:false, error} shape as every
  * other write in this file, rather than trying to pre-guess the caller's
  * own role client-side (AuthUser.role is the coarse 'account' bucket only --
@@ -528,7 +528,7 @@ export async function fetchPortalMembers(): Promise<PortalMember[]> {
  */
 export async function updatePortalMemberRole(
   membershipId: string,
-  role: 'client_viewer' | 'client_admin',
+  role: 'account_viewer' | 'account_admin',
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   const res = await fetch(`/api/portal/members/${membershipId}/role`, {
     method: 'PATCH',
@@ -544,19 +544,19 @@ export async function updatePortalMemberRole(
 
 export async function fetchActorContext(): Promise<ActorContext> {
   const res = await fetch('/api/auth/memberships');
-  if (!res.ok) return { isInternal: false, role: null, clientName: null };
+  if (!res.ok) return { isInternal: false, role: null, accountName: null };
   try {
     const body = (await res.json()) as {
       isInternal?: boolean;
       role?: string | null;
-      clientName?: string | null;
+      accountName?: string | null;
     };
     return {
       isInternal: body.isInternal === true,
       role: body.role ?? null,
-      clientName: body.clientName ?? null,
+      accountName: body.accountName ?? null,
     };
   } catch {
-    return { isInternal: false, role: null, clientName: null };
+    return { isInternal: false, role: null, accountName: null };
   }
 }

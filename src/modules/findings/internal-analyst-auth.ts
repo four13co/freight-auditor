@@ -14,7 +14,7 @@ import { readHeader, toFetchHeaders, lookupIsInternal } from './tenant-auth.js';
  * clientId param at all and relies on that invariant via RLS alone. The
  * first attempt at this item (PR #247, closed on review) extended the
  * shared resolver to grant { internal: true } to any is_internal caller who
- * omitted x-client-id, which broke that invariant platform-wide and opened
+ * omitted x-account-id, which broke that invariant platform-wide and opened
  * cross-tenant read/write leaks on several existing routes this item never
  * touched (rubric-conflicts, rule-proposals, rule-proposal-previews,
  * disputes/:id [+approve], payment-authorizations/pending, rule-proposal
@@ -30,7 +30,7 @@ import { readHeader, toFetchHeaders, lookupIsInternal } from './tenant-auth.js';
  * reusing the resolvers themselves would.
  */
 
-/** DEV_AUTH_HEADERS path: x-user-id only -- no x-client-id, this scope is cross-client by design. */
+/** DEV_AUTH_HEADERS path: x-user-id only -- no x-account-id, this scope is cross-client by design. */
 async function resolveViaDevHeader(request: FastifyRequest): Promise<TenantContext | null> {
   const userId = readHeader(request.headers['x-user-id']);
   if (!userId) return null;

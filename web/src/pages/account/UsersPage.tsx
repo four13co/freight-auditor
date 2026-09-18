@@ -6,8 +6,8 @@ import { DataTable, type DataTableColumn } from '@/components/data-table/DataTab
 import { fetchPortalMembers, updatePortalMemberRole, type PortalMember } from '@/lib/api';
 
 const ROLE_LABELS: Record<PortalMember['role'], string> = {
-  client_viewer: 'Viewer',
-  client_admin: 'Admin',
+  account_viewer: 'Viewer',
+  account_admin: 'Admin',
 };
 
 /**
@@ -41,7 +41,7 @@ export default function UsersPage() {
   }, []);
 
   async function handleRoleToggle(member: PortalMember) {
-    const nextRole = member.role === 'client_admin' ? 'client_viewer' : 'client_admin';
+    const nextRole = member.role === 'account_admin' ? 'account_viewer' : 'account_admin';
     const result = await updatePortalMemberRole(member.id, nextRole);
     if (!result.ok) {
       toast.error(result.error);
@@ -57,7 +57,7 @@ export default function UsersPage() {
       key: 'role',
       header: 'Role',
       sortValue: (m) => m.role,
-      render: (m) => <Badge variant={m.role === 'client_admin' ? 'default' : 'secondary'}>{ROLE_LABELS[m.role]}</Badge>,
+      render: (m) => <Badge variant={m.role === 'account_admin' ? 'default' : 'secondary'}>{ROLE_LABELS[m.role]}</Badge>,
     },
     { key: 'status', header: 'Status', render: () => <span className="text-muted-foreground">—</span> },
     { key: 'lastLogin', header: 'Last login', render: () => <span className="text-muted-foreground">—</span> },
@@ -72,7 +72,7 @@ export default function UsersPage() {
       header: 'Actions',
       render: (m) => (
         <Button variant="ghost" size="sm" onClick={() => handleRoleToggle(m)}>
-          Make {m.role === 'client_admin' ? 'Viewer' : 'Admin'}
+          Make {m.role === 'account_admin' ? 'Viewer' : 'Admin'}
         </Button>
       ),
     },

@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useState } from 'react';
-import { CLIENT_ID_STORAGE_KEY, fetchClients, type TenantOption } from '@/lib/api';
+import { ACCOUNT_ID_STORAGE_KEY, fetchClients, type TenantOption } from '@/lib/api';
 import { useAuth } from '@/providers/auth-provider';
 import { useLocalStorageState } from '@/hooks/use-local-storage-state';
 import { useScopedEntities } from '@/lib/in-memory-hierarchy-store';
@@ -26,7 +26,7 @@ const TenantContext = createContext<TenantContextValue | undefined>(undefined);
  * from `in-memory-hierarchy-store.ts` (no real `grand_client` backend
  * concept exists yet -- Bridge approved this stand-in 2026-09-17, tracked
  * separately under 86e3a76bz) scoped by the tenant's own client id
- * (`CLIENT_ID_STORAGE_KEY`, the same id `authHeaders()` already sends --
+ * (`ACCOUNT_ID_STORAGE_KEY`, the same id `authHeaders()` already sends --
  * this is the *backend* Client tenant entity's id, unrelated to both the
  * 'account' role rename per 86e3anfun and the in-memory Client entity this
  * comment is otherwise describing -- three distinct "Client"s in one
@@ -71,7 +71,7 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
 
   const ownClientScopeKey = useMemo(() => {
     if (role !== 'account') return null;
-    const ownClientId = sessionStorage.getItem(CLIENT_ID_STORAGE_KEY);
+    const ownClientId = sessionStorage.getItem(ACCOUNT_ID_STORAGE_KEY);
     return ownClientId ? `client:${ownClientId}` : null;
   }, [role]);
 

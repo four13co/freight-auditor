@@ -1,4 +1,4 @@
-import { getOwnClientId } from '@/lib/api';
+import { getOwnAccountId } from '@/lib/api';
 import { useScopedEntities } from '@/lib/in-memory-hierarchy-store';
 import { useTenant } from '@/providers/TenantProvider';
 
@@ -12,7 +12,7 @@ import { useTenant } from '@/providers/TenantProvider';
  * without re-selecting.
  */
 export function ClientSelector() {
-  const ownClientId = getOwnClientId();
+  const ownClientId = getOwnAccountId();
   const scopeKey = ownClientId ? `client:${ownClientId}` : null;
   const { entities } = useScopedEntities(scopeKey);
   const { activeGrandClient, setActiveGrandClient } = useTenant();

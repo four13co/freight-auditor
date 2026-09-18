@@ -64,7 +64,7 @@ describe('POST /api/disputes/:id/claim (unit, mocked withTenantTx + tenant-auth)
 
     const res = await app.inject({
       method: 'POST', url: `/api/disputes/${DISPUTE_ID}/claim`,
-      headers: { 'x-client-id': 'client-abc', 'x-user-id': 'user-1' },
+      headers: { 'x-account-id': 'client-abc', 'x-user-id': 'user-1' },
     });
     expect(res.statusCode).toBe(201);
     expect(res.json()).toEqual({ claimId: 'claim-1', disputeId: DISPUTE_ID, amountClaimed: '500.0000', currency: 'USD' });
@@ -89,7 +89,7 @@ describe('POST /api/disputes/:id/claim (unit, mocked withTenantTx + tenant-auth)
 
     const res = await app.inject({
       method: 'POST', url: `/api/disputes/${DISPUTE_ID}/claim`,
-      headers: { 'x-client-id': 'client-abc', 'x-user-id': 'user-1' },
+      headers: { 'x-account-id': 'client-abc', 'x-user-id': 'user-1' },
     });
     expect(res.statusCode).toBe(200);
   });
@@ -103,7 +103,7 @@ describe('POST /api/disputes/:id/claim (unit, mocked withTenantTx + tenant-auth)
 
     const res = await app.inject({
       method: 'POST', url: '/api/disputes/not-a-uuid/claim',
-      headers: { 'x-client-id': 'client-abc', 'x-user-id': 'user-1' },
+      headers: { 'x-account-id': 'client-abc', 'x-user-id': 'user-1' },
     });
     expect(res.statusCode).toBe(400);
     expect(withTenantTx).not.toHaveBeenCalled();
@@ -137,7 +137,7 @@ describe('POST /api/disputes/:id/claim (unit, mocked withTenantTx + tenant-auth)
 
     const res = await app.inject({
       method: 'POST', url: `/api/disputes/${DISPUTE_ID}/claim`,
-      headers: { 'x-client-id': 'client-abc', 'x-user-id': 'user-1' },
+      headers: { 'x-account-id': 'client-abc', 'x-user-id': 'user-1' },
     });
     expect(res.statusCode).toBe(404);
   });
@@ -159,7 +159,7 @@ describe('POST /api/disputes/:id/claim (unit, mocked withTenantTx + tenant-auth)
 
     const res = await app.inject({
       method: 'POST', url: `/api/disputes/${DISPUTE_ID}/claim`,
-      headers: { 'x-client-id': 'client-abc', 'x-user-id': 'user-1' },
+      headers: { 'x-account-id': 'client-abc', 'x-user-id': 'user-1' },
     });
     expect(res.statusCode).toBe(409);
   });
@@ -186,7 +186,7 @@ describe('POST /api/disputes/:id/claim (unit, mocked withTenantTx + tenant-auth)
 
     const res = await app.inject({
       method: 'POST', url: `/api/disputes/${DISPUTE_ID}/claim`,
-      headers: { 'x-client-id': 'client-abc', 'x-user-id': 'user-1' },
+      headers: { 'x-account-id': 'client-abc', 'x-user-id': 'user-1' },
     });
     expect(res.statusCode).toBe(409);
     expect(res.json().conflictingFindingIds).toEqual(['finding-1']);

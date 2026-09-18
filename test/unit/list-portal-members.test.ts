@@ -30,7 +30,7 @@ describe('listPortalMembers (unit, mocked client)', () => {
     const { client } = mockClient([mockRow()]);
     const rows = await listPortalMembers(client, 'client-1');
     expect(rows).toEqual([
-      { id: 'm1', userId: 'u1', email: 'viewer@example.com', role: 'client_viewer', createdAt: new Date('2026-01-01T00:00:00Z') },
+      { id: 'm1', userId: 'u1', email: 'viewer@example.com', role: 'account_viewer', createdAt: new Date('2026-01-01T00:00:00Z') },
     ]);
   });
 

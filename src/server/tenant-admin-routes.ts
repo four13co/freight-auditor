@@ -12,7 +12,6 @@ import { listTenantMembers } from '../modules/identity/list-tenant-members.js';
 import { removeMembership } from '../modules/identity/remove-membership.js';
 import { updateTenantMembership } from '../modules/identity/update-tenant-membership.js';
 import { listAllTenantMembers } from '../modules/identity/list-all-tenant-members.js';
-import { roleDbToWire, roleWireToDb } from '../modules/identity/role-wire-mapping.js';
 import { isUuid, validateBrandingFields } from '../shared/request-validation.js';
 import { decodeCursor, paginateKeyset } from '../shared/cursor-pagination.js';
 import { parseLimitOffset } from '../shared/parse-limit-offset.js';
@@ -21,7 +20,7 @@ import {
   listContractRates, createContractRate, updateContractRate, deleteContractRate, ContractRateNotFoundError,
 } from '../modules/rate-engine/contract-rate-admin.js';
 
-const MEMBERSHIP_ROLES = new Set(['analyst', 'lead', 'client_viewer', 'client_admin']);
+const MEMBERSHIP_ROLES = new Set(['analyst', 'lead', 'account_viewer', 'account_admin']);
 const MAX_LIMIT = 200;
 const DEFAULT_LIMIT = 50;
 
@@ -261,7 +260,7 @@ export async function registerTenantAdminRoutes(routes: FastifyInstance): Promis
           clientId: id,
           email: body.email as string,
           fullName: (body.fullName as string | null | undefined) ?? null,
-          role: roleWireToDb(body.role as string),
+          role: body.role as string,
         }),
       );
 
@@ -298,7 +297,7 @@ export async function registerTenantAdminRoutes(routes: FastifyInstance): Promis
           client,
           id,
           membershipId,
-          { role: body.role !== undefined ? roleWireToDb(body.role as string) : undefined, isActive: body.isActive as boolean | undefined },
+          { role: body.role as string | undefined, isActive: body.isActive as boolean | undefined },
           request.actorUserId,
         ),
       );
@@ -306,7 +305,7 @@ export async function registerTenantAdminRoutes(routes: FastifyInstance): Promis
         await reply.code(404).send({ error: 'membership not found' });
         return;
       }
-      return { id: result.id, role: roleDbToWire(result.role), isActive: result.isActive };
+      return { id: result.id, role: result.role, isActive: result.isActive };
     });
 
     adminRoutes.delete('/api/internal/tenants/:id/members/:membershipId', async (request, reply) => {

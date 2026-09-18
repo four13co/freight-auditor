@@ -71,7 +71,7 @@ describe('POST /api/audit-runs/:id/payment-authorization (DB, e2e)', () => {
     const first = await app.inject({
       method: 'POST',
       url: `/api/audit-runs/${auditRunId}/payment-authorization`,
-      headers: { 'x-client-id': clientId, 'x-user-id': userId },
+      headers: { 'x-account-id': clientId, 'x-user-id': userId },
       payload: { action: 'approve' },
     });
     expect(first.statusCode).toBe(201);
@@ -81,7 +81,7 @@ describe('POST /api/audit-runs/:id/payment-authorization (DB, e2e)', () => {
     const retry = await app.inject({
       method: 'POST',
       url: `/api/audit-runs/${auditRunId}/payment-authorization`,
-      headers: { 'x-client-id': clientId, 'x-user-id': userId },
+      headers: { 'x-account-id': clientId, 'x-user-id': userId },
       payload: { action: 'approve' },
     });
     expect(retry.statusCode).toBe(200);
@@ -104,7 +104,7 @@ describe('POST /api/audit-runs/:id/payment-authorization (DB, e2e)', () => {
     const res = await app.inject({
       method: 'POST',
       url: `/api/audit-runs/${auditRunId}/payment-authorization`,
-      headers: { 'x-client-id': clientId, 'x-user-id': userId },
+      headers: { 'x-account-id': clientId, 'x-user-id': userId },
       payload: { action: 'do_not_pay' },
     });
     expect(res.statusCode).toBe(400);
@@ -123,7 +123,7 @@ describe('POST /api/audit-runs/:id/payment-authorization (DB, e2e)', () => {
     const res = await app.inject({
       method: 'POST',
       url: `/api/audit-runs/00000000-0000-0000-0000-000000000000/payment-authorization`,
-      headers: { 'x-client-id': clientId, 'x-user-id': userId },
+      headers: { 'x-account-id': clientId, 'x-user-id': userId },
       payload: { action: 'hold' },
     });
     expect(res.statusCode).toBe(404);

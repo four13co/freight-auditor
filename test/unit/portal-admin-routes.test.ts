@@ -75,15 +75,15 @@ describe('portal-admin routes (unit, mocked withTenantTx + auth)', () => {
       vi.doMock('../../src/db/tenant-context.js', () => ({
         withTenantTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
       }));
-      const listPortalMembers = vi.fn().mockResolvedValue([{ id: 'm1', role: 'client_viewer' }]);
+      const listPortalMembers = vi.fn().mockResolvedValue([{ id: 'm1', role: 'account_viewer' }]);
       vi.doMock('../../src/modules/identity/list-portal-members.js', () => ({ listPortalMembers }));
       const { buildApp } = await import('../../src/server/app.js');
       app = buildApp();
 
-      const res = await app.inject({ method: 'GET', url: '/api/portal/members', headers: { 'x-client-id': CLIENT_ID, 'x-user-id': 'user-1' } });
+      const res = await app.inject({ method: 'GET', url: '/api/portal/members', headers: { 'x-account-id': CLIENT_ID, 'x-user-id': 'user-1' } });
 
       expect(res.statusCode).toBe(200);
-      expect(res.json()).toEqual({ members: [{ id: 'm1', role: 'client_viewer' }], nextCursor: null });
+      expect(res.json()).toEqual({ members: [{ id: 'm1', role: 'account_viewer' }], nextCursor: null });
       expect(listPortalMembers).toHaveBeenCalledWith({}, CLIENT_ID, { limit: 51, offset: undefined, cursor: undefined });
     });
 
@@ -97,7 +97,7 @@ describe('portal-admin routes (unit, mocked withTenantTx + auth)', () => {
       const { buildApp } = await import('../../src/server/app.js');
       app = buildApp();
 
-      const res = await app.inject({ method: 'GET', url: '/api/portal/members', headers: { 'x-client-id': CLIENT_ID, 'x-user-id': 'user-1' } });
+      const res = await app.inject({ method: 'GET', url: '/api/portal/members', headers: { 'x-account-id': CLIENT_ID, 'x-user-id': 'user-1' } });
 
       expect(res.statusCode).toBe(200);
       expect(listPortalMembers).toHaveBeenCalled();
@@ -126,7 +126,7 @@ describe('portal-admin routes (unit, mocked withTenantTx + auth)', () => {
       const { buildApp } = await import('../../src/server/app.js');
       app = buildApp();
 
-      const res = await app.inject({ method: 'GET', url: '/api/portal/members?limit=9999', headers: { 'x-client-id': CLIENT_ID, 'x-user-id': 'user-1' } });
+      const res = await app.inject({ method: 'GET', url: '/api/portal/members?limit=9999', headers: { 'x-account-id': CLIENT_ID, 'x-user-id': 'user-1' } });
       expect(res.statusCode).toBe(400);
       expect(listPortalMembers).not.toHaveBeenCalled();
     });
@@ -140,7 +140,7 @@ describe('portal-admin routes (unit, mocked withTenantTx + auth)', () => {
       const { buildApp } = await import('../../src/server/app.js');
       app = buildApp();
 
-      const res = await app.inject({ method: 'GET', url: '/api/portal/members?offset=-1', headers: { 'x-client-id': CLIENT_ID, 'x-user-id': 'user-1' } });
+      const res = await app.inject({ method: 'GET', url: '/api/portal/members?offset=-1', headers: { 'x-account-id': CLIENT_ID, 'x-user-id': 'user-1' } });
       expect(res.statusCode).toBe(400);
     });
 
@@ -157,7 +157,7 @@ describe('portal-admin routes (unit, mocked withTenantTx + auth)', () => {
       const cursor = encodeCursor({ v: '2026-01-01T00:00:00.000Z', id: '10000000-0000-4000-8000-000000000001' });
       const res = await app.inject({
         method: 'GET', url: `/api/portal/members?cursor=${cursor}&offset=10`,
-        headers: { 'x-client-id': CLIENT_ID, 'x-user-id': 'user-1' },
+        headers: { 'x-account-id': CLIENT_ID, 'x-user-id': 'user-1' },
       });
       expect(res.statusCode).toBe(400);
       expect(listPortalMembers).not.toHaveBeenCalled();
@@ -175,7 +175,7 @@ describe('portal-admin routes (unit, mocked withTenantTx + auth)', () => {
 
       const res = await app.inject({
         method: 'GET', url: '/api/portal/members?cursor=not-a-valid-cursor',
-        headers: { 'x-client-id': CLIENT_ID, 'x-user-id': 'user-1' },
+        headers: { 'x-account-id': CLIENT_ID, 'x-user-id': 'user-1' },
       });
       expect(res.statusCode).toBe(400);
       expect(listPortalMembers).not.toHaveBeenCalled();
@@ -184,9 +184,9 @@ describe('portal-admin routes (unit, mocked withTenantTx + auth)', () => {
     it('trims the overflow row and returns a nextCursor when more rows exist than the page limit', async () => {
       mockAuth({ clientIds: [CLIENT_ID], internal: false }, null);
       const rows = [
-        { id: 'm3', role: 'client_viewer', createdAt: new Date('2026-01-03T00:00:00.000Z') },
-        { id: 'm2', role: 'client_viewer', createdAt: new Date('2026-01-02T00:00:00.000Z') },
-        { id: 'm1', role: 'client_admin', createdAt: new Date('2026-01-01T00:00:00.000Z') },
+        { id: 'm3', role: 'account_viewer', createdAt: new Date('2026-01-03T00:00:00.000Z') },
+        { id: 'm2', role: 'account_viewer', createdAt: new Date('2026-01-02T00:00:00.000Z') },
+        { id: 'm1', role: 'account_admin', createdAt: new Date('2026-01-01T00:00:00.000Z') },
       ];
       const listPortalMembers = vi.fn().mockResolvedValue(rows);
       vi.doMock('../../src/db/tenant-context.js', () => ({
@@ -196,12 +196,12 @@ describe('portal-admin routes (unit, mocked withTenantTx + auth)', () => {
       const { buildApp } = await import('../../src/server/app.js');
       app = buildApp();
 
-      const res = await app.inject({ method: 'GET', url: '/api/portal/members?limit=2', headers: { 'x-client-id': CLIENT_ID, 'x-user-id': 'user-1' } });
+      const res = await app.inject({ method: 'GET', url: '/api/portal/members?limit=2', headers: { 'x-account-id': CLIENT_ID, 'x-user-id': 'user-1' } });
       expect(res.statusCode).toBe(200);
       const body = res.json();
       expect(body.members).toEqual([
-        { id: 'm3', role: 'client_viewer', createdAt: '2026-01-03T00:00:00.000Z' },
-        { id: 'm2', role: 'client_viewer', createdAt: '2026-01-02T00:00:00.000Z' },
+        { id: 'm3', role: 'account_viewer', createdAt: '2026-01-03T00:00:00.000Z' },
+        { id: 'm2', role: 'account_viewer', createdAt: '2026-01-02T00:00:00.000Z' },
       ]);
       expect(body.nextCursor).not.toBeNull();
     });
@@ -216,18 +216,18 @@ describe('portal-admin routes (unit, mocked withTenantTx + auth)', () => {
         withTenantTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
       }));
       const updatePortalMemberRole = vi.fn().mockResolvedValue({ found: true });
-      vi.doMock('../../src/modules/identity/update-portal-member-role.js', () => ({ updatePortalMemberRole, PORTAL_ROLES: ['client_viewer', 'client_admin'] }));
+      vi.doMock('../../src/modules/identity/update-portal-member-role.js', () => ({ updatePortalMemberRole, PORTAL_ROLES: ['account_viewer', 'account_admin'] }));
       const { buildApp } = await import('../../src/server/app.js');
       app = buildApp();
 
       const res = await app.inject({
         method: 'PATCH', url: `/api/portal/members/${membershipId}/role`,
-        headers: { 'x-client-id': CLIENT_ID, 'x-user-id': 'user-1', 'content-type': 'application/json' },
-        payload: { role: 'client_admin' },
+        headers: { 'x-account-id': CLIENT_ID, 'x-user-id': 'user-1', 'content-type': 'application/json' },
+        payload: { role: 'account_admin' },
       });
 
       expect(res.statusCode).toBe(200);
-      expect(res.json()).toEqual({ id: membershipId, role: 'client_admin' });
+      expect(res.json()).toEqual({ id: membershipId, role: 'account_admin' });
       expect(updatePortalMemberRole).toHaveBeenCalledWith({}, CLIENT_ID, membershipId, 'account_admin', 'user-1');
     });
 
@@ -236,14 +236,14 @@ describe('portal-admin routes (unit, mocked withTenantTx + auth)', () => {
       mockAuth(null, { clientIds: [CLIENT_ID], internal: false });
       const updatePortalMemberRole = vi.fn();
       vi.doMock('../../src/db/tenant-context.js', () => ({ withTenantTx: vi.fn() }));
-      vi.doMock('../../src/modules/identity/update-portal-member-role.js', () => ({ updatePortalMemberRole, PORTAL_ROLES: ['client_viewer', 'client_admin'] }));
+      vi.doMock('../../src/modules/identity/update-portal-member-role.js', () => ({ updatePortalMemberRole, PORTAL_ROLES: ['account_viewer', 'account_admin'] }));
       const { buildApp } = await import('../../src/server/app.js');
       app = buildApp();
 
       const res = await app.inject({
         method: 'PATCH', url: `/api/portal/members/${membershipId}/role`,
-        headers: { 'x-client-id': CLIENT_ID, 'x-user-id': 'user-1', 'content-type': 'application/json' },
-        payload: { role: 'client_admin' },
+        headers: { 'x-account-id': CLIENT_ID, 'x-user-id': 'user-1', 'content-type': 'application/json' },
+        payload: { role: 'account_admin' },
       });
 
       expect(res.statusCode).toBe(401);
@@ -253,13 +253,13 @@ describe('portal-admin routes (unit, mocked withTenantTx + auth)', () => {
     it('rejects an unauthenticated request with 401', async () => {
       mockAuth(null, null);
       vi.doMock('../../src/db/tenant-context.js', () => ({ withTenantTx: vi.fn() }));
-      vi.doMock('../../src/modules/identity/update-portal-member-role.js', () => ({ updatePortalMemberRole: vi.fn(), PORTAL_ROLES: ['client_viewer', 'client_admin'] }));
+      vi.doMock('../../src/modules/identity/update-portal-member-role.js', () => ({ updatePortalMemberRole: vi.fn(), PORTAL_ROLES: ['account_viewer', 'account_admin'] }));
       const { buildApp } = await import('../../src/server/app.js');
       app = buildApp();
 
       const res = await app.inject({
         method: 'PATCH', url: `/api/portal/members/${membershipId}/role`,
-        headers: { 'content-type': 'application/json' }, payload: { role: 'client_admin' },
+        headers: { 'content-type': 'application/json' }, payload: { role: 'account_admin' },
       });
       expect(res.statusCode).toBe(401);
     });
@@ -270,14 +270,14 @@ describe('portal-admin routes (unit, mocked withTenantTx + auth)', () => {
       vi.doMock('../../src/db/tenant-context.js', () => ({
         withTenantTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
       }));
-      vi.doMock('../../src/modules/identity/update-portal-member-role.js', () => ({ updatePortalMemberRole, PORTAL_ROLES: ['client_viewer', 'client_admin'] }));
+      vi.doMock('../../src/modules/identity/update-portal-member-role.js', () => ({ updatePortalMemberRole, PORTAL_ROLES: ['account_viewer', 'account_admin'] }));
       const { buildApp } = await import('../../src/server/app.js');
       app = buildApp();
 
       const res = await app.inject({
         method: 'PATCH', url: '/api/portal/members/not-a-uuid/role',
-        headers: { 'x-client-id': CLIENT_ID, 'x-user-id': 'user-1', 'content-type': 'application/json' },
-        payload: { role: 'client_admin' },
+        headers: { 'x-account-id': CLIENT_ID, 'x-user-id': 'user-1', 'content-type': 'application/json' },
+        payload: { role: 'account_admin' },
       });
       expect(res.statusCode).toBe(400);
       expect(updatePortalMemberRole).not.toHaveBeenCalled();
@@ -289,13 +289,13 @@ describe('portal-admin routes (unit, mocked withTenantTx + auth)', () => {
       vi.doMock('../../src/db/tenant-context.js', () => ({
         withTenantTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
       }));
-      vi.doMock('../../src/modules/identity/update-portal-member-role.js', () => ({ updatePortalMemberRole, PORTAL_ROLES: ['client_viewer', 'client_admin'] }));
+      vi.doMock('../../src/modules/identity/update-portal-member-role.js', () => ({ updatePortalMemberRole, PORTAL_ROLES: ['account_viewer', 'account_admin'] }));
       const { buildApp } = await import('../../src/server/app.js');
       app = buildApp();
 
       const res = await app.inject({
         method: 'PATCH', url: `/api/portal/members/${membershipId}/role`,
-        headers: { 'x-client-id': CLIENT_ID, 'x-user-id': 'user-1', 'content-type': 'application/json' },
+        headers: { 'x-account-id': CLIENT_ID, 'x-user-id': 'user-1', 'content-type': 'application/json' },
         payload: { role: 'analyst' },
       });
       expect(res.statusCode).toBe(400);
@@ -308,15 +308,15 @@ describe('portal-admin routes (unit, mocked withTenantTx + auth)', () => {
         withTenantTx: vi.fn(async (_ctx: unknown, fn: (client: unknown) => unknown) => fn({})),
       }));
       vi.doMock('../../src/modules/identity/update-portal-member-role.js', () => ({
-        updatePortalMemberRole: vi.fn().mockResolvedValue({ found: false }), PORTAL_ROLES: ['client_viewer', 'client_admin'],
+        updatePortalMemberRole: vi.fn().mockResolvedValue({ found: false }), PORTAL_ROLES: ['account_viewer', 'account_admin'],
       }));
       const { buildApp } = await import('../../src/server/app.js');
       app = buildApp();
 
       const res = await app.inject({
         method: 'PATCH', url: `/api/portal/members/${membershipId}/role`,
-        headers: { 'x-client-id': CLIENT_ID, 'x-user-id': 'user-1', 'content-type': 'application/json' },
-        payload: { role: 'client_admin' },
+        headers: { 'x-account-id': CLIENT_ID, 'x-user-id': 'user-1', 'content-type': 'application/json' },
+        payload: { role: 'account_admin' },
       });
       expect(res.statusCode).toBe(404);
     });

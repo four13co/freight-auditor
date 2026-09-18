@@ -218,7 +218,7 @@ describe('client portal content APIs (DB, e2e)', () => {
 
   it('lists invoices for the caller tenant, with the carrier name and newest audit_run id joined in', async () => {
     const res = await app.inject({
-      method: 'GET', url: '/api/portal/invoices', headers: { 'x-client-id': clientId, 'x-user-id': viewerUserId },
+      method: 'GET', url: '/api/portal/invoices', headers: { 'x-account-id': clientId, 'x-user-id': viewerUserId },
     });
     expect(res.statusCode).toBe(200);
     const body = res.json();
@@ -237,7 +237,7 @@ describe('client portal content APIs (DB, e2e)', () => {
 
   it('rejects a client_admin caller on the invoice list route -- sibling capability, out of this task\'s scope', async () => {
     const res = await app.inject({
-      method: 'GET', url: '/api/portal/invoices', headers: { 'x-client-id': clientId, 'x-user-id': adminUserId },
+      method: 'GET', url: '/api/portal/invoices', headers: { 'x-account-id': clientId, 'x-user-id': adminUserId },
     });
     expect(res.statusCode).toBe(401);
   });
@@ -245,7 +245,7 @@ describe('client portal content APIs (DB, e2e)', () => {
   it('has no POST/PUT/PATCH/DELETE route registered on the invoice list path at all -- no write surface exists to protect', async () => {
     for (const method of ['POST', 'PUT', 'PATCH', 'DELETE'] as const) {
       const res = await app.inject({
-        method, url: '/api/portal/invoices', headers: { 'x-client-id': clientId, 'x-user-id': viewerUserId },
+        method, url: '/api/portal/invoices', headers: { 'x-account-id': clientId, 'x-user-id': viewerUserId },
       });
       expect(res.statusCode).toBe(404);
     }
@@ -253,7 +253,7 @@ describe('client portal content APIs (DB, e2e)', () => {
 
   it('rejects an out-of-range limit on the invoice list route', async () => {
     const res = await app.inject({
-      method: 'GET', url: '/api/portal/invoices?limit=9999', headers: { 'x-client-id': clientId, 'x-user-id': viewerUserId },
+      method: 'GET', url: '/api/portal/invoices?limit=9999', headers: { 'x-account-id': clientId, 'x-user-id': viewerUserId },
     });
     expect(res.statusCode).toBe(400);
   });
@@ -261,7 +261,7 @@ describe('client portal content APIs (DB, e2e)', () => {
   // AC2: scorecard for one of the caller's own audit runs.
   it('returns the scorecard for a specific audit run belonging to the caller tenant', async () => {
     const res = await app.inject({
-      method: 'GET', url: `/api/portal/scorecard/${auditRunId}`, headers: { 'x-client-id': clientId, 'x-user-id': viewerUserId },
+      method: 'GET', url: `/api/portal/scorecard/${auditRunId}`, headers: { 'x-account-id': clientId, 'x-user-id': viewerUserId },
     });
     expect(res.statusCode).toBe(200);
     expect(res.json()).toEqual({
@@ -276,7 +276,7 @@ describe('client portal content APIs (DB, e2e)', () => {
   // the run itself is real and belongs to this tenant.
   it('returns null scorecard fields for an audit run with no scorecard row yet', async () => {
     const res = await app.inject({
-      method: 'GET', url: `/api/portal/scorecard/${unscoredAuditRunId}`, headers: { 'x-client-id': clientId, 'x-user-id': viewerUserId },
+      method: 'GET', url: `/api/portal/scorecard/${unscoredAuditRunId}`, headers: { 'x-account-id': clientId, 'x-user-id': viewerUserId },
     });
     expect(res.statusCode).toBe(200);
     const body = res.json();
@@ -289,7 +289,7 @@ describe('client portal content APIs (DB, e2e)', () => {
   // reshape added over the prior (client-wide-summary) build.
   it('returns 404 for an audit run that belongs to a different client', async () => {
     const res = await app.inject({
-      method: 'GET', url: `/api/portal/scorecard/${otherAuditRunId}`, headers: { 'x-client-id': clientId, 'x-user-id': viewerUserId },
+      method: 'GET', url: `/api/portal/scorecard/${otherAuditRunId}`, headers: { 'x-account-id': clientId, 'x-user-id': viewerUserId },
     });
     expect(res.statusCode).toBe(404);
   });
@@ -297,14 +297,14 @@ describe('client portal content APIs (DB, e2e)', () => {
   it('returns 404 for a well-formed but nonexistent audit run id', async () => {
     const res = await app.inject({
       method: 'GET', url: '/api/portal/scorecard/00000000-0000-4000-8000-000000000099',
-      headers: { 'x-client-id': clientId, 'x-user-id': viewerUserId },
+      headers: { 'x-account-id': clientId, 'x-user-id': viewerUserId },
     });
     expect(res.statusCode).toBe(404);
   });
 
   it('rejects a malformed audit run id with 400', async () => {
     const res = await app.inject({
-      method: 'GET', url: '/api/portal/scorecard/not-a-uuid', headers: { 'x-client-id': clientId, 'x-user-id': viewerUserId },
+      method: 'GET', url: '/api/portal/scorecard/not-a-uuid', headers: { 'x-account-id': clientId, 'x-user-id': viewerUserId },
     });
     expect(res.statusCode).toBe(400);
   });
@@ -317,7 +317,7 @@ describe('client portal content APIs (DB, e2e)', () => {
   // AC1 (findings list): only the caller's own findings are returned, RLS-scoped.
   it('lists findings for the caller tenant only, with invoice/carrier/rule detail joined in -- proving cross-tenant isolation', async () => {
     const res = await app.inject({
-      method: 'GET', url: '/api/portal/findings', headers: { 'x-client-id': clientId, 'x-user-id': viewerUserId },
+      method: 'GET', url: '/api/portal/findings', headers: { 'x-account-id': clientId, 'x-user-id': viewerUserId },
     });
     expect(res.statusCode).toBe(200);
     const body = res.json();
@@ -339,7 +339,7 @@ describe('client portal content APIs (DB, e2e)', () => {
 
   it('rejects a client_admin caller on the findings list route -- sibling capability, out of this task\'s scope', async () => {
     const res = await app.inject({
-      method: 'GET', url: '/api/portal/findings', headers: { 'x-client-id': clientId, 'x-user-id': adminUserId },
+      method: 'GET', url: '/api/portal/findings', headers: { 'x-account-id': clientId, 'x-user-id': adminUserId },
     });
     expect(res.statusCode).toBe(401);
   });
@@ -347,11 +347,11 @@ describe('client portal content APIs (DB, e2e)', () => {
   it('has no POST/PUT/PATCH/DELETE route registered on the findings list or evidence paths -- no write surface exists to protect (No-gos: read-only)', async () => {
     for (const method of ['POST', 'PUT', 'PATCH', 'DELETE'] as const) {
       const listRes = await app.inject({
-        method, url: '/api/portal/findings', headers: { 'x-client-id': clientId, 'x-user-id': viewerUserId },
+        method, url: '/api/portal/findings', headers: { 'x-account-id': clientId, 'x-user-id': viewerUserId },
       });
       expect(listRes.statusCode).toBe(404);
       const evidenceRes = await app.inject({
-        method, url: `/api/portal/findings/${findingId}/evidence`, headers: { 'x-client-id': clientId, 'x-user-id': viewerUserId },
+        method, url: `/api/portal/findings/${findingId}/evidence`, headers: { 'x-account-id': clientId, 'x-user-id': viewerUserId },
       });
       expect(evidenceRes.statusCode).toBe(404);
     }
@@ -359,14 +359,14 @@ describe('client portal content APIs (DB, e2e)', () => {
 
   it('rejects an out-of-range limit on the findings list route', async () => {
     const res = await app.inject({
-      method: 'GET', url: '/api/portal/findings?limit=9999', headers: { 'x-client-id': clientId, 'x-user-id': viewerUserId },
+      method: 'GET', url: '/api/portal/findings?limit=9999', headers: { 'x-account-id': clientId, 'x-user-id': viewerUserId },
     });
     expect(res.statusCode).toBe(400);
   });
 
   it('filters the findings list by status', async () => {
     const res = await app.inject({
-      method: 'GET', url: '/api/portal/findings?status=open', headers: { 'x-client-id': clientId, 'x-user-id': viewerUserId },
+      method: 'GET', url: '/api/portal/findings?status=open', headers: { 'x-account-id': clientId, 'x-user-id': viewerUserId },
     });
     expect(res.statusCode).toBe(200);
     expect(res.json().findings.some((f: { id: string }) => f.id === findingId)).toBe(true);
@@ -377,7 +377,7 @@ describe('client portal content APIs (DB, e2e)', () => {
   // findings.
   it('returns the full evidence/defensibility chain for a finding belonging to the caller tenant', async () => {
     const res = await app.inject({
-      method: 'GET', url: `/api/portal/findings/${findingId}/evidence`, headers: { 'x-client-id': clientId, 'x-user-id': viewerUserId },
+      method: 'GET', url: `/api/portal/findings/${findingId}/evidence`, headers: { 'x-account-id': clientId, 'x-user-id': viewerUserId },
     });
     expect(res.statusCode).toBe(200);
     const body = res.json();
@@ -391,7 +391,7 @@ describe('client portal content APIs (DB, e2e)', () => {
   // rejected/not-found.
   it('returns 404 for evidence of a finding that belongs to a different client', async () => {
     const res = await app.inject({
-      method: 'GET', url: `/api/portal/findings/${otherFindingId}/evidence`, headers: { 'x-client-id': clientId, 'x-user-id': viewerUserId },
+      method: 'GET', url: `/api/portal/findings/${otherFindingId}/evidence`, headers: { 'x-account-id': clientId, 'x-user-id': viewerUserId },
     });
     expect(res.statusCode).toBe(404);
   });
@@ -399,14 +399,14 @@ describe('client portal content APIs (DB, e2e)', () => {
   it('returns 404 for a well-formed but nonexistent finding id', async () => {
     const res = await app.inject({
       method: 'GET', url: '/api/portal/findings/00000000-0000-4000-8000-000000000099/evidence',
-      headers: { 'x-client-id': clientId, 'x-user-id': viewerUserId },
+      headers: { 'x-account-id': clientId, 'x-user-id': viewerUserId },
     });
     expect(res.statusCode).toBe(404);
   });
 
   it('rejects a malformed finding id with 400', async () => {
     const res = await app.inject({
-      method: 'GET', url: '/api/portal/findings/not-a-uuid/evidence', headers: { 'x-client-id': clientId, 'x-user-id': viewerUserId },
+      method: 'GET', url: '/api/portal/findings/not-a-uuid/evidence', headers: { 'x-account-id': clientId, 'x-user-id': viewerUserId },
     });
     expect(res.statusCode).toBe(400);
   });
@@ -418,7 +418,7 @@ describe('client portal content APIs (DB, e2e)', () => {
 
   it('rejects a client_admin caller on the evidence route -- sibling capability, out of this task\'s scope', async () => {
     const res = await app.inject({
-      method: 'GET', url: `/api/portal/findings/${findingId}/evidence`, headers: { 'x-client-id': clientId, 'x-user-id': adminUserId },
+      method: 'GET', url: `/api/portal/findings/${findingId}/evidence`, headers: { 'x-account-id': clientId, 'x-user-id': adminUserId },
     });
     expect(res.statusCode).toBe(401);
   });
@@ -426,7 +426,7 @@ describe('client portal content APIs (DB, e2e)', () => {
   // AC1 (dispute detail): only the caller's own dispute is returned, RLS-scoped.
   it('returns the dispute detail with its lines for the caller tenant', async () => {
     const res = await app.inject({
-      method: 'GET', url: `/api/portal/disputes/${disputeId}`, headers: { 'x-client-id': clientId, 'x-user-id': viewerUserId },
+      method: 'GET', url: `/api/portal/disputes/${disputeId}`, headers: { 'x-account-id': clientId, 'x-user-id': viewerUserId },
     });
     expect(res.statusCode).toBe(200);
     const body = res.json();
@@ -443,7 +443,7 @@ describe('client portal content APIs (DB, e2e)', () => {
 
   it('rejects a client_admin caller on the dispute detail route -- sibling capability, out of this task\'s scope', async () => {
     const res = await app.inject({
-      method: 'GET', url: `/api/portal/disputes/${disputeId}`, headers: { 'x-client-id': clientId, 'x-user-id': adminUserId },
+      method: 'GET', url: `/api/portal/disputes/${disputeId}`, headers: { 'x-account-id': clientId, 'x-user-id': adminUserId },
     });
     expect(res.statusCode).toBe(401);
   });
@@ -451,7 +451,7 @@ describe('client portal content APIs (DB, e2e)', () => {
   // AC3 (dispute half): a dispute belonging to a DIFFERENT client is rejected/not-found.
   it('returns 404 for a dispute that belongs to a different client', async () => {
     const res = await app.inject({
-      method: 'GET', url: `/api/portal/disputes/${otherDisputeId}`, headers: { 'x-client-id': clientId, 'x-user-id': viewerUserId },
+      method: 'GET', url: `/api/portal/disputes/${otherDisputeId}`, headers: { 'x-account-id': clientId, 'x-user-id': viewerUserId },
     });
     expect(res.statusCode).toBe(404);
   });
@@ -459,14 +459,14 @@ describe('client portal content APIs (DB, e2e)', () => {
   it('returns 404 for a well-formed but nonexistent dispute id', async () => {
     const res = await app.inject({
       method: 'GET', url: '/api/portal/disputes/00000000-0000-4000-8000-000000000099',
-      headers: { 'x-client-id': clientId, 'x-user-id': viewerUserId },
+      headers: { 'x-account-id': clientId, 'x-user-id': viewerUserId },
     });
     expect(res.statusCode).toBe(404);
   });
 
   it('rejects a malformed dispute id with 400', async () => {
     const res = await app.inject({
-      method: 'GET', url: '/api/portal/disputes/not-a-uuid', headers: { 'x-client-id': clientId, 'x-user-id': viewerUserId },
+      method: 'GET', url: '/api/portal/disputes/not-a-uuid', headers: { 'x-account-id': clientId, 'x-user-id': viewerUserId },
     });
     expect(res.statusCode).toBe(400);
   });
@@ -474,7 +474,7 @@ describe('client portal content APIs (DB, e2e)', () => {
   // AC2 (communications): newest-first log for one of the caller's own disputes.
   it('returns the communication log for the caller tenant, newest first', async () => {
     const res = await app.inject({
-      method: 'GET', url: `/api/portal/disputes/${disputeId}/communications`, headers: { 'x-client-id': clientId, 'x-user-id': viewerUserId },
+      method: 'GET', url: `/api/portal/disputes/${disputeId}/communications`, headers: { 'x-account-id': clientId, 'x-user-id': viewerUserId },
     });
     expect(res.statusCode).toBe(200);
     const body = res.json();
@@ -486,14 +486,14 @@ describe('client portal content APIs (DB, e2e)', () => {
   // DIFFERENT client are rejected/not-found.
   it('returns 404 for communications of a dispute that belongs to a different client', async () => {
     const res = await app.inject({
-      method: 'GET', url: `/api/portal/disputes/${otherDisputeId}/communications`, headers: { 'x-client-id': clientId, 'x-user-id': viewerUserId },
+      method: 'GET', url: `/api/portal/disputes/${otherDisputeId}/communications`, headers: { 'x-account-id': clientId, 'x-user-id': viewerUserId },
     });
     expect(res.statusCode).toBe(404);
   });
 
   it('rejects a malformed dispute id on the communications route with 400', async () => {
     const res = await app.inject({
-      method: 'GET', url: '/api/portal/disputes/not-a-uuid/communications', headers: { 'x-client-id': clientId, 'x-user-id': viewerUserId },
+      method: 'GET', url: '/api/portal/disputes/not-a-uuid/communications', headers: { 'x-account-id': clientId, 'x-user-id': viewerUserId },
     });
     expect(res.statusCode).toBe(400);
   });
@@ -505,7 +505,7 @@ describe('client portal content APIs (DB, e2e)', () => {
 
   it('rejects a client_admin caller on the communications route -- sibling capability, out of this task\'s scope', async () => {
     const res = await app.inject({
-      method: 'GET', url: `/api/portal/disputes/${disputeId}/communications`, headers: { 'x-client-id': clientId, 'x-user-id': adminUserId },
+      method: 'GET', url: `/api/portal/disputes/${disputeId}/communications`, headers: { 'x-account-id': clientId, 'x-user-id': adminUserId },
     });
     expect(res.statusCode).toBe(401);
   });
@@ -513,11 +513,11 @@ describe('client portal content APIs (DB, e2e)', () => {
   it('has no POST/PUT/PATCH/DELETE route registered on the dispute detail or communications paths -- no write surface exists to protect (No-gos: read-only)', async () => {
     for (const method of ['POST', 'PUT', 'PATCH', 'DELETE'] as const) {
       const detailRes = await app.inject({
-        method, url: `/api/portal/disputes/${disputeId}`, headers: { 'x-client-id': clientId, 'x-user-id': viewerUserId },
+        method, url: `/api/portal/disputes/${disputeId}`, headers: { 'x-account-id': clientId, 'x-user-id': viewerUserId },
       });
       expect(detailRes.statusCode).toBe(404);
       const commsRes = await app.inject({
-        method, url: `/api/portal/disputes/${disputeId}/communications`, headers: { 'x-client-id': clientId, 'x-user-id': viewerUserId },
+        method, url: `/api/portal/disputes/${disputeId}/communications`, headers: { 'x-account-id': clientId, 'x-user-id': viewerUserId },
       });
       expect(commsRes.statusCode).toBe(404);
     }
@@ -880,7 +880,7 @@ describe('client portal claim + document APIs (P6.B.4, DB, e2e)', () => {
   // plus recovery-event history and cumulative recovered amount.
   it('returns the claim with its full recovery-event history and cumulative recovered amount', async () => {
     const res = await app.inject({
-      method: 'GET', url: `/api/portal/claims/${claimId}`, headers: { 'x-client-id': clientId, 'x-user-id': viewerUserId },
+      method: 'GET', url: `/api/portal/claims/${claimId}`, headers: { 'x-account-id': clientId, 'x-user-id': viewerUserId },
     });
     expect(res.statusCode).toBe(200);
     const body = res.json();
@@ -898,7 +898,7 @@ describe('client portal claim + document APIs (P6.B.4, DB, e2e)', () => {
 
   it('rejects a client_admin caller on the claim detail route -- sibling capability, out of this task\'s scope', async () => {
     const res = await app.inject({
-      method: 'GET', url: `/api/portal/claims/${claimId}`, headers: { 'x-client-id': clientId, 'x-user-id': adminUserId },
+      method: 'GET', url: `/api/portal/claims/${claimId}`, headers: { 'x-account-id': clientId, 'x-user-id': adminUserId },
     });
     expect(res.statusCode).toBe(401);
   });
@@ -906,7 +906,7 @@ describe('client portal claim + document APIs (P6.B.4, DB, e2e)', () => {
   // AC3 (claim half): a claim belonging to a DIFFERENT client is rejected/not-found.
   it('returns 404 for a claim that belongs to a different client', async () => {
     const res = await app.inject({
-      method: 'GET', url: `/api/portal/claims/${otherClaimId}`, headers: { 'x-client-id': clientId, 'x-user-id': viewerUserId },
+      method: 'GET', url: `/api/portal/claims/${otherClaimId}`, headers: { 'x-account-id': clientId, 'x-user-id': viewerUserId },
     });
     expect(res.statusCode).toBe(404);
   });
@@ -914,14 +914,14 @@ describe('client portal claim + document APIs (P6.B.4, DB, e2e)', () => {
   it('returns 404 for a well-formed but nonexistent claim id', async () => {
     const res = await app.inject({
       method: 'GET', url: '/api/portal/claims/00000000-0000-4000-8000-000000000099',
-      headers: { 'x-client-id': clientId, 'x-user-id': viewerUserId },
+      headers: { 'x-account-id': clientId, 'x-user-id': viewerUserId },
     });
     expect(res.statusCode).toBe(404);
   });
 
   it('rejects a malformed claim id with 400', async () => {
     const res = await app.inject({
-      method: 'GET', url: '/api/portal/claims/not-a-uuid', headers: { 'x-client-id': clientId, 'x-user-id': viewerUserId },
+      method: 'GET', url: '/api/portal/claims/not-a-uuid', headers: { 'x-account-id': clientId, 'x-user-id': viewerUserId },
     });
     expect(res.statusCode).toBe(400);
   });
@@ -932,7 +932,7 @@ describe('client portal claim + document APIs (P6.B.4, DB, e2e)', () => {
   // ClientClaimView.test.tsx.
   it('returns an empty recoveryEvents array for a claim with no recovery events yet', async () => {
     const res = await app.inject({
-      method: 'GET', url: `/api/portal/claims/${claimNoDisputeId}`, headers: { 'x-client-id': clientId, 'x-user-id': viewerUserId },
+      method: 'GET', url: `/api/portal/claims/${claimNoDisputeId}`, headers: { 'x-account-id': clientId, 'x-user-id': viewerUserId },
     });
     expect(res.statusCode).toBe(200);
     expect(res.json().recoveryEvents).toEqual([]);
@@ -942,7 +942,7 @@ describe('client portal claim + document APIs (P6.B.4, DB, e2e)', () => {
   // the claim's originating dispute/finding chain.
   it('returns the source-document reference resolved via the claim\'s originating dispute/finding chain, skipping the findingless line', async () => {
     const res = await app.inject({
-      method: 'GET', url: `/api/portal/claims/${claimId}/documents`, headers: { 'x-client-id': clientId, 'x-user-id': viewerUserId },
+      method: 'GET', url: `/api/portal/claims/${claimId}/documents`, headers: { 'x-account-id': clientId, 'x-user-id': viewerUserId },
     });
     expect(res.statusCode).toBe(200);
     const body = res.json();
@@ -953,7 +953,7 @@ describe('client portal claim + document APIs (P6.B.4, DB, e2e)', () => {
   // explicit empty array, not an error.
   it('returns an empty documents array for a claim with no originating dispute', async () => {
     const res = await app.inject({
-      method: 'GET', url: `/api/portal/claims/${claimNoDisputeId}/documents`, headers: { 'x-client-id': clientId, 'x-user-id': viewerUserId },
+      method: 'GET', url: `/api/portal/claims/${claimNoDisputeId}/documents`, headers: { 'x-account-id': clientId, 'x-user-id': viewerUserId },
     });
     expect(res.statusCode).toBe(200);
     expect(res.json()).toEqual({ documents: [] });
@@ -966,7 +966,7 @@ describe('client portal claim + document APIs (P6.B.4, DB, e2e)', () => {
 
   it('rejects a client_admin caller on the documents route -- sibling capability, out of this task\'s scope', async () => {
     const res = await app.inject({
-      method: 'GET', url: `/api/portal/claims/${claimId}/documents`, headers: { 'x-client-id': clientId, 'x-user-id': adminUserId },
+      method: 'GET', url: `/api/portal/claims/${claimId}/documents`, headers: { 'x-account-id': clientId, 'x-user-id': adminUserId },
     });
     expect(res.statusCode).toBe(401);
   });
@@ -974,14 +974,14 @@ describe('client portal claim + document APIs (P6.B.4, DB, e2e)', () => {
   // AC3 (documents half): documents for a claim belonging to a DIFFERENT client are rejected/not-found.
   it('returns 404 for documents of a claim that belongs to a different client', async () => {
     const res = await app.inject({
-      method: 'GET', url: `/api/portal/claims/${otherClaimId}/documents`, headers: { 'x-client-id': clientId, 'x-user-id': viewerUserId },
+      method: 'GET', url: `/api/portal/claims/${otherClaimId}/documents`, headers: { 'x-account-id': clientId, 'x-user-id': viewerUserId },
     });
     expect(res.statusCode).toBe(404);
   });
 
   it('rejects a malformed claim id on the documents route with 400', async () => {
     const res = await app.inject({
-      method: 'GET', url: '/api/portal/claims/not-a-uuid/documents', headers: { 'x-client-id': clientId, 'x-user-id': viewerUserId },
+      method: 'GET', url: '/api/portal/claims/not-a-uuid/documents', headers: { 'x-account-id': clientId, 'x-user-id': viewerUserId },
     });
     expect(res.statusCode).toBe(400);
   });
@@ -989,11 +989,11 @@ describe('client portal claim + document APIs (P6.B.4, DB, e2e)', () => {
   it('has no POST/PUT/PATCH/DELETE route registered on the claim detail or documents paths -- no write surface exists to protect (No-gos: read-only)', async () => {
     for (const method of ['POST', 'PUT', 'PATCH', 'DELETE'] as const) {
       const detailRes = await app.inject({
-        method, url: `/api/portal/claims/${claimId}`, headers: { 'x-client-id': clientId, 'x-user-id': viewerUserId },
+        method, url: `/api/portal/claims/${claimId}`, headers: { 'x-account-id': clientId, 'x-user-id': viewerUserId },
       });
       expect(detailRes.statusCode).toBe(404);
       const docsRes = await app.inject({
-        method, url: `/api/portal/claims/${claimId}/documents`, headers: { 'x-client-id': clientId, 'x-user-id': viewerUserId },
+        method, url: `/api/portal/claims/${claimId}/documents`, headers: { 'x-account-id': clientId, 'x-user-id': viewerUserId },
       });
       expect(docsRes.statusCode).toBe(404);
     }
@@ -1114,7 +1114,7 @@ describe('client portal audit-log API (P6.B.6, DB, e2e)', () => {
   // system-global event and the other tenant's event are both excluded.
   it('lists only the caller\'s own audit events, newest recorded_at first', async () => {
     const res = await app.inject({
-      method: 'GET', url: '/api/portal/audit-log', headers: { 'x-client-id': clientId, 'x-user-id': viewerUserId },
+      method: 'GET', url: '/api/portal/audit-log', headers: { 'x-account-id': clientId, 'x-user-id': viewerUserId },
     });
     expect(res.statusCode).toBe(200);
     const ids = res.json().events.map((e: { id: string }) => e.id);
@@ -1125,7 +1125,7 @@ describe('client portal audit-log API (P6.B.6, DB, e2e)', () => {
   // AC2: each event's actorKind is present and distinguishable per row.
   it('surfaces a distinct actorKind for each of analyst/ai/system/client events', async () => {
     const res = await app.inject({
-      method: 'GET', url: '/api/portal/audit-log', headers: { 'x-client-id': clientId, 'x-user-id': viewerUserId },
+      method: 'GET', url: '/api/portal/audit-log', headers: { 'x-account-id': clientId, 'x-user-id': viewerUserId },
     });
     const byId = new Map(res.json().events.map((e: { id: string; actorKind: string }) => [e.id, e.actorKind]));
     expect(byId.get(eventAnalystId)).toBe('analyst');
@@ -1139,26 +1139,26 @@ describe('client portal audit-log API (P6.B.6, DB, e2e)', () => {
   // default-limit/explicit-limit/offset query-building in isolation).
   it('honors limit/offset for pagination, in newest-first order', async () => {
     const page1 = await app.inject({
-      method: 'GET', url: '/api/portal/audit-log?limit=2&offset=0', headers: { 'x-client-id': clientId, 'x-user-id': viewerUserId },
+      method: 'GET', url: '/api/portal/audit-log?limit=2&offset=0', headers: { 'x-account-id': clientId, 'x-user-id': viewerUserId },
     });
     expect(page1.json().events.map((e: { id: string }) => e.id)).toEqual([eventClientId, eventSystemId]);
 
     const page2 = await app.inject({
-      method: 'GET', url: '/api/portal/audit-log?limit=2&offset=2', headers: { 'x-client-id': clientId, 'x-user-id': viewerUserId },
+      method: 'GET', url: '/api/portal/audit-log?limit=2&offset=2', headers: { 'x-account-id': clientId, 'x-user-id': viewerUserId },
     });
     expect(page2.json().events.map((e: { id: string }) => e.id)).toEqual([eventAiId, eventAnalystId]);
   });
 
   it('filters by entity', async () => {
     const res = await app.inject({
-      method: 'GET', url: '/api/portal/audit-log?entity=claim', headers: { 'x-client-id': clientId, 'x-user-id': viewerUserId },
+      method: 'GET', url: '/api/portal/audit-log?entity=claim', headers: { 'x-account-id': clientId, 'x-user-id': viewerUserId },
     });
     expect(res.json().events.map((e: { id: string }) => e.id)).toEqual([eventSystemId]);
   });
 
   it('filters by event', async () => {
     const res = await app.inject({
-      method: 'GET', url: '/api/portal/audit-log?event=scored', headers: { 'x-client-id': clientId, 'x-user-id': viewerUserId },
+      method: 'GET', url: '/api/portal/audit-log?event=scored', headers: { 'x-account-id': clientId, 'x-user-id': viewerUserId },
     });
     expect(res.json().events.map((e: { id: string }) => e.id)).toEqual([eventAiId]);
   });
@@ -1167,7 +1167,7 @@ describe('client portal audit-log API (P6.B.6, DB, e2e)', () => {
     const res = await app.inject({
       method: 'GET',
       url: `/api/portal/audit-log?from=${encodeURIComponent(new Date(Date.now() - 3.5 * 3600_000).toISOString())}&to=${encodeURIComponent(new Date(Date.now() - 1.5 * 3600_000).toISOString())}`,
-      headers: { 'x-client-id': clientId, 'x-user-id': viewerUserId },
+      headers: { 'x-account-id': clientId, 'x-user-id': viewerUserId },
     });
     // Window covers the 'ai' (-3h) and 'system' (-2h) events only.
     expect(res.json().events.map((e: { id: string }) => e.id).sort()).toEqual([eventAiId, eventSystemId].sort());
@@ -1177,7 +1177,7 @@ describe('client portal audit-log API (P6.B.6, DB, e2e)', () => {
   // match nothing.
   it('returns an empty events array, not an error, when filters match nothing', async () => {
     const res = await app.inject({
-      method: 'GET', url: '/api/portal/audit-log?entity=nonexistent-entity', headers: { 'x-client-id': clientId, 'x-user-id': viewerUserId },
+      method: 'GET', url: '/api/portal/audit-log?entity=nonexistent-entity', headers: { 'x-account-id': clientId, 'x-user-id': viewerUserId },
     });
     expect(res.statusCode).toBe(200);
     expect(res.json()).toEqual({ events: [] });
@@ -1190,14 +1190,14 @@ describe('client portal audit-log API (P6.B.6, DB, e2e)', () => {
 
   it('rejects a client_admin caller on the audit-log route -- sibling capability, out of this task\'s scope', async () => {
     const res = await app.inject({
-      method: 'GET', url: '/api/portal/audit-log', headers: { 'x-client-id': clientId, 'x-user-id': adminUserId },
+      method: 'GET', url: '/api/portal/audit-log', headers: { 'x-account-id': clientId, 'x-user-id': adminUserId },
     });
     expect(res.statusCode).toBe(401);
   });
 
   it('rejects a malformed entity query param with 400', async () => {
     const res = await app.inject({
-      method: 'GET', url: '/api/portal/audit-log?entity=Not_Valid!', headers: { 'x-client-id': clientId, 'x-user-id': viewerUserId },
+      method: 'GET', url: '/api/portal/audit-log?entity=Not_Valid!', headers: { 'x-account-id': clientId, 'x-user-id': viewerUserId },
     });
     expect(res.statusCode).toBe(400);
   });
@@ -1205,7 +1205,7 @@ describe('client portal audit-log API (P6.B.6, DB, e2e)', () => {
   it('has no POST/PUT/PATCH/DELETE route registered on the audit-log path -- no write surface exists to protect (No-gos: read-only)', async () => {
     for (const method of ['POST', 'PUT', 'PATCH', 'DELETE'] as const) {
       const res = await app.inject({
-        method, url: '/api/portal/audit-log', headers: { 'x-client-id': clientId, 'x-user-id': viewerUserId },
+        method, url: '/api/portal/audit-log', headers: { 'x-account-id': clientId, 'x-user-id': viewerUserId },
       });
       expect(res.statusCode).toBe(404);
     }

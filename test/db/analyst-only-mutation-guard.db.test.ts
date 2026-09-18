@@ -83,7 +83,7 @@ describe('registerAnalystOnlyPreHandler (DB): dispute, finding, and payment muta
   });
 
   function headersFor(userId: string) {
-    return { 'x-client-id': clientId, 'x-user-id': userId };
+    return { 'x-account-id': clientId, 'x-user-id': userId };
   }
 
   it('AC1: a client_viewer is rejected with 403 on POST /api/disputes/:id/accept', async () => {

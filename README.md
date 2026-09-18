@@ -84,7 +84,7 @@ Key invariants baked into the schema:
 ## Dev dashboard setup
 
 The dashboard (`web/`) authenticates its API calls with fixed dev-mode headers
-(`x-client-id`/`x-user-id` — see `web/src/lib/api.ts`), which must be backed by a real
+(`x-account-id`/`x-user-id` — see `web/src/lib/api.ts`), which must be backed by a real
 `membership` row or every `/api/findings*` call 401s (tenant isolation checks membership, not
 just header presence). **After running migrations against a fresh DB, seed that row once:**
 

@@ -93,7 +93,7 @@ describe('resolveAuthorizedTenantContext via a real better-auth session (DB)', (
       owner.release();
     }
 
-    const headersObj: Record<string, string> = { 'x-client-id': clientId };
+    const headersObj: Record<string, string> = { 'x-account-id': clientId };
     sessionHeaders.forEach((value, key) => { headersObj[key] = value; });
 
     const ctx = await resolveAuthorizedTenantContext({ headers: headersObj } as never);
@@ -104,14 +104,14 @@ describe('resolveAuthorizedTenantContext via a real better-auth session (DB)', (
     const email = `${tag}-nonmember@example.com`;
     const sessionHeaders = await createRealSession(email);
 
-    const headersObj: Record<string, string> = { 'x-client-id': clientId };
+    const headersObj: Record<string, string> = { 'x-account-id': clientId };
     sessionHeaders.forEach((value, key) => { headersObj[key] = value; });
 
     const ctx = await resolveAuthorizedTenantContext({ headers: headersObj } as never);
     expect(ctx).toBeNull();
   });
 
-  it('AC2: the dev x-client-id/x-user-id headers alone (no session, DEV_AUTH_HEADERS unset) are rejected -- the header bypass this AC closes', async () => {
+  it('AC2: the dev x-account-id/x-user-id headers alone (no session, DEV_AUTH_HEADERS unset) are rejected -- the header bypass this AC closes', async () => {
     const owner = await pool.connect();
     let userId: string;
     try {
@@ -129,7 +129,7 @@ describe('resolveAuthorizedTenantContext via a real better-auth session (DB)', (
     }
 
     const ctx = await resolveAuthorizedTenantContext({
-      headers: { 'x-client-id': clientId, 'x-user-id': userId },
+      headers: { 'x-account-id': clientId, 'x-user-id': userId },
     } as never);
     expect(ctx).toBeNull();
   });

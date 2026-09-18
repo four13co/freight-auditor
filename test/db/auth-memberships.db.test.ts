@@ -6,11 +6,11 @@ import { getPool, closePool } from '../../src/db/pool.js';
 /**
  * 86e2wb92b: a real (non-dev-header) session proves WHO a user is, but
  * nothing told the frontend WHICH account_id to send on subsequent requests
- * -- resolveViaSession still requires an explicit x-client-id header
+ * -- resolveViaSession still requires an explicit x-account-id header
  * (tenant-auth.ts). GET /api/auth/memberships (app.ts) is the new lookup:
  * given a verified session, return the account_id(s) that user has a
  * membership row for, so login can store one and start sending it as
- * x-client-id (option (b), decided on the ClickUp task).
+ * x-account-id (option (b), decided on the ClickUp task).
  *
  * Real Postgres, real sign-up/sign-in round-trip -- membership carries
  * FORCE RLS keyed on account_id (migration 0009), so this can't be proven
@@ -105,7 +105,7 @@ describe('GET /api/auth/memberships (DB, e2e)', () => {
 
     const res = await app.inject({ method: 'GET', url: '/api/auth/memberships', headers: { cookie: cookieHeader } });
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual({ clientIds: [clientAId], isInternal: false, role: 'client_viewer', clientName: 'AuthMem A' });
+    expect(res.json()).toEqual({ accountIds: [clientAId], isInternal: false, role: 'account_viewer', accountName: 'AuthMem A' });
     const ledger = await pool.query(
       `SELECT actor_user_id, detail FROM audit_event WHERE event = 'authorization.memberships.granted' ORDER BY recorded_at DESC LIMIT 1`,
     );
@@ -121,7 +121,7 @@ describe('GET /api/auth/memberships (DB, e2e)', () => {
 
     const res = await app.inject({ method: 'GET', url: '/api/auth/memberships', headers: { cookie: cookieHeader } });
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual({ clientIds: [], isInternal: false, role: null, clientName: null });
+    expect(res.json()).toEqual({ accountIds: [], isInternal: false, role: null, accountName: null });
   });
 
   it('86e2zfjmb AC4: returns isInternal:true and role:null for an internal analyst (no membership rows)', async () => {
@@ -137,7 +137,7 @@ describe('GET /api/auth/memberships (DB, e2e)', () => {
 
     const res = await app.inject({ method: 'GET', url: '/api/auth/memberships', headers: { cookie: cookieHeader } });
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual({ clientIds: [], isInternal: true, role: null, clientName: null });
+    expect(res.json()).toEqual({ accountIds: [], isInternal: true, role: null, accountName: null });
   });
 
   it('86e39qa6r: returns isInternal:false for a deactivated internal analyst (is_active = false)', async () => {
@@ -153,7 +153,7 @@ describe('GET /api/auth/memberships (DB, e2e)', () => {
 
     const res = await app.inject({ method: 'GET', url: '/api/auth/memberships', headers: { cookie: cookieHeader } });
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual({ clientIds: [], isInternal: false, role: null, clientName: null });
+    expect(res.json()).toEqual({ accountIds: [], isInternal: false, role: null, accountName: null });
   });
 
   it('86e2zfjmb AC4: returns isInternal:false and the membership role for a portal member', async () => {
@@ -173,7 +173,7 @@ describe('GET /api/auth/memberships (DB, e2e)', () => {
 
     const res = await app.inject({ method: 'GET', url: '/api/auth/memberships', headers: { cookie: cookieHeader } });
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual({ clientIds: [clientAId], isInternal: false, role: 'client_admin', clientName: 'AuthMem A' });
+    expect(res.json()).toEqual({ accountIds: [clientAId], isInternal: false, role: 'account_admin', accountName: 'AuthMem A' });
   });
 
   it('returns every account_id for a user with more than one membership row', async () => {
@@ -197,7 +197,7 @@ describe('GET /api/auth/memberships (DB, e2e)', () => {
 
     const res = await app.inject({ method: 'GET', url: '/api/auth/memberships', headers: { cookie: cookieHeader } });
     expect(res.statusCode).toBe(200);
-    expect(res.json().clientIds.sort()).toEqual([clientAId, clientBId].sort());
+    expect(res.json().accountIds.sort()).toEqual([clientAId, clientBId].sort());
   });
 
   it('returns 401 with no session cookie at all', async () => {

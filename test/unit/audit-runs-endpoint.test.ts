@@ -67,7 +67,7 @@ describe('POST /api/audit-runs (unit, mocked withTenantTx + tenant-auth + ingest
     const res = await app.inject({
       method: 'POST',
       url: `/api/audit-runs?contract_version_id=${wellFormedUuid}`,
-      headers: { 'x-client-id': 'client-abc', 'x-user-id': 'user-1', 'content-type': 'application/edi-x12' },
+      headers: { 'x-account-id': 'client-abc', 'x-user-id': 'user-1', 'content-type': 'application/edi-x12' },
       payload: 'ISA*raw-edi-bytes~',
     });
 
@@ -96,7 +96,7 @@ describe('POST /api/audit-runs (unit, mocked withTenantTx + tenant-auth + ingest
     const res = await app.inject({
       method: 'POST',
       url: '/api/audit-runs?contract_version_id=not-a-uuid',
-      headers: { 'x-client-id': 'client-abc', 'x-user-id': 'user-1', 'content-type': 'application/edi-x12' },
+      headers: { 'x-account-id': 'client-abc', 'x-user-id': 'user-1', 'content-type': 'application/edi-x12' },
       payload: 'ISA*raw-edi-bytes~',
     });
 
@@ -121,7 +121,7 @@ describe('POST /api/audit-runs (unit, mocked withTenantTx + tenant-auth + ingest
     await app.inject({
       method: 'POST',
       url: '/api/audit-runs',
-      headers: { 'x-client-id': 'client-abc', 'x-user-id': 'user-1', 'content-type': 'text/plain' },
+      headers: { 'x-account-id': 'client-abc', 'x-user-id': 'user-1', 'content-type': 'text/plain' },
       payload: 'ISA*raw-edi-bytes~',
     });
 
@@ -148,7 +148,7 @@ describe('POST /api/audit-runs (unit, mocked withTenantTx + tenant-auth + ingest
     const res = await app.inject({
       method: 'POST',
       url: '/api/audit-runs',
-      headers: { 'x-client-id': 'client-abc', 'x-user-id': 'user-1', 'content-type': 'application/edi-x12' },
+      headers: { 'x-account-id': 'client-abc', 'x-user-id': 'user-1', 'content-type': 'application/edi-x12' },
       payload: 'garbage',
     });
 
@@ -171,7 +171,7 @@ describe('POST /api/audit-runs (unit, mocked withTenantTx + tenant-auth + ingest
     const res = await app.inject({
       method: 'POST',
       url: '/api/audit-runs',
-      headers: { 'x-client-id': 'client-abc', 'x-user-id': 'user-1', 'content-type': 'application/edi-x12' },
+      headers: { 'x-account-id': 'client-abc', 'x-user-id': 'user-1', 'content-type': 'application/edi-x12' },
       payload: 'ISA*raw-edi-bytes~',
     });
 
@@ -194,7 +194,7 @@ describe('POST /api/audit-runs (unit, mocked withTenantTx + tenant-auth + ingest
     const res = await app.inject({
       method: 'POST',
       url: '/api/audit-runs',
-      headers: { 'x-client-id': 'client-abc', 'x-user-id': 'user-1', 'content-type': 'application/edi-x12' },
+      headers: { 'x-account-id': 'client-abc', 'x-user-id': 'user-1', 'content-type': 'application/edi-x12' },
       payload: '',
     });
 

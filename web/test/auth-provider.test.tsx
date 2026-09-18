@@ -16,11 +16,11 @@ vi.mock('@/lib/auth-client', () => ({
 }));
 
 const fetchActorContextMock = vi.fn();
-const fetchAndStoreClientIdMock = vi.fn();
+const fetchAndStoreAccountIdMock = vi.fn();
 vi.mock('@/lib/api', () => ({
-  CLIENT_ID_STORAGE_KEY: 'freight-auditor:client-id',
+  ACCOUNT_ID_STORAGE_KEY: 'freight-auditor:account-id',
   fetchActorContext: () => fetchActorContextMock(),
-  fetchAndStoreClientId: () => fetchAndStoreClientIdMock(),
+  fetchAndStoreAccountId: () => fetchAndStoreAccountIdMock(),
 }));
 
 function Probe() {
@@ -80,8 +80,8 @@ describe('AuthProvider', () => {
       data: { user: { id: 'u1', email: 'analyst@example.com', name: 'Analyst One' } },
       isPending: false,
     });
-    fetchAndStoreClientIdMock.mockResolvedValue(undefined);
-    fetchActorContextMock.mockResolvedValue({ isInternal: true, role: 'analyst', clientName: null });
+    fetchAndStoreAccountIdMock.mockResolvedValue(undefined);
+    fetchActorContextMock.mockResolvedValue({ isInternal: true, role: 'analyst', accountName: null });
 
     render(
       <AuthProvider>
@@ -100,11 +100,11 @@ describe('AuthProvider', () => {
       data: { user: { id: 'u2', email: 'viewer@example.com', name: 'Portal Viewer' } },
       isPending: false,
     });
-    fetchAndStoreClientIdMock.mockResolvedValue(undefined);
+    fetchAndStoreAccountIdMock.mockResolvedValue(undefined);
     fetchActorContextMock.mockResolvedValue({
       isInternal: false,
-      role: 'client_viewer',
-      clientName: 'Acme Co',
+      role: 'account_viewer',
+      accountName: 'Acme Co',
     });
 
     render(

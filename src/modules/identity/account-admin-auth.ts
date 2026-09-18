@@ -63,9 +63,9 @@ async function lookupMembershipRole(userId: string, clientId: string): Promise<s
   });
 }
 
-/** DEV_AUTH_HEADERS path: x-client-id/x-user-id headers, role-checked against client_admin. */
+/** DEV_AUTH_HEADERS path: x-account-id/x-user-id headers, role-checked against client_admin. */
 async function resolveViaDevHeaders(request: FastifyRequest): Promise<TenantContext | null> {
-  const clientId = readHeader(request.headers['x-client-id']);
+  const clientId = readHeader(request.headers['x-account-id']);
   const userId = readHeader(request.headers['x-user-id']);
   if (!clientId || !userId) return null;
 
@@ -82,7 +82,7 @@ async function resolveViaSession(request: FastifyRequest): Promise<TenantContext
   const session = await getAuth().api.getSession({ headers: toFetchHeaders(request) });
   if (!session) return null;
 
-  const clientId = readHeader(request.headers['x-client-id']);
+  const clientId = readHeader(request.headers['x-account-id']);
   if (!clientId) return null;
 
   const role = await lookupMembershipRole(session.user.id, clientId);

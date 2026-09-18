@@ -13,7 +13,7 @@ import {
 } from '@/components/ui/dialog';
 import { DataTable, type DataTableColumn } from '@/components/data-table/DataTable';
 import { countScopedEntities, useScopedEntities, type ScopedEntity } from '@/lib/in-memory-hierarchy-store';
-import { getOwnClientId } from '@/lib/api';
+import { getOwnAccountId } from '@/lib/api';
 
 function ClientFormDialog({
   open,
@@ -77,7 +77,7 @@ function ClientFormDialog({
  * same `client:<id>` scope) -- see this PR's Uncertainties.
  */
 export default function ClientsPage() {
-  const ownClientId = getOwnClientId();
+  const ownClientId = getOwnAccountId();
   const scopeKey = ownClientId ? `client:${ownClientId}` : null;
   const { entities, create, update, toggleStatus } = useScopedEntities(scopeKey);
   const [createOpen, setCreateOpen] = useState(false);

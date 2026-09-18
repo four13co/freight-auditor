@@ -27,7 +27,7 @@ describe('Dashboard auth headers accepted end-to-end (DB)', () => {
   let originalFlag: string | undefined;
 
   const DASHBOARD_HEADERS = {
-    'x-client-id': DEV_CLIENT_ID,
+    'x-account-id': DEV_CLIENT_ID,
     'x-user-id': DEV_USER_ID,
   };
 

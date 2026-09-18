@@ -43,13 +43,13 @@ describe('resolveInternalAnalystContext (DEV_AUTH_HEADERS set)', () => {
     expect(withTenantTx).not.toHaveBeenCalled();
   });
 
-  it('ignores x-client-id entirely -- this scope is cross-client by design, no client header is read', async () => {
+  it('ignores x-account-id entirely -- this scope is cross-client by design, no client header is read', async () => {
     const query = vi.fn().mockResolvedValue({ rows: [{ is_internal: true }] });
     const withTenantTx = vi.fn(async (ctx, fn) => fn({ query }));
     vi.doMock('../../src/db/tenant-context.js', () => ({ withTenantTx }));
     const { resolveInternalAnalystContext } = await import('../../src/modules/findings/internal-analyst-auth.js');
 
-    const ctx = await resolveInternalAnalystContext(mockRequest({ 'x-user-id': 'user-1', 'x-client-id': 'client-1' }));
+    const ctx = await resolveInternalAnalystContext(mockRequest({ 'x-user-id': 'user-1', 'x-account-id': 'client-1' }));
     expect(ctx).toEqual({ internal: true });
     expect(query).toHaveBeenCalledWith(expect.stringContaining('FROM app_user'), ['user-1']);
   });

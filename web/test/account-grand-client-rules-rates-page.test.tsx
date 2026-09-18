@@ -1,7 +1,7 @@
 import { act, render, renderHook, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
-import GrandClientRulesRatesPage from '@/pages/client/GrandClientRulesRatesPage';
+import GrandClientRulesRatesPage from '@/pages/account/GrandClientRulesRatesPage';
 import { useScopedRates, useScopedRules } from '@/lib/in-memory-hierarchy-store';
 
 let nextId = 0;

@@ -30,30 +30,30 @@ export const NAV_CONFIG: Record<AppRole, NavItem[]> = {
     { label: 'Home', path: '/employee/home', icon: Home, isHome: true },
     { label: 'Users', path: '/employee/users', icon: Users },
     {
-      label: 'Clients',
-      path: '/employee/clients',
+      label: 'Accounts',
+      path: '/employee/accounts',
       icon: Building2,
       children: [
         {
           label: 'Grand Clients',
-          path: '/employee/clients/grand-clients',
+          path: '/employee/accounts/grand-clients',
           icon: Building,
           children: [
-            { label: 'Vendors', path: '/employee/clients/grand-clients/vendors', icon: Truck },
+            { label: 'Vendors', path: '/employee/accounts/grand-clients/vendors', icon: Truck },
           ],
         },
       ],
     },
     { label: 'Rules & Rates', path: '/employee/rules-rates', icon: FileSliders },
   ],
-  client: [
-    { label: 'Home', path: '/client/home', icon: Home, isHome: true },
-    { label: 'Users', path: '/client/users', icon: Users },
-    { label: 'Users (Grand Client)', path: '/client/grand-client-users', icon: Users },
-    { label: 'Users (Vendor)', path: '/client/vendor-users', icon: Users },
-    { label: 'Grand Clients', path: '/client/grand-clients', icon: Building },
-    { label: 'Grand Client File Drop', path: '/client/grand-clients/file-drop', icon: Upload },
-    { label: 'Grand Client Rules & Rates', path: '/client/grand-clients/rules-rates', icon: FileSliders },
+  account: [
+    { label: 'Home', path: '/account/home', icon: Home, isHome: true },
+    { label: 'Users', path: '/account/users', icon: Users },
+    { label: 'Users (Grand Client)', path: '/account/grand-client-users', icon: Users },
+    { label: 'Users (Vendor)', path: '/account/vendor-users', icon: Users },
+    { label: 'Grand Clients', path: '/account/grand-clients', icon: Building },
+    { label: 'Grand Client File Drop', path: '/account/grand-clients/file-drop', icon: Upload },
+    { label: 'Grand Client Rules & Rates', path: '/account/grand-clients/rules-rates', icon: FileSliders },
   ],
   grand_client: [
     { label: 'Home', path: '/grand-client/home', icon: Home, isHome: true },

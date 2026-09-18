@@ -50,8 +50,8 @@ describe('TenantProvider', () => {
     await waitFor(() => expect(screen.getByText('Acme Freight')).toBeInTheDocument());
   });
 
-  it('AC: graceful handling of a Client with zero Grand Clients in the store', async () => {
-    useAuthMock.mockReturnValue({ role: 'client' });
+  it('AC: graceful handling of the Account role with zero Grand Clients in the store', async () => {
+    useAuthMock.mockReturnValue({ role: 'account' });
     sessionStorage.setItem('freight-auditor:client-id', 'own-client-1');
     useScopedEntitiesMock.mockReturnValue({ entities: [] });
 
@@ -65,8 +65,8 @@ describe('TenantProvider', () => {
     expect(screen.getByText('none (0)')).toBeInTheDocument();
   });
 
-  it('AC: Client selects from their own Grand Clients, sourced from in-memory-hierarchy-store scoped to their own client id, first pre-selected', async () => {
-    useAuthMock.mockReturnValue({ role: 'client' });
+  it('AC: Account role selects from their own Grand Clients, sourced from in-memory-hierarchy-store scoped to their own client id, first pre-selected', async () => {
+    useAuthMock.mockReturnValue({ role: 'account' });
     sessionStorage.setItem('freight-auditor:client-id', 'own-client-1');
     useScopedEntitiesMock.mockImplementation((scopeKey: string | null) => {
       expect(scopeKey).toBe('client:own-client-1');
@@ -87,8 +87,8 @@ describe('TenantProvider', () => {
     await waitFor(() => expect(screen.getByText('Grand Client One')).toBeInTheDocument());
   });
 
-  it("AC: a Client's Grand Client selection persists across a remount (localStorage)", async () => {
-    useAuthMock.mockReturnValue({ role: 'client' });
+  it("AC: the Account role's Grand Client selection persists across a remount (localStorage)", async () => {
+    useAuthMock.mockReturnValue({ role: 'account' });
     sessionStorage.setItem('freight-auditor:client-id', 'own-client-1');
     useScopedEntitiesMock.mockReturnValue({
       entities: [

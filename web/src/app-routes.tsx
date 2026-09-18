@@ -11,17 +11,17 @@ import ResetPasswordPage from '@/pages/reset-password';
 import HomePage from '@/pages/home';
 import EmployeeHomePage from '@/pages/employee/HomePage';
 import EmployeeUsersPage from '@/pages/employee/UsersPage';
-import EmployeeClientsPage from '@/pages/employee/ClientsPage';
+import EmployeeAccountsPage from '@/pages/employee/AccountsPage';
 import EmployeeGrandClientsPage from '@/pages/employee/GrandClientsPage';
 import EmployeeVendorsPage from '@/pages/employee/VendorsPage';
 import EmployeeRulesRatesPage from '@/pages/employee/RulesRatesPage';
-import ClientUsersPage from '@/pages/client/UsersPage';
-import ClientGrandClientUsersPage from '@/pages/client/GrandClientUsersPage';
-import ClientVendorUsersPage from '@/pages/client/VendorUsersPage';
-import ClientGrandClientsPage from '@/pages/client/GrandClientsPage';
-import ClientGrandClientRulesRatesPage from '@/pages/client/GrandClientRulesRatesPage';
-import ClientGrandClientFileDropPage from '@/pages/client/GrandClientFileDropPage';
-import ClientHomePage from '@/pages/client/HomePage';
+import AccountUsersPage from '@/pages/account/UsersPage';
+import AccountGrandClientUsersPage from '@/pages/account/GrandClientUsersPage';
+import AccountVendorUsersPage from '@/pages/account/VendorUsersPage';
+import AccountGrandClientsPage from '@/pages/account/GrandClientsPage';
+import AccountGrandClientRulesRatesPage from '@/pages/account/GrandClientRulesRatesPage';
+import AccountGrandClientFileDropPage from '@/pages/account/GrandClientFileDropPage';
+import AccountHomePage from '@/pages/account/HomePage';
 import { PlaceholderPage } from '@/components/navigation/PlaceholderPage';
 import { NAV_CONFIG, flattenNavItems } from '@/components/navigation/nav-config';
 import { ROLE_HOME_PATH, useAuth, type AppRole } from '@/providers/auth-provider';
@@ -36,17 +36,17 @@ const ROLES = Object.keys(NAV_CONFIG) as AppRole[];
 const PAGE_OVERRIDES: Partial<Record<string, () => ReactElement>> = {
   '/employee/home': EmployeeHomePage,
   '/employee/users': EmployeeUsersPage,
-  '/employee/clients': EmployeeClientsPage,
-  '/employee/clients/grand-clients': EmployeeGrandClientsPage,
-  '/employee/clients/grand-clients/vendors': EmployeeVendorsPage,
+  '/employee/accounts': EmployeeAccountsPage,
+  '/employee/accounts/grand-clients': EmployeeGrandClientsPage,
+  '/employee/accounts/grand-clients/vendors': EmployeeVendorsPage,
   '/employee/rules-rates': EmployeeRulesRatesPage,
-  '/client/users': ClientUsersPage,
-  '/client/grand-client-users': ClientGrandClientUsersPage,
-  '/client/vendor-users': ClientVendorUsersPage,
-  '/client/grand-clients': ClientGrandClientsPage,
-  '/client/grand-clients/rules-rates': ClientGrandClientRulesRatesPage,
-  '/client/grand-clients/file-drop': ClientGrandClientFileDropPage,
-  '/client/home': ClientHomePage,
+  '/account/users': AccountUsersPage,
+  '/account/grand-client-users': AccountGrandClientUsersPage,
+  '/account/vendor-users': AccountVendorUsersPage,
+  '/account/grand-clients': AccountGrandClientsPage,
+  '/account/grand-clients/rules-rates': AccountGrandClientRulesRatesPage,
+  '/account/grand-clients/file-drop': AccountGrandClientFileDropPage,
+  '/account/home': AccountHomePage,
 };
 
 /** "/" itself: send an authenticated user straight to their role's home. */

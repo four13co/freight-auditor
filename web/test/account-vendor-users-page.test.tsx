@@ -1,7 +1,7 @@
 import { act, render, renderHook, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
-import VendorUsersPage from '@/pages/client/VendorUsersPage';
+import VendorUsersPage from '@/pages/account/VendorUsersPage';
 import { useScopedEntities } from '@/lib/in-memory-hierarchy-store';
 
 /** Same fresh-scope-per-test convention as employee-vendors-page.test.tsx. */

@@ -8,10 +8,10 @@ import { useTenant } from '@/providers/TenantProvider';
 import { useAuth } from '@/providers/auth-provider';
 
 /**
- * 86e3a6rak. Employee picks any Client; Client picks their own Grand Client
- * (see TenantProvider's doc comment on the in-memory-hierarchy-store.ts
- * stand-in). Grand Client/Vendor render nothing, which also covers the "0
- * tenants" case by construction.
+ * 86e3a6rak. Employee picks any Client; the Account role picks their own
+ * Grand Client (see TenantProvider's doc comment on the
+ * in-memory-hierarchy-store.ts stand-in). Grand Client/Vendor render
+ * nothing, which also covers the "0 tenants" case by construction.
  */
 export function TenantPicker() {
   const { role } = useAuth();
@@ -19,9 +19,9 @@ export function TenantPicker() {
   const [open, setOpen] = useState(false);
 
   const isEmployee = role === 'employee';
-  const isClient = role === 'client';
+  const isAccount = role === 'account';
 
-  if ((!isEmployee && !isClient) || (!isLoading && options.length === 0)) {
+  if ((!isEmployee && !isAccount) || (!isLoading && options.length === 0)) {
     return null;
   }
 

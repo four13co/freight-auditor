@@ -1,7 +1,7 @@
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
-import GrandClientUsersPage from '@/pages/client/GrandClientUsersPage';
+import GrandClientUsersPage from '@/pages/account/GrandClientUsersPage';
 
 /** Same fresh-scope-per-test convention as employee-vendors-page.test.tsx: avoids cross-test pollution of the shared in-memory store. */
 let nextId = 0;

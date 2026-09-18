@@ -94,7 +94,7 @@ describe('AuthProvider', () => {
     );
   });
 
-  it('maps a non-internal actor to the client role', async () => {
+  it('maps a non-internal actor to the account role', async () => {
     devHeaderPathActiveMock.mockReturnValue(false);
     useSessionMock.mockReturnValue({
       data: { user: { id: 'u2', email: 'viewer@example.com', name: 'Portal Viewer' } },
@@ -114,7 +114,7 @@ describe('AuthProvider', () => {
     );
 
     await waitFor(() =>
-      expect(screen.getByText('authenticated as Portal Viewer (client)')).toBeInTheDocument(),
+      expect(screen.getByText('authenticated as Portal Viewer (account)')).toBeInTheDocument(),
     );
   });
 

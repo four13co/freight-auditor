@@ -33,16 +33,16 @@ interface QuickAction {
 
 /**
  * 86e3a6rgc's suggested actions ("view grand clients, check findings") name
- * a Findings destination that doesn't exist anywhere in the Client NAV_CONFIG
- * -- same gap Employee's HomePage (86e3a6rbe) already disclosed for its own
- * suggested actions. Substituted with this epic's three real Client
- * destinations instead (all shipped in PRs #408/#409); see this PR's
- * Uncertainties.
+ * a Findings destination that doesn't exist anywhere in the Account role's
+ * NAV_CONFIG -- same gap Employee's HomePage (86e3a6rbe) already disclosed
+ * for its own suggested actions. Substituted with this epic's three real
+ * Account destinations instead (all shipped in PRs #408/#409); see this
+ * PR's Uncertainties.
  */
 const QUICK_ACTIONS: QuickAction[] = [
-  { label: 'View Grand Clients', to: '/client/grand-clients', icon: Building2 },
-  { label: 'Manage users', to: '/client/users', icon: ClipboardList },
-  { label: 'Rules & rates', to: '/client/grand-clients/rules-rates', icon: FileSliders },
+  { label: 'View Grand Clients', to: '/account/grand-clients', icon: Building2 },
+  { label: 'Manage users', to: '/account/users', icon: ClipboardList },
+  { label: 'Rules & rates', to: '/account/grand-clients/rules-rates', icon: FileSliders },
 ];
 
 function greeting(date: Date): string {
@@ -56,13 +56,13 @@ function greeting(date: Date): string {
  * 86e3a6rgc: mirrors Employee's HomePage (86e3a6rbe) -- reuses its
  * `SummaryCard`/`ActivityFeed` components directly, per this task's own AC
  * ("Reuses shared components from Employee home screen where possible") --
- * scoped to the client's own data. "Active Grand Clients count" is the one
- * metric this page can source for real (the shared in-memory-hierarchy-
- * store's `client:<ownClientId>` scope, same data 86e3a6rhv's page
+ * scoped to the signed-in tenant's own data. "Active Grand Clients count" is
+ * the one metric this page can source for real (the shared in-memory-
+ * hierarchy-store's `client:<ownClientId>` scope, same data 86e3a6rhv's page
  * manages); the other three metrics have no backend for either role yet,
  * so they stay placeholder, same as Employee's page.
  */
-export default function ClientHomePage() {
+export default function AccountHomePage() {
   const { user } = useAuth();
   const ownClientId = getOwnClientId();
   const { entities: grandClients } = useScopedEntities(ownClientId ? `client:${ownClientId}` : null);

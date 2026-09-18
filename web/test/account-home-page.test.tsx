@@ -2,7 +2,7 @@ import { act, render, renderHook, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
-import ClientHomePage from '@/pages/client/HomePage';
+import AccountHomePage from '@/pages/account/HomePage';
 import { useScopedEntities } from '@/lib/in-memory-hierarchy-store';
 
 const useAuthMock = vi.fn();
@@ -36,15 +36,15 @@ function seedGrandClient(clientId: string, status: 'active' | 'disabled') {
 function renderPage() {
   return render(
     <MemoryRouter>
-      <ClientHomePage />
+      <AccountHomePage />
     </MemoryRouter>,
   );
 }
 
-describe('ClientHomePage', () => {
+describe('AccountHomePage', () => {
   it('AC: renders a welcome header with the signed-in user and current date', () => {
     ownClientId = freshOwnClientId();
-    useAuthMock.mockReturnValue({ user: { name: 'Dana Admin', email: 'dana@example.com', role: 'client' } });
+    useAuthMock.mockReturnValue({ user: { name: 'Dana Admin', email: 'dana@example.com', role: 'account' } });
 
     renderPage();
 
@@ -53,7 +53,7 @@ describe('ClientHomePage', () => {
 
   it('AC: dashboard renders with placeholder data scoped to the client', () => {
     ownClientId = freshOwnClientId();
-    useAuthMock.mockReturnValue({ user: { name: 'Dana Admin', email: null, role: 'client' } });
+    useAuthMock.mockReturnValue({ user: { name: 'Dana Admin', email: null, role: 'account' } });
 
     renderPage();
 
@@ -66,7 +66,7 @@ describe('ClientHomePage', () => {
   it('AC: Active Grand Clients count reflects only this client\'s active Grand Clients', () => {
     ownClientId = freshOwnClientId();
     seedGrandClient(ownClientId, 'active');
-    useAuthMock.mockReturnValue({ user: { name: 'Dana Admin', email: null, role: 'client' } });
+    useAuthMock.mockReturnValue({ user: { name: 'Dana Admin', email: null, role: 'account' } });
 
     renderPage();
 
@@ -76,7 +76,7 @@ describe('ClientHomePage', () => {
 
   it('AC: reuses shared components from Employee home screen (recent activity feed)', () => {
     ownClientId = freshOwnClientId();
-    useAuthMock.mockReturnValue({ user: { name: 'Dana Admin', email: null, role: 'client' } });
+    useAuthMock.mockReturnValue({ user: { name: 'Dana Admin', email: null, role: 'account' } });
 
     renderPage();
 
@@ -84,22 +84,22 @@ describe('ClientHomePage', () => {
     expect(screen.getByText(/Invoice #48213 approved/)).toBeInTheDocument();
   });
 
-  it('AC: quick actions route to the correct Client UI pages', async () => {
+  it('AC: quick actions route to the correct Account UI pages', async () => {
     ownClientId = freshOwnClientId();
-    useAuthMock.mockReturnValue({ user: { name: 'Dana Admin', email: null, role: 'client' } });
+    useAuthMock.mockReturnValue({ user: { name: 'Dana Admin', email: null, role: 'account' } });
     const user = userEvent.setup();
 
     renderPage();
 
-    expect(screen.getByRole('link', { name: /View Grand Clients/ })).toHaveAttribute('href', '/client/grand-clients');
-    expect(screen.getByRole('link', { name: /Manage users/ })).toHaveAttribute('href', '/client/users');
-    expect(screen.getByRole('link', { name: /Rules & rates/ })).toHaveAttribute('href', '/client/grand-clients/rules-rates');
+    expect(screen.getByRole('link', { name: /View Grand Clients/ })).toHaveAttribute('href', '/account/grand-clients');
+    expect(screen.getByRole('link', { name: /Manage users/ })).toHaveAttribute('href', '/account/users');
+    expect(screen.getByRole('link', { name: /Rules & rates/ })).toHaveAttribute('href', '/account/grand-clients/rules-rates');
     await user.click(screen.getByRole('link', { name: /View Grand Clients/ }));
   });
 
   it('AC: responsive grid uses a stacked-to-2-up layout class for the summary cards', () => {
     ownClientId = freshOwnClientId();
-    useAuthMock.mockReturnValue({ user: { name: 'Dana Admin', email: null, role: 'client' } });
+    useAuthMock.mockReturnValue({ user: { name: 'Dana Admin', email: null, role: 'account' } });
 
     const { container } = renderPage();
 

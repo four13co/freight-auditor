@@ -61,10 +61,10 @@ describe('EmployeeHomePage', () => {
 
     renderPage();
 
-    expect(screen.getByRole('link', { name: /Manage clients/ })).toHaveAttribute('href', '/employee/clients');
+    expect(screen.getByRole('link', { name: /Manage accounts/ })).toHaveAttribute('href', '/employee/accounts');
     expect(screen.getByRole('link', { name: /Manage users/ })).toHaveAttribute('href', '/employee/users');
     expect(screen.getByRole('link', { name: /Rules & rates/ })).toHaveAttribute('href', '/employee/rules-rates');
-    await user.click(screen.getByRole('link', { name: /Manage clients/ }));
+    await user.click(screen.getByRole('link', { name: /Manage accounts/ }));
   });
 
   it('AC: responsive grid uses a stacked-to-2-up layout class for the summary cards', () => {

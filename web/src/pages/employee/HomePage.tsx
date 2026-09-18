@@ -61,7 +61,7 @@ interface QuickAction {
  * Employee destinations instead; see this PR's Uncertainties.
  */
 const QUICK_ACTIONS: QuickAction[] = [
-  { label: 'Manage clients', to: '/employee/clients', icon: Building2 },
+  { label: 'Manage accounts', to: '/employee/accounts', icon: Building2 },
   { label: 'Manage users', to: '/employee/users', icon: Users },
   { label: 'Rules & rates', to: '/employee/rules-rates', icon: FileSliders },
 ];

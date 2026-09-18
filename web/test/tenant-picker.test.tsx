@@ -55,9 +55,9 @@ describe('TenantPicker', () => {
     expect(setActiveClient).toHaveBeenCalledWith({ id: 'c2', name: 'Beacon Logistics' });
   });
 
-  it('AC: Client can search and select their own Grand Client', async () => {
+  it('AC: Account role can search and select their own Grand Client', async () => {
     const setActiveGrandClient = vi.fn();
-    useAuthMock.mockReturnValue({ role: 'client' });
+    useAuthMock.mockReturnValue({ role: 'account' });
     useTenantMock.mockReturnValue({
       options: [
         { id: 'gc1', name: 'Grand Client One' },
@@ -80,8 +80,8 @@ describe('TenantPicker', () => {
     expect(setActiveGrandClient).toHaveBeenCalledWith({ id: 'gc2', name: 'Grand Client Two' });
   });
 
-  it('AC: hidden for a Client with zero Grand Clients (graceful empty handling)', () => {
-    useAuthMock.mockReturnValue({ role: 'client' });
+  it('AC: hidden for the Account role with zero Grand Clients (graceful empty handling)', () => {
+    useAuthMock.mockReturnValue({ role: 'account' });
     useTenantMock.mockReturnValue({
       options: [],
       activeGrandClient: null,

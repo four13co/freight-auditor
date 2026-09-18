@@ -30,7 +30,7 @@ describe('RequireRole', () => {
   });
 
   it("redirects home when the user's role doesn't match", () => {
-    useAuthMock.mockReturnValue({ role: 'client', isLoading: false });
+    useAuthMock.mockReturnValue({ role: 'account', isLoading: false });
     renderAt('/employee-only');
     expect(screen.getByText('home')).toBeInTheDocument();
   });

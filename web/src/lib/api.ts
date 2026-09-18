@@ -71,7 +71,7 @@ export function getOwnClientId(): string | null {
  * isInternal===true means an app_user.is_internal analyst; otherwise role
  * is the backend's portal membership role (currently 'client_viewer' /
  * 'client_admin' -- see the Uncertainties note in this PR's body about the
- * gap between that vocabulary and this item's employee/client/grand_client/
+ * gap between that vocabulary and this item's employee/account/grand_client/
  * vendor role model).
  *
  * Fails closed the same way fetchAndStoreClientId does: an unresolved
@@ -523,7 +523,7 @@ export async function fetchPortalMembers(): Promise<PortalMember[]> {
  * (registerClientAdminAuthPreHandler); a client_viewer's attempt 403s and
  * this surfaces that error via the same {ok:false, error} shape as every
  * other write in this file, rather than trying to pre-guess the caller's
- * own role client-side (AuthUser.role is the coarse 'client' bucket only --
+ * own role client-side (AuthUser.role is the coarse 'account' bucket only --
  * see the role-vocab-gap note in auth-provider.tsx).
  */
 export async function updatePortalMemberRole(

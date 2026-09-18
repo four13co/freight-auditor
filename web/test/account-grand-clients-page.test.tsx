@@ -1,7 +1,7 @@
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
-import GrandClientsPage from '@/pages/client/GrandClientsPage';
+import GrandClientsPage from '@/pages/account/GrandClientsPage';
 
 /** Fresh own-client-id per test, same convention as employee-grand-clients-page.test.tsx: avoids cross-test pollution of the shared in-memory store. */
 let ownClientId = '';

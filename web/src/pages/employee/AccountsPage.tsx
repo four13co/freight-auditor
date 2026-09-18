@@ -18,7 +18,7 @@ import { countScopedEntities } from '@/lib/in-memory-hierarchy-store';
 import { createClient, fetchTenantSummaries, updateClient, type TenantSummary } from '@/lib/api';
 import { useTenant } from '@/providers/TenantProvider';
 
-function ClientFormDialog({
+function AccountFormDialog({
   open,
   onOpenChange,
   initial,
@@ -48,9 +48,9 @@ function ClientFormDialog({
       <DialogContent>
         <form onSubmit={handleSubmit}>
           <DialogHeader>
-            <DialogTitle>{initial ? 'Edit client' : 'Create client'}</DialogTitle>
+            <DialogTitle>{initial ? 'Edit account' : 'Create account'}</DialogTitle>
             <DialogDescription>
-              {initial ? 'Update this client&apos;s name.' : 'Adds a new client tenant.'}
+              {initial ? 'Update this account&apos;s name.' : 'Adds a new account tenant.'}
             </DialogDescription>
           </DialogHeader>
           <div className="flex flex-col gap-4 py-4">
@@ -70,7 +70,7 @@ function ClientFormDialog({
   );
 }
 
-export default function ClientsPage() {
+export default function AccountsPage() {
   const navigate = useNavigate();
   const { setActiveClient } = useTenant();
   const [clients, setClients] = useState<TenantSummary[]>([]);
@@ -90,7 +90,7 @@ export default function ClientsPage() {
 
   function goToGrandClients(client: TenantSummary) {
     setActiveClient({ id: client.id, name: client.name });
-    navigate('/employee/clients/grand-clients');
+    navigate('/employee/accounts/grand-clients');
   }
 
   async function handleDisableToggle(client: TenantSummary) {
@@ -99,14 +99,14 @@ export default function ClientsPage() {
       toast.error(result.error);
       return;
     }
-    toast.success(client.isActive ? 'Client disabled.' : 'Client enabled.');
+    toast.success(client.isActive ? 'Account disabled.' : 'Account enabled.');
     load();
   }
 
   const columns: DataTableColumn<TenantSummary>[] = [
     {
       key: 'name',
-      header: 'Client name',
+      header: 'Account name',
       sortValue: (c) => c.name,
       render: (c) => (
         <button type="button" className="font-medium hover:underline" onClick={() => goToGrandClients(c)}>
@@ -154,21 +154,21 @@ export default function ClientsPage() {
   return (
     <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold tracking-tight">Clients</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">Accounts</h1>
       </div>
 
       <DataTable
         rows={clients}
         columns={columns}
         getRowId={(c) => c.id}
-        searchPlaceholder="Search clients…"
+        searchPlaceholder="Search accounts…"
         searchPredicate={(c, q) => c.name.toLowerCase().includes(q.toLowerCase())}
-        toolbarEnd={<Button onClick={() => setCreateOpen(true)}>Create client</Button>}
+        toolbarEnd={<Button onClick={() => setCreateOpen(true)}>Create account</Button>}
         isLoading={isLoading}
-        emptyState="No clients match this search."
+        emptyState="No accounts match this search."
       />
 
-      <ClientFormDialog
+      <AccountFormDialog
         open={createOpen}
         onOpenChange={setCreateOpen}
         onSubmit={async (name) => {
@@ -177,13 +177,13 @@ export default function ClientsPage() {
             toast.error(result.error);
             return;
           }
-          toast.success('Client created.');
+          toast.success('Account created.');
           setCreateOpen(false);
           load();
         }}
       />
 
-      <ClientFormDialog
+      <AccountFormDialog
         open={editing !== null}
         onOpenChange={(open) => !open && setEditing(null)}
         initial={editing ? { name: editing.name } : undefined}
@@ -194,7 +194,7 @@ export default function ClientsPage() {
             toast.error(result.error);
             return;
           }
-          toast.success('Client updated.');
+          toast.success('Account updated.');
           setEditing(null);
           load();
         }}

@@ -80,11 +80,11 @@ describe('LoginPage', () => {
     await waitFor(() => expect(navigateMock).toHaveBeenCalledWith('/employee/home', { replace: true }));
   });
 
-  it('AC: a successful login redirects to the client home page', async () => {
+  it('AC: a successful login redirects to the account home page', async () => {
     const state = setupAuth();
     state.login = vi.fn().mockImplementation(async () => {
       state.isAuthenticated = true;
-      state.role = 'client';
+      state.role = 'account';
       return { error: null };
     });
     renderLoginPage();
@@ -93,7 +93,7 @@ describe('LoginPage', () => {
     await userEvent.type(screen.getByLabelText('Password'), 'password123');
     await userEvent.click(screen.getByRole('button', { name: /sign in/i }));
 
-    await waitFor(() => expect(navigateMock).toHaveBeenCalledWith('/client/home', { replace: true }));
+    await waitFor(() => expect(navigateMock).toHaveBeenCalledWith('/account/home', { replace: true }));
   });
 
   it('AC: invalid credentials display an inline error and do not redirect', async () => {

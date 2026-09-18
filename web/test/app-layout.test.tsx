@@ -24,13 +24,13 @@ const baseUser = {
   clientName: null,
 };
 
-function renderLayout(path = '/employee/clients') {
+function renderLayout(path = '/employee/accounts') {
   return render(
     <MemoryRouter initialEntries={[path]}>
       <TooltipProvider>
         <Routes>
           <Route element={<AppLayout />}>
-            <Route path="/employee/clients" element={<div>Clients page</div>} />
+            <Route path="/employee/accounts" element={<div>Accounts page</div>} />
           </Route>
         </Routes>
       </TooltipProvider>
@@ -49,11 +49,11 @@ describe('AppLayout', () => {
     renderLayout();
 
     expect(screen.getByRole('navigation', { name: 'Main navigation' })).toBeInTheDocument();
-    expect(screen.getByText('Clients page')).toBeInTheDocument();
+    expect(screen.getByText('Accounts page')).toBeInTheDocument();
     expect(screen.getByText('Freight Auditor')).toBeInTheDocument();
     const nav = screen.getByRole('navigation', { name: 'Main navigation' });
-    expect(within(nav).getByRole('link', { name: 'Clients' })).toBeInTheDocument();
-    expect(screen.getByRole('navigation', { name: 'breadcrumb' })).toHaveTextContent('Clients');
+    expect(within(nav).getByRole('link', { name: 'Accounts' })).toBeInTheDocument();
+    expect(screen.getByRole('navigation', { name: 'breadcrumb' })).toHaveTextContent('Accounts');
   });
 
   it("AC: the header's user menu trigger is wired to the signed-in user", () => {

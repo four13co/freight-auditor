@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
-import GrandClientFileDropPage from '@/pages/client/GrandClientFileDropPage';
+import GrandClientFileDropPage from '@/pages/account/GrandClientFileDropPage';
 
 let nextId = 0;
 function freshGrandClient() {

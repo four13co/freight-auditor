@@ -21,19 +21,20 @@ const TenantContext = createContext<TenantContextValue | undefined>(undefined);
 
 /**
  * 86e3a6rak. Employee switches between every Client (GET
- * /api/internal/tenants). Client switches between their own Grand Clients,
- * sourced from `in-memory-hierarchy-store.ts` (no real `grand_client`
- * backend concept exists yet -- Bridge approved this stand-in 2026-09-17,
- * tracked separately under 86e3a76bz) scoped by the Client's own id
- * (`CLIENT_ID_STORAGE_KEY`, the same id `authHeaders()` already sends).
- * Grand Client/Vendor have no tenant to switch between, so `options` stays
- * empty for them and TenantPicker renders nothing -- both AC "hidden for
- * roles that don't need it" and the "no tenants" graceful-handling case,
- * by construction.
+ * /api/internal/tenants). The Account role switches between their own Grand
+ * Clients, sourced from `in-memory-hierarchy-store.ts` (no real
+ * `grand_client` backend concept exists yet -- Bridge approved this stand-in
+ * 2026-09-17, tracked separately under 86e3a76bz) scoped by the tenant's own
+ * client id (`CLIENT_ID_STORAGE_KEY`, the same id `authHeaders()` already
+ * sends -- this is the Client tenant entity's id, unrelated to the 'account'
+ * role rename per 86e3anfun). Grand Client/Vendor have no tenant to switch
+ * between, so `options` stays empty for them and TenantPicker renders
+ * nothing -- both AC "hidden for roles that don't need it" and the "no
+ * tenants" graceful-handling case, by construction.
  *
  * `activeGrandClient`/`setActiveGrandClient` also serves the Employee's own
  * hierarchy drill-down (GrandClientsPage -> VendorsPage): an ad-hoc,
- * unpersisted selection unrelated to the Client role's own persisted pick
+ * unpersisted selection unrelated to the Account role's own persisted pick
  * below -- only one of the two is ever live in a given session.
  */
 export function TenantProvider({ children }: { children: React.ReactNode }) {
@@ -65,7 +66,7 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
   }, [role]);
 
   const ownClientScopeKey = useMemo(() => {
-    if (role !== 'client') return null;
+    if (role !== 'account') return null;
     const ownClientId = sessionStorage.getItem(CLIENT_ID_STORAGE_KEY);
     return ownClientId ? `client:${ownClientId}` : null;
   }, [role]);
@@ -77,7 +78,7 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
     [ownGrandClients],
   );
 
-  const options = role === 'employee' ? employeeOptions : role === 'client' ? clientGrandClientOptions : [];
+  const options = role === 'employee' ? employeeOptions : role === 'account' ? clientGrandClientOptions : [];
 
   const activeClient = useMemo(
     () => employeeOptions.find((t) => t.id === activeClientId) ?? (employeeOptions[0] ?? null),
@@ -89,7 +90,7 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
     [clientGrandClientOptions, activeGrandClientId],
   );
 
-  const activeGrandClient = role === 'client' ? clientActiveGrandClient : employeeDrillDownGrandClient;
+  const activeGrandClient = role === 'account' ? clientActiveGrandClient : employeeDrillDownGrandClient;
 
   const value = useMemo<TenantContextValue>(
     () => ({
@@ -99,7 +100,7 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
       activeGrandClient,
       setActiveClient: (tenant) => setActiveClientId(tenant?.id ?? null),
       setActiveGrandClient: (tenant) => {
-        if (role === 'client') {
+        if (role === 'account') {
           setActiveGrandClientId(tenant?.id ?? null);
         } else {
           setEmployeeDrillDownGrandClient(tenant);

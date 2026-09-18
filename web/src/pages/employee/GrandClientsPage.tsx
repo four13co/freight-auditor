@@ -79,7 +79,7 @@ export default function GrandClientsPage() {
 
   function goToVendors(entity: ScopedEntity) {
     setActiveGrandClient({ id: entity.id, name: entity.name });
-    navigate('/employee/clients/grand-clients/vendors');
+    navigate('/employee/accounts/grand-clients/vendors');
   }
 
   const columns: DataTableColumn<ScopedEntity>[] = [

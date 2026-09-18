@@ -2,7 +2,7 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import ClientsPage from '@/pages/employee/ClientsPage';
+import AccountsPage from '@/pages/employee/AccountsPage';
 
 const fetchTenantSummariesMock = vi.fn();
 const createClientMock = vi.fn();
@@ -38,31 +38,31 @@ beforeEach(() => {
 function renderPage() {
   return render(
     <MemoryRouter>
-      <ClientsPage />
+      <AccountsPage />
     </MemoryRouter>,
   );
 }
 
-describe('ClientsPage', () => {
-  it('AC: table loads clients with pagination', async () => {
+describe('AccountsPage', () => {
+  it('AC: table loads accounts with pagination', async () => {
     renderPage();
     await waitFor(() => expect(screen.getByText('Acme Freight')).toBeInTheDocument());
     expect(screen.getByText('Beacon Logistics')).toBeInTheDocument();
   });
 
-  it('AC: create client flow works via the API', async () => {
+  it('AC: create account flow works via the API', async () => {
     const user = userEvent.setup();
     renderPage();
     await waitFor(() => expect(screen.getByText('Acme Freight')).toBeInTheDocument());
 
-    await user.click(screen.getByRole('button', { name: 'Create client' }));
+    await user.click(screen.getByRole('button', { name: 'Create account' }));
     await user.type(screen.getByLabelText('Name'), 'New Co');
     await user.click(screen.getByRole('button', { name: 'Create' }));
 
     await waitFor(() => expect(createClientMock).toHaveBeenCalledWith({ name: 'New Co' }));
   });
 
-  it('AC: edit client flow works via the API', async () => {
+  it('AC: edit account flow works via the API', async () => {
     const user = userEvent.setup();
     renderPage();
     await waitFor(() => expect(screen.getByText('Acme Freight')).toBeInTheDocument());

@@ -8,11 +8,11 @@ import {
 } from '@/lib/api';
 import { devHeaderPathActive } from '@/lib/dev-auth';
 
-export type AppRole = 'employee' | 'client' | 'grand_client' | 'vendor';
+export type AppRole = 'employee' | 'account' | 'grand_client' | 'vendor';
 
 /**
  * 86e3a6r65: where each role lands after login. Only 'employee' and
- * 'client' are reachable today (mapActorToRole's stopgap below); the other
+ * 'account' are reachable today (mapActorToRole's stopgap below); the other
  * two entries are forward-declared for when the role-vocabulary gap closes
  * and are otherwise dead branches. The routes themselves don't exist until
  * 86e3a6r8z (app shell) and the per-role home-screen tasks land -- same
@@ -21,7 +21,7 @@ export type AppRole = 'employee' | 'client' | 'grand_client' | 'vendor';
  */
 export const ROLE_HOME_PATH: Record<AppRole, string> = {
   employee: '/employee/home',
-  client: '/client/home',
+  account: '/account/home',
   grand_client: '/grand-client/home',
   vendor: '/vendor/home',
 };
@@ -51,11 +51,11 @@ interface AuthContextValue {
 /**
  * Backend membership roles (client_viewer/client_admin, per
  * src/server/auth-routes.ts) don't yet distinguish grand_client/vendor from
- * this item's four-role model -- every non-internal actor maps to 'client'
+ * this item's four-role model -- every non-internal actor maps to 'account'
  * until the backend exposes that distinction. See this PR's Uncertainties.
  */
 function mapActorToRole(ctx: ActorContext): AppRole {
-  return ctx.isInternal ? 'employee' : 'client';
+  return ctx.isInternal ? 'employee' : 'account';
 }
 
 const DEV_USER: AuthUser = {

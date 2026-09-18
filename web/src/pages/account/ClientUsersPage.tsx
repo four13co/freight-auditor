@@ -12,7 +12,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { DataTable, type DataTableColumn } from '@/components/data-table/DataTable';
-import { GrandClientSelector } from '@/components/GrandClientSelector';
+import { ClientSelector } from '@/components/ClientSelector';
 import { useScopedUsers, type ScopedUser } from '@/lib/in-memory-hierarchy-store';
 import { useTenant } from '@/providers/TenantProvider';
 
@@ -21,7 +21,7 @@ const ROLE_LABELS: Record<string, string> = {
   admin: 'Admin',
 };
 
-function GrandClientUserFormDialog({
+function ClientUserFormDialog({
   open,
   onOpenChange,
   initial,
@@ -97,16 +97,16 @@ function GrandClientUserFormDialog({
 }
 
 /**
- * 86e3a6rh4: users this client manages on behalf of a selected Grand Client.
- * No backend concept of a Grand-Client-scoped user exists (same gap as
- * Grand Client/Vendor entities themselves -- PR #406's Uncertainties), so
- * this routes through the shared in-memory-hierarchy-store's ScopedUser
- * (Bridge decision on 86e3a6r3b: one shared store, no per-screen mocks),
- * scoped by `grandClientUsers:<grandClientId>`.
+ * 86e3a6rh4: users this account manages on behalf of a selected Client. No
+ * backend concept of a Client-scoped user exists (same gap as Client/Vendor
+ * entities themselves -- PR #406's Uncertainties), so this routes through
+ * the shared in-memory-hierarchy-store's ScopedUser (Bridge decision on
+ * 86e3a6r3b: one shared store, no per-screen mocks), scoped by
+ * `clientUsers:<clientId>`.
  */
-export default function GrandClientUsersPage() {
+export default function ClientUsersPage() {
   const { activeGrandClient } = useTenant();
-  const scopeKey = activeGrandClient ? `grandClientUsers:${activeGrandClient.id}` : null;
+  const scopeKey = activeGrandClient ? `clientUsers:${activeGrandClient.id}` : null;
   const { users, create, update, toggleStatus, remove } = useScopedUsers(scopeKey);
   const [createOpen, setCreateOpen] = useState(false);
   const [editing, setEditing] = useState<ScopedUser | null>(null);
@@ -114,7 +114,7 @@ export default function GrandClientUsersPage() {
   const columns: DataTableColumn<ScopedUser>[] = [
     { key: 'name', header: 'Name', sortValue: (u) => u.name, render: (u) => u.name },
     { key: 'email', header: 'Email', sortValue: (u) => u.email, render: (u) => u.email },
-    { key: 'grandClient', header: 'Grand Client', render: () => activeGrandClient?.name ?? '—' },
+    { key: 'client', header: 'Client', render: () => activeGrandClient?.name ?? '—' },
     { key: 'role', header: 'Role', sortValue: (u) => u.role, render: (u) => ROLE_LABELS[u.role] ?? u.role },
     {
       key: 'status',
@@ -145,15 +145,15 @@ export default function GrandClientUsersPage() {
   return (
     <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold tracking-tight">Users (Grand Client)</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">Users (Client)</h1>
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
-        <GrandClientSelector />
+        <ClientSelector />
       </div>
 
       {!activeGrandClient ? (
-        <p className="text-sm text-muted-foreground">Select a Grand Client to view its users.</p>
+        <p className="text-sm text-muted-foreground">Select a Client to view its users.</p>
       ) : (
         <>
           <DataTable
@@ -166,7 +166,7 @@ export default function GrandClientUsersPage() {
             emptyState={`No users yet for ${activeGrandClient.name}.`}
           />
 
-          <GrandClientUserFormDialog
+          <ClientUserFormDialog
             open={createOpen}
             onOpenChange={setCreateOpen}
             onSubmit={(name, email, role) => {
@@ -175,7 +175,7 @@ export default function GrandClientUsersPage() {
             }}
           />
 
-          <GrandClientUserFormDialog
+          <ClientUserFormDialog
             open={editing !== null}
             onOpenChange={(open) => !open && setEditing(null)}
             initial={editing ? { name: editing.name, email: editing.email, role: editing.role } : undefined}

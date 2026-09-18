@@ -12,7 +12,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { DataTable, type DataTableColumn } from '@/components/data-table/DataTable';
-import { GrandClientSelector } from '@/components/GrandClientSelector';
+import { ClientSelector } from '@/components/ClientSelector';
 import { useScopedEntities, useScopedUsers, type ScopedUser } from '@/lib/in-memory-hierarchy-store';
 import { useTenant } from '@/providers/TenantProvider';
 
@@ -103,18 +103,17 @@ function VendorUserFormDialog({
 }
 
 /**
- * 86e3a6rhj: vendor users this client manages on behalf of a selected Grand
- * Client's vendors. Same shared-store approach as GrandClientUsersPage
+ * 86e3a6rhj: vendor users this account manages on behalf of a selected
+ * Client's vendors. Same shared-store approach as ClientUsersPage
  * (86e3a6rh4): no backend concept exists, so this routes through
- * ScopedUser, scoped by `vendorUsers:<grandClientId>`. The vendor picker
- * itself reads the real Vendor entities already created under
- * `grandClient:<grandClientId>` (Employee's VendorsPage / this epic's
- * eventual Client Grand Client Vendors screen both write into that same
- * scope) rather than a separate vendor list.
+ * ScopedUser, scoped by `vendorUsers:<clientId>`. The vendor picker itself
+ * reads the real Vendor entities already created under `client:<clientId>`
+ * (Employee's VendorsPage / this epic's eventual Client Vendors screen both
+ * write into that same scope) rather than a separate vendor list.
  */
 export default function VendorUsersPage() {
   const { activeGrandClient } = useTenant();
-  const vendorScopeKey = activeGrandClient ? `grandClient:${activeGrandClient.id}` : null;
+  const vendorScopeKey = activeGrandClient ? `client:${activeGrandClient.id}` : null;
   const { entities: vendors } = useScopedEntities(vendorScopeKey);
   const userScopeKey = activeGrandClient ? `vendorUsers:${activeGrandClient.id}` : null;
   const { users, create, update, toggleStatus, remove } = useScopedUsers(userScopeKey);
@@ -133,7 +132,7 @@ export default function VendorUsersPage() {
     { key: 'name', header: 'Name', sortValue: (u) => u.name, render: (u) => u.name },
     { key: 'email', header: 'Email', sortValue: (u) => u.email, render: (u) => u.email },
     { key: 'vendor', header: 'Vendor', sortValue: (u) => u.vendorName ?? '', render: (u) => u.vendorName ?? '—' },
-    { key: 'grandClient', header: 'Grand Client', render: () => activeGrandClient?.name ?? '—' },
+    { key: 'grandClient', header: 'Client', render: () => activeGrandClient?.name ?? '—' },
     {
       key: 'status',
       header: 'Status',
@@ -166,7 +165,7 @@ export default function VendorUsersPage() {
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
-        <GrandClientSelector />
+        <ClientSelector />
         {activeGrandClient && (
           <select
             aria-label="Filter by vendor"
@@ -185,7 +184,7 @@ export default function VendorUsersPage() {
       </div>
 
       {!activeGrandClient ? (
-        <p className="text-sm text-muted-foreground">Select a Grand Client to view its vendor users.</p>
+        <p className="text-sm text-muted-foreground">Select a Client to view its vendor users.</p>
       ) : (
         <>
           <DataTable

@@ -15,7 +15,7 @@ import { DataTable, type DataTableColumn } from '@/components/data-table/DataTab
 import { countScopedEntities, useScopedEntities, type ScopedEntity } from '@/lib/in-memory-hierarchy-store';
 import { getOwnClientId } from '@/lib/api';
 
-function GrandClientFormDialog({
+function ClientFormDialog({
   open,
   onOpenChange,
   initial,
@@ -42,7 +42,7 @@ function GrandClientFormDialog({
           }}
         >
           <DialogHeader>
-            <DialogTitle>{initial ? 'Edit Grand Client' : 'Create Grand Client'}</DialogTitle>
+            <DialogTitle>{initial ? 'Edit Client' : 'Create Client'}</DialogTitle>
             <DialogDescription>
               In-memory for now — see this PR&apos;s Uncertainties for why there&apos;s no backend yet.
             </DialogDescription>
@@ -63,20 +63,20 @@ function GrandClientFormDialog({
 }
 
 /**
- * 86e3a6rhv: this client's own Grand Client entities. Mirrors Employee's
- * GrandClientsPage (86e3a6ren) but without the Client parent level (this
- * page's own scope IS the client, implicitly -- no client-picker needed).
+ * 86e3a6rhv: this account's own Client entities. Mirrors Employee's
+ * ClientsPage (86e3a6ren) but without the Account parent level (this
+ * page's own scope IS the account, implicitly -- no account-picker needed).
  * Same shared in-memory-hierarchy-store scope key, `client:<id>`, as
- * Employee's page writes into -- Employee managing this client's Grand
- * Clients on their behalf and this client managing their own see the exact
- * same list, by construction of the one-shared-store decision.
+ * Employee's page writes into -- Employee managing this account's Clients
+ * on their behalf and this account managing their own see the exact same
+ * list, by construction of the one-shared-store decision.
  *
- * No "View Vendors" row action here (unlike Employee's GrandClientsPage):
- * the Client nav has no Vendors *entity* page (only a Vendor *users* page,
+ * No "View Vendors" row action here (unlike Employee's ClientsPage): the
+ * Account nav has no Vendors *entity* page (only a Vendor *users* page,
  * 86e3a6rhj, which reads Vendor entities Employee's flow creates under this
- * same `grandClient:<id>` scope) -- see this PR's Uncertainties.
+ * same `client:<id>` scope) -- see this PR's Uncertainties.
  */
-export default function GrandClientsPage() {
+export default function ClientsPage() {
   const ownClientId = getOwnClientId();
   const scopeKey = ownClientId ? `client:${ownClientId}` : null;
   const { entities, create, update, toggleStatus } = useScopedEntities(scopeKey);
@@ -84,7 +84,7 @@ export default function GrandClientsPage() {
   const [editing, setEditing] = useState<ScopedEntity | null>(null);
 
   const columns: DataTableColumn<ScopedEntity>[] = [
-    { key: 'name', header: 'Grand Client name', sortValue: (e) => e.name, render: (e) => e.name },
+    { key: 'name', header: 'Client name', sortValue: (e) => e.name, render: (e) => e.name },
     {
       key: 'status',
       header: 'Status',
@@ -94,8 +94,8 @@ export default function GrandClientsPage() {
     {
       key: 'vendors',
       header: 'Vendor count',
-      sortValue: (e) => countScopedEntities(`grandClient:${e.id}`),
-      render: (e) => countScopedEntities(`grandClient:${e.id}`),
+      sortValue: (e) => countScopedEntities(`client:${e.id}`),
+      render: (e) => countScopedEntities(`client:${e.id}`),
     },
     {
       key: 'created',
@@ -122,20 +122,20 @@ export default function GrandClientsPage() {
   return (
     <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold tracking-tight">Grand Clients</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">Clients</h1>
       </div>
 
       <DataTable
         rows={entities}
         columns={columns}
         getRowId={(e) => e.id}
-        searchPlaceholder="Search Grand Clients…"
+        searchPlaceholder="Search Clients…"
         searchPredicate={(e, q) => e.name.toLowerCase().includes(q.toLowerCase())}
-        toolbarEnd={<Button onClick={() => setCreateOpen(true)}>Create Grand Client</Button>}
-        emptyState="No Grand Clients yet."
+        toolbarEnd={<Button onClick={() => setCreateOpen(true)}>Create Client</Button>}
+        emptyState="No Clients yet."
       />
 
-      <GrandClientFormDialog
+      <ClientFormDialog
         open={createOpen}
         onOpenChange={setCreateOpen}
         onSubmit={(name) => {
@@ -144,7 +144,7 @@ export default function GrandClientsPage() {
         }}
       />
 
-      <GrandClientFormDialog
+      <ClientFormDialog
         open={editing !== null}
         onOpenChange={(open) => !open && setEditing(null)}
         initial={editing ? { name: editing.name } : undefined}

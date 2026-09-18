@@ -1,13 +1,13 @@
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
-import GrandClientUsersPage from '@/pages/account/GrandClientUsersPage';
+import ClientUsersPage from '@/pages/account/ClientUsersPage';
 
 /** Same fresh-scope-per-test convention as employee-vendors-page.test.tsx: avoids cross-test pollution of the shared in-memory store. */
 let nextId = 0;
-function freshGrandClient() {
+function freshClient() {
   nextId += 1;
-  return { id: `gc-user-page-${nextId}`, name: `Grand Client ${nextId}` };
+  return { id: `gc-user-page-${nextId}`, name: `Client ${nextId}` };
 }
 
 let activeGrandClient: { id: string; name: string } | null = null;
@@ -16,24 +16,24 @@ vi.mock('@/providers/TenantProvider', () => ({
 }));
 
 function renderPage() {
-  return render(<GrandClientUsersPage />);
+  return render(<ClientUsersPage />);
 }
 
-describe('GrandClientUsersPage', () => {
-  it('AC: prompts to select a Grand Client when none is active', () => {
+describe('ClientUsersPage', () => {
+  it('AC: prompts to select a Client when none is active', () => {
     activeGrandClient = null;
     renderPage();
-    expect(screen.getByText('Select a Grand Client to view its users.')).toBeInTheDocument();
+    expect(screen.getByText('Select a Client to view its users.')).toBeInTheDocument();
   });
 
-  it('AC: empty state when a Grand Client has no users yet', () => {
-    activeGrandClient = freshGrandClient();
+  it('AC: empty state when a Client has no users yet', () => {
+    activeGrandClient = freshClient();
     renderPage();
     expect(screen.getByText(new RegExp(`No users yet for ${activeGrandClient.name}`))).toBeInTheDocument();
   });
 
   it('AC: invite/edit flows work end-to-end', async () => {
-    activeGrandClient = freshGrandClient();
+    activeGrandClient = freshClient();
     const user = userEvent.setup();
     renderPage();
 
@@ -57,12 +57,12 @@ describe('GrandClientUsersPage', () => {
     expect(screen.getByText('Dana Renamed')).toBeInTheDocument();
   });
 
-  it('AC: users shown are scoped to the selected Grand Client only', async () => {
-    const gcA = freshGrandClient();
-    const gcB = freshGrandClient();
+  it('AC: users shown are scoped to the selected Client only', async () => {
+    const clientA = freshClient();
+    const clientB = freshClient();
     const user = userEvent.setup();
 
-    activeGrandClient = gcA;
+    activeGrandClient = clientA;
     const { unmount } = renderPage();
     await user.click(screen.getByRole('button', { name: 'Invite user' }));
     await user.type(screen.getByLabelText('Name'), 'Only Under A');
@@ -70,14 +70,14 @@ describe('GrandClientUsersPage', () => {
     await user.click(screen.getByRole('button', { name: 'Invite' }));
     unmount();
 
-    activeGrandClient = gcB;
+    activeGrandClient = clientB;
     renderPage();
 
     expect(screen.queryByText('Only Under A')).not.toBeInTheDocument();
   });
 
   it('AC: row actions (Disable/Enable, Remove) work correctly', async () => {
-    activeGrandClient = freshGrandClient();
+    activeGrandClient = freshClient();
     const user = userEvent.setup();
     renderPage();
     await user.click(screen.getByRole('button', { name: 'Invite user' }));

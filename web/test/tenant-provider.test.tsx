@@ -50,7 +50,7 @@ describe('TenantProvider', () => {
     await waitFor(() => expect(screen.getByText('Acme Freight')).toBeInTheDocument());
   });
 
-  it('AC: graceful handling of the Account role with zero Grand Clients in the store', async () => {
+  it('AC: graceful handling of the Account role with zero Clients in the store', async () => {
     useAuthMock.mockReturnValue({ role: 'account' });
     sessionStorage.setItem('freight-auditor:client-id', 'own-client-1');
     useScopedEntitiesMock.mockReturnValue({ entities: [] });
@@ -65,15 +65,15 @@ describe('TenantProvider', () => {
     expect(screen.getByText('none (0)')).toBeInTheDocument();
   });
 
-  it('AC: Account role selects from their own Grand Clients, sourced from in-memory-hierarchy-store scoped to their own client id, first pre-selected', async () => {
+  it('AC: Account role selects from their own Clients, sourced from in-memory-hierarchy-store scoped to their own client id, first pre-selected', async () => {
     useAuthMock.mockReturnValue({ role: 'account' });
     sessionStorage.setItem('freight-auditor:client-id', 'own-client-1');
     useScopedEntitiesMock.mockImplementation((scopeKey: string | null) => {
       expect(scopeKey).toBe('client:own-client-1');
       return {
         entities: [
-          { id: 'gc1', name: 'Grand Client One', status: 'active', createdAt: '2026-01-01' },
-          { id: 'gc2', name: 'Grand Client Two', status: 'active', createdAt: '2026-01-02' },
+          { id: 'gc1', name: 'Client One', status: 'active', createdAt: '2026-01-01' },
+          { id: 'gc2', name: 'Client Two', status: 'active', createdAt: '2026-01-02' },
         ],
       };
     });
@@ -84,16 +84,16 @@ describe('TenantProvider', () => {
       </TenantProvider>,
     );
 
-    await waitFor(() => expect(screen.getByText('Grand Client One')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('Client One')).toBeInTheDocument());
   });
 
-  it("AC: the Account role's Grand Client selection persists across a remount (localStorage)", async () => {
+  it("AC: the Account role's Client selection persists across a remount (localStorage)", async () => {
     useAuthMock.mockReturnValue({ role: 'account' });
     sessionStorage.setItem('freight-auditor:client-id', 'own-client-1');
     useScopedEntitiesMock.mockReturnValue({
       entities: [
-        { id: 'gc1', name: 'Grand Client One', status: 'active', createdAt: '2026-01-01' },
-        { id: 'gc2', name: 'Grand Client Two', status: 'active', createdAt: '2026-01-02' },
+        { id: 'gc1', name: 'Client One', status: 'active', createdAt: '2026-01-01' },
+        { id: 'gc2', name: 'Client Two', status: 'active', createdAt: '2026-01-02' },
       ],
     });
     localStorage.setItem('freight-auditor:active-grand-client', JSON.stringify('gc2'));
@@ -104,7 +104,7 @@ describe('TenantProvider', () => {
       </TenantProvider>,
     );
 
-    await waitFor(() => expect(screen.getByText('Grand Client Two')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('Client Two')).toBeInTheDocument());
   });
 
   it('AC: selection persists across a remount (localStorage)', async () => {

@@ -1,12 +1,12 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
-import GrandClientFileDropPage from '@/pages/account/GrandClientFileDropPage';
+import ClientFileDropPage from '@/pages/account/ClientFileDropPage';
 
 let nextId = 0;
-function freshGrandClient() {
+function freshClient() {
   nextId += 1;
-  return { id: `gc-file-drop-${nextId}`, name: `Grand Client ${nextId}` };
+  return { id: `gc-file-drop-${nextId}`, name: `Client ${nextId}` };
 }
 
 let activeGrandClient: { id: string; name: string } | null = null;
@@ -23,17 +23,17 @@ async function waitForUploadsToSettle() {
   await waitFor(() => expect(screen.queryAllByRole('progressbar')).toHaveLength(0), { timeout: 3000 });
 }
 
-describe('GrandClientFileDropPage', () => {
-  it('AC: prompts to select a Grand Client when none is active', () => {
+describe('ClientFileDropPage', () => {
+  it('AC: prompts to select a Client when none is active', () => {
     activeGrandClient = null;
-    render(<GrandClientFileDropPage />);
-    expect(screen.getByText('Select a Grand Client to drop files for it.')).toBeInTheDocument();
+    render(<ClientFileDropPage />);
+    expect(screen.getByText('Select a Client to drop files for it.')).toBeInTheDocument();
   });
 
   it('AC: click-to-upload works, shows a progress bar, then lands in the recent uploads table', async () => {
-    activeGrandClient = freshGrandClient();
+    activeGrandClient = freshClient();
     const user = userEvent.setup();
-    render(<GrandClientFileDropPage />);
+    render(<ClientFileDropPage />);
 
     const file = makeFile('invoice.pdf', 'application/pdf');
     await user.upload(screen.getByLabelText('Choose files to upload'), file);
@@ -46,8 +46,8 @@ describe('GrandClientFileDropPage', () => {
   });
 
   it('AC: drag-and-drop works and multiple files are supported', async () => {
-    activeGrandClient = freshGrandClient();
-    render(<GrandClientFileDropPage />);
+    activeGrandClient = freshClient();
+    render(<ClientFileDropPage />);
 
     const dropzone = screen.getByRole('button', { name: 'Drop files here or click to upload' });
     const files = [makeFile('rates.csv', 'text/csv'), makeFile('contract.pdf', 'application/pdf')];
@@ -60,9 +60,9 @@ describe('GrandClientFileDropPage', () => {
   });
 
   it('AC: client-side file type validation rejects unsupported types', async () => {
-    activeGrandClient = freshGrandClient();
+    activeGrandClient = freshClient();
     const user = userEvent.setup();
-    render(<GrandClientFileDropPage />);
+    render(<ClientFileDropPage />);
 
     const file = makeFile('malware.exe', 'application/octet-stream');
     await user.upload(screen.getByLabelText('Choose files to upload'), file);
@@ -71,27 +71,27 @@ describe('GrandClientFileDropPage', () => {
     expect(screen.getByText(`No uploads yet for ${activeGrandClient.name}.`)).toBeInTheDocument();
   });
 
-  it('AC: uploads shown are scoped to the selected Grand Client only', async () => {
-    const gcA = freshGrandClient();
-    const gcB = freshGrandClient();
+  it('AC: uploads shown are scoped to the selected Client only', async () => {
+    const gcA = freshClient();
+    const gcB = freshClient();
     const user = userEvent.setup();
 
     activeGrandClient = gcA;
-    const { unmount } = render(<GrandClientFileDropPage />);
+    const { unmount } = render(<ClientFileDropPage />);
     await user.upload(screen.getByLabelText('Choose files to upload'), makeFile('only-a.pdf', 'application/pdf'));
     await waitForUploadsToSettle();
     expect(screen.getByText('only-a.pdf').closest('tr')).not.toBeNull();
     unmount();
 
     activeGrandClient = gcB;
-    render(<GrandClientFileDropPage />);
+    render(<ClientFileDropPage />);
     expect(screen.queryByText('only-a.pdf')).not.toBeInTheDocument();
   });
 
   it('AC: Delete row action removes a still-pending (submitted) upload', async () => {
-    activeGrandClient = freshGrandClient();
+    activeGrandClient = freshClient();
     const user = userEvent.setup();
-    render(<GrandClientFileDropPage />);
+    render(<ClientFileDropPage />);
 
     await user.upload(screen.getByLabelText('Choose files to upload'), makeFile('invoice.pdf', 'application/pdf'));
     await waitForUploadsToSettle();
@@ -103,8 +103,8 @@ describe('GrandClientFileDropPage', () => {
   });
 
   it('AC: responsive table scrolls horizontally (overflow-x-auto container)', () => {
-    activeGrandClient = freshGrandClient();
-    const { container } = render(<GrandClientFileDropPage />);
+    activeGrandClient = freshClient();
+    const { container } = render(<ClientFileDropPage />);
     expect(container.querySelector('[data-slot="table-container"].overflow-x-auto')).not.toBeNull();
   });
 });

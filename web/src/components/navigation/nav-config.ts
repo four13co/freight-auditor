@@ -35,11 +35,11 @@ export const NAV_CONFIG: Record<AppRole, NavItem[]> = {
       icon: Building2,
       children: [
         {
-          label: 'Grand Clients',
-          path: '/employee/accounts/grand-clients',
+          label: 'Clients',
+          path: '/employee/accounts/clients',
           icon: Building,
           children: [
-            { label: 'Vendors', path: '/employee/accounts/grand-clients/vendors', icon: Truck },
+            { label: 'Vendors', path: '/employee/accounts/clients/vendors', icon: Truck },
           ],
         },
       ],
@@ -49,11 +49,11 @@ export const NAV_CONFIG: Record<AppRole, NavItem[]> = {
   account: [
     { label: 'Home', path: '/account/home', icon: Home, isHome: true },
     { label: 'Users', path: '/account/users', icon: Users },
-    { label: 'Users (Grand Client)', path: '/account/grand-client-users', icon: Users },
+    { label: 'Users (Client)', path: '/account/client-users', icon: Users },
     { label: 'Users (Vendor)', path: '/account/vendor-users', icon: Users },
-    { label: 'Grand Clients', path: '/account/grand-clients', icon: Building },
-    { label: 'Grand Client File Drop', path: '/account/grand-clients/file-drop', icon: Upload },
-    { label: 'Grand Client Rules & Rates', path: '/account/grand-clients/rules-rates', icon: FileSliders },
+    { label: 'Clients', path: '/account/clients', icon: Building },
+    { label: 'Client File Drop', path: '/account/clients/file-drop', icon: Upload },
+    { label: 'Client Rules & Rates', path: '/account/clients/rules-rates', icon: FileSliders },
   ],
   grand_client: [
     { label: 'Home', path: '/grand-client/home', icon: Home, isHome: true },

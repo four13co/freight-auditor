@@ -2,7 +2,7 @@ import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import GrandClientsPage from '@/pages/employee/GrandClientsPage';
+import ClientsPage from '@/pages/employee/ClientsPage';
 
 /**
  * The in-memory hierarchy store (in-memory-hierarchy-store.ts) is a
@@ -32,12 +32,12 @@ beforeEach(() => {
 function renderPage() {
   return render(
     <MemoryRouter>
-      <GrandClientsPage />
+      <ClientsPage />
     </MemoryRouter>,
   );
 }
 
-describe('GrandClientsPage', () => {
+describe('ClientsPage', () => {
   it('AC: prompts for a client when none is selected', () => {
     activeClient = null;
     renderPage();
@@ -47,8 +47,8 @@ describe('GrandClientsPage', () => {
   it('AC: shows an empty state scoped to the active client', () => {
     activeClient = freshClient();
     renderPage();
-    expect(screen.getByText(`Grand Clients for ${activeClient.name}`)).toBeInTheDocument();
-    expect(screen.getByText(new RegExp(`No grand clients yet for ${activeClient.name}`))).toBeInTheDocument();
+    expect(screen.getByText(`Clients for ${activeClient.name}`)).toBeInTheDocument();
+    expect(screen.getByText(new RegExp(`No clients yet for ${activeClient.name}`))).toBeInTheDocument();
   });
 
   it('AC: CRUD operations work end-to-end (create, edit)', async () => {
@@ -56,7 +56,7 @@ describe('GrandClientsPage', () => {
     const user = userEvent.setup();
     renderPage();
 
-    await user.click(screen.getByRole('button', { name: 'Create Grand Client' }));
+    await user.click(screen.getByRole('button', { name: 'Create Client' }));
     await user.type(screen.getByLabelText('Name'), 'Northwind Region');
     await user.click(screen.getByRole('button', { name: 'Create' }));
 
@@ -73,14 +73,14 @@ describe('GrandClientsPage', () => {
     expect(screen.getByText('Northwind')).toBeInTheDocument();
   });
 
-  it('AC: Grand Clients shown are scoped to the selected Client only', async () => {
+  it('AC: Clients shown are scoped to the selected (Account-tenant) Client only', async () => {
     const clientA = freshClient();
     const clientB = freshClient();
     const user = userEvent.setup();
 
     activeClient = clientA;
     const { unmount } = renderPage();
-    await user.click(screen.getByRole('button', { name: 'Create Grand Client' }));
+    await user.click(screen.getByRole('button', { name: 'Create Client' }));
     await user.type(screen.getByLabelText('Name'), 'Only Under A');
     await user.click(screen.getByRole('button', { name: 'Create' }));
     expect(screen.getByText('Only Under A')).toBeInTheDocument();
@@ -90,14 +90,14 @@ describe('GrandClientsPage', () => {
     renderPage();
 
     expect(screen.queryByText('Only Under A')).not.toBeInTheDocument();
-    expect(screen.getByText(new RegExp(`No grand clients yet for ${clientB.name}`))).toBeInTheDocument();
+    expect(screen.getByText(new RegExp(`No clients yet for ${clientB.name}`))).toBeInTheDocument();
   });
 
-  it('AC: navigation to Vendors carries the Grand Client context', async () => {
+  it('AC: navigation to Vendors carries the Client context', async () => {
     activeClient = freshClient();
     const user = userEvent.setup();
     renderPage();
-    await user.click(screen.getByRole('button', { name: 'Create Grand Client' }));
+    await user.click(screen.getByRole('button', { name: 'Create Client' }));
     await user.type(screen.getByLabelText('Name'), 'Northwind Region');
     await user.click(screen.getByRole('button', { name: 'Create' }));
 
@@ -108,11 +108,11 @@ describe('GrandClientsPage', () => {
     );
   });
 
-  it('AC: Disable/Enable toggles this Grand Client status', async () => {
+  it('AC: Disable/Enable toggles this Client status', async () => {
     activeClient = freshClient();
     const user = userEvent.setup();
     renderPage();
-    await user.click(screen.getByRole('button', { name: 'Create Grand Client' }));
+    await user.click(screen.getByRole('button', { name: 'Create Client' }));
     await user.type(screen.getByLabelText('Name'), 'Northwind Region');
     await user.click(screen.getByRole('button', { name: 'Create' }));
 

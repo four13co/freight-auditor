@@ -9,8 +9,8 @@ import { useAuth } from '@/providers/auth-provider';
 
 /**
  * 86e3a6rak. Employee picks any Client; the Account role picks their own
- * Grand Client (see TenantProvider's doc comment on the
- * in-memory-hierarchy-store.ts stand-in). Grand Client/Vendor render
+ * (in-memory, per 86e3anfux) Client (see TenantProvider's doc comment on
+ * the in-memory-hierarchy-store.ts stand-in). Grand Client/Vendor render
  * nothing, which also covers the "0 tenants" case by construction.
  */
 export function TenantPicker() {
@@ -27,7 +27,11 @@ export function TenantPicker() {
 
   const active = isEmployee ? activeClient : activeGrandClient;
   const setActive = isEmployee ? setActiveClient : setActiveGrandClient;
-  const label = isEmployee ? 'client' : 'grand client';
+  // Both branches read "client" now: Employee picks a real backend Client
+  // tenant, the Account role picks their own in-memory Client entity
+  // (renamed from "Grand Client" by 86e3anfux) -- two different data
+  // sources sharing one label. See this PR's Ambiguity notes.
+  const label = 'client';
 
   return (
     <Popover open={open} onOpenChange={setOpen}>

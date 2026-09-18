@@ -4,7 +4,7 @@ import { Upload } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { DataTable, type DataTableColumn } from '@/components/data-table/DataTable';
-import { GrandClientSelector } from '@/components/GrandClientSelector';
+import { ClientSelector } from '@/components/ClientSelector';
 import { useScopedFiles, type ScopedFile } from '@/lib/in-memory-hierarchy-store';
 import { useTenant } from '@/providers/TenantProvider';
 
@@ -42,20 +42,20 @@ interface InFlightUpload {
 }
 
 /**
- * 86e3a6rj8: file drop for a selected Grand Client's documents. No real
- * upload route reaches here -- portal-contract-upload-routes.ts's pattern
- * (the closest real precedent) needs a real client_id and an existing
- * contract/carrier row to attach to; Grand Client is neither, same gap as
- * every other Grand-Client-scoped screen. Routes through the shared
+ * 86e3a6rj8: file drop for a selected Client's documents. No real upload
+ * route reaches here -- portal-contract-upload-routes.ts's pattern (the
+ * closest real precedent) needs a real client_id and an existing
+ * contract/carrier row to attach to; this Client entity is neither, same
+ * gap as every other Client-scoped screen. Routes through the shared
  * in-memory-hierarchy-store's new ScopedFile (Bridge decision on
- * 86e3a6r3b), scoped by `grandClientFiles:<id>`. "Upload" here means
- * accepting the file into that in-memory roster (an "uploading" progress
- * animation, then a `submitted` row) rather than a real network transfer --
- * disclosed in this PR's Uncertainties.
+ * 86e3a6r3b), scoped by `clientFiles:<id>`. "Upload" here means accepting
+ * the file into that in-memory roster (an "uploading" progress animation,
+ * then a `submitted` row) rather than a real network transfer -- disclosed
+ * in this PR's Uncertainties.
  */
-export default function GrandClientFileDropPage() {
+export default function ClientFileDropPage() {
   const { activeGrandClient } = useTenant();
-  const scopeKey = activeGrandClient ? `grandClientFiles:${activeGrandClient.id}` : null;
+  const scopeKey = activeGrandClient ? `clientFiles:${activeGrandClient.id}` : null;
   const { files, submit, remove } = useScopedFiles(scopeKey);
   const [inFlight, setInFlight] = useState<InFlightUpload[]>([]);
   const [isDragOver, setIsDragOver] = useState(false);
@@ -128,15 +128,15 @@ export default function GrandClientFileDropPage() {
   return (
     <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold tracking-tight">Grand Client File Drop</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">Client File Drop</h1>
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
-        <GrandClientSelector />
+        <ClientSelector />
       </div>
 
       {!activeGrandClient ? (
-        <p className="text-sm text-muted-foreground">Select a Grand Client to drop files for it.</p>
+        <p className="text-sm text-muted-foreground">Select a Client to drop files for it.</p>
       ) : (
         <>
           <div

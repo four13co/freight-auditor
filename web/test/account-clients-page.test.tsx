@@ -1,9 +1,9 @@
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
-import GrandClientsPage from '@/pages/account/GrandClientsPage';
+import ClientsPage from '@/pages/account/ClientsPage';
 
-/** Fresh own-client-id per test, same convention as employee-grand-clients-page.test.tsx: avoids cross-test pollution of the shared in-memory store. */
+/** Fresh own-client-id per test, same convention as employee-clients-page.test.tsx: avoids cross-test pollution of the shared in-memory store. */
 let ownClientId = '';
 vi.mock('@/lib/api', async () => {
   const actual = await vi.importActual<typeof import('@/lib/api')>('@/lib/api');
@@ -19,19 +19,19 @@ function freshOwnClientId() {
   return `client-page-own-${nextId}`;
 }
 
-describe('client GrandClientsPage', () => {
-  it('AC: empty state when this client has no Grand Clients yet', () => {
+describe('account ClientsPage', () => {
+  it('AC: empty state when this account has no Clients yet', () => {
     ownClientId = freshOwnClientId();
-    render(<GrandClientsPage />);
-    expect(screen.getByText('No Grand Clients yet.')).toBeInTheDocument();
+    render(<ClientsPage />);
+    expect(screen.getByText('No Clients yet.')).toBeInTheDocument();
   });
 
   it('AC: CRUD operations work via the store (create, edit)', async () => {
     ownClientId = freshOwnClientId();
     const user = userEvent.setup();
-    render(<GrandClientsPage />);
+    render(<ClientsPage />);
 
-    await user.click(screen.getByRole('button', { name: 'Create Grand Client' }));
+    await user.click(screen.getByRole('button', { name: 'Create Client' }));
     await user.type(screen.getByLabelText('Name'), 'Northwind Region');
     await user.click(screen.getByRole('button', { name: 'Create' }));
 
@@ -48,31 +48,31 @@ describe('client GrandClientsPage', () => {
     expect(screen.getByText('Northwind')).toBeInTheDocument();
   });
 
-  it("AC: shows only this client's own Grand Clients", async () => {
+  it("AC: shows only this account's own Clients", async () => {
     const clientA = freshOwnClientId();
     const clientB = freshOwnClientId();
     const user = userEvent.setup();
 
     ownClientId = clientA;
-    const { unmount } = render(<GrandClientsPage />);
-    await user.click(screen.getByRole('button', { name: 'Create Grand Client' }));
+    const { unmount } = render(<ClientsPage />);
+    await user.click(screen.getByRole('button', { name: 'Create Client' }));
     await user.type(screen.getByLabelText('Name'), 'Only Under A');
     await user.click(screen.getByRole('button', { name: 'Create' }));
     expect(screen.getByText('Only Under A')).toBeInTheDocument();
     unmount();
 
     ownClientId = clientB;
-    render(<GrandClientsPage />);
+    render(<ClientsPage />);
 
     expect(screen.queryByText('Only Under A')).not.toBeInTheDocument();
-    expect(screen.getByText('No Grand Clients yet.')).toBeInTheDocument();
+    expect(screen.getByText('No Clients yet.')).toBeInTheDocument();
   });
 
-  it('AC: Disable/Enable toggles this Grand Client status', async () => {
+  it('AC: Disable/Enable toggles this Client status', async () => {
     ownClientId = freshOwnClientId();
     const user = userEvent.setup();
-    render(<GrandClientsPage />);
-    await user.click(screen.getByRole('button', { name: 'Create Grand Client' }));
+    render(<ClientsPage />);
+    await user.click(screen.getByRole('button', { name: 'Create Client' }));
     await user.type(screen.getByLabelText('Name'), 'Northwind Region');
     await user.click(screen.getByRole('button', { name: 'Create' }));
 

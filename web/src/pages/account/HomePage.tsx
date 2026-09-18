@@ -40,9 +40,9 @@ interface QuickAction {
  * PR's Uncertainties.
  */
 const QUICK_ACTIONS: QuickAction[] = [
-  { label: 'View Grand Clients', to: '/account/grand-clients', icon: Building2 },
+  { label: 'View Clients', to: '/account/clients', icon: Building2 },
   { label: 'Manage users', to: '/account/users', icon: ClipboardList },
-  { label: 'Rules & rates', to: '/account/grand-clients/rules-rates', icon: FileSliders },
+  { label: 'Rules & rates', to: '/account/clients/rules-rates', icon: FileSliders },
 ];
 
 function greeting(date: Date): string {
@@ -56,8 +56,8 @@ function greeting(date: Date): string {
  * 86e3a6rgc: mirrors Employee's HomePage (86e3a6rbe) -- reuses its
  * `SummaryCard`/`ActivityFeed` components directly, per this task's own AC
  * ("Reuses shared components from Employee home screen where possible") --
- * scoped to the signed-in tenant's own data. "Active Grand Clients count" is
- * the one metric this page can source for real (the shared in-memory-
+ * scoped to the signed-in tenant's own data. "Active Clients count" is the
+ * one metric this page can source for real (the shared in-memory-
  * hierarchy-store's `client:<ownClientId>` scope, same data 86e3a6rhv's page
  * manages); the other three metrics have no backend for either role yet,
  * so they stay placeholder, same as Employee's page.
@@ -73,7 +73,7 @@ export default function AccountHomePage() {
   const firstName = user?.name?.split(' ')[0] ?? user?.email ?? 'there';
 
   const summaryMetrics = [
-    { label: 'Active Grand Clients', value: String(activeGrandClientCount), icon: Building2 },
+    { label: 'Active Clients', value: String(activeGrandClientCount), icon: Building2 },
     { label: 'Transactions pending review', value: '8', icon: ClipboardList },
     { label: 'Recent findings/variances', value: '3', icon: FileWarning },
     { label: 'Open disputes', value: '1', icon: ShieldAlert },

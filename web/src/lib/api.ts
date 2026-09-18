@@ -171,9 +171,9 @@ export async function updateClient(
  * Backs the Employee-only branch of TenantPicker (86e3a6rak): GET
  * /api/internal/tenants is gated to internal actors server-side, so this
  * always 403s for a non-employee caller -- TenantProvider only calls it
- * when role === 'employee'. There is no equivalent "my Grand Clients"
- * endpoint yet (the backend has no Grand Client concept at all -- see this
- * PR's Uncertainties), so Client/Grand Client/Vendor have nothing to fetch.
+ * when role === 'employee'. There is no equivalent "my Clients" endpoint yet
+ * (the backend has no in-memory-Client-entity concept at all -- see this
+ * PR's Uncertainties), so Account/Client/Vendor have nothing to fetch.
  */
 export async function fetchClients(): Promise<TenantOption[]> {
   try {

@@ -5,7 +5,7 @@ import { resolveAuthorizedTenantContext } from '../../src/modules/findings/tenan
 
 /**
  * 86e2u7j2y ACs, against real Postgres (membership carries FORCE RLS keyed on
- * client_id -- migration 0009 -- so this can't be proven with a mocked client;
+ * account_id -- migration 0009 -- so this can't be proven with a mocked client;
  * see test/unit/tenant-auth.test.ts for the header-gating unit coverage).
  *
  * 86e2v1bbr gated the header path behind DEV_AUTH_HEADERS (unset = a
@@ -31,10 +31,10 @@ describe('resolveAuthorizedTenantContext (DB)', () => {
     pool = getPool();
     const owner = await pool.connect();
     try {
-      const c = await owner.query(`INSERT INTO client (name, slug) VALUES ('TA', $1) RETURNING id`, [tag]);
+      const c = await owner.query(`INSERT INTO account (name, slug) VALUES ('TA', $1) RETURNING id`, [tag]);
       clientId = c.rows[0].id;
       const c2 = await owner.query(
-        `INSERT INTO client (name, slug, is_active) VALUES ('TA-inactive', $1, false) RETURNING id`,
+        `INSERT INTO account (name, slug, is_active) VALUES ('TA-inactive', $1, false) RETURNING id`,
         [`${tag}-inactive`],
       );
       inactiveClientId = c2.rows[0].id;
@@ -49,11 +49,11 @@ describe('resolveAuthorizedTenantContext (DB)', () => {
       userIdWithDisabledMembership = u4.rows[0].id;
 
       await owner.query(
-        `INSERT INTO membership (user_id, client_id, role) VALUES ($1, $2, 'client_viewer')`,
+        `INSERT INTO membership (user_id, account_id, role) VALUES ($1, $2, 'account_viewer')`,
         [userIdWithMembership, clientId],
       );
       await owner.query(
-        `INSERT INTO membership (user_id, client_id, role) VALUES ($1, $2, 'client_viewer')`,
+        `INSERT INTO membership (user_id, account_id, role) VALUES ($1, $2, 'account_viewer')`,
         [userIdOnInactiveClient, inactiveClientId],
       );
       // 86e3a75mf: a membership row that is itself disabled (is_active =
@@ -61,7 +61,7 @@ describe('resolveAuthorizedTenantContext (DB)', () => {
       // from the userIdOnInactiveClient fixture above, which disables the
       // whole tenant instead.
       await owner.query(
-        `INSERT INTO membership (user_id, client_id, role, is_active) VALUES ($1, $2, 'client_viewer', false)`,
+        `INSERT INTO membership (user_id, account_id, role, is_active) VALUES ($1, $2, 'account_viewer', false)`,
         [userIdWithDisabledMembership, clientId],
       );
     } finally {
@@ -74,11 +74,11 @@ describe('resolveAuthorizedTenantContext (DB)', () => {
     else process.env.DEV_AUTH_HEADERS = originalFlag;
     const owner = await pool.connect();
     try {
-      await owner.query(`DELETE FROM membership WHERE client_id = ANY($1)`, [[clientId, inactiveClientId]]);
+      await owner.query(`DELETE FROM membership WHERE account_id = ANY($1)`, [[clientId, inactiveClientId]]);
       await owner.query(`DELETE FROM app_user WHERE id = ANY($1)`, [
         [userIdWithMembership, userIdWithoutMembership, userIdOnInactiveClient, userIdWithDisabledMembership],
       ]);
-      await owner.query(`DELETE FROM client WHERE id = ANY($1)`, [[clientId, inactiveClientId]]);
+      await owner.query(`DELETE FROM account WHERE id = ANY($1)`, [[clientId, inactiveClientId]]);
     } finally {
       owner.release();
     }

@@ -22,7 +22,7 @@ import { readHeader, toFetchHeaders, lookupIsInternal } from './tenant-auth.js';
  *
  * This resolver only grants { internal: true } (no clientIds at all) on
  * whichever route(s) opt into THIS preHandler -- currently just
- * portfolio-routes.ts's GET /api/portfolio/cross-client-recovery. No
+ * portfolio-routes.ts's GET /api/portfolio/cross-account-recovery. No
  * existing route's auth behavior changes. `toFetchHeaders`, `readHeader`,
  * and `lookupIsInternal` (86e39qa6r) are imported (not duplicated) from
  * tenant-auth.ts -- all three are pure lookups/header-format helpers with

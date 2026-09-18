@@ -13,24 +13,24 @@ describe.skipIf(!DATABASE_URL)('getPortfolioReconciliation (database)', () => {
   const deniedClaimId = randomUUID();
 
   beforeAll(async () => {
-    await getPool().query(`INSERT INTO client (id, name, slug) VALUES ($1, 'Portfolio Reconciliation Co', $2)`, [clientId, `portfolio-reconciliation-${clientId}`]);
+    await getPool().query(`INSERT INTO account (id, name, slug) VALUES ($1, 'Portfolio Reconciliation Co', $2)`, [clientId, `portfolio-reconciliation-${clientId}`]);
     await getPool().query(
-      `INSERT INTO claim (id, client_id, amount_claimed, currency, status)
+      `INSERT INTO claim (id, account_id, amount_claimed, currency, status)
        VALUES ($1, $2, '400.0000', 'USD', 'open'),
               ($3, $2, '600.0000', 'USD', 'recovered'),
               ($4, $2, '250.0000', 'USD', 'denied')`,
       [openClaimId, clientId, recoveredClaimId, deniedClaimId],
     );
     await getPool().query(
-      `INSERT INTO recovery_event (client_id, claim_id, amount_recovered, currency) VALUES ($1, $2, '600.0000', 'USD')`,
+      `INSERT INTO recovery_event (account_id, claim_id, amount_recovered, currency) VALUES ($1, $2, '600.0000', 'USD')`,
       [clientId, recoveredClaimId],
     );
   });
 
   afterAll(async () => {
-    await getPool().query(`DELETE FROM recovery_event WHERE client_id = $1`, [clientId]);
-    await getPool().query(`DELETE FROM claim WHERE client_id = $1`, [clientId]);
-    await getPool().query(`DELETE FROM client WHERE id = $1`, [clientId]);
+    await getPool().query(`DELETE FROM recovery_event WHERE account_id = $1`, [clientId]);
+    await getPool().query(`DELETE FROM claim WHERE account_id = $1`, [clientId]);
+    await getPool().query(`DELETE FROM account WHERE id = $1`, [clientId]);
     await closePool();
   });
 
@@ -52,22 +52,22 @@ describe.skipIf(!DATABASE_URL)('getPortfolioReconciliation (database)', () => {
 
   it('returns an empty array for a tenant with no claims', async () => {
     const otherClientId = randomUUID();
-    await getPool().query(`INSERT INTO client (id, name, slug) VALUES ($1, 'Empty Portfolio Co', $2)`, [otherClientId, `empty-portfolio-${otherClientId}`]);
+    await getPool().query(`INSERT INTO account (id, name, slug) VALUES ($1, 'Empty Portfolio Co', $2)`, [otherClientId, `empty-portfolio-${otherClientId}`]);
     try {
       const result = await withTenantTx({ clientIds: [otherClientId], internal: false }, (client) =>
         getPortfolioReconciliation(client, { clientId: otherClientId }));
       expect(result).toEqual([]);
     } finally {
-      await getPool().query(`DELETE FROM client WHERE id = $1`, [otherClientId]);
+      await getPool().query(`DELETE FROM account WHERE id = $1`, [otherClientId]);
     }
   });
 
   it('CRITICAL: a second tenant\'s claims never leak into this tenant\'s report (RLS-scoped, regular tenant transaction)', async () => {
     const otherClientId = randomUUID();
     const otherClaimId = randomUUID();
-    await getPool().query(`INSERT INTO client (id, name, slug) VALUES ($1, 'Other Portfolio Reconciliation Co', $2)`, [otherClientId, `other-portfolio-reconciliation-${otherClientId}`]);
+    await getPool().query(`INSERT INTO account (id, name, slug) VALUES ($1, 'Other Portfolio Reconciliation Co', $2)`, [otherClientId, `other-portfolio-reconciliation-${otherClientId}`]);
     await getPool().query(
-      `INSERT INTO claim (id, client_id, amount_claimed, currency, status) VALUES ($1, $2, '9999.0000', 'CAD', 'open')`,
+      `INSERT INTO claim (id, account_id, amount_claimed, currency, status) VALUES ($1, $2, '9999.0000', 'CAD', 'open')`,
       [otherClaimId, otherClientId],
     );
     try {
@@ -78,20 +78,20 @@ describe.skipIf(!DATABASE_URL)('getPortfolioReconciliation (database)', () => {
       expect(result.every((b) => b.claimed !== '9999.0000')).toBe(true);
     } finally {
       await getPool().query(`DELETE FROM claim WHERE id = $1`, [otherClaimId]);
-      await getPool().query(`DELETE FROM client WHERE id = $1`, [otherClientId]);
+      await getPool().query(`DELETE FROM account WHERE id = $1`, [otherClientId]);
     }
   });
 
   it('CRITICAL: RLS still blocks the read even if a caller passes another tenant\'s clientId while scoped to this tenant\'s transaction', async () => {
     const otherClientId = randomUUID();
     const otherClaimId = randomUUID();
-    await getPool().query(`INSERT INTO client (id, name, slug) VALUES ($1, 'Mismatched Param Co', $2)`, [otherClientId, `mismatched-param-${otherClientId}`]);
+    await getPool().query(`INSERT INTO account (id, name, slug) VALUES ($1, 'Mismatched Param Co', $2)`, [otherClientId, `mismatched-param-${otherClientId}`]);
     await getPool().query(
-      `INSERT INTO claim (id, client_id, amount_claimed, currency, status) VALUES ($1, $2, '7777.0000', 'EUR', 'open')`,
+      `INSERT INTO claim (id, account_id, amount_claimed, currency, status) VALUES ($1, $2, '7777.0000', 'EUR', 'open')`,
       [otherClaimId, otherClientId],
     );
     try {
-      // Scoped to `clientId`'s transaction (RLS restricts to app_current_client_ids()),
+      // Scoped to `clientId`'s transaction (RLS restricts to app_current_account_ids()),
       // but the `clientId` query param names the OTHER tenant -- the intersection is
       // empty, proving RLS is the actual safety mechanism, not the query param.
       const result = await withTenantTx({ clientIds: [clientId], internal: false }, (client) =>
@@ -99,7 +99,7 @@ describe.skipIf(!DATABASE_URL)('getPortfolioReconciliation (database)', () => {
       expect(result).toEqual([]);
     } finally {
       await getPool().query(`DELETE FROM claim WHERE id = $1`, [otherClaimId]);
-      await getPool().query(`DELETE FROM client WHERE id = $1`, [otherClientId]);
+      await getPool().query(`DELETE FROM account WHERE id = $1`, [otherClientId]);
     }
   });
 });

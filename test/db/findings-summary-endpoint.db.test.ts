@@ -34,31 +34,31 @@ describe('GET /api/findings/summary (DB, e2e)', () => {
     pool = getPool();
     const owner = await pool.connect();
     try {
-      const c = await owner.query(`INSERT INTO client (name, slug) VALUES ('FSE', $1) RETURNING id`, [tag]);
+      const c = await owner.query(`INSERT INTO account (name, slug) VALUES ('FSE', $1) RETURNING id`, [tag]);
       clientId = c.rows[0].id;
       const u = await owner.query(`INSERT INTO app_user (email) VALUES ($1) RETURNING id`, [`${tag}@example.com`]);
       userId = u.rows[0].id;
       await owner.query(
-        `INSERT INTO membership (user_id, client_id, role) VALUES ($1, $2, 'client_viewer')`,
+        `INSERT INTO membership (user_id, account_id, role) VALUES ($1, $2, 'account_viewer')`,
         [userId, clientId],
       );
       const carrier = await owner.query(`INSERT INTO carrier (name) VALUES ($1) RETURNING id`, [`Carrier-${tag}`]);
       await withTenantTx({ clientIds: [clientId], internal: true }, async (c2) => {
         const inv = await c2.query(
-          `INSERT INTO invoice (client_id, carrier_id, transaction_set, invoice_number, currency, parser_version)
+          `INSERT INTO invoice (account_id, carrier_id, transaction_set, invoice_number, currency, parser_version)
            VALUES ($1, $2, '210', $3, 'USD', 'test') RETURNING id`,
           [clientId, carrier.rows[0].id, `INV-${tag}`],
         );
         const run = await c2.query(
-          `INSERT INTO audit_run (client_id, invoice_id, engine_spec_version, outcome) VALUES ($1, $2, 'test', 'SCORED') RETURNING id`,
+          `INSERT INTO audit_run (account_id, invoice_id, engine_spec_version, outcome) VALUES ($1, $2, 'test', 'SCORED') RETURNING id`,
           [clientId, inv.rows[0].id],
         );
         const cf = await c2.query(
-          `INSERT INTO charge_fact (client_id, invoice_id, code, category, amount, currency) VALUES ($1, $2, '400', 'LINEHAUL', '1000.0000', 'USD') RETURNING id`,
+          `INSERT INTO charge_fact (account_id, invoice_id, code, category, amount, currency) VALUES ($1, $2, '400', 'LINEHAUL', '1000.0000', 'USD') RETURNING id`,
           [clientId, inv.rows[0].id],
         );
         await c2.query(
-          `INSERT INTO variance_finding (client_id, audit_run_id, charge_fact_id, criterion_id, rule_version_id, direction, variance_amount, currency, status, evaluated_expr)
+          `INSERT INTO variance_finding (account_id, audit_run_id, charge_fact_id, criterion_id, rule_version_id, direction, variance_amount, currency, status, evaluated_expr)
            SELECT $1, $2, $3, c.id, rv.id, 'OVERCHARGE', '250.0000', 'USD', 'open', '{}'::jsonb
            FROM criterion c JOIN rule r ON r.slug = 'contract-rate_variance'
            JOIN rule_version rv ON rv.rule_id = r.id
@@ -78,16 +78,16 @@ describe('GET /api/findings/summary (DB, e2e)', () => {
     await app.close();
     const owner = await pool.connect();
     try {
-      await owner.query(`DELETE FROM variance_finding WHERE client_id = $1`, [clientId]);
-      await owner.query(`DELETE FROM charge_fact WHERE client_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM variance_finding WHERE account_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM charge_fact WHERE account_id = $1`, [clientId]);
       // 86e367r9x: persistAuditRun now wires a payment_gate_decision row per run.
-      await owner.query(`DELETE FROM payment_gate_decision WHERE client_id = $1`, [clientId]);
-      await owner.query(`DELETE FROM audit_run WHERE client_id = $1`, [clientId]);
-      await owner.query(`DELETE FROM invoice WHERE client_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM payment_gate_decision WHERE account_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM audit_run WHERE account_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM invoice WHERE account_id = $1`, [clientId]);
       await owner.query(`DELETE FROM carrier WHERE name = $1`, [`Carrier-${tag}`]);
-      await owner.query(`DELETE FROM membership WHERE client_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM membership WHERE account_id = $1`, [clientId]);
       await owner.query(`DELETE FROM app_user WHERE id = $1`, [userId]);
-      await owner.query(`DELETE FROM client WHERE id = $1`, [clientId]);
+      await owner.query(`DELETE FROM account WHERE id = $1`, [clientId]);
     } finally {
       owner.release();
     }

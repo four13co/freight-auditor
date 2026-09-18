@@ -26,7 +26,7 @@ describe('createDisputeFromFindings (DB)', () => {
     await seedCriteria({ client: pool });
     const owner = await pool.connect();
     try {
-      const c = await owner.query(`INSERT INTO client (name, slug) VALUES ('Disp', $1) RETURNING id`, [tag]);
+      const c = await owner.query(`INSERT INTO account (name, slug) VALUES ('Disp', $1) RETURNING id`, [tag]);
       clientId = c.rows[0].id;
       const ca = await owner.query(`INSERT INTO carrier (name) VALUES ($1) RETURNING id`, [`Carrier-A-${tag}`]);
       carrierAId = ca.rows[0].id;
@@ -40,18 +40,18 @@ describe('createDisputeFromFindings (DB)', () => {
   afterAll(async () => {
     const owner = await pool.connect();
     try {
-      await owner.query(`DELETE FROM audit_event WHERE client_id = $1`, [clientId]);
-      await owner.query(`DELETE FROM finding_status_event WHERE client_id = $1`, [clientId]);
-      await owner.query(`DELETE FROM dispute_line WHERE client_id = $1`, [clientId]);
-      await owner.query(`DELETE FROM dispute WHERE client_id = $1`, [clientId]);
-      await owner.query(`DELETE FROM variance_finding WHERE client_id = $1`, [clientId]);
-      await owner.query(`DELETE FROM charge_fact WHERE client_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM audit_event WHERE account_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM finding_status_event WHERE account_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM dispute_line WHERE account_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM dispute WHERE account_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM variance_finding WHERE account_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM charge_fact WHERE account_id = $1`, [clientId]);
       // 86e367r9x: persistAuditRun now wires a payment_gate_decision row per run.
-      await owner.query(`DELETE FROM payment_gate_decision WHERE client_id = $1`, [clientId]);
-      await owner.query(`DELETE FROM audit_run WHERE client_id = $1`, [clientId]);
-      await owner.query(`DELETE FROM invoice WHERE client_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM payment_gate_decision WHERE account_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM audit_run WHERE account_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM invoice WHERE account_id = $1`, [clientId]);
       await owner.query(`DELETE FROM carrier WHERE id IN ($1, $2)`, [carrierAId, carrierBId]);
-      await owner.query(`DELETE FROM client WHERE id = $1`, [clientId]);
+      await owner.query(`DELETE FROM account WHERE id = $1`, [clientId]);
     } finally {
       owner.release();
     }
@@ -63,19 +63,19 @@ describe('createDisputeFromFindings (DB)', () => {
     opts: { carrierId: string; status?: string; variance?: string; currency?: string; direction?: string },
   ): Promise<string> {
     const inv = await client.query(
-      `INSERT INTO invoice (client_id, carrier_id, transaction_set, invoice_number, currency, parser_version)
+      `INSERT INTO invoice (account_id, carrier_id, transaction_set, invoice_number, currency, parser_version)
        VALUES ($1, $2, '210', $3, $4, 'test') RETURNING id`,
       [clientId, opts.carrierId, `INV-${tag}-${Math.random().toString(36).slice(2)}`, opts.currency ?? 'USD'],
     );
     const invoiceId = inv.rows[0].id;
     const run = await client.query(
-      `INSERT INTO audit_run (client_id, invoice_id, engine_spec_version, outcome) VALUES ($1, $2, 'test', 'SCORED') RETURNING id`,
+      `INSERT INTO audit_run (account_id, invoice_id, engine_spec_version, outcome) VALUES ($1, $2, 'test', 'SCORED') RETURNING id`,
       [clientId, invoiceId],
     );
     const auditRunId = run.rows[0].id;
     const vf = await client.query(
       `INSERT INTO variance_finding
-         (client_id, audit_run_id, criterion_id, rule_version_id, direction, variance_amount, currency, status, evaluated_expr)
+         (account_id, audit_run_id, criterion_id, rule_version_id, direction, variance_amount, currency, status, evaluated_expr)
        SELECT $1, $2, c.id, rv.id, $3, $4, $5, $6, '{}'::jsonb
        FROM criterion c JOIN rule r ON r.slug = 'contract-rate_variance'
        JOIN rule_version rv ON rv.rule_id = r.id
@@ -108,10 +108,10 @@ describe('createDisputeFromFindings (DB)', () => {
       const first = await createDisputeFromFindings(c, { clientId, findingIds: [f1] });
       expect(first.disputeId).toBeTruthy();
 
-      const before = await c.query(`SELECT count(*)::int AS n FROM dispute WHERE client_id = $1`, [clientId]);
+      const before = await c.query(`SELECT count(*)::int AS n FROM dispute WHERE account_id = $1`, [clientId]);
       await expect(createDisputeFromFindings(c, { clientId, findingIds: [f1] }))
         .rejects.toBeInstanceOf(DisputableFindingsError);
-      const after = await c.query(`SELECT count(*)::int AS n FROM dispute WHERE client_id = $1`, [clientId]);
+      const after = await c.query(`SELECT count(*)::int AS n FROM dispute WHERE account_id = $1`, [clientId]);
       expect(after.rows[0].n).toBe(before.rows[0].n);
     });
   });
@@ -120,10 +120,10 @@ describe('createDisputeFromFindings (DB)', () => {
     await withTenantTx({ clientIds: [clientId], internal: true }, async (c) => {
       const f1 = await seedFinding(c, { carrierId: carrierAId });
       const f2 = await seedFinding(c, { carrierId: carrierBId });
-      const before = await c.query(`SELECT count(*)::int AS n FROM dispute WHERE client_id = $1`, [clientId]);
+      const before = await c.query(`SELECT count(*)::int AS n FROM dispute WHERE account_id = $1`, [clientId]);
       await expect(createDisputeFromFindings(c, { clientId, findingIds: [f1, f2] }))
         .rejects.toBeInstanceOf(DisputableFindingsError);
-      const after = await c.query(`SELECT count(*)::int AS n FROM dispute WHERE client_id = $1`, [clientId]);
+      const after = await c.query(`SELECT count(*)::int AS n FROM dispute WHERE account_id = $1`, [clientId]);
       expect(after.rows[0].n).toBe(before.rows[0].n);
     });
   });

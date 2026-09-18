@@ -18,36 +18,36 @@ describe('discovery rule proposals (DB)', () => {
 
   beforeAll(async () => {
     pool = makePool();
-    clientId = (await pool.query(`INSERT INTO client(name,slug) VALUES('Discovery',$1) RETURNING id`, [tag])).rows[0].id;
-    otherClientId = (await pool.query(`INSERT INTO client(name,slug) VALUES('Other',$1) RETURNING id`, [`${tag}-other`])).rows[0].id;
+    clientId = (await pool.query(`INSERT INTO account(name,slug) VALUES('Discovery',$1) RETURNING id`, [tag])).rows[0].id;
+    otherClientId = (await pool.query(`INSERT INTO account(name,slug) VALUES('Other',$1) RETURNING id`, [`${tag}-other`])).rows[0].id;
     carrierId = (await pool.query(`INSERT INTO carrier(name) VALUES($1) RETURNING id`, [tag])).rows[0].id;
-    invoiceId = (await pool.query(`INSERT INTO invoice(client_id,carrier_id,transaction_set,invoice_number,currency,parser_version)
+    invoiceId = (await pool.query(`INSERT INTO invoice(account_id,carrier_id,transaction_set,invoice_number,currency,parser_version)
       VALUES($1,$2,'210',$3,'USD','test') RETURNING id`, [clientId, carrierId, `INV-${tag}`])).rows[0].id;
-    auditRunId = (await pool.query(`INSERT INTO audit_run(client_id,invoice_id,engine_spec_version,outcome)
+    auditRunId = (await pool.query(`INSERT INTO audit_run(account_id,invoice_id,engine_spec_version,outcome)
       VALUES($1,$2,'test','DISCOVERY_PENDING') RETURNING id`, [clientId, invoiceId])).rows[0].id;
-    chargeFactId = (await pool.query(`INSERT INTO charge_fact(client_id,invoice_id,code,x12_element,amount,currency)
+    chargeFactId = (await pool.query(`INSERT INTO charge_fact(account_id,invoice_id,code,x12_element,amount,currency)
       VALUES($1,$2,'ZZZ','C302-02',10,'USD') RETURNING id`, [clientId, invoiceId])).rows[0].id;
-    unknownCodeTriggerId = (await pool.query(`INSERT INTO unknown_charge_code_trigger(client_id,audit_run_id,charge_fact_id,source_code,x12_element,detail)
+    unknownCodeTriggerId = (await pool.query(`INSERT INTO unknown_charge_code_trigger(account_id,audit_run_id,charge_fact_id,source_code,x12_element,detail)
       VALUES($1,$2,$3,'ZZZ','C302-02','{}'::jsonb) RETURNING id`, [clientId, auditRunId, chargeFactId])).rows[0].id;
-    coverageMarkerId = (await pool.query(`INSERT INTO coverage_marker(client_id,audit_run_id,charge_index,marker_code,missing_fields)
+    coverageMarkerId = (await pool.query(`INSERT INTO coverage_marker(account_id,audit_run_id,charge_index,marker_code,missing_fields)
       VALUES($1,$2,0,'INCOMPLETE_RATE_BASIS',ARRAY['basis']) RETURNING id`, [clientId, auditRunId])).rows[0].id;
-    suspiciousPassTriggerId = (await pool.query(`INSERT INTO suspicious_pass_trigger(client_id,audit_run_id,coverage_marker_id,marker_code,detail)
+    suspiciousPassTriggerId = (await pool.query(`INSERT INTO suspicious_pass_trigger(account_id,audit_run_id,coverage_marker_id,marker_code,detail)
       VALUES($1,$2,$3,'INCOMPLETE_RATE_BASIS','{}'::jsonb) RETURNING id`, [clientId, auditRunId, coverageMarkerId])).rows[0].id;
   });
 
   afterAll(async () => {
-    await pool.query(`DELETE FROM audit_event WHERE client_id=$1`, [clientId]);
-    await pool.query(`DELETE FROM discovery_rule_proposal WHERE client_id=$1`, [clientId]);
-    await pool.query(`DELETE FROM suspicious_pass_trigger WHERE client_id=$1`, [clientId]);
-    await pool.query(`DELETE FROM coverage_marker WHERE client_id=$1`, [clientId]);
-    await pool.query(`DELETE FROM unknown_charge_code_trigger WHERE client_id=$1`, [clientId]);
-    await pool.query(`DELETE FROM charge_fact WHERE client_id=$1`, [clientId]);
+    await pool.query(`DELETE FROM audit_event WHERE account_id=$1`, [clientId]);
+    await pool.query(`DELETE FROM discovery_rule_proposal WHERE account_id=$1`, [clientId]);
+    await pool.query(`DELETE FROM suspicious_pass_trigger WHERE account_id=$1`, [clientId]);
+    await pool.query(`DELETE FROM coverage_marker WHERE account_id=$1`, [clientId]);
+    await pool.query(`DELETE FROM unknown_charge_code_trigger WHERE account_id=$1`, [clientId]);
+    await pool.query(`DELETE FROM charge_fact WHERE account_id=$1`, [clientId]);
     // 86e367r9x: persistAuditRun now wires a payment_gate_decision row per run.
-    await pool.query(`DELETE FROM payment_gate_decision WHERE client_id=$1`, [clientId]);
-    await pool.query(`DELETE FROM audit_run WHERE client_id=$1`, [clientId]);
-    await pool.query(`DELETE FROM invoice WHERE client_id=$1`, [clientId]);
+    await pool.query(`DELETE FROM payment_gate_decision WHERE account_id=$1`, [clientId]);
+    await pool.query(`DELETE FROM audit_run WHERE account_id=$1`, [clientId]);
+    await pool.query(`DELETE FROM invoice WHERE account_id=$1`, [clientId]);
     await pool.query(`DELETE FROM carrier WHERE id=$1`, [carrierId]);
-    await pool.query(`DELETE FROM client WHERE id IN($1,$2)`, [clientId, otherClientId]);
+    await pool.query(`DELETE FROM account WHERE id IN($1,$2)`, [clientId, otherClientId]);
     await pool.end();
   });
 
@@ -100,7 +100,7 @@ describe('discovery rule proposals (DB)', () => {
     expect(row).toMatchObject({ audit_run_id: auditRunId, suspicious_pass_trigger_id: suspiciousPassTriggerId,
       discovery_trigger_id: null, unknown_charge_code_trigger_id: null, lifecycle_state: 'PROPOSED',
       criterion_key: 'DISCOVERY.PROPOSED.UNKNOWN_CODE_ZZZ', ast_hash: astHash, actor_user_id: null });
-    expect((await pool.query(`SELECT count(*)::int count FROM audit_event WHERE client_id=$1 AND entity='discovery_rule_proposals'
+    expect((await pool.query(`SELECT count(*)::int count FROM audit_event WHERE account_id=$1 AND entity='discovery_rule_proposals'
       AND event='persisted' AND detail->>'providerMessageId'='msg-persist-1'`, [clientId])).rows[0].count).toBe(1);
   });
 

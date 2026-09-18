@@ -65,7 +65,7 @@ const OLD_DEV_USER_ID = '22222222-2222-2222-2222-222222222222';
  *
  * Both the copied column list and the FK-repoint set come from
  * information_schema, not an enumerated list -- this repo has dozens of
- * tables with a client_id/actor_user_id FK, and a hardcoded list would
+ * tables with a account_id/actor_user_id FK, and a hardcoded list would
  * silently miss the next column or table a migration adds.
  *
  * No-ops if the old row doesn't exist (fresh DB -- nothing to reconcile) or
@@ -135,7 +135,7 @@ export async function seedDevTenant({ pool } = {}) {
   const client = pool ?? new pg.Pool({ connectionString: requireDatabaseUrl() });
   try {
     await reconcileSentinelId(client, {
-      table: 'client',
+      table: 'account',
       uniqueColumn: 'slug',
       oldId: OLD_DEV_CLIENT_ID,
       newId: DEV_CLIENT_ID,
@@ -148,7 +148,7 @@ export async function seedDevTenant({ pool } = {}) {
     });
 
     await client.query(
-      `INSERT INTO client (id, name, slug) VALUES ($1, 'Dev Dashboard Client', 'dev-dashboard')
+      `INSERT INTO account (id, name, slug) VALUES ($1, 'Dev Dashboard Client', 'dev-dashboard')
        ON CONFLICT (id) DO NOTHING`,
       [DEV_CLIENT_ID],
     );

@@ -88,9 +88,9 @@ describe('seedDevTenant (DB)', () => {
     const OLD_DEV_CLIENT_ID = '11111111-1111-1111-1111-111111111111';
     const OLD_DEV_USER_ID = '22222222-2222-2222-2222-222222222222';
 
-    await deleteReferencingRows(pool, 'client', DEV_CLIENT_ID);
+    await deleteReferencingRows(pool, 'account', DEV_CLIENT_ID);
     await deleteReferencingRows(pool, 'app_user', DEV_USER_ID);
-    await pool.query(`DELETE FROM client WHERE id = $1`, [DEV_CLIENT_ID]);
+    await pool.query(`DELETE FROM account WHERE id = $1`, [DEV_CLIENT_ID]);
     await pool.query(`DELETE FROM app_user WHERE id = $1`, [DEV_USER_ID]);
 
     // is_active=false and a created_at far in the past on the old rows --
@@ -99,7 +99,7 @@ describe('seedDevTenant (DB)', () => {
     // fixture and reset its age; this is the case that would expose that).
     const OLD_CREATED_AT = '2025-01-01T00:00:00Z';
     await pool.query(
-      `INSERT INTO client (id, name, slug, is_active, created_at) VALUES ($1, 'Dev Dashboard Client', 'dev-dashboard', false, $2)`,
+      `INSERT INTO account (id, name, slug, is_active, created_at) VALUES ($1, 'Dev Dashboard Client', 'dev-dashboard', false, $2)`,
       [OLD_DEV_CLIENT_ID, OLD_CREATED_AT],
     );
     await pool.query(
@@ -108,9 +108,9 @@ describe('seedDevTenant (DB)', () => {
     );
     // A representative referencing row, proving the FK-repoint walk (not
     // just the two parent rows) actually runs -- audit_event carries both a
-    // client_id and an actor_user_id FK on the same row.
+    // account_id and an actor_user_id FK on the same row.
     const event = await pool.query(
-      `INSERT INTO audit_event (client_id, entity, event, actor_kind, actor_user_id)
+      `INSERT INTO audit_event (account_id, entity, event, actor_kind, actor_user_id)
        VALUES ($1, 'test_fixture', 'seed_reconcile_test', 'analyst', $2)
        RETURNING id`,
       [OLD_DEV_CLIENT_ID, OLD_DEV_USER_ID],
@@ -119,13 +119,13 @@ describe('seedDevTenant (DB)', () => {
 
     await seedDevTenant({ pool });
 
-    const oldClient = await pool.query(`SELECT 1 FROM client WHERE id = $1`, [OLD_DEV_CLIENT_ID]);
+    const oldClient = await pool.query(`SELECT 1 FROM account WHERE id = $1`, [OLD_DEV_CLIENT_ID]);
     expect(oldClient.rowCount).toBe(0);
     const oldUser = await pool.query(`SELECT 1 FROM app_user WHERE id = $1`, [OLD_DEV_USER_ID]);
     expect(oldUser.rowCount).toBe(0);
 
     const newClient = await pool.query(
-      `SELECT slug, is_active, created_at FROM client WHERE id = $1`,
+      `SELECT slug, is_active, created_at FROM account WHERE id = $1`,
       [DEV_CLIENT_ID],
     );
     expect(newClient.rows[0]).toMatchObject({ slug: 'dev-dashboard', is_active: false });
@@ -139,17 +139,17 @@ describe('seedDevTenant (DB)', () => {
     expect(newUser.rows[0].created_at.toISOString()).toBe(new Date(OLD_CREATED_AT).toISOString());
 
     const repointedEvent = await pool.query(
-      `SELECT client_id, actor_user_id FROM audit_event WHERE id = $1`,
+      `SELECT account_id, actor_user_id FROM audit_event WHERE id = $1`,
       [eventId],
     );
-    expect(repointedEvent.rows[0]).toMatchObject({ client_id: DEV_CLIENT_ID, actor_user_id: DEV_USER_ID });
+    expect(repointedEvent.rows[0]).toMatchObject({ account_id: DEV_CLIENT_ID, actor_user_id: DEV_USER_ID });
 
     await pool.query(`DELETE FROM audit_event WHERE id = $1`, [eventId]);
     // Restore is_active=true -- every other file sharing this run's DB
     // (e.g. dashboard-auth-headers.db.test.ts) expects an active dev tenant;
     // is_active=false above was this test's own probe value, not the real
     // ambient fixture state other tests depend on.
-    await pool.query(`UPDATE client SET is_active = true WHERE id = $1`, [DEV_CLIENT_ID]);
+    await pool.query(`UPDATE account SET is_active = true WHERE id = $1`, [DEV_CLIENT_ID]);
     await pool.query(`UPDATE app_user SET is_active = true WHERE id = $1`, [DEV_USER_ID]);
   });
 
@@ -167,24 +167,24 @@ describe('seedDevTenant (DB)', () => {
     const tag = `dfr-${Date.now()}`;
 
     const client = await pool.query<{ id: string }>(
-      `INSERT INTO client (name, slug) VALUES ('DFR Transitive Test Client', $1) RETURNING id`,
+      `INSERT INTO account (name, slug) VALUES ('DFR Transitive Test Client', $1) RETURNING id`,
       [tag],
     );
     const clientId = client.rows[0]!.id;
     const carrier = await pool.query<{ id: string }>(`INSERT INTO carrier (name) VALUES ($1) RETURNING id`, [`Carrier-${tag}`]);
     const contract = await pool.query<{ id: string }>(
-      `INSERT INTO contract (client_id, carrier_id, name) VALUES ($1, $2, 'DFR Test Contract') RETURNING id`,
+      `INSERT INTO contract (account_id, carrier_id, name) VALUES ($1, $2, 'DFR Test Contract') RETURNING id`,
       [clientId, carrier.rows[0]!.id],
     );
     const contractId = contract.rows[0]!.id;
     await pool.query(
-      `INSERT INTO contract_version (client_id, contract_id, version_label, valid_from) VALUES ($1, $2, 'v1', '2026-01-01')`,
+      `INSERT INTO contract_version (account_id, contract_id, version_label, valid_from) VALUES ($1, $2, 'v1', '2026-01-01')`,
       [clientId, contractId],
     );
 
     // A thrown FK violation here fails the test directly -- no need for an
     // explicit not.toThrow() wrapper on an async call.
-    await deleteReferencingRows(pool, 'client', clientId);
+    await deleteReferencingRows(pool, 'account', clientId);
 
     const remainingContract = await pool.query(`SELECT 1 FROM contract WHERE id = $1`, [contractId]);
     expect(remainingContract.rowCount).toBe(0);
@@ -194,10 +194,10 @@ describe('seedDevTenant (DB)', () => {
     // deleteReferencingRows only clears what REFERENCES the given id, by
     // contract -- the client row itself is the caller's own responsibility
     // (mirrors the reconciliation test above, which deletes it separately).
-    const remainingClient = await pool.query(`SELECT 1 FROM client WHERE id = $1`, [clientId]);
+    const remainingClient = await pool.query(`SELECT 1 FROM account WHERE id = $1`, [clientId]);
     expect(remainingClient.rowCount).toBe(1);
     await pool.query(`DELETE FROM carrier WHERE id = $1`, [carrier.rows[0]!.id]);
-    await pool.query(`DELETE FROM client WHERE id = $1`, [clientId]);
+    await pool.query(`DELETE FROM account WHERE id = $1`, [clientId]);
   });
 
   it('creates a client + app_user + membership row for the fixed dev IDs', async () => {
@@ -205,12 +205,12 @@ describe('seedDevTenant (DB)', () => {
     await seedDevTenant({ pool });
 
     const membership = await pool.query(
-      `SELECT 1 FROM membership WHERE user_id = $1 AND client_id = $2`,
+      `SELECT 1 FROM membership WHERE user_id = $1 AND account_id = $2`,
       [DEV_USER_ID, DEV_CLIENT_ID],
     );
     expect(membership.rowCount).toBe(1);
 
-    const client = await pool.query(`SELECT 1 FROM client WHERE id = $1`, [DEV_CLIENT_ID]);
+    const client = await pool.query(`SELECT 1 FROM account WHERE id = $1`, [DEV_CLIENT_ID]);
     expect(client.rowCount).toBe(1);
 
     const user = await pool.query(`SELECT 1 FROM app_user WHERE id = $1`, [DEV_USER_ID]);
@@ -223,7 +223,7 @@ describe('seedDevTenant (DB)', () => {
     await seedDevTenant({ pool }); // second run must not throw
 
     const membership = await pool.query(
-      `SELECT count(*) FROM membership WHERE user_id = $1 AND client_id = $2`,
+      `SELECT count(*) FROM membership WHERE user_id = $1 AND account_id = $2`,
       [DEV_USER_ID, DEV_CLIENT_ID],
     );
     expect(Number(membership.rows[0].count)).toBe(1);

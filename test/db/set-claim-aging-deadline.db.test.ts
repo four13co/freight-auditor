@@ -18,9 +18,9 @@ describe('setClaimAgingDeadline (DB)', () => {
     pool = getPool();
     const owner = await pool.connect();
     try {
-      const a = await owner.query(`INSERT INTO client (name, slug) VALUES ('CAD-A', $1) RETURNING id`, [`${tag}-a`]);
+      const a = await owner.query(`INSERT INTO account (name, slug) VALUES ('CAD-A', $1) RETURNING id`, [`${tag}-a`]);
       clientAId = a.rows[0].id;
-      const b = await owner.query(`INSERT INTO client (name, slug) VALUES ('CAD-B', $1) RETURNING id`, [`${tag}-b`]);
+      const b = await owner.query(`INSERT INTO account (name, slug) VALUES ('CAD-B', $1) RETURNING id`, [`${tag}-b`]);
       clientBId = b.rows[0].id;
     } finally {
       owner.release();
@@ -30,8 +30,8 @@ describe('setClaimAgingDeadline (DB)', () => {
   afterAll(async () => {
     const owner = await pool.connect();
     try {
-      await owner.query(`DELETE FROM claim WHERE client_id IN ($1, $2)`, [clientAId, clientBId]);
-      await owner.query(`DELETE FROM client WHERE id IN ($1, $2)`, [clientAId, clientBId]);
+      await owner.query(`DELETE FROM claim WHERE account_id IN ($1, $2)`, [clientAId, clientBId]);
+      await owner.query(`DELETE FROM account WHERE id IN ($1, $2)`, [clientAId, clientBId]);
     } finally {
       owner.release();
     }
@@ -40,7 +40,7 @@ describe('setClaimAgingDeadline (DB)', () => {
 
   async function seedClaim(client: pg.PoolClient, opts: { clientId: string; openedAt?: string }): Promise<string> {
     const { rows } = await client.query<{ id: string }>(
-      `INSERT INTO claim (client_id, amount_claimed, currency, status, opened_at) VALUES ($1, '500.0000', 'USD', 'open', $2) RETURNING id`,
+      `INSERT INTO claim (account_id, amount_claimed, currency, status, opened_at) VALUES ($1, '500.0000', 'USD', 'open', $2) RETURNING id`,
       [opts.clientId, opts.openedAt ?? '2026-01-01T00:00:00Z'],
     );
     return rows[0]!.id;

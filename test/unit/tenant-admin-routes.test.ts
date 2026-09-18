@@ -55,9 +55,9 @@ describe('tenant-admin-routes', () => {
     vi.doUnmock('../../src/modules/identity/tenant-admin-auth.js');
     vi.doUnmock('../../src/db/tenant-context.js');
     vi.doUnmock('../../src/modules/identity/onboarding.js');
-    vi.doUnmock('../../src/modules/identity/list-clients.js');
-    vi.doUnmock('../../src/modules/identity/get-client-detail.js');
-    vi.doUnmock('../../src/modules/identity/update-client.js');
+    vi.doUnmock('../../src/modules/identity/list-accounts.js');
+    vi.doUnmock('../../src/modules/identity/get-account-detail.js');
+    vi.doUnmock('../../src/modules/identity/update-account.js');
     vi.doUnmock('../../src/modules/identity/create-customer-branding.js');
     vi.doUnmock('../../src/modules/identity/update-customer-branding.js');
     vi.doUnmock('../../src/modules/identity/create-membership.js');
@@ -207,7 +207,7 @@ describe('tenant-admin-routes', () => {
   it('GET /api/internal/tenants lists tenants', async () => {
     mockAuth(true);
     mockTx();
-    vi.doMock('../../src/modules/identity/list-clients.js', () => ({
+    vi.doMock('../../src/modules/identity/list-accounts.js', () => ({
       listClients: vi.fn(async () => [
         { id: TENANT_ID, name: 'Acme', slug: 'acme', isActive: true, createdAt: new Date('2026-01-01T00:00:00Z') },
       ]),
@@ -225,7 +225,7 @@ describe('tenant-admin-routes', () => {
   it('GET /api/internal/tenants/:id returns 404 when not found', async () => {
     mockAuth(true);
     mockTx();
-    vi.doMock('../../src/modules/identity/get-client-detail.js', () => ({ getClientDetail: vi.fn(async () => null) }));
+    vi.doMock('../../src/modules/identity/get-account-detail.js', () => ({ getAccountDetail: vi.fn(async () => null) }));
     const { registerTenantAdminRoutes } = await import('../../src/server/tenant-admin-routes.js');
     app = Fastify();
     await app.register(registerTenantAdminRoutes);
@@ -238,8 +238,8 @@ describe('tenant-admin-routes', () => {
   it('AC1/AC2: GET /api/internal/tenants/:id returns branding: null for a fresh tenant', async () => {
     mockAuth(true);
     mockTx();
-    vi.doMock('../../src/modules/identity/get-client-detail.js', () => ({
-      getClientDetail: vi.fn(async () => ({
+    vi.doMock('../../src/modules/identity/get-account-detail.js', () => ({
+      getAccountDetail: vi.fn(async () => ({
         id: TENANT_ID, name: 'Acme', slug: 'acme', isActive: true, createdAt: new Date(), branding: null, memberCount: 0,
       })),
     }));
@@ -256,7 +256,7 @@ describe('tenant-admin-routes', () => {
   it('PATCH /api/internal/tenants/:id updates the tenant', async () => {
     mockAuth(true);
     mockTx();
-    vi.doMock('../../src/modules/identity/update-client.js', () => ({
+    vi.doMock('../../src/modules/identity/update-account.js', () => ({
       updateClient: vi.fn(async (_client, id, input) => ({ id, name: input.name ?? 'Acme', slug: 'acme', isActive: input.isActive ?? true })),
     }));
     const { registerTenantAdminRoutes } = await import('../../src/server/tenant-admin-routes.js');
@@ -301,7 +301,7 @@ describe('tenant-admin-routes', () => {
   it('PATCH /api/internal/tenants/:id returns 404 when the tenant does not exist', async () => {
     mockAuth(true);
     mockTx();
-    vi.doMock('../../src/modules/identity/update-client.js', () => ({ updateClient: vi.fn(async () => null) }));
+    vi.doMock('../../src/modules/identity/update-account.js', () => ({ updateClient: vi.fn(async () => null) }));
     const { registerTenantAdminRoutes } = await import('../../src/server/tenant-admin-routes.js');
     app = Fastify();
     await app.register(registerTenantAdminRoutes);
@@ -507,7 +507,7 @@ describe('tenant-admin-routes', () => {
       payload: { email: 'new@example.com', role: 'client_admin' },
     });
     expect(response.statusCode).toBe(201);
-    expect(createMembership).toHaveBeenCalledWith({}, { clientId: TENANT_ID, email: 'new@example.com', fullName: null, role: 'client_admin' });
+    expect(createMembership).toHaveBeenCalledWith({}, { clientId: TENANT_ID, email: 'new@example.com', fullName: null, role: 'account_admin' });
   });
 
   it('POST .../members returns 409 when already a member', async () => {

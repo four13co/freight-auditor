@@ -1,26 +1,26 @@
 import type pg from 'pg';
 
-export interface ClientDisputeLineRow {
+export interface AccountDisputeLineRow {
   id: string;
   varianceFindingId: string | null;
   amount: string | null;
   currency: string | null;
 }
 
-export interface ClientDisputeDetail {
+export interface AccountDisputeDetail {
   id: string;
   carrierId: string | null;
   status: string;
   amountClaimed: string | null;
   currency: string | null;
   createdAt: Date;
-  lines: ClientDisputeLineRow[];
+  lines: AccountDisputeLineRow[];
 }
 
 /**
  * Client portal (P6.B.3) equivalent of the internal getDisputeDetail
  * (../disputes/get-dispute-detail.ts): same join shape (dispute +
- * dispute_line), with an added explicit `client_id` predicate on both
+ * dispute_line), with an added explicit `account_id` predicate on both
  * queries (86e31a9ch/#216 precedent: on top of RLS, not a replacement for
  * it) -- the internal function relies on RLS alone (no clientId param at
  * all), which is fine for its own tenant-scoped analyst callers but not the
@@ -31,17 +31,17 @@ export interface ClientDisputeDetail {
  * clientId -- doesn't distinguish "doesn't exist" from "belongs to another
  * client", matching get-dispute-detail.ts's own not-found convention.
  */
-export async function getClientDisputeDetail(
+export async function getAccountDisputeDetail(
   client: pg.PoolClient,
   clientId: string,
   disputeId: string,
-): Promise<ClientDisputeDetail | null> {
+): Promise<AccountDisputeDetail | null> {
   const { rows: disputeRows } = await client.query<{
     id: string; carrier_id: string | null; status: string; amount_claimed: string | null;
     currency: string | null; created_at: Date;
   }>(
     `SELECT id, carrier_id, status::text AS status, amount_claimed, currency, created_at
-       FROM dispute WHERE id = $1 AND client_id = $2`,
+       FROM dispute WHERE id = $1 AND account_id = $2`,
     [disputeId, clientId],
   );
   const disputeRow = disputeRows[0];
@@ -51,7 +51,7 @@ export async function getClientDisputeDetail(
     id: string; variance_finding_id: string | null; amount: string | null; currency: string | null;
   }>(
     `SELECT id, variance_finding_id, amount, currency
-       FROM dispute_line WHERE dispute_id = $1 AND client_id = $2 ORDER BY id`,
+       FROM dispute_line WHERE dispute_id = $1 AND account_id = $2 ORDER BY id`,
     [disputeId, clientId],
   );
 

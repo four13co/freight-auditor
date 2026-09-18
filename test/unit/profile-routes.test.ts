@@ -92,7 +92,7 @@ describe('PATCH /api/profile', () => {
     expect(updateUserProfile).toHaveBeenCalledWith({}, ACTOR_USER_ID, { name: undefined, image: null });
   });
 
-  it.each(['role', 'clientId', 'client_id', 'tenantId', 'tenant_id', 'isInternal', 'is_internal', 'email'])(
+  it.each(['role', 'clientId', 'account_id', 'tenantId', 'tenant_id', 'isInternal', 'is_internal', 'email'])(
     'AC6: rejects a body containing "%s" with 400, never calling updateUserProfile',
     async (field) => {
       mockAuth();

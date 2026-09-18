@@ -18,14 +18,14 @@ export type CreateMembershipResult =
  * schema, matching every other email lookup in this codebase), creating one
  * if none exists, then inserts the membership row.
  *
- * membership carries UNIQUE (user_id, client_id) (migration 0003) -- a
+ * membership carries UNIQUE (user_id, account_id) (migration 0003) -- a
  * repeat call for the same user+tenant hits that constraint, mapped here to
  * `created: false` (the route surfaces 409) rather than letting the
  * unique-violation propagate as a 500.
  *
  * Runs inside the caller's withTenantTx ({ internal: true }) -- membership
- * carries FORCE RLS keyed on client_id (migration 0009), so the INSERT's
- * WITH CHECK needs app_is_internal() to admit a client_id the caller has no
+ * carries FORCE RLS keyed on account_id (migration 0009), so the INSERT's
+ * WITH CHECK needs app_is_internal() to admit a account_id the caller has no
  * membership row for yet, same reasoning as create-customer-branding.ts.
  */
 export async function createMembership(
@@ -49,10 +49,10 @@ export async function createMembership(
   }
 
   const membership = await insertIdempotent(client, {
-    insertSql: `INSERT INTO membership (user_id, client_id, role) VALUES ($1, $2, $3::membership_role)
-      ON CONFLICT (user_id, client_id) DO NOTHING`,
+    insertSql: `INSERT INTO membership (user_id, account_id, role) VALUES ($1, $2, $3::membership_role)
+      ON CONFLICT (user_id, account_id) DO NOTHING`,
     insertParams: [userId, input.clientId, input.role],
-    fallbackSql: `SELECT id FROM membership WHERE user_id = $4 AND client_id = $5`,
+    fallbackSql: `SELECT id FROM membership WHERE user_id = $4 AND account_id = $5`,
     fallbackParams: [userId, input.clientId],
   });
 

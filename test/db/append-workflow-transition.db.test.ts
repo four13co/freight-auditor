@@ -24,7 +24,7 @@ describe('appendWorkflowTransition (DB)', () => {
     pool = getPool();
     const owner = await pool.connect();
     try {
-      const c = await owner.query(`INSERT INTO client (name, slug) VALUES ('WFT', $1) RETURNING id`, [tag]);
+      const c = await owner.query(`INSERT INTO account (name, slug) VALUES ('WFT', $1) RETURNING id`, [tag]);
       clientId = c.rows[0].id;
     } finally {
       owner.release();
@@ -34,10 +34,10 @@ describe('appendWorkflowTransition (DB)', () => {
   afterAll(async () => {
     const owner = await pool.connect();
     try {
-      await owner.query(`DELETE FROM audit_event WHERE client_id = $1`, [clientId]);
-      await owner.query(`DELETE FROM workflow_transition WHERE client_id = $1`, [clientId]);
-      await owner.query(`DELETE FROM workflow_instance WHERE client_id = $1`, [clientId]);
-      await owner.query(`DELETE FROM client WHERE id = $1`, [clientId]);
+      await owner.query(`DELETE FROM audit_event WHERE account_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM workflow_transition WHERE account_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM workflow_instance WHERE account_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM account WHERE id = $1`, [clientId]);
     } finally {
       owner.release();
     }
@@ -61,7 +61,7 @@ describe('appendWorkflowTransition (DB)', () => {
       const result = await appendWorkflowTransition(c, { clientId, workflowInstanceId: instanceId, toState: 'sent' }, transitions);
       const state = await c.query(`SELECT current_state FROM workflow_instance WHERE id = $1`, [instanceId]);
       const log = await c.query(
-        `SELECT from_state, to_state FROM workflow_transition WHERE client_id = $1 AND workflow_instance_id = $2`,
+        `SELECT from_state, to_state FROM workflow_transition WHERE account_id = $1 AND workflow_instance_id = $2`,
         [clientId, instanceId],
       );
       return { result, state: state.rows[0], log: log.rows };
@@ -159,7 +159,7 @@ describe('appendWorkflowTransition (DB)', () => {
     const otherOwner = await pool.connect();
     let otherClientId: string;
     try {
-      const c = await otherOwner.query(`INSERT INTO client (name, slug) VALUES ('WFT-OTHER', $1) RETURNING id`, [`${tag}-other`]);
+      const c = await otherOwner.query(`INSERT INTO account (name, slug) VALUES ('WFT-OTHER', $1) RETURNING id`, [`${tag}-other`]);
       otherClientId = c.rows[0].id;
     } finally {
       otherOwner.release();
@@ -184,9 +184,9 @@ describe('appendWorkflowTransition (DB)', () => {
     } finally {
       const cleanup = await pool.connect();
       try {
-        await cleanup.query(`DELETE FROM audit_event WHERE client_id = $1`, [otherClientId]);
-        await cleanup.query(`DELETE FROM workflow_instance WHERE client_id = $1`, [otherClientId]);
-        await cleanup.query(`DELETE FROM client WHERE id = $1`, [otherClientId]);
+        await cleanup.query(`DELETE FROM audit_event WHERE account_id = $1`, [otherClientId]);
+        await cleanup.query(`DELETE FROM workflow_instance WHERE account_id = $1`, [otherClientId]);
+        await cleanup.query(`DELETE FROM account WHERE id = $1`, [otherClientId]);
       } finally {
         cleanup.release();
       }

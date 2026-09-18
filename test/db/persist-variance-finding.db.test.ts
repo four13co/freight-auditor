@@ -38,17 +38,17 @@ describe('persistAuditRun variance_finding derivation (DB)', () => {
     await seedCriteria({ client: pool });
     const owner = await pool.connect();
     try {
-      const c = await owner.query(`INSERT INTO client (name, slug) VALUES ('VF', $1) RETURNING id`, [tag]);
+      const c = await owner.query(`INSERT INTO account (name, slug) VALUES ('VF', $1) RETURNING id`, [tag]);
       clientId = c.rows[0].id;
       const carrier = await owner.query(`INSERT INTO carrier (name) VALUES ($1) RETURNING id`, [`Carrier-${tag}`]);
       carrierId = carrier.rows[0].id;
       const contract = await owner.query(
-        `INSERT INTO contract (client_id, carrier_id, name) VALUES ($1, $2, 'VF Contract') RETURNING id`,
+        `INSERT INTO contract (account_id, carrier_id, name) VALUES ($1, $2, 'VF Contract') RETURNING id`,
         [clientId, carrierId],
       );
       contractId = contract.rows[0].id;
       const version = await owner.query(
-        `INSERT INTO contract_version (client_id, contract_id, version_label, valid_from) VALUES ($1, $2, 'v1', CURRENT_DATE) RETURNING id`,
+        `INSERT INTO contract_version (account_id, contract_id, version_label, valid_from) VALUES ($1, $2, 'v1', CURRENT_DATE) RETURNING id`,
         [clientId, contractId],
       );
       contractVersionId = version.rows[0].id;
@@ -60,25 +60,25 @@ describe('persistAuditRun variance_finding derivation (DB)', () => {
   afterAll(async () => {
     const owner = await pool.connect();
     try {
-      await owner.query(`DELETE FROM audit_event WHERE client_id = $1`, [clientId]);
-      await owner.query(`DELETE FROM discovery_trigger WHERE client_id = $1`, [clientId]);
-      await owner.query(`DELETE FROM audit_replay_manifest WHERE client_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM audit_event WHERE account_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM discovery_trigger WHERE account_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM audit_replay_manifest WHERE account_id = $1`, [clientId]);
       // variance_finding before audit_run (86e2v250p-adjacent regression this
       // item's own prior build attempt introduced and fixed: FK ordering).
-      await owner.query(`DELETE FROM variance_finding WHERE client_id = $1`, [clientId]);
-      await owner.query(`DELETE FROM scorecard WHERE client_id = $1`, [clientId]);
-      await owner.query(`DELETE FROM charge_finding WHERE client_id = $1`, [clientId]);
-      await owner.query(`DELETE FROM gate_failure WHERE client_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM variance_finding WHERE account_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM scorecard WHERE account_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM charge_finding WHERE account_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM gate_failure WHERE account_id = $1`, [clientId]);
       // 86e367r9x: persistAuditRun now wires a payment_gate_decision row per run.
-      await owner.query(`DELETE FROM payment_gate_decision WHERE client_id = $1`, [clientId]);
-      await owner.query(`DELETE FROM audit_run WHERE client_id = $1`, [clientId]);
-      await owner.query(`DELETE FROM charge_fact WHERE client_id = $1`, [clientId]);
-      await owner.query(`DELETE FROM invoice WHERE client_id = $1`, [clientId]);
-      await owner.query(`DELETE FROM contract_rate WHERE client_id = $1`, [clientId]);
-      await owner.query(`DELETE FROM contract_version WHERE client_id = $1`, [clientId]);
-      await owner.query(`DELETE FROM contract WHERE client_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM payment_gate_decision WHERE account_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM audit_run WHERE account_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM charge_fact WHERE account_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM invoice WHERE account_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM contract_rate WHERE account_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM contract_version WHERE account_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM contract WHERE account_id = $1`, [clientId]);
       await owner.query(`DELETE FROM carrier WHERE id = $1`, [carrierId]);
-      await owner.query(`DELETE FROM client WHERE id = $1`, [clientId]);
+      await owner.query(`DELETE FROM account WHERE id = $1`, [clientId]);
     } finally {
       owner.release();
     }
@@ -88,7 +88,7 @@ describe('persistAuditRun variance_finding derivation (DB)', () => {
   it('a VARIANCE charge_finding (single LINEHAUL charge) writes one variance_finding row with charge_fact_id populated', async () => {
     await withTenantTx({ clientIds: [clientId], internal: true }, async (c) => {
       await c.query(
-        `INSERT INTO contract_rate (client_id, contract_version_id, category, rate, currency) VALUES ($1, $2, 'LINEHAUL', 900.00, 'USD')`,
+        `INSERT INTO contract_rate (account_id, contract_version_id, category, rate, currency) VALUES ($1, $2, 'LINEHAUL', 900.00, 'USD')`,
         [clientId, contractVersionId],
       );
     });
@@ -124,7 +124,7 @@ describe('persistAuditRun variance_finding derivation (DB)', () => {
         [contractVersionId],
       );
       await c.query(
-        `INSERT INTO contract_rate (client_id, contract_version_id, category, rate, currency) VALUES ($1, $2, 'LINEHAUL', 1500.00, 'USD')`,
+        `INSERT INTO contract_rate (account_id, contract_version_id, category, rate, currency) VALUES ($1, $2, 'LINEHAUL', 1500.00, 'USD')`,
         [clientId, contractVersionId],
       );
     });
@@ -241,7 +241,7 @@ describe('persistAuditRun variance_finding derivation (DB)', () => {
         [contractVersionId],
       );
       await c.query(
-        `INSERT INTO contract_rate (client_id, contract_version_id, category, rate, currency) VALUES ($1, $2, 'LINEHAUL', 900.00, 'USD')`,
+        `INSERT INTO contract_rate (account_id, contract_version_id, category, rate, currency) VALUES ($1, $2, 'LINEHAUL', 900.00, 'USD')`,
         [clientId, contractVersionId],
       );
     });

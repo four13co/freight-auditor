@@ -13,7 +13,7 @@ import { resolveBrandingByDomain } from '../modules/identity/resolve-branding-by
  * Registered at TOP LEVEL (app.ts), same posture as /health and /metrics:
  * unauthenticated, reachable before any tenant scope exists, since branding
  * must be visible on the login page itself, not only after sign-in.
- * Exposes only public branding assets (logo URL, colors) -- never client_id
+ * Exposes only public branding assets (logo URL, colors) -- never account_id
  * or any other tenant data -- so no auth gate is needed to leak anything.
  *
  * Uses withTenantReadTx, internal scope -- the same shape tenant-auth.ts's

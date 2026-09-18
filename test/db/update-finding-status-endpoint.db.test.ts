@@ -31,16 +31,16 @@ describe('PATCH /api/findings/:id/status (DB, e2e)', () => {
     pool = getPool();
     const owner = await pool.connect();
     try {
-      const c = await owner.query(`INSERT INTO client (name, slug) VALUES ('UFSE', $1) RETURNING id`, [tag]);
+      const c = await owner.query(`INSERT INTO account (name, slug) VALUES ('UFSE', $1) RETURNING id`, [tag]);
       clientId = c.rows[0].id;
-      const oc = await owner.query(`INSERT INTO client (name, slug) VALUES ('UFSE-OTHER', $1) RETURNING id`, [`${tag}-other`]);
+      const oc = await owner.query(`INSERT INTO account (name, slug) VALUES ('UFSE-OTHER', $1) RETURNING id`, [`${tag}-other`]);
       otherClientId = oc.rows[0].id;
       const u = await owner.query(`INSERT INTO app_user (email) VALUES ($1) RETURNING id`, [`${tag}@example.com`]);
       userId = u.rows[0].id;
       const ou = await owner.query(`INSERT INTO app_user (email) VALUES ($1) RETURNING id`, [`${tag}-other@example.com`]);
       otherUserId = ou.rows[0].id;
-      await owner.query(`INSERT INTO membership (user_id, client_id, role) VALUES ($1, $2, 'client_viewer')`, [userId, clientId]);
-      await owner.query(`INSERT INTO membership (user_id, client_id, role) VALUES ($1, $2, 'client_viewer')`, [otherUserId, otherClientId]);
+      await owner.query(`INSERT INTO membership (user_id, account_id, role) VALUES ($1, $2, 'account_viewer')`, [userId, clientId]);
+      await owner.query(`INSERT INTO membership (user_id, account_id, role) VALUES ($1, $2, 'account_viewer')`, [otherUserId, otherClientId]);
       const carrier = await owner.query(`INSERT INTO carrier (name) VALUES ($1) RETURNING id`, [`Carrier-${tag}`]);
       carrierId = carrier.rows[0].id;
     } finally {
@@ -55,18 +55,18 @@ describe('PATCH /api/findings/:id/status (DB, e2e)', () => {
     await app.close();
     const owner = await pool.connect();
     try {
-      await owner.query(`DELETE FROM audit_event WHERE client_id IN ($1, $2)`, [clientId, otherClientId]);
-      await owner.query(`DELETE FROM finding_status_event WHERE client_id IN ($1, $2)`, [clientId, otherClientId]);
-      await owner.query(`DELETE FROM variance_finding WHERE client_id IN ($1, $2)`, [clientId, otherClientId]);
-      await owner.query(`DELETE FROM charge_fact WHERE client_id IN ($1, $2)`, [clientId, otherClientId]);
+      await owner.query(`DELETE FROM audit_event WHERE account_id IN ($1, $2)`, [clientId, otherClientId]);
+      await owner.query(`DELETE FROM finding_status_event WHERE account_id IN ($1, $2)`, [clientId, otherClientId]);
+      await owner.query(`DELETE FROM variance_finding WHERE account_id IN ($1, $2)`, [clientId, otherClientId]);
+      await owner.query(`DELETE FROM charge_fact WHERE account_id IN ($1, $2)`, [clientId, otherClientId]);
       // 86e367r9x: persistAuditRun now wires a payment_gate_decision row per run.
-      await owner.query(`DELETE FROM payment_gate_decision WHERE client_id IN ($1, $2)`, [clientId, otherClientId]);
-      await owner.query(`DELETE FROM audit_run WHERE client_id IN ($1, $2)`, [clientId, otherClientId]);
-      await owner.query(`DELETE FROM invoice WHERE client_id IN ($1, $2)`, [clientId, otherClientId]);
+      await owner.query(`DELETE FROM payment_gate_decision WHERE account_id IN ($1, $2)`, [clientId, otherClientId]);
+      await owner.query(`DELETE FROM audit_run WHERE account_id IN ($1, $2)`, [clientId, otherClientId]);
+      await owner.query(`DELETE FROM invoice WHERE account_id IN ($1, $2)`, [clientId, otherClientId]);
       await owner.query(`DELETE FROM carrier WHERE id = $1`, [carrierId]);
-      await owner.query(`DELETE FROM membership WHERE client_id IN ($1, $2)`, [clientId, otherClientId]);
+      await owner.query(`DELETE FROM membership WHERE account_id IN ($1, $2)`, [clientId, otherClientId]);
       await owner.query(`DELETE FROM app_user WHERE id IN ($1, $2)`, [userId, otherUserId]);
-      await owner.query(`DELETE FROM client WHERE id IN ($1, $2)`, [clientId, otherClientId]);
+      await owner.query(`DELETE FROM account WHERE id IN ($1, $2)`, [clientId, otherClientId]);
     } finally {
       owner.release();
     }
@@ -76,20 +76,20 @@ describe('PATCH /api/findings/:id/status (DB, e2e)', () => {
   async function seedFinding(forClientId: string, variance = '100.0000'): Promise<string> {
     return withTenantTx({ clientIds: [forClientId], internal: true }, async (c) => {
       const inv = await c.query(
-        `INSERT INTO invoice (client_id, carrier_id, transaction_set, invoice_number, currency, parser_version)
+        `INSERT INTO invoice (account_id, carrier_id, transaction_set, invoice_number, currency, parser_version)
          VALUES ($1, $2, '210', $3, 'USD', 'test') RETURNING id`,
         [forClientId, carrierId, `INV-${tag}-${Math.random().toString(36).slice(2)}`],
       );
       const run = await c.query(
-        `INSERT INTO audit_run (client_id, invoice_id, engine_spec_version, outcome) VALUES ($1, $2, 'test', 'SCORED') RETURNING id`,
+        `INSERT INTO audit_run (account_id, invoice_id, engine_spec_version, outcome) VALUES ($1, $2, 'test', 'SCORED') RETURNING id`,
         [forClientId, inv.rows[0].id],
       );
       const cf = await c.query(
-        `INSERT INTO charge_fact (client_id, invoice_id, code, category, amount, currency) VALUES ($1, $2, '400', 'LINEHAUL', '1000.0000', 'USD') RETURNING id`,
+        `INSERT INTO charge_fact (account_id, invoice_id, code, category, amount, currency) VALUES ($1, $2, '400', 'LINEHAUL', '1000.0000', 'USD') RETURNING id`,
         [forClientId, inv.rows[0].id],
       );
       const vf = await c.query(
-        `INSERT INTO variance_finding (client_id, audit_run_id, charge_fact_id, criterion_id, rule_version_id, direction, variance_amount, currency, status, evaluated_expr)
+        `INSERT INTO variance_finding (account_id, audit_run_id, charge_fact_id, criterion_id, rule_version_id, direction, variance_amount, currency, status, evaluated_expr)
          SELECT $1, $2, $3, c.id, rv.id, 'OVERCHARGE', $4, 'USD', 'open', '{}'::jsonb
          FROM criterion c JOIN rule r ON r.slug = 'contract-rate_variance'
          JOIN rule_version rv ON rv.rule_id = r.id

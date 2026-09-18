@@ -12,7 +12,7 @@ export function assertLifecycleTransition(from: RuleLifecycle, to: RuleLifecycle
 
 // 86e367r9q: this function used to hard-require a passing rule_backtest row
 // for any SHADOW->ACTIVE transition, but rule/rule_version are GLOBAL tables
-// (no client_id) and rule_backtest.client_id is NOT NULL -- nothing in the
+// (no account_id) and rule_backtest.account_id is NOT NULL -- nothing in the
 // real generic rule lifecycle could ever produce one, so every real call
 // threw. promoteShadowRule (the only to:'ACTIVE' caller) now gates ACTIVE
 // promotion itself via dual-control instead; this function stays a pure
@@ -21,7 +21,7 @@ export function assertLifecycleTransition(from: RuleLifecycle, to: RuleLifecycle
 // itself. promotion_event's own active_promotion_requires_backtest CHECK
 // constraint (migration 0078) accepts either as alternative evidence.
 // 86e36zket: ruleBacktestId is the additive corpus-backtest evidence path --
-// rule_backtest.client_id is nullable as of migration 0079, so a global rule
+// rule_backtest.account_id is nullable as of migration 0079, so a global rule
 // can now produce a real rule_backtest row via the /activate cases path.
 export async function transitionRuleLifecycle(client: pg.PoolClient, input: {
   ruleVersionId: string; to: RuleLifecycle; rationale: string;

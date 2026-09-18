@@ -9,8 +9,8 @@ import { transitionRuleLifecycle } from '../../src/modules/rule-engine/transitio
 /**
  * rule_backtest / rule_backtest_case (0031) and charge_alignment_member (0024)
  * each defined a tenant_isolation policy checking the never-set
- * current_setting('app.client_id', true)::uuid GUC instead of the real
- * app_current_client_ids()-based predicate every other tenant table uses
+ * current_setting('app.account_id', true)::uuid GUC instead of the real
+ * app_current_account_ids()-based predicate every other tenant table uses
  * (0009). With FORCE ROW LEVEL SECURITY that made every check evaluate NULL
  * (fail), so persistBacktest threw a real RLS violation and
  * promoteShadowRule's backtest lookup always saw zero rows. 0071 fixes the
@@ -43,8 +43,8 @@ describe('rule_backtest / rule_backtest_case / charge_alignment_member RLS (86e3
 
   beforeAll(async () => {
     pool = makePool();
-    clientId = (await pool.query(`INSERT INTO client(name,slug) VALUES('RLS GUC',$1) RETURNING id`, [tag])).rows[0].id;
-    otherClientId = (await pool.query(`INSERT INTO client(name,slug) VALUES('RLS GUC Other',$1) RETURNING id`,
+    clientId = (await pool.query(`INSERT INTO account(name,slug) VALUES('RLS GUC',$1) RETURNING id`, [tag])).rows[0].id;
+    otherClientId = (await pool.query(`INSERT INTO account(name,slug) VALUES('RLS GUC Other',$1) RETURNING id`,
       [`${tag}-other`])).rows[0].id;
     ruleId = (await pool.query(`INSERT INTO rule(slug, rule_type) VALUES ($1, 'STRUCTURAL') RETURNING id`, [tag])).rows[0].id;
     const proposed = await pool.query(
@@ -52,7 +52,7 @@ describe('rule_backtest / rule_backtest_case / charge_alignment_member RLS (86e3
        VALUES ($1, 'AI_DOCS', 'PROPOSED', '{}'::jsonb, $2, 'PASS_FAIL') RETURNING id`,
       [ruleId, 'a'.repeat(64)],
     );
-    // rule/rule_version carry no client_id (global tables, outside RLS -- 0009), so
+    // rule/rule_version carry no account_id (global tables, outside RLS -- 0009), so
     // this setup transition runs as the owning role directly -- but must COMMIT
     // (unlike withOwnerTx, which always rolls back and is only for read setup),
     // since shadowVersionId is read back by later, separately-committed tests.
@@ -73,19 +73,19 @@ describe('rule_backtest / rule_backtest_case / charge_alignment_member RLS (86e3
   });
 
   afterAll(async () => {
-    await pool.query(`DELETE FROM charge_alignment_member WHERE client_id = ANY($1)`, [[clientId, otherClientId]]);
-    await pool.query(`DELETE FROM charge_alignment WHERE client_id = ANY($1)`, [[clientId, otherClientId]]);
-    await pool.query(`DELETE FROM charge_fact WHERE client_id = ANY($1)`, [[clientId, otherClientId]]);
+    await pool.query(`DELETE FROM charge_alignment_member WHERE account_id = ANY($1)`, [[clientId, otherClientId]]);
+    await pool.query(`DELETE FROM charge_alignment WHERE account_id = ANY($1)`, [[clientId, otherClientId]]);
+    await pool.query(`DELETE FROM charge_fact WHERE account_id = ANY($1)`, [[clientId, otherClientId]]);
     // 86e367r9x: persistAuditRun now wires a payment_gate_decision row per run.
-    await pool.query(`DELETE FROM payment_gate_decision WHERE client_id = ANY($1)`, [[clientId, otherClientId]]);
-    await pool.query(`DELETE FROM audit_run WHERE client_id = ANY($1)`, [[clientId, otherClientId]]);
-    await pool.query(`DELETE FROM invoice WHERE client_id = ANY($1)`, [[clientId, otherClientId]]);
+    await pool.query(`DELETE FROM payment_gate_decision WHERE account_id = ANY($1)`, [[clientId, otherClientId]]);
+    await pool.query(`DELETE FROM audit_run WHERE account_id = ANY($1)`, [[clientId, otherClientId]]);
+    await pool.query(`DELETE FROM invoice WHERE account_id = ANY($1)`, [[clientId, otherClientId]]);
     await pool.query(`DELETE FROM carrier WHERE name=$1`, [tag]);
     await pool.query(`DELETE FROM promotion_event WHERE rule_version_id IN (SELECT id FROM rule_version WHERE rule_id=$1)`, [ruleId]);
     await pool.query(`DELETE FROM audit_event WHERE entity='rule_version' AND rule_version_id IN (SELECT id FROM rule_version WHERE rule_id=$1)`, [ruleId]);
-    // Scoped by rule_version_id (not just client_id) so this also catches the
-    // 86e36zket global (client_id NULL) row the tenant-isolation test below
-    // inserts -- a client_id-only filter would miss it and leave a dangling
+    // Scoped by rule_version_id (not just account_id) so this also catches the
+    // 86e36zket global (account_id NULL) row the tenant-isolation test below
+    // inserts -- a account_id-only filter would miss it and leave a dangling
     // FK reference that fails the rule_version delete just below.
     await pool.query(`DELETE FROM rule_backtest_case WHERE backtest_id IN
       (SELECT id FROM rule_backtest WHERE rule_version_id IN (SELECT id FROM rule_version WHERE rule_id=$1))`, [ruleId]);
@@ -93,7 +93,7 @@ describe('rule_backtest / rule_backtest_case / charge_alignment_member RLS (86e3
     await pool.query(`DELETE FROM rule_version WHERE rule_id=$1`, [ruleId]);
     await pool.query(`DELETE FROM rule WHERE id=$1`, [ruleId]);
     await pool.query(`DELETE FROM app_user WHERE email = ANY($1)`, [[`${tag}-ratifier@example.com`, `${tag}-activator@example.com`]]);
-    await pool.query(`DELETE FROM client WHERE id = ANY($1)`, [[clientId, otherClientId]]);
+    await pool.query(`DELETE FROM account WHERE id = ANY($1)`, [[clientId, otherClientId]]);
     await pool.end();
   });
 
@@ -117,8 +117,8 @@ describe('rule_backtest / rule_backtest_case / charge_alignment_member RLS (86e3
       persistBacktest(client, { clientId, ruleVersionId: shadowVersionId, result }));
     expect(persisted.created).toBe(true);
 
-    const row = (await pool.query(`SELECT client_id, rule_version_id, passed FROM rule_backtest WHERE id=$1`, [persisted.id])).rows[0];
-    expect(row).toMatchObject({ client_id: clientId, rule_version_id: shadowVersionId, passed: true });
+    const row = (await pool.query(`SELECT account_id, rule_version_id, passed FROM rule_backtest WHERE id=$1`, [persisted.id])).rows[0];
+    expect(row).toMatchObject({ account_id: clientId, rule_version_id: shadowVersionId, passed: true });
     const cases = (await pool.query(`SELECT case_key FROM rule_backtest_case WHERE backtest_id=$1`, [persisted.id])).rows;
     expect(cases.map((r: { case_key: string }) => r.case_key)).toEqual(['case-1']);
 
@@ -126,13 +126,13 @@ describe('rule_backtest / rule_backtest_case / charge_alignment_member RLS (86e3
       (await client.query(`SELECT id FROM rule_backtest WHERE id=$1`, [persisted.id])).rows)).toEqual([]);
   });
 
-  // 86e36zket: rule_backtest.client_id is nullable as of migration 0079 (a
+  // 86e36zket: rule_backtest.account_id is nullable as of migration 0079 (a
   // GLOBAL rule's corpus-backtest evidence has no single client to
   // attribute to). Proves the NOT NULL relaxation didn't touch tenant
   // isolation -- apply_tenant_rls's own "tenant column IS NULL" clause
   // (0009) already covers a shared/global row; a client sees its own row
   // and the global row, but never another client's row.
-  it('a client sees its own row and the shared global (client_id NULL) row, but never another client\'s row', async () => {
+  it('a client sees its own row and the shared global (account_id NULL) row, but never another client\'s row', async () => {
     const makeResult = (tag: string) => ({
       corpusHash: tag.padEnd(64, '0'), passed: true, passCount: 1, regressionCount: 0,
       cases: [{ id: `${tag}-case`, passed: true, inputHash: '1'.repeat(64), expectedHash: '2'.repeat(64), actualHash: '2'.repeat(64), actual: { ok: true } }],
@@ -158,7 +158,7 @@ describe('rule_backtest / rule_backtest_case / charge_alignment_member RLS (86e3
   // gate 86e32tfw8's RLS fix targeted is gone), so this no longer belongs to
   // that RLS-predicate story. Replaced with a run through the real app-role
   // tenant-context path against its actual replacement gate -- a
-  // promoted_to_shadow audit_event (client_id NULL, so visible under RLS's
+  // promoted_to_shadow audit_event (account_id NULL, so visible under RLS's
   // own "shared catalog row" clause regardless of tenant scope) -- proving
   // both the same-actor rejection and the different-actor activation work
   // end to end with no manually-inserted rule_backtest row anywhere.
@@ -170,7 +170,7 @@ describe('rule_backtest / rule_backtest_case / charge_alignment_member RLS (86e3
       `INSERT INTO app_user(email, full_name, is_internal) VALUES ($1, 'RLS GUC Activator', true) RETURNING id`,
       [`${tag}-activator@example.com`])).rows[0].id;
     await pool.query(
-      `INSERT INTO audit_event (client_id, entity, entity_id, event, actor_kind, actor_user_id, rule_version_id)
+      `INSERT INTO audit_event (account_id, entity, entity_id, event, actor_kind, actor_user_id, rule_version_id)
        VALUES (NULL, 'rule_version', $1, 'promoted_to_shadow', 'analyst', $2, $1)`,
       [shadowVersionId, ratifierId],
     );
@@ -189,23 +189,23 @@ describe('rule_backtest / rule_backtest_case / charge_alignment_member RLS (86e3
   it('charge_alignment_member enforces the same fixed tenant predicate for real app-role reads and writes', async () => {
     const carrierId = (await pool.query(`INSERT INTO carrier(name) VALUES($1) RETURNING id`, [tag])).rows[0].id;
     const invoiceId = (await pool.query(
-      `INSERT INTO invoice(client_id, carrier_id, transaction_set, parser_version) VALUES ($1, $2, '210', 'test') RETURNING id`,
+      `INSERT INTO invoice(account_id, carrier_id, transaction_set, parser_version) VALUES ($1, $2, '210', 'test') RETURNING id`,
       [clientId, carrierId],
     )).rows[0].id;
     const auditRunId = (await pool.query(
-      `INSERT INTO audit_run(client_id, invoice_id, engine_spec_version, outcome) VALUES ($1, $2, 'test', 'SCORED') RETURNING id`,
+      `INSERT INTO audit_run(account_id, invoice_id, engine_spec_version, outcome) VALUES ($1, $2, 'test', 'SCORED') RETURNING id`,
       [clientId, invoiceId],
     )).rows[0].id;
     const chargeFactId = (await pool.query(
-      `INSERT INTO charge_fact(client_id, invoice_id, amount, currency) VALUES ($1, $2, 10.00, 'USD') RETURNING id`,
+      `INSERT INTO charge_fact(account_id, invoice_id, amount, currency) VALUES ($1, $2, 10.00, 'USD') RETURNING id`,
       [clientId, invoiceId],
     )).rows[0].id;
-    const alignmentId = (await pool.query(`INSERT INTO charge_alignment(client_id, audit_run_id) VALUES ($1, $2) RETURNING id`,
+    const alignmentId = (await pool.query(`INSERT INTO charge_alignment(account_id, audit_run_id) VALUES ($1, $2) RETURNING id`,
       [clientId, auditRunId])).rows[0].id;
 
     const memberId = await committedAppTx({ clientIds: [clientId] }, async (client) => {
       const inserted = await client.query(
-        `INSERT INTO charge_alignment_member(alignment_id, charge_fact_id, client_id) VALUES ($1, $2, $3) RETURNING id`,
+        `INSERT INTO charge_alignment_member(alignment_id, charge_fact_id, account_id) VALUES ($1, $2, $3) RETURNING id`,
         [alignmentId, chargeFactId, clientId],
       );
       return inserted.rows[0].id as string;

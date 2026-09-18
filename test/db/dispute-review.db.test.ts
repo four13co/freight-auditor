@@ -18,7 +18,7 @@ import { approveDispute } from '../../src/modules/disputes/approve-dispute.js';
  * -> dispute -> workflow_instance -> app_user -> client. audit_event's own
  * entity_id is a plain uuid, not a real FK to workflow_instance/
  * workflow_command/dispute, so its only hard ordering constraint is
- * client_id/actor_user_id -- placed early here for clarity, not necessity.
+ * account_id/actor_user_id -- placed early here for clarity, not necessity.
  */
 describe('dispute review (DB)', () => {
   let pool: pg.Pool;
@@ -30,7 +30,7 @@ describe('dispute review (DB)', () => {
     pool = getPool();
     const owner = await pool.connect();
     try {
-      const c = await owner.query(`INSERT INTO client (name, slug) VALUES ('DR', $1) RETURNING id`, [tag]);
+      const c = await owner.query(`INSERT INTO account (name, slug) VALUES ('DR', $1) RETURNING id`, [tag]);
       clientId = c.rows[0].id;
       const u = await owner.query(`INSERT INTO app_user (email) VALUES ($1) RETURNING id`, [`${tag}@example.com`]);
       actorUserId = u.rows[0].id;
@@ -42,14 +42,14 @@ describe('dispute review (DB)', () => {
   afterAll(async () => {
     const owner = await pool.connect();
     try {
-      await owner.query(`DELETE FROM audit_event WHERE client_id = $1`, [clientId]);
-      await owner.query(`DELETE FROM workflow_outbox_message WHERE client_id = $1`, [clientId]);
-      await owner.query(`DELETE FROM workflow_command WHERE client_id = $1`, [clientId]);
-      await owner.query(`DELETE FROM dispute_line WHERE client_id = $1`, [clientId]);
-      await owner.query(`DELETE FROM dispute WHERE client_id = $1`, [clientId]);
-      await owner.query(`DELETE FROM workflow_instance WHERE client_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM audit_event WHERE account_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM workflow_outbox_message WHERE account_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM workflow_command WHERE account_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM dispute_line WHERE account_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM dispute WHERE account_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM workflow_instance WHERE account_id = $1`, [clientId]);
       await owner.query(`DELETE FROM app_user WHERE id = $1`, [actorUserId]);
-      await owner.query(`DELETE FROM client WHERE id = $1`, [clientId]);
+      await owner.query(`DELETE FROM account WHERE id = $1`, [clientId]);
     } finally {
       owner.release();
     }
@@ -58,12 +58,12 @@ describe('dispute review (DB)', () => {
 
   async function seedDraftDispute(client: pg.PoolClient): Promise<string> {
     const dispute = await client.query(
-      `INSERT INTO dispute (client_id, status, amount_claimed, currency) VALUES ($1, 'draft', '500.0000', 'USD') RETURNING id`,
+      `INSERT INTO dispute (account_id, status, amount_claimed, currency) VALUES ($1, 'draft', '500.0000', 'USD') RETURNING id`,
       [clientId],
     );
     const disputeId = dispute.rows[0].id;
     await client.query(
-      `INSERT INTO dispute_line (client_id, dispute_id, amount, currency) VALUES ($1, $2, '500.0000', 'USD')`,
+      `INSERT INTO dispute_line (account_id, dispute_id, amount, currency) VALUES ($1, $2, '500.0000', 'USD')`,
       [clientId, disputeId],
     );
     return disputeId;
@@ -116,7 +116,7 @@ describe('dispute review (DB)', () => {
 
       const { rows: instances } = await pool.query(
         `SELECT id, workflow_type, subject_entity, subject_entity_id, current_state
-         FROM workflow_instance WHERE client_id = $1 AND subject_entity_id = $2`,
+         FROM workflow_instance WHERE account_id = $1 AND subject_entity_id = $2`,
         [clientId, disputeId],
       );
       expect(instances).toHaveLength(1);
@@ -126,7 +126,7 @@ describe('dispute review (DB)', () => {
 
       const { rows: commands } = await pool.query(
         `SELECT command_type, status, payload, run_after FROM workflow_command
-         WHERE client_id = $1 AND workflow_instance_id = $2`,
+         WHERE account_id = $1 AND workflow_instance_id = $2`,
         [clientId, instances[0].id],
       );
       expect(commands).toHaveLength(1);

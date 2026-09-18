@@ -15,7 +15,7 @@ import { requireDatabaseUrl } from './helpers.js';
  * (this item's own Rabbit holes explicitly exclude proving real replica
  * activation/replication-lag -- see pool.ts/tenant-context.ts's own docs).
  *
- * Uses `membership` (client_id-scoped, FORCE RLS per migration 0009) as the
+ * Uses `membership` (account_id-scoped, FORCE RLS per migration 0009) as the
  * simplest tenant table with real cross-tenant rows to assert against --
  * same table tenant-auth.db.test.ts already seeds for its own DB-level RLS
  * coverage.
@@ -33,9 +33,9 @@ describe('withTenantReadTx routing + RLS on the selected pool (DB)', () => {
     pool = getPool();
     const owner = await pool.connect();
     try {
-      const c1 = await owner.query(`INSERT INTO client (name, slug) VALUES ('TRR', $1) RETURNING id`, [tag]);
+      const c1 = await owner.query(`INSERT INTO account (name, slug) VALUES ('TRR', $1) RETURNING id`, [tag]);
       clientId = c1.rows[0].id;
-      const c2 = await owner.query(`INSERT INTO client (name, slug) VALUES ('TRR Other', $1) RETURNING id`, [`${tag}-other`]);
+      const c2 = await owner.query(`INSERT INTO account (name, slug) VALUES ('TRR Other', $1) RETURNING id`, [`${tag}-other`]);
       otherClientId = c2.rows[0].id;
 
       const u1 = await owner.query(`INSERT INTO app_user (email) VALUES ($1) RETURNING id`, [`${tag}@example.com`]);
@@ -43,8 +43,8 @@ describe('withTenantReadTx routing + RLS on the selected pool (DB)', () => {
       const u2 = await owner.query(`INSERT INTO app_user (email) VALUES ($1) RETURNING id`, [`${tag}-other@example.com`]);
       otherUserId = u2.rows[0].id;
 
-      await owner.query(`INSERT INTO membership (user_id, client_id, role) VALUES ($1, $2, 'client_viewer')`, [userId, clientId]);
-      await owner.query(`INSERT INTO membership (user_id, client_id, role) VALUES ($1, $2, 'client_viewer')`, [otherUserId, otherClientId]);
+      await owner.query(`INSERT INTO membership (user_id, account_id, role) VALUES ($1, $2, 'account_viewer')`, [userId, clientId]);
+      await owner.query(`INSERT INTO membership (user_id, account_id, role) VALUES ($1, $2, 'account_viewer')`, [otherUserId, otherClientId]);
     } finally {
       owner.release();
     }
@@ -54,9 +54,9 @@ describe('withTenantReadTx routing + RLS on the selected pool (DB)', () => {
     delete process.env.DATABASE_READ_REPLICA_URL;
     const owner = await pool.connect();
     try {
-      await owner.query(`DELETE FROM membership WHERE client_id = ANY($1)`, [[clientId, otherClientId]]);
+      await owner.query(`DELETE FROM membership WHERE account_id = ANY($1)`, [[clientId, otherClientId]]);
       await owner.query(`DELETE FROM app_user WHERE id = ANY($1)`, [[userId, otherUserId]]);
-      await owner.query(`DELETE FROM client WHERE id = ANY($1)`, [[clientId, otherClientId]]);
+      await owner.query(`DELETE FROM account WHERE id = ANY($1)`, [[clientId, otherClientId]]);
     } finally {
       owner.release();
     }
@@ -66,19 +66,19 @@ describe('withTenantReadTx routing + RLS on the selected pool (DB)', () => {
 
   it('applies the tenant-scope GUCs and SET LOCAL ROLE on the replica-selected connection, so cross-tenant rows stay invisible', async () => {
     const rows = await withTenantReadTx({ clientIds: [clientId], internal: false }, (client) =>
-      client.query('SELECT client_id FROM membership WHERE client_id = ANY($1)', [[clientId, otherClientId]]).then((r) => r.rows),
+      client.query('SELECT account_id FROM membership WHERE account_id = ANY($1)', [[clientId, otherClientId]]).then((r) => r.rows),
     );
 
     expect(rows).toHaveLength(1);
-    expect(rows[0].client_id).toBe(clientId);
+    expect(rows[0].account_id).toBe(clientId);
   });
 
   it('an internal analyst context sees rows across both clients through the same routed connection', async () => {
     const rows = await withTenantReadTx({ internal: true }, (client) =>
-      client.query('SELECT client_id FROM membership WHERE client_id = ANY($1)', [[clientId, otherClientId]]).then((r) => r.rows),
+      client.query('SELECT account_id FROM membership WHERE account_id = ANY($1)', [[clientId, otherClientId]]).then((r) => r.rows),
     );
 
-    const seen = new Set(rows.map((r: { client_id: string }) => r.client_id));
+    const seen = new Set(rows.map((r: { account_id: string }) => r.account_id));
     expect(seen).toEqual(new Set([clientId, otherClientId]));
   });
 });

@@ -34,8 +34,8 @@ const MUTATING_METHODS = new Set(['post', 'put', 'patch', 'delete']);
 export const ROLE_SCOPED_PREHANDLERS = [
   'registerAnalystOnlyPreHandler',
   'registerInternalAnalystAuthPreHandler',
-  'registerClientAdminAuthPreHandler',
-  'registerClientViewerAuthPreHandler',
+  'registerAccountAdminAuthPreHandler',
+  'registerAccountViewerAuthPreHandler',
   'registerTenantAdminAuthPreHandler',
 ];
 

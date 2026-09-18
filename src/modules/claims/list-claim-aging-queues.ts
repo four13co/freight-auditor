@@ -34,12 +34,12 @@ export async function listClaimsDueForFollowUp(
   const result = await client.query<{ id: string; aging_deadline_at: Date }>(
     `SELECT c.id, c.aging_deadline_at
      FROM claim c
-     WHERE c.client_id = $1
+     WHERE c.account_id = $1
        AND c.aging_deadline_at IS NOT NULL
        AND c.aging_deadline_at <= $2
        AND NOT EXISTS (
          SELECT 1 FROM audit_event ae
-         WHERE ae.client_id = c.client_id AND ae.entity = 'claim' AND ae.entity_id = c.id
+         WHERE ae.account_id = c.account_id AND ae.entity = 'claim' AND ae.entity_id = c.id
            AND ae.event = ANY($3::text[])
        )
      ORDER BY c.aging_deadline_at`,
@@ -72,16 +72,16 @@ export async function listClaimsDueForEscalation(
      JOIN LATERAL (
        SELECT ae.recorded_at
        FROM audit_event ae
-       WHERE ae.client_id = c.client_id AND ae.entity = 'claim' AND ae.entity_id = c.id
+       WHERE ae.account_id = c.account_id AND ae.entity = 'claim' AND ae.entity_id = c.id
          AND ae.event = $3
        ORDER BY ae.recorded_at DESC
        LIMIT 1
      ) fu ON true
-     WHERE c.client_id = $1
+     WHERE c.account_id = $1
        AND fu.recorded_at <= $2::timestamptz - make_interval(days => $4)
        AND NOT EXISTS (
          SELECT 1 FROM audit_event ae2
-         WHERE ae2.client_id = c.client_id AND ae2.entity = 'claim' AND ae2.entity_id = c.id
+         WHERE ae2.account_id = c.account_id AND ae2.entity = 'claim' AND ae2.entity_id = c.id
            AND ae2.event = ANY($5::text[])
        )
      ORDER BY fu.recorded_at`,

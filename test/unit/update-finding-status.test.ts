@@ -15,7 +15,7 @@ const findingId = '10000000-0000-4000-8000-000000000001';
 const clientId = '10000000-0000-4000-8000-000000000002';
 const statusEventId = '10000000-0000-4000-8000-000000000003';
 
-function mockClient(rows: Array<{ id: string; client_id: string; from_status: string; status_event_id: string }>) {
+function mockClient(rows: Array<{ id: string; account_id: string; from_status: string; status_event_id: string }>) {
   const query = vi.fn()
     .mockResolvedValueOnce({ rows })
     .mockResolvedValue({ rows: [{ id: statusEventId, created: true }] });
@@ -24,7 +24,7 @@ function mockClient(rows: Array<{ id: string; client_id: string; from_status: st
 
 describe('updateFindingStatus (unit, mocked client)', () => {
   it('returns found: true and passes findingId/toStatus/note as positional params', async () => {
-    const { client, query } = mockClient([{ id: findingId, client_id: clientId, from_status: 'open', status_event_id: statusEventId }]);
+    const { client, query } = mockClient([{ id: findingId, account_id: clientId, from_status: 'open', status_event_id: statusEventId }]);
     const result = await updateFindingStatus(client, findingId, 'in_review', 'analyst note');
     expect(result).toEqual({ found: true });
     const [sql, params] = query.mock.calls[0] as [string, unknown[]];
@@ -34,7 +34,7 @@ describe('updateFindingStatus (unit, mocked client)', () => {
   });
 
   it('defaults note to null when omitted', async () => {
-    const { client, query } = mockClient([{ id: findingId, client_id: clientId, from_status: 'open', status_event_id: statusEventId }]);
+    const { client, query } = mockClient([{ id: findingId, account_id: clientId, from_status: 'open', status_event_id: statusEventId }]);
     await updateFindingStatus(client, findingId, 'closed');
     const [, params] = query.mock.calls[0] as [string, unknown[]];
     expect(params).toEqual([findingId, 'closed', null, 'analyst']);
@@ -47,7 +47,7 @@ describe('updateFindingStatus (unit, mocked client)', () => {
   });
 
   it('casts toStatus to variance_status in the query', async () => {
-    const { client, query } = mockClient([{ id: findingId, client_id: clientId, from_status: 'open', status_event_id: statusEventId }]);
+    const { client, query } = mockClient([{ id: findingId, account_id: clientId, from_status: 'open', status_event_id: statusEventId }]);
     await updateFindingStatus(client, findingId, 'disputed');
     const [sql] = query.mock.calls[0] as [string, unknown[]];
     expect(sql).toMatch(/\$2::variance_status/);

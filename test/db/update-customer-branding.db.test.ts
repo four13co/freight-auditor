@@ -8,7 +8,7 @@ import { resolveBrandingByDomain } from '../../src/modules/identity/resolve-bran
 /**
  * 86e37r2t4: PATCH /api/internal/branding's backing write. Covers the update
  * itself, RLS tenant isolation (customer_branding carries FORCE RLS keyed on
- * client_id, migration 0077), the "no row yet for this tenant" boundary, and
+ * account_id, migration 0077), the "no row yet for this tenant" boundary, and
  * AC1's explicit requirement that a subsequent GET /api/branding-equivalent
  * read (resolveBrandingByDomain) reflects the change.
  */
@@ -25,20 +25,20 @@ describe('updateCustomerBranding (DB)', () => {
     pool = getPool();
     const owner = await pool.connect();
     try {
-      const a = await owner.query(`INSERT INTO client (name, slug) VALUES ('UCB-A', $1) RETURNING id`, [`${tag}-a`]);
+      const a = await owner.query(`INSERT INTO account (name, slug) VALUES ('UCB-A', $1) RETURNING id`, [`${tag}-a`]);
       clientAId = a.rows[0].id;
-      const b = await owner.query(`INSERT INTO client (name, slug) VALUES ('UCB-B', $1) RETURNING id`, [`${tag}-b`]);
+      const b = await owner.query(`INSERT INTO account (name, slug) VALUES ('UCB-B', $1) RETURNING id`, [`${tag}-b`]);
       clientBId = b.rows[0].id;
-      const c = await owner.query(`INSERT INTO client (name, slug) VALUES ('UCB-C', $1) RETURNING id`, [`${tag}-c`]);
+      const c = await owner.query(`INSERT INTO account (name, slug) VALUES ('UCB-C', $1) RETURNING id`, [`${tag}-c`]);
       clientCId = c.rows[0].id;
 
       await owner.query(
-        `INSERT INTO customer_branding (client_id, domain, logo_url, primary_color, secondary_color)
+        `INSERT INTO customer_branding (account_id, domain, logo_url, primary_color, secondary_color)
          VALUES ($1, $2, $3, $4, $5)`,
         [clientAId, domainA, 'https://cdn.example.com/a/logo.png', '#111111', '#222222'],
       );
       await owner.query(
-        `INSERT INTO customer_branding (client_id, domain, logo_url, primary_color, secondary_color)
+        `INSERT INTO customer_branding (account_id, domain, logo_url, primary_color, secondary_color)
          VALUES ($1, $2, $3, $4, $5)`,
         [clientBId, domainB, 'https://cdn.example.com/b/logo.png', '#333333', '#444444'],
       );
@@ -52,8 +52,8 @@ describe('updateCustomerBranding (DB)', () => {
   afterAll(async () => {
     const owner = await pool.connect();
     try {
-      await owner.query(`DELETE FROM customer_branding WHERE client_id = ANY($1::uuid[])`, [[clientAId, clientBId, clientCId]]);
-      await owner.query(`DELETE FROM client WHERE id = ANY($1::uuid[])`, [[clientAId, clientBId, clientCId]]);
+      await owner.query(`DELETE FROM customer_branding WHERE account_id = ANY($1::uuid[])`, [[clientAId, clientBId, clientCId]]);
+      await owner.query(`DELETE FROM account WHERE id = ANY($1::uuid[])`, [[clientAId, clientBId, clientCId]]);
     } finally {
       owner.release();
     }

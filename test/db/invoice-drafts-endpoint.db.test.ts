@@ -45,12 +45,12 @@ describe('POST /api/invoice-drafts + confirm (DB, e2e)', () => {
     pool = getPool();
     const owner = await pool.connect();
     try {
-      const c = await owner.query(`INSERT INTO client (name, slug) VALUES ('Draft', $1) RETURNING id`, [tag]);
+      const c = await owner.query(`INSERT INTO account (name, slug) VALUES ('Draft', $1) RETURNING id`, [tag]);
       clientId = c.rows[0].id;
       const u = await owner.query(`INSERT INTO app_user (email) VALUES ($1) RETURNING id`, [`${tag}@example.com`]);
       userId = u.rows[0].id;
       await owner.query(
-        `INSERT INTO membership (user_id, client_id, role) VALUES ($1, $2, 'client_viewer')`,
+        `INSERT INTO membership (user_id, account_id, role) VALUES ($1, $2, 'account_viewer')`,
         [userId, clientId],
       );
       const carrier = await owner.query(
@@ -71,27 +71,27 @@ describe('POST /api/invoice-drafts + confirm (DB, e2e)', () => {
     await app.close();
     const owner = await pool.connect();
     try {
-      await owner.query(`DELETE FROM audit_event WHERE client_id = $1`, [clientId]);
-      await owner.query(`DELETE FROM audit_replay_manifest WHERE client_id = $1`, [clientId]);
-      await owner.query(`DELETE FROM extraction_field WHERE client_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM audit_event WHERE account_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM audit_replay_manifest WHERE account_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM extraction_field WHERE account_id = $1`, [clientId]);
       // invoice_draft.confirmed_audit_run_id references audit_run -- clear the
       // draft rows (whole table for this client, not just referencing ones)
       // before deleting audit_run, or the FK blocks the delete.
-      await owner.query(`DELETE FROM invoice_draft WHERE client_id = $1`, [clientId]);
-      await owner.query(`DELETE FROM variance_finding WHERE client_id = $1`, [clientId]);
-      await owner.query(`DELETE FROM scorecard WHERE client_id = $1`, [clientId]);
-      await owner.query(`DELETE FROM charge_finding WHERE client_id = $1`, [clientId]);
-      await owner.query(`DELETE FROM gate_failure WHERE client_id = $1`, [clientId]);
-      await owner.query(`DELETE FROM charge_fact WHERE client_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM invoice_draft WHERE account_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM variance_finding WHERE account_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM scorecard WHERE account_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM charge_finding WHERE account_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM gate_failure WHERE account_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM charge_fact WHERE account_id = $1`, [clientId]);
       // 86e367r9x: persistAuditRun now wires a payment_gate_decision row per run.
-      await owner.query(`DELETE FROM payment_gate_decision WHERE client_id = $1`, [clientId]);
-      await owner.query(`DELETE FROM audit_run WHERE client_id = $1`, [clientId]);
-      await owner.query(`DELETE FROM invoice WHERE client_id = $1`, [clientId]);
-      await owner.query(`DELETE FROM source_document WHERE client_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM payment_gate_decision WHERE account_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM audit_run WHERE account_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM invoice WHERE account_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM source_document WHERE account_id = $1`, [clientId]);
       await owner.query(`DELETE FROM carrier WHERE id = $1`, [carrierId]);
-      await owner.query(`DELETE FROM membership WHERE client_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM membership WHERE account_id = $1`, [clientId]);
       await owner.query(`DELETE FROM app_user WHERE id = $1`, [userId]);
-      await owner.query(`DELETE FROM client WHERE id = $1`, [clientId]);
+      await owner.query(`DELETE FROM account WHERE id = $1`, [clientId]);
     } finally {
       owner.release();
     }
@@ -114,7 +114,7 @@ describe('POST /api/invoice-drafts + confirm (DB, e2e)', () => {
     });
 
     const before = await withTenantTx({ clientIds: [clientId], internal: true }, (c) =>
-      c.query(`SELECT count(*)::int AS n FROM audit_run WHERE client_id = $1`, [clientId]),
+      c.query(`SELECT count(*)::int AS n FROM audit_run WHERE account_id = $1`, [clientId]),
     );
 
     const pdf = await makeTextPdf(['Acme Freight Invoice', 'PDF-1']);
@@ -133,7 +133,7 @@ describe('POST /api/invoice-drafts + confirm (DB, e2e)', () => {
     expect(body.carrierCandidates).toEqual([]);
 
     const after = await withTenantTx({ clientIds: [clientId], internal: true }, (c) =>
-      c.query(`SELECT count(*)::int AS n FROM audit_run WHERE client_id = $1`, [clientId]),
+      c.query(`SELECT count(*)::int AS n FROM audit_run WHERE account_id = $1`, [clientId]),
     );
     expect(after.rows[0].n).toBe(before.rows[0].n);
   });
@@ -176,7 +176,7 @@ describe('POST /api/invoice-drafts + confirm (DB, e2e)', () => {
     expect(Array.isArray(get.json().findings)).toBe(true);
 
     const persisted = await withTenantTx({ clientIds: [clientId], internal: true }, (c) =>
-      c.query(`SELECT transaction_set FROM invoice WHERE client_id = $1 ORDER BY created_at DESC LIMIT 1`, [clientId]),
+      c.query(`SELECT transaction_set FROM invoice WHERE account_id = $1 ORDER BY created_at DESC LIMIT 1`, [clientId]),
     );
     expect(persisted.rows[0].transaction_set).toBe('PDF');
 
@@ -233,7 +233,7 @@ describe('POST /api/invoice-drafts + confirm (DB, e2e)', () => {
 
     const chargeFact = await withTenantTx({ clientIds: [clientId], internal: true }, (c) =>
       c.query(
-        `SELECT amount FROM charge_fact WHERE client_id = $1 AND invoice_id = (
+        `SELECT amount FROM charge_fact WHERE account_id = $1 AND invoice_id = (
            SELECT invoice_id FROM audit_run WHERE id = $2
          )`,
         [clientId, confirmPost.json().auditRunId],
@@ -243,7 +243,7 @@ describe('POST /api/invoice-drafts + confirm (DB, e2e)', () => {
 
     const diff = await withTenantTx({ clientIds: [clientId], internal: true }, (c) =>
       c.query(
-        `SELECT ai_value, human_value FROM extraction_field WHERE client_id = $1 AND field_path = 'charges[0]'`,
+        `SELECT ai_value, human_value FROM extraction_field WHERE account_id = $1 AND field_path = 'charges[0]'`,
         [clientId],
       ),
     );
@@ -259,7 +259,7 @@ describe('POST /api/invoice-drafts + confirm (DB, e2e)', () => {
     // recordCorrectionDiff now diffs header-level fields as well.
     const footingDiff = await withTenantTx({ clientIds: [clientId], internal: true }, (c) =>
       c.query(
-        `SELECT ai_value, human_value FROM extraction_field WHERE client_id = $1 AND field_path = 'footing'`,
+        `SELECT ai_value, human_value FROM extraction_field WHERE account_id = $1 AND field_path = 'footing'`,
         [clientId],
       ),
     );

@@ -1,11 +1,11 @@
 import type pg from 'pg';
 
-export interface UpdateClientInput {
+export interface UpdateAccountInput {
   name?: string;
   isActive?: boolean;
 }
 
-export interface UpdatedClient {
+export interface UpdatedAccount {
   id: string;
   name: string;
   slug: string;
@@ -25,8 +25,8 @@ export interface UpdatedClient {
 export async function updateClient(
   client: pg.PoolClient,
   clientId: string,
-  input: UpdateClientInput,
-): Promise<UpdatedClient | null> {
+  input: UpdateAccountInput,
+): Promise<UpdatedAccount | null> {
   const sets: string[] = [];
   const params: unknown[] = [clientId];
 
@@ -41,7 +41,7 @@ export async function updateClient(
 
   if (sets.length === 0) {
     const { rows } = await client.query<{ id: string; name: string; slug: string; is_active: boolean }>(
-      `SELECT id, name, slug, is_active FROM client WHERE id = $1`,
+      `SELECT id, name, slug, is_active FROM account WHERE id = $1`,
       [clientId],
     );
     const row = rows[0];
@@ -49,7 +49,7 @@ export async function updateClient(
   }
 
   const { rows } = await client.query<{ id: string; name: string; slug: string; is_active: boolean }>(
-    `UPDATE client SET ${sets.join(', ')} WHERE id = $1 RETURNING id, name, slug, is_active`,
+    `UPDATE account SET ${sets.join(', ')} WHERE id = $1 RETURNING id, name, slug, is_active`,
     params,
   );
   const row = rows[0];

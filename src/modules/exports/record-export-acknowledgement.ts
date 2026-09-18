@@ -58,14 +58,14 @@ export async function recordExportAcknowledgement(
   // Confirm the origin record actually belongs to this tenant before
   // linking it -- an FK reference alone doesn't enforce tenant ownership
   // (the referenced row merely has to exist), same gap recordPartialRecovery
-  // closes for claim_id via an explicit client_id-scoped lookup.
+  // closes for claim_id via an explicit account_id-scoped lookup.
   if (origin.claimId) {
-    const { rows } = await client.query(`SELECT 1 FROM claim WHERE client_id = $1 AND id = $2`, [origin.clientId, origin.claimId]);
+    const { rows } = await client.query(`SELECT 1 FROM claim WHERE account_id = $1 AND id = $2`, [origin.clientId, origin.claimId]);
     if (rows.length === 0) throw new RecordExportAcknowledgementError('CLAIM_NOT_FOUND');
   }
   if (origin.paymentGateDecisionId) {
     const { rows } = await client.query(
-      `SELECT 1 FROM payment_gate_decision WHERE client_id = $1 AND id = $2`,
+      `SELECT 1 FROM payment_gate_decision WHERE account_id = $1 AND id = $2`,
       [origin.clientId, origin.paymentGateDecisionId],
     );
     if (rows.length === 0) throw new RecordExportAcknowledgementError('PAYMENT_GATE_DECISION_NOT_FOUND');
@@ -79,21 +79,21 @@ export async function recordExportAcknowledgement(
     ? await client.query<{ id: string; created: boolean }>(
       `WITH inserted AS (
          INSERT INTO export_acknowledgement
-           (client_id, claim_id, payment_gate_decision_id, system_code, adapter_version, dedupe_key, status, external_reference)
+           (account_id, claim_id, payment_gate_decision_id, system_code, adapter_version, dedupe_key, status, external_reference)
          VALUES ($1, $2, $3, $4, $5, $6, 'ACKNOWLEDGED', $7)
-         ON CONFLICT (client_id, system_code, dedupe_key) WHERE status = 'ACKNOWLEDGED' DO NOTHING
+         ON CONFLICT (account_id, system_code, dedupe_key) WHERE status = 'ACKNOWLEDGED' DO NOTHING
          RETURNING id
        )
        SELECT id, true AS created FROM inserted
        UNION ALL
        SELECT id, false AS created FROM export_acknowledgement
-       WHERE client_id = $1 AND system_code = $4 AND dedupe_key = $6 AND status = 'ACKNOWLEDGED'
+       WHERE account_id = $1 AND system_code = $4 AND dedupe_key = $6 AND status = 'ACKNOWLEDGED'
          AND NOT EXISTS (SELECT 1 FROM inserted)`,
       [origin.clientId, origin.claimId, origin.paymentGateDecisionId, systemCode, result.adapterVersion, dedupeKey, result.externalReference],
     )
     : await client.query<{ id: string; created: boolean }>(
       `INSERT INTO export_acknowledgement
-         (client_id, claim_id, payment_gate_decision_id, system_code, adapter_version, dedupe_key, status, reason)
+         (account_id, claim_id, payment_gate_decision_id, system_code, adapter_version, dedupe_key, status, reason)
        VALUES ($1, $2, $3, $4, $5, $6, 'FAILED', $7)
        RETURNING id, true AS created`,
       [origin.clientId, origin.claimId, origin.paymentGateDecisionId, systemCode, result.adapterVersion, dedupeKey, result.reason],

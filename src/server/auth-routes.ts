@@ -2,6 +2,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { getAuth } from '../auth/better-auth.js';
 import { listMembershipClientIds, lookupActorType, lookupClientName, toFetchHeaders } from '../modules/findings/tenant-auth.js';
 import { authenticationAction, writeSecurityEvent } from '../modules/audit-ledger/security-events.js';
+import { roleDbToWire } from '../modules/identity/role-wire-mapping.js';
 
 /**
  * 86e2wb4zg: the better-auth mount + membership lookup, split out of app.ts's
@@ -89,8 +90,8 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
   // 86e2wb92b: a real (non-dev-header) session proves WHO the user is, but
   // resolveViaSession (tenant-auth.ts) still requires an explicit
   // x-client-id header -- nothing previously told the frontend WHICH
-  // client_id to send. This is that lookup: verify the session, then return
-  // the client_id(s) the user has a membership row for, so login can store
+  // account_id to send. This is that lookup: verify the session, then return
+  // the account_id(s) the user has a membership row for, so login can store
   // one and start sending it as x-client-id on subsequent requests.
   //
   // 86e2zfjmb: also returns the actor's type -- isInternal (app_user.is_internal)
@@ -123,6 +124,11 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
       actorUserId: session.user.id,
       detail: { membershipCount: clientIds.length },
     });
-    return { clientIds, isInternal: actorType.isInternal, role: actorType.role, clientName };
+    return {
+      clientIds,
+      isInternal: actorType.isInternal,
+      role: actorType.role === null ? null : roleDbToWire(actorType.role),
+      clientName,
+    };
   });
 }

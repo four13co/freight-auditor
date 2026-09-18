@@ -34,18 +34,18 @@ describe('clarifying questions from abstentions (DB)', () => {
 
   beforeAll(async () => {
     pool = makePool();
-    clientId = (await pool.query(`INSERT INTO client (name,slug) VALUES ('Questions',$1) RETURNING id`, [tag])).rows[0].id;
-    otherClientId = (await pool.query(`INSERT INTO client (name,slug) VALUES ('Other',$1) RETURNING id`, [`${tag}-other`])).rows[0].id;
+    clientId = (await pool.query(`INSERT INTO account (name,slug) VALUES ('Questions',$1) RETURNING id`, [tag])).rows[0].id;
+    otherClientId = (await pool.query(`INSERT INTO account (name,slug) VALUES ('Other',$1) RETURNING id`, [`${tag}-other`])).rows[0].id;
     sourceDocumentId = (await pool.query(`INSERT INTO source_document
-      (client_id,sha256,content_type,byte_size,storage_uri) VALUES ($1,$2,'application/pdf',1,$3) RETURNING id`,
+      (account_id,sha256,content_type,byte_size,storage_uri) VALUES ($1,$2,'application/pdf',1,$3) RETURNING id`,
     [clientId, sha, `local://${tag}`])).rows[0].id;
   });
   afterAll(async () => {
-    await pool.query(`DELETE FROM audit_event WHERE client_id=$1`, [clientId]);
-    await pool.query(`DELETE FROM clarifying_question WHERE client_id=$1`, [clientId]);
-    await pool.query(`DELETE FROM extraction_field WHERE client_id=$1`, [clientId]);
+    await pool.query(`DELETE FROM audit_event WHERE account_id=$1`, [clientId]);
+    await pool.query(`DELETE FROM clarifying_question WHERE account_id=$1`, [clientId]);
+    await pool.query(`DELETE FROM extraction_field WHERE account_id=$1`, [clientId]);
     await pool.query(`DELETE FROM source_document WHERE id=$1`, [sourceDocumentId]);
-    await pool.query(`DELETE FROM client WHERE id IN ($1,$2)`, [clientId, otherClientId]);
+    await pool.query(`DELETE FROM account WHERE id IN ($1,$2)`, [clientId, otherClientId]);
     await pool.end();
   });
 

@@ -39,20 +39,20 @@ export async function generateDoNotPayDecision(
   const input = schema.parse(untrusted);
 
   const run = await client.query<{ invoice_id: string }>(
-    `SELECT invoice_id FROM audit_run WHERE client_id = $1 AND id = $2 AND outcome = 'REJECTED_REWORK'`,
+    `SELECT invoice_id FROM audit_run WHERE account_id = $1 AND id = $2 AND outcome = 'REJECTED_REWORK'`,
     [input.clientId, input.auditRunId],
   );
   if (!run.rowCount) throw new GenerateDoNotPayError('AUDIT_RUN_NOT_GATE_FAILED');
   const invoiceId = run.rows[0]!.invoice_id;
 
   const { rows: gateFailures } = await client.query<GateFailureRow>(
-    `SELECT id, defect, citation FROM gate_failure WHERE client_id = $1 AND audit_run_id = $2`,
+    `SELECT id, defect, citation FROM gate_failure WHERE account_id = $1 AND audit_run_id = $2`,
     [input.clientId, input.auditRunId],
   );
   const decision = composeDoNotPayDecision(gateFailures);
 
   const inserted = await client.query<{ id: string }>(
-    `INSERT INTO payment_gate_decision (client_id, invoice_id, audit_run_id, action, actor_kind, rationale)
+    `INSERT INTO payment_gate_decision (account_id, invoice_id, audit_run_id, action, actor_kind, rationale)
      VALUES ($1,$2,$3,'do_not_pay','system',$4)
      ON CONFLICT ON CONSTRAINT payment_gate_decision_run_action_uk DO NOTHING
      RETURNING id`,
@@ -62,7 +62,7 @@ export async function generateDoNotPayDecision(
   if (!decisionId) {
     decisionId = (
       await client.query<{ id: string }>(
-        `SELECT id FROM payment_gate_decision WHERE client_id = $1 AND audit_run_id = $2 AND action = 'do_not_pay'`,
+        `SELECT id FROM payment_gate_decision WHERE account_id = $1 AND audit_run_id = $2 AND action = 'do_not_pay'`,
         [input.clientId, input.auditRunId],
       )
     ).rows[0]?.id;

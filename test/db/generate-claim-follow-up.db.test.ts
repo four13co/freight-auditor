@@ -20,9 +20,9 @@ describe('generateClaimFollowUp (DB)', () => {
     pool = getPool();
     const owner = await pool.connect();
     try {
-      const a = await owner.query(`INSERT INTO client (name, slug) VALUES ('GCFU-A', $1) RETURNING id`, [`${tag}-a`]);
+      const a = await owner.query(`INSERT INTO account (name, slug) VALUES ('GCFU-A', $1) RETURNING id`, [`${tag}-a`]);
       clientAId = a.rows[0].id;
-      const b = await owner.query(`INSERT INTO client (name, slug) VALUES ('GCFU-B', $1) RETURNING id`, [`${tag}-b`]);
+      const b = await owner.query(`INSERT INTO account (name, slug) VALUES ('GCFU-B', $1) RETURNING id`, [`${tag}-b`]);
       clientBId = b.rows[0].id;
     } finally {
       owner.release();
@@ -32,9 +32,9 @@ describe('generateClaimFollowUp (DB)', () => {
   afterAll(async () => {
     const owner = await pool.connect();
     try {
-      await owner.query(`DELETE FROM audit_event WHERE client_id IN ($1, $2)`, [clientAId, clientBId]);
-      await owner.query(`DELETE FROM claim WHERE client_id IN ($1, $2)`, [clientAId, clientBId]);
-      await owner.query(`DELETE FROM client WHERE id IN ($1, $2)`, [clientAId, clientBId]);
+      await owner.query(`DELETE FROM audit_event WHERE account_id IN ($1, $2)`, [clientAId, clientBId]);
+      await owner.query(`DELETE FROM claim WHERE account_id IN ($1, $2)`, [clientAId, clientBId]);
+      await owner.query(`DELETE FROM account WHERE id IN ($1, $2)`, [clientAId, clientBId]);
     } finally {
       owner.release();
     }
@@ -46,7 +46,7 @@ describe('generateClaimFollowUp (DB)', () => {
     opts: { clientId: string; status?: string; agingDeadlineAt?: Date | null },
   ): Promise<string> {
     const row = await client.query(
-      `INSERT INTO claim (client_id, amount_claimed, currency, status, aging_deadline_at)
+      `INSERT INTO claim (account_id, amount_claimed, currency, status, aging_deadline_at)
        VALUES ($1, '500.0000', 'USD', $2, $3) RETURNING id`,
       [opts.clientId, opts.status ?? 'open', opts.agingDeadlineAt ?? null],
     );

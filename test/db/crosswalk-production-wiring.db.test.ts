@@ -41,7 +41,7 @@ describe('Production charge-code categorization via the real crosswalk', () => {
 
     const owner = await pool.connect();
     try {
-      const c = await owner.query(`INSERT INTO client (name, slug) VALUES ('Crosswalk Co', $1) RETURNING id`, [tag]);
+      const c = await owner.query(`INSERT INTO account (name, slug) VALUES ('Crosswalk Co', $1) RETURNING id`, [tag]);
       clientId = c.rows[0].id;
       const car = await owner.query(`INSERT INTO carrier (name, scac_code) VALUES ('WXYZ Freight', 'WXYZ') RETURNING id`);
       carrierId = car.rows[0].id;
@@ -50,7 +50,7 @@ describe('Production charge-code categorization via the real crosswalk', () => {
       // phase0-foundations.db.test.ts's AC5: rank 1 global, rank 3
       // carrier+code, rank 4 client+carrier+code (this client only).
       await owner.query(
-        `INSERT INTO charge_code_crosswalk (client_id, carrier_id, source_code, canonical_category, precedence_rank)
+        `INSERT INTO charge_code_crosswalk (account_id, carrier_id, source_code, canonical_category, precedence_rank)
          VALUES
            (NULL, NULL, 'FSC', 'FUEL_GLOBAL', 1),
            (NULL, $1, 'FSC', 'FUEL_CARRIER', 3),
@@ -65,21 +65,21 @@ describe('Production charge-code categorization via the real crosswalk', () => {
   afterAll(async () => {
     const owner = await pool.connect();
     try {
-      await owner.query(`DELETE FROM audit_event WHERE client_id = $1`, [clientId]);
-      await owner.query(`DELETE FROM audit_replay_manifest WHERE client_id = $1`, [clientId]);
-      await owner.query(`DELETE FROM scorecard WHERE client_id = $1`, [clientId]);
-      await owner.query(`DELETE FROM variance_finding WHERE client_id = $1`, [clientId]);
-      await owner.query(`DELETE FROM charge_finding WHERE client_id = $1`, [clientId]);
-      await owner.query(`DELETE FROM gate_failure WHERE client_id = $1`, [clientId]);
-      await owner.query(`DELETE FROM charge_fact WHERE client_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM audit_event WHERE account_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM audit_replay_manifest WHERE account_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM scorecard WHERE account_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM variance_finding WHERE account_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM charge_finding WHERE account_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM gate_failure WHERE account_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM charge_fact WHERE account_id = $1`, [clientId]);
       // 86e367r9x: persistAuditRun now wires a payment_gate_decision row per run.
-      await owner.query(`DELETE FROM payment_gate_decision WHERE client_id = $1`, [clientId]);
-      await owner.query(`DELETE FROM audit_run WHERE client_id = $1`, [clientId]);
-      await owner.query(`DELETE FROM invoice WHERE client_id = $1`, [clientId]);
-      await owner.query(`DELETE FROM source_document WHERE client_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM payment_gate_decision WHERE account_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM audit_run WHERE account_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM invoice WHERE account_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM source_document WHERE account_id = $1`, [clientId]);
       await owner.query(`DELETE FROM charge_code_crosswalk WHERE carrier_id = $1`, [carrierId]);
       await owner.query(`DELETE FROM carrier WHERE id = $1`, [carrierId]);
-      await owner.query(`DELETE FROM client WHERE id = $1`, [clientId]);
+      await owner.query(`DELETE FROM account WHERE id = $1`, [clientId]);
     } finally {
       owner.release();
     }

@@ -1,6 +1,6 @@
 import type pg from 'pg';
 
-export interface ClientDetail {
+export interface AccountDetail {
   id: string;
   name: string;
   slug: string;
@@ -21,19 +21,19 @@ export interface ClientDetail {
  * is the fresh-tenant case the Branding tab's CREATE-vs-UPDATE toggle keys
  * off of.
  */
-export async function getClientDetail(client: pg.PoolClient, clientId: string): Promise<ClientDetail | null> {
+export async function getAccountDetail(client: pg.PoolClient, clientId: string): Promise<AccountDetail | null> {
   const { rows } = await client.query<{
     id: string; name: string; slug: string; is_active: boolean; created_at: Date;
     domain: string | null; logo_url: string | null; primary_color: string | null; secondary_color: string | null;
     member_count: string;
   }>(
     `SELECT
-       client.id, client.name, client.slug, client.is_active, client.created_at,
+       account.id, account.name, account.slug, account.is_active, account.created_at,
        customer_branding.domain, customer_branding.logo_url, customer_branding.primary_color, customer_branding.secondary_color,
-       (SELECT count(*) FROM membership WHERE membership.client_id = client.id) AS member_count
-     FROM client
-     LEFT JOIN customer_branding ON customer_branding.client_id = client.id
-     WHERE client.id = $1`,
+       (SELECT count(*) FROM membership WHERE membership.account_id = account.id) AS member_count
+     FROM account
+     LEFT JOIN customer_branding ON customer_branding.account_id = account.id
+     WHERE account.id = $1`,
     [clientId],
   );
 

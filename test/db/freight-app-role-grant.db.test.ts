@@ -113,7 +113,7 @@ describe('freight_app role grant (86e2v1qxz)', () => {
       // catalog rows (tenant column IS NULL) -- proves the grant did not
       // also disable/weaken isolation for this connection.
       const findings = await withTenantTxOnPool(nonOwnerPool, { clientIds: [], internal: false }, (client) =>
-        client.query('SELECT count(*) FROM client'),
+        client.query('SELECT count(*) FROM account'),
       );
       expect(findings.rows[0].count).toBeDefined();
     });
@@ -136,7 +136,7 @@ async function withTenantTxOnPool<T>(
   try {
     await client.query('BEGIN');
     await client.query('SELECT set_config($1, $2, true)', [
-      'app.current_client_ids',
+      'app.current_account_ids',
       (ctx.clientIds ?? []).join(','),
     ]);
     await client.query('SELECT set_config($1, $2, true)', ['app.is_internal', ctx.internal ? 'true' : 'false']);

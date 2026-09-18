@@ -19,32 +19,32 @@ describe('contract-rate-admin (db)', () => {
     pool = makePool();
     const owner = await pool.connect();
     try {
-      const client = await owner.query(`INSERT INTO client (name, slug) VALUES ('CRA Client', $1) RETURNING id`, [tag]);
+      const client = await owner.query(`INSERT INTO account (name, slug) VALUES ('CRA Client', $1) RETURNING id`, [tag]);
       clientId = client.rows[0].id;
-      const otherClient = await owner.query(`INSERT INTO client (name, slug) VALUES ('CRA Other', $1) RETURNING id`, [`${tag}-other`]);
+      const otherClient = await owner.query(`INSERT INTO account (name, slug) VALUES ('CRA Other', $1) RETURNING id`, [`${tag}-other`]);
       otherClientId = otherClient.rows[0].id;
       const carrier = await owner.query(`INSERT INTO carrier (name) VALUES ('CRA Carrier') RETURNING id`);
       const contract = await owner.query(
-        `INSERT INTO contract (client_id, carrier_id, name) VALUES ($1, $2, 'CRA Contract') RETURNING id`,
+        `INSERT INTO contract (account_id, carrier_id, name) VALUES ($1, $2, 'CRA Contract') RETURNING id`,
         [clientId, carrier.rows[0].id],
       );
       const otherContract = await owner.query(
-        `INSERT INTO contract (client_id, carrier_id, name) VALUES ($1, $2, 'CRA Other Contract') RETURNING id`,
+        `INSERT INTO contract (account_id, carrier_id, name) VALUES ($1, $2, 'CRA Other Contract') RETURNING id`,
         [otherClientId, carrier.rows[0].id],
       );
       const version = await owner.query(
-        `INSERT INTO contract_version (client_id, contract_id, version_label, valid_from) VALUES ($1, $2, 'v1', CURRENT_DATE) RETURNING id`,
+        `INSERT INTO contract_version (account_id, contract_id, version_label, valid_from) VALUES ($1, $2, 'v1', CURRENT_DATE) RETURNING id`,
         [clientId, contract.rows[0].id],
       );
       const otherVersion = await owner.query(
-        `INSERT INTO contract_version (client_id, contract_id, version_label, valid_from) VALUES ($1, $2, 'v1', CURRENT_DATE) RETURNING id`,
+        `INSERT INTO contract_version (account_id, contract_id, version_label, valid_from) VALUES ($1, $2, 'v1', CURRENT_DATE) RETURNING id`,
         [otherClientId, otherContract.rows[0].id],
       );
       contractVersionId = version.rows[0].id;
       otherContractVersionId = otherVersion.rows[0].id;
 
       const clause = await owner.query(
-        `INSERT INTO contract_clause (client_id, contract_version_id, clause_ref, text_excerpt) VALUES ($1, $2, '4.2', 'rate clause') RETURNING id`,
+        `INSERT INTO contract_clause (account_id, contract_version_id, clause_ref, text_excerpt) VALUES ($1, $2, '4.2', 'rate clause') RETURNING id`,
         [clientId, contractVersionId],
       );
       clauseId = clause.rows[0].id;
@@ -56,11 +56,11 @@ describe('contract-rate-admin (db)', () => {
   afterAll(async () => {
     const owner = await pool.connect();
     try {
-      await owner.query(`DELETE FROM contract_rate WHERE client_id = ANY($1)`, [[clientId, otherClientId]]);
-      await owner.query(`DELETE FROM contract_clause WHERE client_id = ANY($1)`, [[clientId, otherClientId]]);
-      await owner.query(`DELETE FROM contract_version WHERE client_id = ANY($1)`, [[clientId, otherClientId]]);
-      await owner.query(`DELETE FROM contract WHERE client_id = ANY($1)`, [[clientId, otherClientId]]);
-      await owner.query(`DELETE FROM client WHERE id = ANY($1)`, [[clientId, otherClientId]]);
+      await owner.query(`DELETE FROM contract_rate WHERE account_id = ANY($1)`, [[clientId, otherClientId]]);
+      await owner.query(`DELETE FROM contract_clause WHERE account_id = ANY($1)`, [[clientId, otherClientId]]);
+      await owner.query(`DELETE FROM contract_version WHERE account_id = ANY($1)`, [[clientId, otherClientId]]);
+      await owner.query(`DELETE FROM contract WHERE account_id = ANY($1)`, [[clientId, otherClientId]]);
+      await owner.query(`DELETE FROM account WHERE id = ANY($1)`, [[clientId, otherClientId]]);
     } finally {
       owner.release();
     }
@@ -83,7 +83,7 @@ describe('contract-rate-admin (db)', () => {
       expect(rates).toHaveLength(1);
       expect(rates[0]).toMatchObject({ category: 'LINEHAUL', amount: '900.0000', currency: 'USD', clauseId, contractVersionId });
     } finally {
-      await client.query(`DELETE FROM contract_rate WHERE client_id = $1`, [clientId]);
+      await client.query(`DELETE FROM contract_rate WHERE account_id = $1`, [clientId]);
       client.release();
     }
   });
@@ -97,7 +97,7 @@ describe('contract-rate-admin (db)', () => {
       const rates = await listContractRates(client, clientId);
       expect(rates.map((r) => r.category)).toEqual(['LINEHAUL']);
     } finally {
-      await client.query(`DELETE FROM contract_rate WHERE client_id = ANY($1)`, [[clientId, otherClientId]]);
+      await client.query(`DELETE FROM contract_rate WHERE account_id = ANY($1)`, [[clientId, otherClientId]]);
       client.release();
     }
   });
@@ -121,7 +121,7 @@ describe('contract-rate-admin (db)', () => {
       const wrongTenant = await updateContractRate(client, otherClientId, created.id, { amount: '1.0000' });
       expect(wrongTenant).toBe(false);
     } finally {
-      await client.query(`DELETE FROM contract_rate WHERE client_id = $1`, [clientId]);
+      await client.query(`DELETE FROM contract_rate WHERE account_id = $1`, [clientId]);
       client.release();
     }
   });

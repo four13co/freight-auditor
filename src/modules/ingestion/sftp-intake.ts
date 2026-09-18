@@ -62,7 +62,7 @@ export async function pollSftpIntake(
     const fingerprint = remoteFingerprint(entry);
     const claim = await db.query<{ id: string }>(
       `INSERT INTO sftp_intake
-         (client_id, connection_id, remote_path, remote_fingerprint, status)
+         (account_id, connection_id, remote_path, remote_fingerprint, status)
        VALUES ($1, $2, $3, $4, 'discovered')
        ON CONFLICT (connection_id, remote_path, remote_fingerprint) DO UPDATE
          SET status = 'discovered', failure_code = NULL,
@@ -88,7 +88,7 @@ export async function pollSftpIntake(
       if (!document.ownedByCaller) throw new Error('CROSS_TENANT_CONTENT_COLLISION');
       await db.query(
         `UPDATE sftp_intake SET status = 'stored', source_document_id = $1, stored_at = now()
-         WHERE id = $2 AND client_id = $3`,
+         WHERE id = $2 AND account_id = $3`,
         [document.id, intakeId, connection.clientId],
       );
       result.stored += 1;
@@ -99,7 +99,7 @@ export async function pollSftpIntake(
           ? 'CONTENT_OWNERSHIP_CONFLICT'
           : 'READ_OR_STORE_FAILED';
       await db.query(
-        `UPDATE sftp_intake SET status = 'quarantined', failure_code = $1 WHERE id = $2 AND client_id = $3`,
+        `UPDATE sftp_intake SET status = 'quarantined', failure_code = $1 WHERE id = $2 AND account_id = $3`,
         [failureCode, intakeId, connection.clientId],
       );
       result.quarantined += 1;

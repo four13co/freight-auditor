@@ -24,28 +24,28 @@ describe('rerunDiscoveryForAmendment (DB)', () => {
 
   beforeAll(async () => {
     pool = getPool();
-    clientId = (await pool.query(`INSERT INTO client (name, slug) VALUES ('Rerun', $1) RETURNING id`, [tag])).rows[0].id;
+    clientId = (await pool.query(`INSERT INTO account (name, slug) VALUES ('Rerun', $1) RETURNING id`, [tag])).rows[0].id;
     carrierId = (await pool.query(`INSERT INTO carrier (name) VALUES ($1) RETURNING id`, [`Carrier-${tag}`])).rows[0].id;
 
     contractId = (await pool.query(
-      `INSERT INTO contract (client_id, carrier_id, name) VALUES ($1, $2, 'Rerun Contract') RETURNING id`,
+      `INSERT INTO contract (account_id, carrier_id, name) VALUES ($1, $2, 'Rerun Contract') RETURNING id`,
       [clientId, carrierId],
     )).rows[0].id;
     oldVersionId = (await pool.query(
-      `INSERT INTO contract_version (client_id, contract_id, valid_from, valid_to) VALUES ($1, $2, '2026-01-01', '2026-06-01') RETURNING id`,
+      `INSERT INTO contract_version (account_id, contract_id, valid_from, valid_to) VALUES ($1, $2, '2026-01-01', '2026-06-01') RETURNING id`,
       [clientId, contractId],
     )).rows[0].id;
     newVersionId = (await pool.query(
-      `INSERT INTO contract_version (client_id, contract_id, valid_from) VALUES ($1, $2, '2026-06-01') RETURNING id`,
+      `INSERT INTO contract_version (account_id, contract_id, valid_from) VALUES ($1, $2, '2026-06-01') RETURNING id`,
       [clientId, contractId],
     )).rows[0].id;
 
     const oldClauseId = (await pool.query(
-      `INSERT INTO contract_clause (client_id, contract_version_id, clause_ref, text_excerpt) VALUES ($1, $2, '4.2', 'old fuel text') RETURNING id`,
+      `INSERT INTO contract_clause (account_id, contract_version_id, clause_ref, text_excerpt) VALUES ($1, $2, '4.2', 'old fuel text') RETURNING id`,
       [clientId, oldVersionId],
     )).rows[0].id;
     await pool.query(
-      `INSERT INTO contract_clause (client_id, contract_version_id, clause_ref, text_excerpt) VALUES ($1, $2, '4.2', 'new fuel text')`,
+      `INSERT INTO contract_clause (account_id, contract_version_id, clause_ref, text_excerpt) VALUES ($1, $2, '4.2', 'new fuel text')`,
       [clientId, newVersionId],
     );
 
@@ -57,18 +57,18 @@ describe('rerunDiscoveryForAmendment (DB)', () => {
     )).rows[0].id;
 
     amendmentId = (await pool.query(
-      `INSERT INTO contract_amendment (client_id, contract_id, supersedes_version_id, new_version_id, effective_date)
+      `INSERT INTO contract_amendment (account_id, contract_id, supersedes_version_id, new_version_id, effective_date)
        VALUES ($1, $2, $3, $4, '2026-06-01') RETURNING id`,
       [clientId, contractId, oldVersionId, newVersionId],
     )).rows[0].id;
 
     const invoiceId = (await pool.query(
-      `INSERT INTO invoice (client_id, carrier_id, transaction_set, invoice_number, currency, parser_version)
+      `INSERT INTO invoice (account_id, carrier_id, transaction_set, invoice_number, currency, parser_version)
        VALUES ($1, $2, '210', $3, 'USD', 'test') RETURNING id`,
       [clientId, carrierId, `INV-${tag}`],
     )).rows[0].id;
     auditRunId = (await pool.query(
-      `INSERT INTO audit_run (client_id, invoice_id, engine_spec_version, outcome) VALUES ($1, $2, 'test', 'SCORED') RETURNING id`,
+      `INSERT INTO audit_run (account_id, invoice_id, engine_spec_version, outcome) VALUES ($1, $2, 'test', 'SCORED') RETURNING id`,
       [clientId, invoiceId],
     )).rows[0].id;
     // A finding citing the soon-to-be-deprecated rule version -- this is what makes the run "affected".
@@ -77,35 +77,35 @@ describe('rerunDiscoveryForAmendment (DB)', () => {
       [`criterion-${tag}`],
     )).rows[0].id;
     await pool.query(
-      `INSERT INTO charge_finding (client_id, audit_run_id, criterion_id, rule_version_id, result) VALUES ($1, $2, $3, $4, 'CONFORMED')`,
+      `INSERT INTO charge_finding (account_id, audit_run_id, criterion_id, rule_version_id, result) VALUES ($1, $2, $3, $4, 'CONFORMED')`,
       [clientId, auditRunId, criterionId, ruleVersionId],
     );
     // An unknown-charge-code condition on the same invoice -- deterministically gives detectUnknownChargeCodeTriggers something to find.
     await pool.query(
-      `INSERT INTO charge_fact (client_id, invoice_id, code, category, amount, currency) VALUES ($1, $2, 'XYZ', NULL, 10, 'USD')`,
+      `INSERT INTO charge_fact (account_id, invoice_id, code, category, amount, currency) VALUES ($1, $2, 'XYZ', NULL, 10, 'USD')`,
       [clientId, invoiceId],
     );
   });
 
   afterAll(async () => {
-    await pool.query(`DELETE FROM unknown_charge_code_trigger WHERE client_id = $1`, [clientId]);
-    await pool.query(`DELETE FROM audit_event WHERE client_id = $1`, [clientId]);
+    await pool.query(`DELETE FROM unknown_charge_code_trigger WHERE account_id = $1`, [clientId]);
+    await pool.query(`DELETE FROM audit_event WHERE account_id = $1`, [clientId]);
     await pool.query(`DELETE FROM promotion_event WHERE rule_version_id IN (SELECT id FROM rule_version WHERE rule_id = $1)`, [ruleId]);
-    await pool.query(`DELETE FROM charge_finding WHERE client_id = $1`, [clientId]);
-    await pool.query(`DELETE FROM charge_fact WHERE client_id = $1`, [clientId]);
+    await pool.query(`DELETE FROM charge_finding WHERE account_id = $1`, [clientId]);
+    await pool.query(`DELETE FROM charge_fact WHERE account_id = $1`, [clientId]);
     // 86e367r9x: persistAuditRun now wires a payment_gate_decision row per run.
-    await pool.query(`DELETE FROM payment_gate_decision WHERE client_id = $1`, [clientId]);
-    await pool.query(`DELETE FROM audit_run WHERE client_id = $1`, [clientId]);
-    await pool.query(`DELETE FROM invoice WHERE client_id = $1`, [clientId]);
+    await pool.query(`DELETE FROM payment_gate_decision WHERE account_id = $1`, [clientId]);
+    await pool.query(`DELETE FROM audit_run WHERE account_id = $1`, [clientId]);
+    await pool.query(`DELETE FROM invoice WHERE account_id = $1`, [clientId]);
     await pool.query(`DELETE FROM criterion WHERE criterion_key = $1`, [`criterion-${tag}`]);
-    await pool.query(`DELETE FROM contract_amendment WHERE client_id = $1`, [clientId]);
+    await pool.query(`DELETE FROM contract_amendment WHERE account_id = $1`, [clientId]);
     await pool.query(`DELETE FROM rule_version WHERE rule_id = $1`, [ruleId]);
     await pool.query(`DELETE FROM rule WHERE id = $1`, [ruleId]);
-    await pool.query(`DELETE FROM contract_clause WHERE client_id = $1`, [clientId]);
+    await pool.query(`DELETE FROM contract_clause WHERE account_id = $1`, [clientId]);
     await pool.query(`DELETE FROM contract_version WHERE contract_id = $1`, [contractId]);
     await pool.query(`DELETE FROM contract WHERE id = $1`, [contractId]);
     await pool.query(`DELETE FROM carrier WHERE id = $1`, [carrierId]);
-    await pool.query(`DELETE FROM client WHERE id = $1`, [clientId]);
+    await pool.query(`DELETE FROM account WHERE id = $1`, [clientId]);
     await closePool();
   });
 
@@ -121,7 +121,7 @@ describe('rerunDiscoveryForAmendment (DB)', () => {
       expect(result.triggersCreated).toBeGreaterThanOrEqual(1);
 
       const trigger = await owner.query(
-        `SELECT 1 FROM unknown_charge_code_trigger WHERE client_id = $1 AND audit_run_id = $2`,
+        `SELECT 1 FROM unknown_charge_code_trigger WHERE account_id = $1 AND audit_run_id = $2`,
         [clientId, auditRunId],
       );
       expect(trigger.rowCount).toBe(1);
@@ -154,7 +154,7 @@ describe('rerunDiscoveryForAmendment (DB)', () => {
       );
       expect(deprecatedCount.rows[0].n).toBe(1);
       const triggerCount = await owner.query(
-        `SELECT count(*)::int AS n FROM unknown_charge_code_trigger WHERE client_id = $1 AND audit_run_id = $2`,
+        `SELECT count(*)::int AS n FROM unknown_charge_code_trigger WHERE account_id = $1 AND audit_run_id = $2`,
         [clientId, auditRunId],
       );
       expect(triggerCount.rows[0].n).toBe(1);

@@ -21,7 +21,7 @@ describe('client payment policy configuration (DB)', () => {
     pool = getPool();
     const owner = await pool.connect();
     try {
-      const c = await owner.query(`INSERT INTO client (name, slug) VALUES ('PP', $1) RETURNING id`, [tag]);
+      const c = await owner.query(`INSERT INTO account (name, slug) VALUES ('PP', $1) RETURNING id`, [tag]);
       clientId = c.rows[0].id;
       const u = await owner.query(`INSERT INTO app_user (email) VALUES ($1) RETURNING id`, [`${tag}@example.com`]);
       userId = u.rows[0].id;
@@ -33,9 +33,9 @@ describe('client payment policy configuration (DB)', () => {
   afterAll(async () => {
     const owner = await pool.connect();
     try {
-      await owner.query(`DELETE FROM client_payment_policy WHERE client_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM account_payment_policy WHERE account_id = $1`, [clientId]);
       await owner.query(`DELETE FROM app_user WHERE id = $1`, [userId]);
-      await owner.query(`DELETE FROM client WHERE id = $1`, [clientId]);
+      await owner.query(`DELETE FROM account WHERE id = $1`, [clientId]);
     } finally {
       owner.release();
     }
@@ -48,7 +48,7 @@ describe('client payment policy configuration (DB)', () => {
         clientId, holdThenApprove: true, shortPayEnabled: false, approvalExpiryHours: 72, configuredBy: userId,
       });
       const result = await c.query(
-        `SELECT hold_then_approve, short_pay_enabled, approval_expiry_hours FROM client_payment_policy WHERE client_id = $1`,
+        `SELECT hold_then_approve, short_pay_enabled, approval_expiry_hours FROM account_payment_policy WHERE account_id = $1`,
         [clientId],
       );
       return result.rows;
@@ -63,7 +63,7 @@ describe('client payment policy configuration (DB)', () => {
         clientId, holdThenApprove: true, shortPayEnabled: true, approvalExpiryHours: 48, configuredBy: userId,
       });
       return (await c.query(
-        `SELECT short_pay_enabled, approval_expiry_hours FROM client_payment_policy WHERE client_id = $1`,
+        `SELECT short_pay_enabled, approval_expiry_hours FROM account_payment_policy WHERE account_id = $1`,
         [clientId],
       )).rows;
     });

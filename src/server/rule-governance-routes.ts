@@ -64,7 +64,7 @@ export async function registerRuleGovernanceRoutes(routes: FastifyInstance): Pro
   });
 
   // Rule governance mutations (ratify/activate) act on the GLOBAL rule/rule_version
-  // tables (no client_id, outside RLS -- migration 0009_rls_policies.sql), so the
+  // tables (no account_id, outside RLS -- migration 0009_rls_policies.sql), so the
   // generic any-role tenant-membership preHandler above is the wrong gate: any
   // caller with a membership row for ANY single client could otherwise
   // un-quarantine or promote a rule affecting every tenant's audit engine (86e32tfvq).

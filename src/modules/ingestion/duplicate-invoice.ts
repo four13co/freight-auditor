@@ -17,7 +17,7 @@ export async function detectDuplicateInvoice(
   ]);
   const result = await client.query(
     `SELECT 1 FROM invoice
-     WHERE client_id = $1 AND transaction_set = $2
+     WHERE account_id = $1 AND transaction_set = $2
        AND lower(btrim(invoice_number)) = lower($3)
      LIMIT 1`,
     [clientId, transactionSet, normalized],

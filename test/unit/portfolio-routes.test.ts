@@ -22,7 +22,7 @@ describe('portfolio routes', () => {
 
   it('requires internal-analyst authorization before returning the portfolio report', async () => {
     app = buildApp();
-    const response = await app.inject({ method: 'GET', url: '/api/portfolio/cross-client-recovery' });
+    const response = await app.inject({ method: 'GET', url: '/api/portfolio/cross-account-recovery' });
     expect(response.statusCode).toBe(401);
   });
 
@@ -34,7 +34,7 @@ describe('portfolio routes', () => {
     app = buildApp();
     const response = await app.inject({
       method: 'GET',
-      url: '/api/portfolio/cross-client-recovery',
+      url: '/api/portfolio/cross-account-recovery',
       headers: { 'x-client-id': '11111111-1111-4111-8111-111111111111', 'x-user-id': '22222222-2222-4222-8222-222222222222' },
     });
     expect(response.statusCode).toBe(401);
@@ -46,31 +46,31 @@ describe('portfolio routes', () => {
     const buckets = [
       { clientId: 'c1', clientName: 'Client A', currency: 'USD', claimed: '500.0000', recovered: '200.0000', outstanding: '300.0000', writtenOff: '0.0000', denied: '0.0000', nullCurrencyRecovered: '0.0000', mismatchedCurrencyRecovered: '0.0000', reconciles: true },
     ];
-    const getCrossClientPortfolio = vi.fn().mockResolvedValue(buckets);
-    vi.doMock('../../src/modules/claims/get-cross-client-portfolio.js', () => ({ getCrossClientPortfolio }));
+    const getCrossAccountPortfolio = vi.fn().mockResolvedValue(buckets);
+    vi.doMock('../../src/modules/claims/get-cross-account-portfolio.js', () => ({ getCrossAccountPortfolio }));
     const { registerPortfolioRoutes } = await import('../../src/server/portfolio-routes.js');
     app = Fastify();
     await app.register(registerPortfolioRoutes);
     await app.ready();
 
-    const response = await app.inject({ method: 'GET', url: '/api/portfolio/cross-client-recovery' });
+    const response = await app.inject({ method: 'GET', url: '/api/portfolio/cross-account-recovery' });
 
     expect(response.statusCode).toBe(200);
     expect(response.json()).toEqual({ buckets });
-    expect(getCrossClientPortfolio).toHaveBeenCalledWith({});
+    expect(getCrossAccountPortfolio).toHaveBeenCalledWith({});
   });
 
   it('returns an empty buckets array when there are no claims anywhere', async () => {
     mockAuth();
     vi.doMock('../../src/db/tenant-context.js', () => ({ withTenantReadTx: vi.fn(async (_ctx, fn) => fn({})) }));
-    const getCrossClientPortfolio = vi.fn().mockResolvedValue([]);
-    vi.doMock('../../src/modules/claims/get-cross-client-portfolio.js', () => ({ getCrossClientPortfolio }));
+    const getCrossAccountPortfolio = vi.fn().mockResolvedValue([]);
+    vi.doMock('../../src/modules/claims/get-cross-account-portfolio.js', () => ({ getCrossAccountPortfolio }));
     const { registerPortfolioRoutes } = await import('../../src/server/portfolio-routes.js');
     app = Fastify();
     await app.register(registerPortfolioRoutes);
     await app.ready();
 
-    const response = await app.inject({ method: 'GET', url: '/api/portfolio/cross-client-recovery' });
+    const response = await app.inject({ method: 'GET', url: '/api/portfolio/cross-account-recovery' });
 
     expect(response.statusCode).toBe(200);
     expect(response.json()).toEqual({ buckets: [] });

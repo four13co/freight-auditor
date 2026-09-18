@@ -22,7 +22,7 @@ export interface GenerateClaimEscalationResult {
 
 interface ClaimRow {
   id: string;
-  client_id: string;
+  account_id: string;
   status: string;
 }
 
@@ -49,7 +49,7 @@ export async function generateClaimEscalation(
   gracePeriodDays: number = DEFAULT_GRACE_PERIOD_DAYS,
 ): Promise<GenerateClaimEscalationResult> {
   const claimResult = await client.query<ClaimRow>(
-    `SELECT id, client_id, status FROM claim WHERE client_id = $1 AND id = $2`,
+    `SELECT id, account_id, status FROM claim WHERE account_id = $1 AND id = $2`,
     [clientId, claimId],
   );
   const claim = claimResult.rows[0];
@@ -58,7 +58,7 @@ export async function generateClaimEscalation(
 
   const followUpResult = await client.query<FollowUpEventRow>(
     `SELECT recorded_at FROM audit_event
-     WHERE client_id = $1 AND entity = 'claim' AND entity_id = $2 AND event = $3
+     WHERE account_id = $1 AND entity = 'claim' AND entity_id = $2 AND event = $3
      ORDER BY recorded_at DESC LIMIT 1`,
     [clientId, claimId, CLAIM_FOLLOW_UP_EVENT],
   );
@@ -69,10 +69,10 @@ export async function generateClaimEscalation(
   graceDeadline.setUTCDate(graceDeadline.getUTCDate() + gracePeriodDays);
   if (graceDeadline.getTime() > now.getTime()) throw new GenerateClaimEscalationError('GRACE_PERIOD_NOT_ELAPSED');
 
-  const auditEventId = deterministicAuditEventId(claim.client_id, claim.id, 'claim.escalated');
+  const auditEventId = deterministicAuditEventId(claim.account_id, claim.id, 'claim.escalated');
   const { created } = await writeAuditEvent(client, {
     id: auditEventId,
-    clientId: claim.client_id,
+    clientId: claim.account_id,
     entity: 'claim',
     entityId: claim.id,
     event: 'claim.escalated',

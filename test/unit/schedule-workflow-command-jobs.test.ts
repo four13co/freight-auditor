@@ -23,7 +23,7 @@ function makeClient(rows: {
   claimed?: Record<string, ClaimedRow[]>;
 }): pg.PoolClient {
   const query = vi.fn().mockImplementation(async (sql: string, params?: unknown[]) => {
-    if (sql.includes('FROM client')) {
+    if (sql.includes('FROM account')) {
       return { rows: rows.clients ?? [] };
     }
     if (sql.includes('UPDATE workflow_command')) {

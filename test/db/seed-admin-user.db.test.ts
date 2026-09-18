@@ -54,7 +54,7 @@ describe('seedAdminUser (DB)', () => {
     expect(account.rowCount).toBe(1);
 
     const membership = await pool.query(
-      `SELECT role FROM membership WHERE user_id = $1 AND client_id = $2`,
+      `SELECT role FROM membership WHERE user_id = $1 AND account_id = $2`,
       [userId, DEV_CLIENT_ID],
     );
     expect(membership.rowCount).toBe(1);
@@ -80,7 +80,7 @@ describe('seedAdminUser (DB)', () => {
     const userId = user.rows[0].id;
 
     const membership = await pool.query(
-      `SELECT count(*) FROM membership WHERE user_id = $1 AND client_id = $2`,
+      `SELECT count(*) FROM membership WHERE user_id = $1 AND account_id = $2`,
       [userId, DEV_CLIENT_ID],
     );
     expect(Number(membership.rows[0].count)).toBe(1);

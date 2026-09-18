@@ -19,13 +19,13 @@ describe('contract document upload API (DB)', () => {
     process.env.DEV_AUTH_HEADERS = '1';
     process.env.OBJECT_STORE_ROOT = `/tmp/${tag}`;
     pool = getPool();
-    const client = await pool.query(`INSERT INTO client (name, slug) VALUES ('Contract Upload', $1) RETURNING id`, [tag]);
+    const client = await pool.query(`INSERT INTO account (name, slug) VALUES ('Contract Upload', $1) RETURNING id`, [tag]);
     clientId = client.rows[0].id;
-    const other = await pool.query(`INSERT INTO client (name, slug) VALUES ('Other', $1) RETURNING id`, [`${tag}-other`]);
+    const other = await pool.query(`INSERT INTO account (name, slug) VALUES ('Other', $1) RETURNING id`, [`${tag}-other`]);
     otherClientId = other.rows[0].id;
     const user = await pool.query(`INSERT INTO app_user (email) VALUES ($1) RETURNING id`, [`${tag}@example.com`]);
     userId = user.rows[0].id;
-    await pool.query(`INSERT INTO membership (user_id, client_id, role) VALUES ($1,$2,'client_admin')`, [userId, clientId]);
+    await pool.query(`INSERT INTO membership (user_id, account_id, role) VALUES ($1,$2,'account_admin')`, [userId, clientId]);
     const carrier = await pool.query(`INSERT INTO carrier (name) VALUES ($1) RETURNING id`, [tag]);
     carrierId = carrier.rows[0].id;
     app = buildApp();
@@ -33,13 +33,13 @@ describe('contract document upload API (DB)', () => {
 
   afterAll(async () => {
     await app.close();
-    await pool.query(`DELETE FROM audit_event WHERE client_id = $1`, [clientId]);
-    await pool.query(`DELETE FROM contract_version WHERE client_id = $1`, [clientId]);
-    await pool.query(`DELETE FROM contract WHERE client_id = $1`, [clientId]);
-    await pool.query(`DELETE FROM source_document WHERE client_id = $1`, [clientId]);
-    await pool.query(`DELETE FROM membership WHERE client_id = $1`, [clientId]);
+    await pool.query(`DELETE FROM audit_event WHERE account_id = $1`, [clientId]);
+    await pool.query(`DELETE FROM contract_version WHERE account_id = $1`, [clientId]);
+    await pool.query(`DELETE FROM contract WHERE account_id = $1`, [clientId]);
+    await pool.query(`DELETE FROM source_document WHERE account_id = $1`, [clientId]);
+    await pool.query(`DELETE FROM membership WHERE account_id = $1`, [clientId]);
     await pool.query(`DELETE FROM app_user WHERE id = $1`, [userId]);
-    await pool.query(`DELETE FROM client WHERE id IN ($1,$2)`, [clientId, otherClientId]);
+    await pool.query(`DELETE FROM account WHERE id IN ($1,$2)`, [clientId, otherClientId]);
     await pool.query(`DELETE FROM carrier WHERE id = $1`, [carrierId]);
     await closePool();
     if (originalDevHeaders === undefined) delete process.env.DEV_AUTH_HEADERS; else process.env.DEV_AUTH_HEADERS = originalDevHeaders;

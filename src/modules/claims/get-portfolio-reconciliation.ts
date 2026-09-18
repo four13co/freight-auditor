@@ -28,7 +28,7 @@ export async function getPortfolioReconciliation(
   const { rows: claimRows } = await client.query<{
     claim_id: string; amount_claimed: string; currency: string | null; status: string;
   }>(
-    `SELECT id AS claim_id, amount_claimed, currency, status FROM claim WHERE client_id = $1`,
+    `SELECT id AS claim_id, amount_claimed, currency, status FROM claim WHERE account_id = $1`,
     [input.clientId],
   );
 
@@ -36,7 +36,7 @@ export async function getPortfolioReconciliation(
 
   const claimIds = claimRows.map((r) => r.claim_id);
   const { rows: eventRows } = await client.query<{ claim_id: string; amount_recovered: string; currency: string | null }>(
-    `SELECT claim_id, amount_recovered, currency FROM recovery_event WHERE client_id = $1 AND claim_id = ANY($2::uuid[])`,
+    `SELECT claim_id, amount_recovered, currency FROM recovery_event WHERE account_id = $1 AND claim_id = ANY($2::uuid[])`,
     [input.clientId, claimIds],
   );
 

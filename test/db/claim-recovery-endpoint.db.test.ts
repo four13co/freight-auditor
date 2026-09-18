@@ -27,18 +27,18 @@ describe('claim + recovery APIs (DB, e2e)', () => {
     pool = getPool();
     const owner = await pool.connect();
     try {
-      const c = await owner.query(`INSERT INTO client (name, slug) VALUES ('CRA', $1) RETURNING id`, [tag]);
+      const c = await owner.query(`INSERT INTO account (name, slug) VALUES ('CRA', $1) RETURNING id`, [tag]);
       clientId = c.rows[0].id;
       const u = await owner.query(`INSERT INTO app_user (email) VALUES ($1) RETURNING id`, [`${tag}@example.com`]);
       userId = u.rows[0].id;
-      await owner.query(`INSERT INTO membership (user_id, client_id, role) VALUES ($1, $2, 'analyst')`, [userId, clientId]);
+      await owner.query(`INSERT INTO membership (user_id, account_id, role) VALUES ($1, $2, 'analyst')`, [userId, clientId]);
       await withTenantTx({ clientIds: [clientId], internal: true }, async (c2) => {
         const claim = await c2.query(
-          `INSERT INTO claim (client_id, amount_claimed, currency, status) VALUES ($1, '500.0000', 'USD', 'open') RETURNING id`,
+          `INSERT INTO claim (account_id, amount_claimed, currency, status) VALUES ($1, '500.0000', 'USD', 'open') RETURNING id`,
           [clientId],
         );
         claimId = claim.rows[0].id;
-        await c2.query(`INSERT INTO recovery_event (client_id, claim_id, amount_recovered, currency) VALUES ($1, $2, '200.0000', 'USD')`, [clientId, claimId]);
+        await c2.query(`INSERT INTO recovery_event (account_id, claim_id, amount_recovered, currency) VALUES ($1, $2, '200.0000', 'USD')`, [clientId, claimId]);
       });
     } finally {
       owner.release();
@@ -51,11 +51,11 @@ describe('claim + recovery APIs (DB, e2e)', () => {
     await app.close();
     const owner = await pool.connect();
     try {
-      await owner.query(`DELETE FROM recovery_event WHERE client_id = $1`, [clientId]);
-      await owner.query(`DELETE FROM claim WHERE client_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM recovery_event WHERE account_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM claim WHERE account_id = $1`, [clientId]);
       await owner.query(`DELETE FROM membership WHERE user_id = $1`, [userId]);
       await owner.query(`DELETE FROM app_user WHERE id = $1`, [userId]);
-      await owner.query(`DELETE FROM client WHERE id = $1`, [clientId]);
+      await owner.query(`DELETE FROM account WHERE id = $1`, [clientId]);
     } finally {
       owner.release();
     }
@@ -112,7 +112,7 @@ describe('claim + recovery APIs (DB, e2e)', () => {
    * P6.A.6 (86e2zfjrj): adversarial cross-tenant probe at the real HTTP
    * layer -- a genuine second tenant, membership, and claim, then a request
    * authenticated as tenant A's own real user attempting to read tenant B's
-   * resource. Distinct from the "explicit client_id predicate" describe
+   * resource. Distinct from the "explicit account_id predicate" describe
    * block below: that block calls listClaims/getClaimDetail directly under
    * an internal:true scope, which bypasses both RLS and the tenant-auth
    * preHandler entirely -- it proves the query-level predicate, not that
@@ -127,17 +127,17 @@ describe('claim + recovery APIs (DB, e2e)', () => {
     let otherClientId: string;
     let otherUserId: string;
     try {
-      const c = await owner.query(`INSERT INTO client (name, slug) VALUES ('CRA-other', $1) RETURNING id`, [`${tag}-other`]);
+      const c = await owner.query(`INSERT INTO account (name, slug) VALUES ('CRA-other', $1) RETURNING id`, [`${tag}-other`]);
       otherClientId = c.rows[0].id;
       const u = await owner.query(`INSERT INTO app_user (email) VALUES ($1) RETURNING id`, [`${tag}-other@example.com`]);
       otherUserId = u.rows[0].id;
-      await owner.query(`INSERT INTO membership (user_id, client_id, role) VALUES ($1, $2, 'analyst')`, [otherUserId, otherClientId]);
+      await owner.query(`INSERT INTO membership (user_id, account_id, role) VALUES ($1, $2, 'analyst')`, [otherUserId, otherClientId]);
     } finally {
       owner.release();
     }
     const otherClaimId: string = await withTenantTx({ clientIds: [otherClientId], internal: true }, async (c2) => {
       const claim = await c2.query(
-        `INSERT INTO claim (client_id, amount_claimed, currency, status) VALUES ($1, '900.0000', 'USD', 'open') RETURNING id`,
+        `INSERT INTO claim (account_id, amount_claimed, currency, status) VALUES ($1, '900.0000', 'USD', 'open') RETURNING id`,
         [otherClientId],
       );
       return claim.rows[0].id;
@@ -165,7 +165,7 @@ describe('claim + recovery APIs (DB, e2e)', () => {
       await cleanup.query(`DELETE FROM claim WHERE id = $1`, [otherClaimId]);
       await cleanup.query(`DELETE FROM membership WHERE user_id = $1`, [otherUserId]);
       await cleanup.query(`DELETE FROM app_user WHERE id = $1`, [otherUserId]);
-      await cleanup.query(`DELETE FROM client WHERE id = $1`, [otherClientId]);
+      await cleanup.query(`DELETE FROM account WHERE id = $1`, [otherClientId]);
     } finally {
       cleanup.release();
     }
@@ -173,7 +173,7 @@ describe('claim + recovery APIs (DB, e2e)', () => {
 });
 
 /**
- * Direct module coverage of the explicit client_id predicate on
+ * Direct module coverage of the explicit account_id predicate on
  * listClaims/getClaimDetail, independent of RLS -- same shape as #216's
  * (86e31a9ch) clarification-answers.db.test.ts additions. An internal
  * (cross-client) analyst scope grants RLS-level visibility across every
@@ -182,7 +182,7 @@ describe('claim + recovery APIs (DB, e2e)', () => {
  * claim. These tests prove the explicit predicate -- not RLS -- is what
  * rejects it.
  */
-describe('claim + recovery query modules: explicit client_id predicate (DB)', () => {
+describe('claim + recovery query modules: explicit account_id predicate (DB)', () => {
   let pool: pg.Pool;
   let clientAId: string;
   let claimId: string;
@@ -192,15 +192,15 @@ describe('claim + recovery query modules: explicit client_id predicate (DB)', ()
     pool = getPool();
     const owner = await pool.connect();
     try {
-      const a = await owner.query(`INSERT INTO client (name, slug) VALUES ('CRP-A', $1) RETURNING id`, [`${tag}-a`]);
+      const a = await owner.query(`INSERT INTO account (name, slug) VALUES ('CRP-A', $1) RETURNING id`, [`${tag}-a`]);
       clientAId = a.rows[0].id;
       await withTenantTx({ clientIds: [clientAId], internal: true }, async (c) => {
         const claim = await c.query(
-          `INSERT INTO claim (client_id, amount_claimed, currency, status) VALUES ($1, '500.0000', 'USD', 'open') RETURNING id`,
+          `INSERT INTO claim (account_id, amount_claimed, currency, status) VALUES ($1, '500.0000', 'USD', 'open') RETURNING id`,
           [clientAId],
         );
         claimId = claim.rows[0].id;
-        await c.query(`INSERT INTO recovery_event (client_id, claim_id, amount_recovered, currency) VALUES ($1, $2, '200.0000', 'USD')`, [clientAId, claimId]);
+        await c.query(`INSERT INTO recovery_event (account_id, claim_id, amount_recovered, currency) VALUES ($1, $2, '200.0000', 'USD')`, [clientAId, claimId]);
       });
     } finally {
       owner.release();
@@ -210,9 +210,9 @@ describe('claim + recovery query modules: explicit client_id predicate (DB)', ()
   afterAll(async () => {
     const owner = await pool.connect();
     try {
-      await owner.query(`DELETE FROM recovery_event WHERE client_id = $1`, [clientAId]);
-      await owner.query(`DELETE FROM claim WHERE client_id = $1`, [clientAId]);
-      await owner.query(`DELETE FROM client WHERE id = $1`, [clientAId]);
+      await owner.query(`DELETE FROM recovery_event WHERE account_id = $1`, [clientAId]);
+      await owner.query(`DELETE FROM claim WHERE account_id = $1`, [clientAId]);
+      await owner.query(`DELETE FROM account WHERE id = $1`, [clientAId]);
     } finally {
       owner.release();
     }
@@ -258,9 +258,9 @@ describe('listClaims: keyset cursor pagination (DB, P6.C.1)', () => {
     pool = getPool();
     const owner = await pool.connect();
     try {
-      const a = await owner.query(`INSERT INTO client (name, slug) VALUES ('LCP-A', $1) RETURNING id`, [`${tag}-a`]);
+      const a = await owner.query(`INSERT INTO account (name, slug) VALUES ('LCP-A', $1) RETURNING id`, [`${tag}-a`]);
       clientAId = a.rows[0].id;
-      const b = await owner.query(`INSERT INTO client (name, slug) VALUES ('LCP-B', $1) RETURNING id`, [`${tag}-b`]);
+      const b = await owner.query(`INSERT INTO account (name, slug) VALUES ('LCP-B', $1) RETURNING id`, [`${tag}-b`]);
       clientBId = b.rows[0].id;
 
       await withTenantTx({ clientIds: [clientAId], internal: true }, async (c) => {
@@ -270,22 +270,22 @@ describe('listClaims: keyset cursor pagination (DB, P6.C.1)', () => {
         // a page boundary.
         const tie = '2026-01-01T00:00:00Z';
         const r1 = await c.query(
-          `INSERT INTO claim (client_id, amount_claimed, currency, status, opened_at) VALUES ($1, '100.0000', 'USD', 'open', $2) RETURNING id`,
+          `INSERT INTO claim (account_id, amount_claimed, currency, status, opened_at) VALUES ($1, '100.0000', 'USD', 'open', $2) RETURNING id`,
           [clientAId, tie],
         );
         const r2 = await c.query(
-          `INSERT INTO claim (client_id, amount_claimed, currency, status, opened_at) VALUES ($1, '200.0000', 'USD', 'open', $2) RETURNING id`,
+          `INSERT INTO claim (account_id, amount_claimed, currency, status, opened_at) VALUES ($1, '200.0000', 'USD', 'open', $2) RETURNING id`,
           [clientAId, tie],
         );
         const r3 = await c.query(
-          `INSERT INTO claim (client_id, amount_claimed, currency, status, opened_at) VALUES ($1, '300.0000', 'USD', 'open', '2026-01-02T00:00:00Z') RETURNING id`,
+          `INSERT INTO claim (account_id, amount_claimed, currency, status, opened_at) VALUES ($1, '300.0000', 'USD', 'open', '2026-01-02T00:00:00Z') RETURNING id`,
           [clientAId],
         );
         claimIds = [r1.rows[0].id, r2.rows[0].id, r3.rows[0].id];
       });
 
       await withTenantTx({ clientIds: [clientBId], internal: true }, (c) =>
-        c.query(`INSERT INTO claim (client_id, amount_claimed, currency, status) VALUES ($1, '999.0000', 'USD', 'open')`, [clientBId]),
+        c.query(`INSERT INTO claim (account_id, amount_claimed, currency, status) VALUES ($1, '999.0000', 'USD', 'open')`, [clientBId]),
       );
     } finally {
       owner.release();
@@ -295,8 +295,8 @@ describe('listClaims: keyset cursor pagination (DB, P6.C.1)', () => {
   afterAll(async () => {
     const owner = await pool.connect();
     try {
-      await owner.query(`DELETE FROM claim WHERE client_id IN ($1, $2)`, [clientAId, clientBId]);
-      await owner.query(`DELETE FROM client WHERE id IN ($1, $2)`, [clientAId, clientBId]);
+      await owner.query(`DELETE FROM claim WHERE account_id IN ($1, $2)`, [clientAId, clientBId]);
+      await owner.query(`DELETE FROM account WHERE id IN ($1, $2)`, [clientAId, clientBId]);
     } finally {
       owner.release();
     }
@@ -321,8 +321,8 @@ describe('listClaims: keyset cursor pagination (DB, P6.C.1)', () => {
     const aRows = await withTenantTx({ clientIds: [clientAId], internal: true }, (c) => listClaims(c, clientAId, { limit: 10 }));
     const lastA = aRows[aRows.length - 1]!;
 
-    // The cursor's anchor lookup is itself gated by the explicit client_id
-    // predicate (client_id = clientBId), so a client-A id can never resolve
+    // The cursor's anchor lookup is itself gated by the explicit account_id
+    // predicate (account_id = clientBId), so a client-A id can never resolve
     // as an anchor here -- the whole query comes back empty, not a leak.
     const bRows = await withTenantTx({ clientIds: [clientBId], internal: false }, (c) =>
       listClaims(c, clientBId, { limit: 10, cursor: { id: lastA.id } }),

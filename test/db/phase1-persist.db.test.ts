@@ -24,7 +24,7 @@ describe('Phase 1 persistence (DB)', () => {
     pool = getPool();
     const owner = await pool.connect();
     try {
-      const c = await owner.query(`INSERT INTO client (name, slug) VALUES ('P1', $1) RETURNING id`, [tag]);
+      const c = await owner.query(`INSERT INTO account (name, slug) VALUES ('P1', $1) RETURNING id`, [tag]);
       clientId = c.rows[0].id;
     } finally {
       owner.release();
@@ -34,25 +34,25 @@ describe('Phase 1 persistence (DB)', () => {
   afterAll(async () => {
     const owner = await pool.connect();
     try {
-      await owner.query(`DELETE FROM audit_event WHERE client_id = $1`, [clientId]);
-      await owner.query(`DELETE FROM audit_replay_manifest WHERE client_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM audit_event WHERE account_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM audit_replay_manifest WHERE account_id = $1`, [clientId]);
       // Children of the runs first, then invoices, then client.
       // variance_finding before audit_run (86e2v17p5's derivation now writes
       // here too).
-      await owner.query(`DELETE FROM variance_finding WHERE client_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM variance_finding WHERE account_id = $1`, [clientId]);
       // 86e367r9x: persistAuditRun now wires generateHoldDecision/
       // generateDoNotPayDecision internally, so every run this suite
       // persists leaves a payment_gate_decision row referencing it -- must
       // clear before deleting audit_run (FK).
-      await owner.query(`DELETE FROM payment_gate_decision WHERE client_id = $1`, [clientId]);
-      await owner.query(`DELETE FROM scorecard WHERE client_id = $1`, [clientId]);
-      await owner.query(`DELETE FROM charge_finding WHERE client_id = $1`, [clientId]);
-      await owner.query(`DELETE FROM gate_failure WHERE client_id = $1`, [clientId]);
-      await owner.query(`DELETE FROM coverage_marker WHERE client_id = $1`, [clientId]);
-      await owner.query(`DELETE FROM audit_run WHERE client_id = $1`, [clientId]);
-      await owner.query(`DELETE FROM charge_fact WHERE client_id = $1`, [clientId]);
-      await owner.query(`DELETE FROM invoice WHERE client_id = $1`, [clientId]);
-      await owner.query(`DELETE FROM client WHERE id = $1`, [clientId]);
+      await owner.query(`DELETE FROM payment_gate_decision WHERE account_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM scorecard WHERE account_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM charge_finding WHERE account_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM gate_failure WHERE account_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM coverage_marker WHERE account_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM audit_run WHERE account_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM charge_fact WHERE account_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM invoice WHERE account_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM account WHERE id = $1`, [clientId]);
     } finally {
       owner.release();
     }

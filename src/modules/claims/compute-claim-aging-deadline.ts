@@ -6,7 +6,7 @@ import { z } from 'zod';
  * the deadline passes (follow-up jobs, P5.B.2; escalation, P5.B.3) is
  * later work; this only computes the timestamp itself.
  *
- * agingDays defaults to 30 -- no existing config (client_payment_policy,
+ * agingDays defaults to 30 -- no existing config (account_payment_policy,
  * #161) carries a claim-aging-specific duration, so this follows the same
  * "accept as a parameter with a sane default" pattern this session used
  * for holdThenApprove/shortPayEnabled once a config table exists to source

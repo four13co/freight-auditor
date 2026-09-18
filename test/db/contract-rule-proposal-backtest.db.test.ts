@@ -22,20 +22,20 @@ describe('contract proposal backtest evidence (DB)', () => {
 
   beforeAll(async () => {
     pool = makePool();
-    clientId = (await pool.query(`INSERT INTO client(name,slug) VALUES('Backtest',$1) RETURNING id`, [tag])).rows[0].id;
-    otherClientId = (await pool.query(`INSERT INTO client(name,slug) VALUES('Other',$1) RETURNING id`, [`${tag}-other`])).rows[0].id;
+    clientId = (await pool.query(`INSERT INTO account(name,slug) VALUES('Backtest',$1) RETURNING id`, [tag])).rows[0].id;
+    otherClientId = (await pool.query(`INSERT INTO account(name,slug) VALUES('Other',$1) RETURNING id`, [`${tag}-other`])).rows[0].id;
     userId = (await pool.query(`INSERT INTO app_user(email) VALUES($1) RETURNING id`, [`${tag}@example.com`])).rows[0].id;
     carrierId = (await pool.query(`INSERT INTO carrier(name) VALUES($1) RETURNING id`, [tag])).rows[0].id;
-    sourceId = (await pool.query(`INSERT INTO source_document(client_id,sha256,content_type,byte_size,storage_uri)
+    sourceId = (await pool.query(`INSERT INTO source_document(account_id,sha256,content_type,byte_size,storage_uri)
       VALUES($1,$2,'application/pdf',1,$3) RETURNING id`, [clientId, sha, `local://${tag}`])).rows[0].id;
-    contractId = (await pool.query(`INSERT INTO contract(client_id,carrier_id,name) VALUES($1,$2,'Backtest') RETURNING id`,
+    contractId = (await pool.query(`INSERT INTO contract(account_id,carrier_id,name) VALUES($1,$2,'Backtest') RETURNING id`,
       [clientId, carrierId])).rows[0].id;
-    versionId = (await pool.query(`INSERT INTO contract_version(client_id,contract_id,valid_from,source_document_id)
+    versionId = (await pool.query(`INSERT INTO contract_version(account_id,contract_id,valid_from,source_document_id)
       VALUES($1,$2,'2026-01-01',$3) RETURNING id`, [clientId, contractId, sourceId])).rows[0].id;
-    verifiedId = (await pool.query(`INSERT INTO verified_contract_version(client_id,contract_version_id,source_document_id,
+    verifiedId = (await pool.query(`INSERT INTO verified_contract_version(account_id,contract_version_id,source_document_id,
       extraction_response_hash,verification_hash,resolved_fields,verified_by) VALUES($1,$2,$3,$4,$5,'[]',$6) RETURNING id`,
     [clientId, versionId, sourceId, 'a'.repeat(64), 'b'.repeat(64), userId])).rows[0].id;
-    proposalId = (await pool.query(`INSERT INTO contract_rule_proposal(client_id,verified_contract_version_id,criterion_key,kind,
+    proposalId = (await pool.query(`INSERT INTO contract_rule_proposal(account_id,verified_contract_version_id,criterion_key,kind,
       rule_type,description,ast,ast_hash,expected_inputs,proposal_schema_version,provider,model_id,prompt_version,
       provider_message_id,request_key,source_document_sha256,extraction_response_hash,verification_hash,proposal_hash,actor_user_id)
       VALUES($1,$2,'CONTRACT.PROPOSED.FUEL_PRESENT','SCORING','CONTRACT_CONFORMANCE','Fuel present',$3,$4,$5,
@@ -58,19 +58,19 @@ describe('contract proposal backtest evidence (DB)', () => {
   }
 
   afterAll(async () => {
-    await pool.query(`DELETE FROM audit_event WHERE client_id=$1`, [clientId]);
-    await pool.query(`DELETE FROM contract_rule_proposal_ratification WHERE client_id=$1`, [clientId]);
-    await pool.query(`DELETE FROM contract_rule_proposal_acceptance WHERE client_id=$1`, [clientId]);
+    await pool.query(`DELETE FROM audit_event WHERE account_id=$1`, [clientId]);
+    await pool.query(`DELETE FROM contract_rule_proposal_ratification WHERE account_id=$1`, [clientId]);
+    await pool.query(`DELETE FROM contract_rule_proposal_acceptance WHERE account_id=$1`, [clientId]);
     await pool.query(`DELETE FROM promotion_event WHERE rule_version_id IN (SELECT id FROM rule_version WHERE source_contract_rule_proposal_id=$1)`, [proposalId]);
     await pool.query(`DELETE FROM rule_version WHERE source_contract_rule_proposal_id=$1`, [proposalId]);
     await pool.query(`DELETE FROM rule WHERE slug=$1`, [`contract-proposal-${proposalId}`]);
-    await pool.query(`DELETE FROM contract_rule_proposal_backtest_case WHERE client_id=$1`, [clientId]);
-    await pool.query(`DELETE FROM contract_rule_proposal_backtest WHERE client_id=$1`, [clientId]);
+    await pool.query(`DELETE FROM contract_rule_proposal_backtest_case WHERE account_id=$1`, [clientId]);
+    await pool.query(`DELETE FROM contract_rule_proposal_backtest WHERE account_id=$1`, [clientId]);
     await pool.query(`DELETE FROM contract_rule_proposal WHERE id=$1`, [proposalId]);
     await pool.query(`DELETE FROM verified_contract_version WHERE id=$1`, [verifiedId]);
     await pool.query(`DELETE FROM contract_version WHERE id=$1`, [versionId]); await pool.query(`DELETE FROM contract WHERE id=$1`, [contractId]);
     await pool.query(`DELETE FROM source_document WHERE id=$1`, [sourceId]); await pool.query(`DELETE FROM app_user WHERE id=$1`, [userId]);
-    await pool.query(`DELETE FROM client WHERE id IN($1,$2)`, [clientId, otherClientId]);
+    await pool.query(`DELETE FROM account WHERE id IN($1,$2)`, [clientId, otherClientId]);
     await pool.query(`DELETE FROM carrier WHERE id=$1`, [carrierId]); await pool.end();
   });
 
@@ -81,7 +81,7 @@ describe('contract proposal backtest evidence (DB)', () => {
     expect(first).toEqual({ backtestIds: retry.backtestIds, proposalCount: 1, passed: true, createdCount: 1 });
     expect(retry.createdCount).toBe(0);
     const row = (await pool.query(`SELECT * FROM contract_rule_proposal_backtest WHERE id=$1`, [first.backtestIds[0]])).rows[0];
-    expect(row).toMatchObject({ client_id: clientId, proposal_id: proposalId, corpus_schema_version: 'contract-proposal-backtest/1',
+    expect(row).toMatchObject({ account_id: clientId, proposal_id: proposalId, corpus_schema_version: 'contract-proposal-backtest/1',
       proposal_hash: 'd'.repeat(64), ast_hash: astHash, passed: true, pass_count: 2, regression_count: 0, actor_user_id: userId });
     const cases = (await pool.query(`SELECT case_key,expected_verdict,actual_verdict,passed,evaluated_ast FROM
       contract_rule_proposal_backtest_case WHERE backtest_id=$1 ORDER BY case_key`, [first.backtestIds[0]])).rows;
@@ -91,7 +91,7 @@ describe('contract proposal backtest evidence (DB)', () => {
       { case_key: 'fuel-present', expected_verdict: 'PASS', actual_verdict: 'PASS', passed: true },
     ]);
     expect(cases[1].evaluated_ast.value).toEqual({ kind: 'bool', value: true });
-    expect((await pool.query(`SELECT count(*)::int count FROM audit_event WHERE client_id=$1 AND entity='contract_rule_proposals'
+    expect((await pool.query(`SELECT count(*)::int count FROM audit_event WHERE account_id=$1 AND entity='contract_rule_proposals'
       AND entity_id=$2 AND event='backtested'`, [clientId, verifiedId])).rows[0].count).toBe(1);
   });
 
@@ -126,9 +126,9 @@ describe('contract proposal backtest evidence (DB)', () => {
     expect(shadow).toMatchObject({ lifecycle_state: 'SHADOW', hardness: 'AI_DOCS', ast_hash: astHash,
       source_contract_rule_proposal_id: proposalId, source_contract_rule_proposal_backtest_id: passingBacktestId,
       provenance: { clientId, proposalId, backtestId: passingBacktestId } });
-    expect((await pool.query(`SELECT count(*)::int count FROM contract_rule_proposal_acceptance WHERE client_id=$1 AND proposal_id=$2`,
+    expect((await pool.query(`SELECT count(*)::int count FROM contract_rule_proposal_acceptance WHERE account_id=$1 AND proposal_id=$2`,
       [clientId, proposalId])).rows[0].count).toBe(1);
-    expect((await pool.query(`SELECT count(*)::int count FROM audit_event WHERE client_id=$1 AND entity_id=$2
+    expect((await pool.query(`SELECT count(*)::int count FROM audit_event WHERE account_id=$1 AND entity_id=$2
       AND event='accepted_to_shadow'`, [clientId, proposalId])).rows[0].count).toBe(1);
     const preview = (await withAppTx(pool, { clientIds: [clientId] }, listContractRuleProposalPreviews))[0]!;
     expect(preview.acceptance).toMatchObject({ shadowRuleVersionId: first.shadowRuleVersionId,
@@ -155,7 +155,7 @@ describe('contract proposal backtest evidence (DB)', () => {
     expect(first).toEqual({ratificationId:retry.ratificationId,activeRuleVersionId:retry.activeRuleVersionId,created:true}); expect(retry.created).toBe(false);
     expect((await pool.query(`SELECT lifecycle_state,hardness,human_ratified_by,human_ratification_rationale,source_contract_rule_proposal_backtest_id FROM rule_version WHERE id=$1`,[first.activeRuleVersionId])).rows[0]).toMatchObject({lifecycle_state:'ACTIVE',hardness:'FIRM_RULE',human_ratified_by:userId,human_ratification_rationale:ratification.rationale,source_contract_rule_proposal_backtest_id:passingBacktestId});
     expect((await pool.query(`SELECT contract_proposal_backtest_id,from_hardness,to_hardness,from_lifecycle,to_lifecycle FROM promotion_event WHERE rule_version_id=$1`,[first.activeRuleVersionId])).rows[0]).toMatchObject({contract_proposal_backtest_id:passingBacktestId,from_hardness:'AI_DOCS',to_hardness:'FIRM_RULE',from_lifecycle:'SHADOW',to_lifecycle:'ACTIVE'});
-    expect((await pool.query(`SELECT count(*)::int count FROM contract_rule_proposal_ratification WHERE client_id=$1 AND acceptance_id=$2`,[clientId,acceptanceId])).rows[0].count).toBe(1);
+    expect((await pool.query(`SELECT count(*)::int count FROM contract_rule_proposal_ratification WHERE account_id=$1 AND acceptance_id=$2`,[clientId,acceptanceId])).rows[0].count).toBe(1);
   });
 
   it('fails closed for foreign ratification and database-invalid unratified ACTIVE proposal versions', async()=>{

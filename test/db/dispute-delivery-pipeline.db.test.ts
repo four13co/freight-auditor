@@ -53,7 +53,7 @@ describe.skipIf(!DATABASE_URL)('dispute delivery pipeline (database)', () => {
 
     const pool = getPool();
     clientId = (await pool.query(
-      `INSERT INTO client (name, slug) VALUES ('Dispute Delivery Pipeline Co', $1) RETURNING id`,
+      `INSERT INTO account (name, slug) VALUES ('Dispute Delivery Pipeline Co', $1) RETURNING id`,
       [tag],
     )).rows[0].id;
     actorUserId = (await pool.query(
@@ -66,12 +66,12 @@ describe.skipIf(!DATABASE_URL)('dispute delivery pipeline (database)', () => {
     // this suite so the scan sees only the one this test controls.
     // Non-destructive: flipped back in afterAll.
     const others = await pool.query<{ id: string }>(
-      `SELECT id FROM client WHERE is_active = true AND id != $1`,
+      `SELECT id FROM account WHERE is_active = true AND id != $1`,
       [clientId],
     );
     reactivateOtherClientsAfter = others.rows.map((row) => row.id);
     if (reactivateOtherClientsAfter.length > 0) {
-      await pool.query(`UPDATE client SET is_active = false WHERE id = ANY($1::uuid[])`, [reactivateOtherClientsAfter]);
+      await pool.query(`UPDATE account SET is_active = false WHERE id = ANY($1::uuid[])`, [reactivateOtherClientsAfter]);
     }
   });
 
@@ -81,39 +81,39 @@ describe.skipIf(!DATABASE_URL)('dispute delivery pipeline (database)', () => {
 
   afterEach(async () => {
     const pool = getPool();
-    await pool.query(`DELETE FROM audit_event WHERE client_id = $1`, [clientId]);
-    await pool.query(`DELETE FROM workflow_outbox_message WHERE client_id = $1`, [clientId]);
-    await pool.query(`DELETE FROM workflow_command WHERE client_id = $1`, [clientId]);
+    await pool.query(`DELETE FROM audit_event WHERE account_id = $1`, [clientId]);
+    await pool.query(`DELETE FROM workflow_outbox_message WHERE account_id = $1`, [clientId]);
+    await pool.query(`DELETE FROM workflow_command WHERE account_id = $1`, [clientId]);
     // P4.C.8: handleDeliverDisputeCommand now also appends an outbound
     // dispute_comm row in the same transaction as the outbox intent above --
     // it has its own FK to dispute(id), so it must clear before dispute_line/
     // dispute below (86e30txkx's tracked FK-order defect class).
-    await pool.query(`DELETE FROM dispute_comm WHERE client_id = $1`, [clientId]);
-    await pool.query(`DELETE FROM dispute_line WHERE client_id = $1`, [clientId]);
-    await pool.query(`DELETE FROM dispute WHERE client_id = $1`, [clientId]);
-    await pool.query(`DELETE FROM workflow_instance WHERE client_id = $1`, [clientId]);
+    await pool.query(`DELETE FROM dispute_comm WHERE account_id = $1`, [clientId]);
+    await pool.query(`DELETE FROM dispute_line WHERE account_id = $1`, [clientId]);
+    await pool.query(`DELETE FROM dispute WHERE account_id = $1`, [clientId]);
+    await pool.query(`DELETE FROM workflow_instance WHERE account_id = $1`, [clientId]);
   });
 
   afterAll(async () => {
     await boss.stop({ graceful: false, close: true });
     const pool = getPool();
     if (reactivateOtherClientsAfter.length > 0) {
-      await pool.query(`UPDATE client SET is_active = true WHERE id = ANY($1::uuid[])`, [reactivateOtherClientsAfter]);
+      await pool.query(`UPDATE account SET is_active = true WHERE id = ANY($1::uuid[])`, [reactivateOtherClientsAfter]);
     }
     await pool.query(`DELETE FROM app_user WHERE id = $1`, [actorUserId]);
-    await pool.query(`DELETE FROM client WHERE id = $1`, [clientId]);
+    await pool.query(`DELETE FROM account WHERE id = $1`, [clientId]);
     await closePool();
   });
 
   async function seedDraftDispute(): Promise<string> {
     const pool = getPool();
     const dispute = await pool.query(
-      `INSERT INTO dispute (client_id, status, amount_claimed, currency) VALUES ($1, 'draft', '500.0000', 'USD') RETURNING id`,
+      `INSERT INTO dispute (account_id, status, amount_claimed, currency) VALUES ($1, 'draft', '500.0000', 'USD') RETURNING id`,
       [clientId],
     );
     const disputeId = dispute.rows[0].id;
     await pool.query(
-      `INSERT INTO dispute_line (client_id, dispute_id, amount, currency) VALUES ($1, $2, '500.0000', 'USD')`,
+      `INSERT INTO dispute_line (account_id, dispute_id, amount, currency) VALUES ($1, $2, '500.0000', 'USD')`,
       [clientId, disputeId],
     );
     return disputeId;
@@ -145,7 +145,7 @@ describe.skipIf(!DATABASE_URL)('dispute delivery pipeline (database)', () => {
 
     const commandRan = await waitFor(async () => {
       const { rows } = await getPool().query(
-        `SELECT 1 FROM workflow_outbox_message WHERE client_id = $1`,
+        `SELECT 1 FROM workflow_outbox_message WHERE account_id = $1`,
         [clientId],
       );
       return rows.length > 0;
@@ -158,7 +158,7 @@ describe.skipIf(!DATABASE_URL)('dispute delivery pipeline (database)', () => {
 
     const delivered = await waitFor(async () => {
       const { rows } = await getPool().query(
-        `SELECT 1 FROM workflow_outbox_message WHERE client_id = $1 AND status = 'delivered'`,
+        `SELECT 1 FROM workflow_outbox_message WHERE account_id = $1 AND status = 'delivered'`,
         [clientId],
       );
       return rows.length > 0;
@@ -177,14 +177,14 @@ describe.skipIf(!DATABASE_URL)('dispute delivery pipeline (database)', () => {
     // half of the communications log, in the same transaction as the outbox
     // intent -- not a hand-seeded fixture, the actual handler's own write.
     const { rows: commRows } = await getPool().query(
-      `SELECT direction, dedupe_key FROM dispute_comm WHERE client_id = $1 AND dispute_id = $2`,
+      `SELECT direction, dedupe_key FROM dispute_comm WHERE account_id = $1 AND dispute_id = $2`,
       [clientId, disputeId],
     );
     expect(commRows).toHaveLength(1);
     expect(commRows[0]).toMatchObject({ direction: 'outbound' });
 
     const { rows: commandRows } = await getPool().query(
-      `SELECT status FROM workflow_command WHERE client_id = $1`,
+      `SELECT status FROM workflow_command WHERE account_id = $1`,
       [clientId],
     );
     expect(commandRows).toHaveLength(1);
@@ -201,7 +201,7 @@ describe.skipIf(!DATABASE_URL)('dispute delivery pipeline (database)', () => {
     expect(retry).toEqual({ found: false });
 
     const { rows: commandRows } = await getPool().query(
-      `SELECT count(*)::int AS count FROM workflow_command WHERE client_id = $1`,
+      `SELECT count(*)::int AS count FROM workflow_command WHERE account_id = $1`,
       [clientId],
     );
     expect(commandRows[0].count).toBe(1);

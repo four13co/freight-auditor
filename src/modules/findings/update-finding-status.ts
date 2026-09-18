@@ -31,23 +31,23 @@ export async function updateFindingStatus(
   actorUserId?: string,
 ): Promise<UpdateFindingStatusResult> {
   const actorKind = 'analyst' as const;
-  const result = await client.query<{ id: string; client_id: string; from_status: string; status_event_id: string }>(
+  const result = await client.query<{ id: string; account_id: string; from_status: string; status_event_id: string }>(
     `WITH old AS (
-       SELECT id, client_id, status AS from_status FROM variance_finding WHERE id = $1
+       SELECT id, account_id, status AS from_status FROM variance_finding WHERE id = $1
      ),
      updated AS (
        UPDATE variance_finding
        SET status = $2::variance_status
        WHERE id = (SELECT id FROM old)
-       RETURNING id, client_id
+       RETURNING id, account_id
      ),
      logged AS (
-       INSERT INTO finding_status_event (client_id, variance_finding_id, from_status, to_status, actor_kind, note)
-       SELECT updated.client_id, updated.id, old.from_status, $2::variance_status, $4::actor_kind, $3
+       INSERT INTO finding_status_event (account_id, variance_finding_id, from_status, to_status, actor_kind, note)
+       SELECT updated.account_id, updated.id, old.from_status, $2::variance_status, $4::actor_kind, $3
        FROM updated JOIN old ON true
        RETURNING id, variance_finding_id
      )
-     SELECT updated.id, updated.client_id, (SELECT from_status FROM old) AS from_status,
+     SELECT updated.id, updated.account_id, (SELECT from_status FROM old) AS from_status,
        (SELECT id FROM logged) AS status_event_id
      FROM updated`,
     [findingId, toStatus, note ?? null, actorKind],
@@ -56,8 +56,8 @@ export async function updateFindingStatus(
   const row = result.rows[0];
   if (!row) return { found: false };
   await writeAuditEvent(client, {
-    id: deterministicAuditEventId(row.client_id, row.status_event_id, 'finding.status_changed'),
-    clientId: row.client_id,
+    id: deterministicAuditEventId(row.account_id, row.status_event_id, 'finding.status_changed'),
+    clientId: row.account_id,
     entity: 'variance_finding',
     entityId: row.id,
     event: 'finding.status_changed',

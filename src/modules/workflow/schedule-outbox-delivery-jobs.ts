@@ -44,7 +44,7 @@ export async function scheduleOutboxDeliveryJobs(
   now: Date = new Date(),
 ): Promise<ScheduleOutboxDeliveryJobsResult> {
   const clients = await client.query<{ id: string }>(
-    `SELECT id FROM client WHERE is_active = true`,
+    `SELECT id FROM account WHERE is_active = true`,
   );
 
   let enqueued = 0;

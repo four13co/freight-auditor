@@ -80,7 +80,7 @@ export async function listGateFailures(
     // cursor_anchor re-reads the anchor row's OWN recorded_at from the DB
     // (see ListGateFailuresOptions.cursor's comment for why); RLS alone
     // scopes it, matching this function's existing convention (no explicit
-    // client_id predicate elsewhere in this query either).
+    // account_id predicate elsewhere in this query either).
     const anchor = buildKeysetAnchorFrom(params, { table: 'gate_failure', tsColumn: 'recorded_at', cursorId: options.cursor.id });
     cursorAnchorFrom = anchor.fromClauseAddition;
     conditions.push(buildKeysetTieBreak('gate_failure.recorded_at', 'gate_failure.id', anchor.anchorTsAlias));

@@ -14,7 +14,7 @@ export async function listClarifyingQuestions(
 ): Promise<Array<Record<string, unknown>>> {
   return (await client.query(`SELECT id, source_document_id, field_path, question, answer, answer_source,
       abstention_status, abstention_reason, policy_version, question_hash, created_at
-    FROM clarifying_question WHERE source_document_id=$1 AND client_id=$2 ORDER BY field_path, id`,
+    FROM clarifying_question WHERE source_document_id=$1 AND account_id=$2 ORDER BY field_path, id`,
     [sourceDocumentId, clientId])).rows;
 }
 
@@ -24,7 +24,7 @@ export async function answerClarifyingQuestion(
 ): Promise<{ id: string; answer: string; answer_source: ClarificationAnswerInput['answer_source']; changed: boolean }> {
   const answer = ClarificationAnswerInputSchema.parse(input.answer);
   const result = await client.query<{ id: string; answer: string | null; answer_source: string | null }>(
-    `SELECT id, answer, answer_source FROM clarifying_question WHERE id=$1 AND client_id=$2 FOR UPDATE`,
+    `SELECT id, answer, answer_source FROM clarifying_question WHERE id=$1 AND account_id=$2 FOR UPDATE`,
     [input.questionId, input.clientId],
   );
   const current = result.rows[0];
@@ -40,7 +40,7 @@ export async function answerClarifyingQuestion(
     detail: { answer: answer.answer, answerSource: answer.answer_source },
   });
   if (!audit.created) throw new ClarificationAnswerConflictError();
-  await client.query(`UPDATE clarifying_question SET answer=$3, answer_source=$4::answer_source WHERE id=$1 AND client_id=$2`,
+  await client.query(`UPDATE clarifying_question SET answer=$3, answer_source=$4::answer_source WHERE id=$1 AND account_id=$2`,
     [input.questionId, input.clientId, answer.answer, answer.answer_source]);
   return { id: current.id, answer: answer.answer, answer_source: answer.answer_source, changed: true };
 }

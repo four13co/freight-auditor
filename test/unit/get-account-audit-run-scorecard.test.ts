@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import type pg from 'pg';
-import { getClientAuditRunScorecard } from '../../src/modules/portal/get-client-audit-run-scorecard.js';
+import { getAccountAuditRunScorecard } from '../../src/modules/portal/get-account-audit-run-scorecard.js';
 
 const CLIENT_ID = '40000000-0000-4000-8000-000000000001';
 const AUDIT_RUN_ID = '40000000-0000-4000-8000-000000000002';
@@ -10,10 +10,10 @@ function mockClient(rows: unknown[] = []) {
   return { client: { query } as unknown as pg.PoolClient, query };
 }
 
-describe('getClientAuditRunScorecard', () => {
+describe('getAccountAuditRunScorecard', () => {
   it('returns null when no matching row is found', async () => {
     const { client } = mockClient([]);
-    const result = await getClientAuditRunScorecard(client, CLIENT_ID, AUDIT_RUN_ID);
+    const result = await getAccountAuditRunScorecard(client, CLIENT_ID, AUDIT_RUN_ID);
     expect(result).toBeNull();
   });
 
@@ -25,7 +25,7 @@ describe('getClientAuditRunScorecard', () => {
         total_overcharge: '150.0000', total_undercharge: '10.0000', currency: 'USD',
       },
     ]);
-    const result = await getClientAuditRunScorecard(client, CLIENT_ID, AUDIT_RUN_ID);
+    const result = await getAccountAuditRunScorecard(client, CLIENT_ID, AUDIT_RUN_ID);
     expect(result).toEqual({
       auditRunId: AUDIT_RUN_ID, invoiceId: 'inv-1', invoiceNumber: 'INV-100', outcome: 'SCORED',
       conformedCount: 8, varianceCount: 2, unassessableCount: 0,
@@ -41,7 +41,7 @@ describe('getClientAuditRunScorecard', () => {
         total_overcharge: null, total_undercharge: null, currency: null,
       },
     ]);
-    const result = await getClientAuditRunScorecard(client, CLIENT_ID, AUDIT_RUN_ID);
+    const result = await getAccountAuditRunScorecard(client, CLIENT_ID, AUDIT_RUN_ID);
     expect(result).toEqual({
       auditRunId: AUDIT_RUN_ID, invoiceId: 'inv-1', invoiceNumber: 'INV-100', outcome: 'REJECTED_REWORK',
       conformedCount: null, varianceCount: null, unassessableCount: null,
@@ -51,14 +51,14 @@ describe('getClientAuditRunScorecard', () => {
 
   it('scopes the query to auditRunId then clientId as the two parameters', async () => {
     const { client, query } = mockClient([]);
-    await getClientAuditRunScorecard(client, CLIENT_ID, AUDIT_RUN_ID);
+    await getAccountAuditRunScorecard(client, CLIENT_ID, AUDIT_RUN_ID);
     expect(query.mock.calls[0]![1]).toEqual([AUDIT_RUN_ID, CLIENT_ID]);
   });
 
-  it('filters on ar.client_id, not just ar.id, as the explicit predicate', async () => {
+  it('filters on ar.account_id, not just ar.id, as the explicit predicate', async () => {
     const { client, query } = mockClient([]);
-    await getClientAuditRunScorecard(client, CLIENT_ID, AUDIT_RUN_ID);
+    await getAccountAuditRunScorecard(client, CLIENT_ID, AUDIT_RUN_ID);
     const [sql] = query.mock.calls[0] as [string, unknown[]];
-    expect(sql).toContain('ar.id = $1 AND ar.client_id = $2');
+    expect(sql).toContain('ar.id = $1 AND ar.account_id = $2');
   });
 });

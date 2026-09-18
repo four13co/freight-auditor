@@ -19,7 +19,7 @@ describe('generateClaimFollowUp (unit, mocked client)', () => {
     const past = new Date('2026-01-01T00:00:00Z');
     const now = new Date('2026-01-15T00:00:00Z');
     const { client, query } = mockClient(
-      { id: CLAIM_ID, client_id: CLIENT_ID, status: 'open', aging_deadline_at: past },
+      { id: CLAIM_ID, account_id: CLIENT_ID, status: 'open', aging_deadline_at: past },
       { id: 'audit-1', created: true },
     );
 
@@ -39,7 +39,7 @@ describe('generateClaimFollowUp (unit, mocked client)', () => {
     const past = new Date('2026-01-01T00:00:00Z');
     const now = new Date('2026-01-15T00:00:00Z');
     const { client } = mockClient(
-      { id: CLAIM_ID, client_id: CLIENT_ID, status: 'open', aging_deadline_at: past },
+      { id: CLAIM_ID, account_id: CLIENT_ID, status: 'open', aging_deadline_at: past },
       { id: 'audit-1', created: false },
     );
 
@@ -55,7 +55,7 @@ describe('generateClaimFollowUp (unit, mocked client)', () => {
 
   it.each(['recovered', 'denied', 'written_off'])('throws CLAIM_TERMINAL for a %s claim', async (status) => {
     const { client } = mockClient(
-      { id: CLAIM_ID, client_id: CLIENT_ID, status, aging_deadline_at: new Date('2026-01-01T00:00:00Z') },
+      { id: CLAIM_ID, account_id: CLIENT_ID, status, aging_deadline_at: new Date('2026-01-01T00:00:00Z') },
       { id: 'unused', created: false },
     );
     await expect(generateClaimFollowUp(client, CLIENT_ID, CLAIM_ID)).rejects.toMatchObject({ code: 'CLAIM_TERMINAL' });
@@ -63,7 +63,7 @@ describe('generateClaimFollowUp (unit, mocked client)', () => {
 
   it('throws NO_DEADLINE_SET when aging_deadline_at is null', async () => {
     const { client } = mockClient(
-      { id: CLAIM_ID, client_id: CLIENT_ID, status: 'open', aging_deadline_at: null },
+      { id: CLAIM_ID, account_id: CLIENT_ID, status: 'open', aging_deadline_at: null },
       { id: 'unused', created: false },
     );
     await expect(generateClaimFollowUp(client, CLIENT_ID, CLAIM_ID)).rejects.toMatchObject({ code: 'NO_DEADLINE_SET' });
@@ -73,7 +73,7 @@ describe('generateClaimFollowUp (unit, mocked client)', () => {
     const future = new Date('2026-02-01T00:00:00Z');
     const now = new Date('2026-01-15T00:00:00Z');
     const { client } = mockClient(
-      { id: CLAIM_ID, client_id: CLIENT_ID, status: 'open', aging_deadline_at: future },
+      { id: CLAIM_ID, account_id: CLIENT_ID, status: 'open', aging_deadline_at: future },
       { id: 'unused', created: false },
     );
     await expect(generateClaimFollowUp(client, CLIENT_ID, CLAIM_ID, now)).rejects.toMatchObject({ code: 'DEADLINE_NOT_PASSED' });

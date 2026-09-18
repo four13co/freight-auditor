@@ -24,20 +24,20 @@ describe('listDisputesDueForResponse (DB)', () => {
 
   beforeAll(async () => {
     pool = getPool();
-    const c = await pool.query(`INSERT INTO client (name, slug) VALUES ('DRQ', $1) RETURNING id`, [tag]);
+    const c = await pool.query(`INSERT INTO account (name, slug) VALUES ('DRQ', $1) RETURNING id`, [tag]);
     clientId = c.rows[0].id;
   });
 
   afterAll(async () => {
-    await pool.query(`DELETE FROM dispute_comm WHERE client_id = $1`, [clientId]);
-    await pool.query(`DELETE FROM dispute WHERE client_id = $1`, [clientId]);
-    await pool.query(`DELETE FROM client WHERE id = $1`, [clientId]);
+    await pool.query(`DELETE FROM dispute_comm WHERE account_id = $1`, [clientId]);
+    await pool.query(`DELETE FROM dispute WHERE account_id = $1`, [clientId]);
+    await pool.query(`DELETE FROM account WHERE id = $1`, [clientId]);
     await closePool();
   });
 
   async function seedDispute(status: string): Promise<string> {
     const { rows } = await pool.query<{ id: string }>(
-      `INSERT INTO dispute (client_id, status, amount_claimed, currency) VALUES ($1, $2, '500.0000', 'USD') RETURNING id`,
+      `INSERT INTO dispute (account_id, status, amount_claimed, currency) VALUES ($1, $2, '500.0000', 'USD') RETURNING id`,
       [clientId, status],
     );
     return rows[0]!.id;
@@ -45,7 +45,7 @@ describe('listDisputesDueForResponse (DB)', () => {
 
   async function seedComm(disputeId: string, direction: 'outbound' | 'inbound', recordedAt: string): Promise<void> {
     await pool.query(
-      `INSERT INTO dispute_comm (client_id, dispute_id, direction, body, recorded_at, dedupe_key)
+      `INSERT INTO dispute_comm (account_id, dispute_id, direction, body, recorded_at, dedupe_key)
        VALUES ($1, $2, $3, 'test comm', $4, $5)`,
       [clientId, disputeId, direction, recordedAt, `${disputeId}:${direction}:${recordedAt}`],
     );
@@ -134,34 +134,34 @@ describe('GET /api/disputes/queues (DB, e2e)', () => {
     originalFlag = process.env.DEV_AUTH_HEADERS;
     process.env.DEV_AUTH_HEADERS = '1';
     pool = getPool();
-    const c = await pool.query(`INSERT INTO client (name, slug) VALUES ('DRQE', $1) RETURNING id`, [tag]);
+    const c = await pool.query(`INSERT INTO account (name, slug) VALUES ('DRQE', $1) RETURNING id`, [tag]);
     clientId = c.rows[0].id;
     const u = await pool.query(`INSERT INTO app_user (email) VALUES ($1) RETURNING id`, [`${tag}@example.com`]);
     userId = u.rows[0].id;
-    await pool.query(`INSERT INTO membership (user_id, client_id, role) VALUES ($1, $2, 'analyst')`, [userId, clientId]);
+    await pool.query(`INSERT INTO membership (user_id, account_id, role) VALUES ($1, $2, 'analyst')`, [userId, clientId]);
     app = buildApp();
   });
 
   afterAll(async () => {
     process.env.DEV_AUTH_HEADERS = originalFlag;
     await app.close();
-    await pool.query(`DELETE FROM dispute_comm WHERE client_id = $1`, [clientId]);
-    await pool.query(`DELETE FROM dispute WHERE client_id = $1`, [clientId]);
+    await pool.query(`DELETE FROM dispute_comm WHERE account_id = $1`, [clientId]);
+    await pool.query(`DELETE FROM dispute WHERE account_id = $1`, [clientId]);
     await pool.query(`DELETE FROM membership WHERE user_id = $1`, [userId]);
     await pool.query(`DELETE FROM app_user WHERE id = $1`, [userId]);
-    await pool.query(`DELETE FROM client WHERE id = $1`, [clientId]);
+    await pool.query(`DELETE FROM account WHERE id = $1`, [clientId]);
     await closePool();
   });
 
   it('returns only the authenticated tenant\'s overdue disputes', async () => {
     const dispute = await pool.query<{ id: string }>(
-      `INSERT INTO dispute (client_id, status, amount_claimed, currency) VALUES ($1, 'sent', '500.0000', 'USD') RETURNING id`,
+      `INSERT INTO dispute (account_id, status, amount_claimed, currency) VALUES ($1, 'sent', '500.0000', 'USD') RETURNING id`,
       [clientId],
     );
     const disputeId = dispute.rows[0]!.id;
     const old = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
     await pool.query(
-      `INSERT INTO dispute_comm (client_id, dispute_id, direction, body, recorded_at, dedupe_key)
+      `INSERT INTO dispute_comm (account_id, dispute_id, direction, body, recorded_at, dedupe_key)
        VALUES ($1, $2, 'outbound', 'overdue comm', $3, $4)`,
       [clientId, disputeId, old, `${disputeId}:seed`],
     );
@@ -180,16 +180,16 @@ describe('GET /api/disputes/queues (DB, e2e)', () => {
   });
 
   it('cross-tenant: an authenticated tenant-A user cannot see a tenant-B overdue dispute', async () => {
-    const other = await pool.query(`INSERT INTO client (name, slug) VALUES ('DRQE-other', $1) RETURNING id`, [`${tag}-other`]);
+    const other = await pool.query(`INSERT INTO account (name, slug) VALUES ('DRQE-other', $1) RETURNING id`, [`${tag}-other`]);
     const otherClientId = other.rows[0].id;
     const otherDispute = await pool.query<{ id: string }>(
-      `INSERT INTO dispute (client_id, status, amount_claimed, currency) VALUES ($1, 'sent', '900.0000', 'USD') RETURNING id`,
+      `INSERT INTO dispute (account_id, status, amount_claimed, currency) VALUES ($1, 'sent', '900.0000', 'USD') RETURNING id`,
       [otherClientId],
     );
     const otherDisputeId = otherDispute.rows[0]!.id;
     const old = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
     await pool.query(
-      `INSERT INTO dispute_comm (client_id, dispute_id, direction, body, recorded_at, dedupe_key)
+      `INSERT INTO dispute_comm (account_id, dispute_id, direction, body, recorded_at, dedupe_key)
        VALUES ($1, $2, 'outbound', 'other comm', $3, $4)`,
       [otherClientId, otherDisputeId, old, `${otherDisputeId}:seed`],
     );
@@ -201,8 +201,8 @@ describe('GET /api/disputes/queues (DB, e2e)', () => {
     expect(res.statusCode).toBe(200);
     expect(res.json().overdue.some((r: { disputeId: string }) => r.disputeId === otherDisputeId)).toBe(false);
 
-    await pool.query(`DELETE FROM dispute_comm WHERE client_id = $1`, [otherClientId]);
-    await pool.query(`DELETE FROM dispute WHERE client_id = $1`, [otherClientId]);
-    await pool.query(`DELETE FROM client WHERE id = $1`, [otherClientId]);
+    await pool.query(`DELETE FROM dispute_comm WHERE account_id = $1`, [otherClientId]);
+    await pool.query(`DELETE FROM dispute WHERE account_id = $1`, [otherClientId]);
+    await pool.query(`DELETE FROM account WHERE id = $1`, [otherClientId]);
   });
 });

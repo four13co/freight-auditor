@@ -35,7 +35,7 @@ export async function getDerivedClaimStatus(
   claimId: string,
 ): Promise<DeriveClaimStatusResult> {
   const claimResult = await client.query<ClaimStatusRow>(
-    `SELECT status FROM claim WHERE client_id = $1 AND id = $2`,
+    `SELECT status FROM claim WHERE account_id = $1 AND id = $2`,
     [clientId, claimId],
   );
   const claim = claimResult.rows[0];
@@ -43,13 +43,13 @@ export async function getDerivedClaimStatus(
 
   const terminalEventsResult = await client.query<TerminalEventRow>(
     `SELECT event, recorded_at FROM audit_event
-     WHERE client_id = $1 AND entity = 'claim' AND entity_id = $2
+     WHERE account_id = $1 AND entity = 'claim' AND entity_id = $2
        AND event = ANY($3::text[])`,
     [clientId, claimId, CLAIM_TERMINAL_EVENT_NAMES],
   );
 
   const recoveryEventsResult = await client.query<RecoveryAmountRow>(
-    `SELECT amount_recovered FROM recovery_event WHERE client_id = $1 AND claim_id = $2`,
+    `SELECT amount_recovered FROM recovery_event WHERE account_id = $1 AND claim_id = $2`,
     [clientId, claimId],
   );
 

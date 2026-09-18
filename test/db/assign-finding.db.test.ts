@@ -22,9 +22,9 @@ describe('assignFinding (DB)', () => {
     pool = getPool();
     const owner = await pool.connect();
     try {
-      const a = await owner.query(`INSERT INTO client (name, slug) VALUES ('AF-A', $1) RETURNING id`, [`${tag}-a`]);
+      const a = await owner.query(`INSERT INTO account (name, slug) VALUES ('AF-A', $1) RETURNING id`, [`${tag}-a`]);
       clientAId = a.rows[0].id;
-      const b = await owner.query(`INSERT INTO client (name, slug) VALUES ('AF-B', $1) RETURNING id`, [`${tag}-b`]);
+      const b = await owner.query(`INSERT INTO account (name, slug) VALUES ('AF-B', $1) RETURNING id`, [`${tag}-b`]);
       clientBId = b.rows[0].id;
       const carrier = await owner.query(`INSERT INTO carrier (name) VALUES ($1) RETURNING id`, [`Carrier-${tag}`]);
       carrierId = carrier.rows[0].id;
@@ -41,16 +41,16 @@ describe('assignFinding (DB)', () => {
   afterAll(async () => {
     const owner = await pool.connect();
     try {
-      await owner.query(`DELETE FROM audit_event WHERE client_id IN ($1, $2)`, [clientAId, clientBId]);
-      await owner.query(`DELETE FROM finding_assignment_event WHERE client_id IN ($1, $2)`, [clientAId, clientBId]);
-      await owner.query(`DELETE FROM variance_finding WHERE client_id IN ($1, $2)`, [clientAId, clientBId]);
-      await owner.query(`DELETE FROM charge_fact WHERE client_id IN ($1, $2)`, [clientAId, clientBId]);
-      await owner.query(`DELETE FROM payment_gate_decision WHERE client_id IN ($1, $2)`, [clientAId, clientBId]);
-      await owner.query(`DELETE FROM audit_run WHERE client_id IN ($1, $2)`, [clientAId, clientBId]);
-      await owner.query(`DELETE FROM invoice WHERE client_id IN ($1, $2)`, [clientAId, clientBId]);
+      await owner.query(`DELETE FROM audit_event WHERE account_id IN ($1, $2)`, [clientAId, clientBId]);
+      await owner.query(`DELETE FROM finding_assignment_event WHERE account_id IN ($1, $2)`, [clientAId, clientBId]);
+      await owner.query(`DELETE FROM variance_finding WHERE account_id IN ($1, $2)`, [clientAId, clientBId]);
+      await owner.query(`DELETE FROM charge_fact WHERE account_id IN ($1, $2)`, [clientAId, clientBId]);
+      await owner.query(`DELETE FROM payment_gate_decision WHERE account_id IN ($1, $2)`, [clientAId, clientBId]);
+      await owner.query(`DELETE FROM audit_run WHERE account_id IN ($1, $2)`, [clientAId, clientBId]);
+      await owner.query(`DELETE FROM invoice WHERE account_id IN ($1, $2)`, [clientAId, clientBId]);
       await owner.query(`DELETE FROM carrier WHERE id = $1`, [carrierId]);
       await owner.query(`DELETE FROM app_user WHERE id = $1`, [analystUserId]);
-      await owner.query(`DELETE FROM client WHERE id IN ($1, $2)`, [clientAId, clientBId]);
+      await owner.query(`DELETE FROM account WHERE id IN ($1, $2)`, [clientAId, clientBId]);
     } finally {
       owner.release();
     }
@@ -63,21 +63,21 @@ describe('assignFinding (DB)', () => {
     opts: { clientId: string; variance?: string },
   ): Promise<string> {
     const inv = await client.query(
-      `INSERT INTO invoice (client_id, carrier_id, transaction_set, invoice_number, currency, parser_version)
+      `INSERT INTO invoice (account_id, carrier_id, transaction_set, invoice_number, currency, parser_version)
        VALUES ($1, $2, '210', $3, 'USD', 'test') RETURNING id`,
       [opts.clientId, carrierId, `INV-${tag}-${Math.random().toString(36).slice(2)}`],
     );
     const invoiceId = inv.rows[0].id;
 
     const run = await client.query(
-      `INSERT INTO audit_run (client_id, invoice_id, engine_spec_version, outcome)
+      `INSERT INTO audit_run (account_id, invoice_id, engine_spec_version, outcome)
        VALUES ($1, $2, 'test', 'SCORED') RETURNING id`,
       [opts.clientId, invoiceId],
     );
     const auditRunId = run.rows[0].id;
 
     const cf = await client.query(
-      `INSERT INTO charge_fact (client_id, invoice_id, code, category, amount, currency)
+      `INSERT INTO charge_fact (account_id, invoice_id, code, category, amount, currency)
        VALUES ($1, $2, '400', 'LINEHAUL', '1000.0000', 'USD') RETURNING id`,
       [opts.clientId, invoiceId],
     );
@@ -85,7 +85,7 @@ describe('assignFinding (DB)', () => {
 
     const vf = await client.query(
       `INSERT INTO variance_finding
-         (client_id, audit_run_id, charge_fact_id, criterion_id, rule_version_id, direction, variance_amount, currency, status, evaluated_expr)
+         (account_id, audit_run_id, charge_fact_id, criterion_id, rule_version_id, direction, variance_amount, currency, status, evaluated_expr)
        SELECT $1, $2, $3, c.id, rv.id, 'OVERCHARGE', $4, 'USD', 'open', '{}'::jsonb
        FROM criterion c JOIN rule r ON r.slug = 'contract-rate_variance'
        JOIN rule_version rv ON rv.rule_id = r.id

@@ -18,7 +18,7 @@ describe('detectSuspiciousPassTriggers (DB)', () => {
     pool = getPool();
     const owner = await pool.connect();
     try {
-      const c = await owner.query(`INSERT INTO client (name, slug) VALUES ('SPT', $1) RETURNING id`, [tag]);
+      const c = await owner.query(`INSERT INTO account (name, slug) VALUES ('SPT', $1) RETURNING id`, [tag]);
       clientId = c.rows[0].id;
       const carrier = await owner.query(`INSERT INTO carrier (name) VALUES ($1) RETURNING id`, [`Carrier-${tag}`]);
       carrierId = carrier.rows[0].id;
@@ -30,15 +30,15 @@ describe('detectSuspiciousPassTriggers (DB)', () => {
   afterAll(async () => {
     const owner = await pool.connect();
     try {
-      await owner.query(`DELETE FROM suspicious_pass_trigger WHERE client_id = $1`, [clientId]);
-      await owner.query(`DELETE FROM audit_event WHERE client_id = $1`, [clientId]);
-      await owner.query(`DELETE FROM coverage_marker WHERE client_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM suspicious_pass_trigger WHERE account_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM audit_event WHERE account_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM coverage_marker WHERE account_id = $1`, [clientId]);
       // 86e367r9x: persistAuditRun now wires a payment_gate_decision row per run.
-      await owner.query(`DELETE FROM payment_gate_decision WHERE client_id = $1`, [clientId]);
-      await owner.query(`DELETE FROM audit_run WHERE client_id = $1`, [clientId]);
-      await owner.query(`DELETE FROM invoice WHERE client_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM payment_gate_decision WHERE account_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM audit_run WHERE account_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM invoice WHERE account_id = $1`, [clientId]);
       await owner.query(`DELETE FROM carrier WHERE id = $1`, [carrierId]);
-      await owner.query(`DELETE FROM client WHERE id = $1`, [clientId]);
+      await owner.query(`DELETE FROM account WHERE id = $1`, [clientId]);
     } finally {
       owner.release();
     }
@@ -50,14 +50,14 @@ describe('detectSuspiciousPassTriggers (DB)', () => {
     markers: Array<{ chargeIndex: number; markerCode: string; missingFields: string[] }>,
   ): Promise<{ auditRunId: string }> {
     const inv = await client.query(
-      `INSERT INTO invoice (client_id, carrier_id, transaction_set, invoice_number, currency, parser_version)
+      `INSERT INTO invoice (account_id, carrier_id, transaction_set, invoice_number, currency, parser_version)
        VALUES ($1, $2, '210', $3, 'USD', 'test') RETURNING id`,
       [clientId, carrierId, `INV-${tag}-${Math.random().toString(36).slice(2)}`],
     );
     const invoiceId = inv.rows[0].id;
 
     const run = await client.query(
-      `INSERT INTO audit_run (client_id, invoice_id, engine_spec_version, outcome)
+      `INSERT INTO audit_run (account_id, invoice_id, engine_spec_version, outcome)
        VALUES ($1, $2, 'test', 'SCORED') RETURNING id`,
       [clientId, invoiceId],
     );
@@ -65,7 +65,7 @@ describe('detectSuspiciousPassTriggers (DB)', () => {
 
     for (const marker of markers) {
       await client.query(
-        `INSERT INTO coverage_marker (client_id, audit_run_id, charge_index, marker_code, missing_fields)
+        `INSERT INTO coverage_marker (account_id, audit_run_id, charge_index, marker_code, missing_fields)
          VALUES ($1, $2, $3, $4, $5)`,
         [clientId, auditRunId, marker.chargeIndex, marker.markerCode, marker.missingFields],
       );
@@ -90,7 +90,7 @@ describe('detectSuspiciousPassTriggers (DB)', () => {
       expect(second.triggerIds).toEqual(first.triggerIds);
 
       const rows = await owner.query(
-        `SELECT marker_code FROM suspicious_pass_trigger WHERE client_id = $1 AND audit_run_id = $2 ORDER BY marker_code`,
+        `SELECT marker_code FROM suspicious_pass_trigger WHERE account_id = $1 AND audit_run_id = $2 ORDER BY marker_code`,
         [clientId, auditRunId],
       );
       expect(rows.rows).toEqual([{ marker_code: 'INCOMPLETE_RATE_BASIS' }, { marker_code: 'MISSING_CHARGE_IDENTITY' }]);

@@ -1,23 +1,23 @@
 import type { FastifyInstance } from 'fastify';
 import { withTenantTx } from '../db/tenant-context.js';
-import { registerClientViewerAuthPreHandler } from '../modules/identity/client-viewer-auth.js';
+import { registerAccountViewerAuthPreHandler } from '../modules/identity/account-viewer-auth.js';
 import { isUuid, AUDIT_ENTITY_OR_EVENT_PATTERN } from '../shared/request-validation.js';
 import { parseLimitOffset } from '../shared/parse-limit-offset.js';
-import { listClientInvoices } from '../modules/portal/list-client-invoices.js';
-import { getClientAuditRunScorecard } from '../modules/portal/get-client-audit-run-scorecard.js';
-import { listClientFindings, type ClientFindingsSortKey } from '../modules/portal/list-client-findings.js';
+import { listAccountInvoices } from '../modules/portal/list-account-invoices.js';
+import { getAccountAuditRunScorecard } from '../modules/portal/get-account-audit-run-scorecard.js';
+import { listAccountFindings, type AccountFindingsSortKey } from '../modules/portal/list-account-findings.js';
 import { getDefensibilityChain } from '../modules/findings/get-defensibility-chain.js';
 import { ALL_VARIANCE_STATUSES } from '../shared/variance-status.js';
-import { getClientDisputeDetail } from '../modules/portal/get-client-dispute-detail.js';
-import { listClientDisputeCommunications } from '../modules/portal/list-client-dispute-communications.js';
+import { getAccountDisputeDetail } from '../modules/portal/get-account-dispute-detail.js';
+import { listAccountDisputeCommunications } from '../modules/portal/list-account-dispute-communications.js';
 import { getClaimDetail } from '../modules/claims/get-claim-detail.js';
-import { listClientClaimDocuments } from '../modules/portal/list-client-claim-documents.js';
-import { listClientAuditEvents } from '../modules/portal/list-client-audit-events.js';
+import { listAccountClaimDocuments } from '../modules/portal/list-account-claim-documents.js';
+import { listAccountAuditEvents } from '../modules/portal/list-account-audit-events.js';
 
 const MAX_LIMIT = 200;
 const VARIANCE_STATUS_VALUES = new Set<string>(ALL_VARIANCE_STATUSES);
 // Mirrors findings-routes.ts's own SORT_KEYS/SORT_DIRS allowlists exactly.
-const SORT_KEYS = new Set<ClientFindingsSortKey>(['variance', 'age']);
+const SORT_KEYS = new Set<AccountFindingsSortKey>(['variance', 'age']);
 const SORT_DIRS = new Set(['asc', 'desc']);
 const NUMERIC_STRING = /^-?\d+(\.\d+)?$/;
 
@@ -25,7 +25,7 @@ const NUMERIC_STRING = /^-?\d+(\.\d+)?$/;
  * Client portal content read APIs: invoice list + per-audit-run scorecard
  * (P6.B.1), findings list + finding evidence/defensibility chain (P6.B.2),
  * gated by client-viewer-auth.ts's OWN preHandler
- * (registerClientViewerAuthPreHandler) rather than the shared
+ * (registerAccountViewerAuthPreHandler) rather than the shared
  * registerTenantAuthPreHandler every internal-facing route module uses --
  * same reasoning as portfolio-routes.ts's own header comment: this surface
  * must only ever grant access to a `client_viewer` membership, and must
@@ -52,7 +52,7 @@ const NUMERIC_STRING = /^-?\d+(\.\d+)?$/;
  * as-is -- unlike getDefensibilityChain, those rely on RLS alone (no clientId
  * param at all), so new client-scoped wrapper modules
  * (get-client-dispute-detail.ts / list-client-dispute-communications.ts)
- * mirror their join shape with an added explicit client_id predicate,
+ * mirror their join shape with an added explicit account_id predicate,
  * matching this surface's own convention elsewhere.
  *
  * GET /api/portal/disputes/:id/communications 404s on the dispute lookup
@@ -62,7 +62,7 @@ const NUMERIC_STRING = /^-?\d+(\.\d+)?$/;
  *
  * GET /api/portal/claims/:id (P6.B.4) reuses getClaimDetail as-is
  * (modules/claims/get-claim-detail.ts) -- like getDefensibilityChain, it
- * already carries an explicit client_id predicate on both its queries, so
+ * already carries an explicit account_id predicate on both its queries, so
  * no wrapper is needed (unlike the P6.B.3 dispute functions).
  *
  * GET /api/portal/claims/:id/documents (P6.B.4) resolves the claim's
@@ -80,8 +80,8 @@ const NUMERIC_STRING = /^-?\d+(\.\d+)?$/;
  * out of this task's boundary -- see this task's own Exclusions.
  *
  * GET /api/portal/audit-log (P6.B.6) is the one route on this surface where
- * the explicit client_id predicate in list-client-audit-events.ts is NOT
- * defense-in-depth -- audit_event.client_id is nullable ("NULL for
+ * the explicit account_id predicate in list-client-audit-events.ts is NOT
+ * defense-in-depth -- audit_event.account_id is nullable ("NULL for
  * system-global events", migration 0008), and the tenant_isolation RLS
  * policy's USING clause admits NULL-client rows unconditionally. Without
  * the module's own predicate, every system-global audit event across every
@@ -89,7 +89,7 @@ const NUMERIC_STRING = /^-?\d+(\.\d+)?$/;
  * omitted from the response shape -- see the module's own header comment.
  */
 export async function registerPortalContentRoutes(routes: FastifyInstance): Promise<void> {
-  await registerClientViewerAuthPreHandler(routes);
+  await registerAccountViewerAuthPreHandler(routes);
 
   routes.get('/api/portal/invoices', async (request, reply) => {
     const clientId = request.tenantContext!.clientIds![0]!;
@@ -104,7 +104,7 @@ export async function registerPortalContentRoutes(routes: FastifyInstance): Prom
     const { limit, offset } = parsedLimitOffset.value;
 
     const invoices = await withTenantTx(request.tenantContext!, (client) =>
-      listClientInvoices(client, clientId, { status: query.status, limit, offset }),
+      listAccountInvoices(client, clientId, { status: query.status, limit, offset }),
     );
     return { invoices };
   });
@@ -119,7 +119,7 @@ export async function registerPortalContentRoutes(routes: FastifyInstance): Prom
     }
 
     const scorecard = await withTenantTx(request.tenantContext!, (client) =>
-      getClientAuditRunScorecard(client, clientId, auditRunId),
+      getAccountAuditRunScorecard(client, clientId, auditRunId),
     );
     if (!scorecard) {
       await reply.code(404).send({ error: 'audit run not found' });
@@ -149,7 +149,7 @@ export async function registerPortalContentRoutes(routes: FastifyInstance): Prom
       await reply.code(400).send({ error: 'invalid min-amount: must be numeric' });
       return;
     }
-    if (query.sort !== undefined && !SORT_KEYS.has(query.sort as ClientFindingsSortKey)) {
+    if (query.sort !== undefined && !SORT_KEYS.has(query.sort as AccountFindingsSortKey)) {
       await reply.code(400).send({ error: `invalid sort: must be one of ${[...SORT_KEYS].join(', ')}` });
       return;
     }
@@ -166,11 +166,11 @@ export async function registerPortalContentRoutes(routes: FastifyInstance): Prom
     const { limit, offset } = parsedLimitOffset.value;
 
     const findings = await withTenantTx(request.tenantContext!, (client) =>
-      listClientFindings(client, clientId, {
+      listAccountFindings(client, clientId, {
         carrier: query.carrier,
         status: query.status,
         minAmount: query['min-amount'],
-        sort: query.sort as ClientFindingsSortKey | undefined,
+        sort: query.sort as AccountFindingsSortKey | undefined,
         sortDir: query.sortDir as 'asc' | 'desc' | undefined,
         limit,
         offset,
@@ -208,7 +208,7 @@ export async function registerPortalContentRoutes(routes: FastifyInstance): Prom
     }
 
     const detail = await withTenantTx(request.tenantContext!, (client) =>
-      getClientDisputeDetail(client, clientId, id),
+      getAccountDisputeDetail(client, clientId, id),
     );
     if (!detail) {
       await reply.code(404).send({ error: 'dispute not found' });
@@ -227,7 +227,7 @@ export async function registerPortalContentRoutes(routes: FastifyInstance): Prom
     }
 
     const detail = await withTenantTx(request.tenantContext!, (client) =>
-      getClientDisputeDetail(client, clientId, id),
+      getAccountDisputeDetail(client, clientId, id),
     );
     if (!detail) {
       await reply.code(404).send({ error: 'dispute not found' });
@@ -235,7 +235,7 @@ export async function registerPortalContentRoutes(routes: FastifyInstance): Prom
     }
 
     const communications = await withTenantTx(request.tenantContext!, (client) =>
-      listClientDisputeCommunications(client, clientId, id),
+      listAccountDisputeCommunications(client, clientId, id),
     );
     return { communications };
   });
@@ -269,7 +269,7 @@ export async function registerPortalContentRoutes(routes: FastifyInstance): Prom
     }
 
     const documents = await withTenantTx(request.tenantContext!, (client) =>
-      listClientClaimDocuments(client, clientId, id),
+      listAccountClaimDocuments(client, clientId, id),
     );
     if (!documents) {
       await reply.code(404).send({ error: 'claim not found' });
@@ -325,7 +325,7 @@ export async function registerPortalContentRoutes(routes: FastifyInstance): Prom
     const { limit, offset } = parsedLimitOffset.value;
 
     const events = await withTenantTx(request.tenantContext!, (client) =>
-      listClientAuditEvents(client, clientId, {
+      listAccountAuditEvents(client, clientId, {
         entity: query.entity,
         event: query.event,
         from,

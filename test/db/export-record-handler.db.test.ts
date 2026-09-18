@@ -22,7 +22,7 @@ describe('handleExportRecordJob (DB)', () => {
     pool = getPool();
     const owner = await pool.connect();
     try {
-      const c = await owner.query(`INSERT INTO client (name, slug) VALUES ('XREC', $1) RETURNING id`, [tag]);
+      const c = await owner.query(`INSERT INTO account (name, slug) VALUES ('XREC', $1) RETURNING id`, [tag]);
       clientId = c.rows[0].id;
     } finally {
       owner.release();
@@ -32,10 +32,10 @@ describe('handleExportRecordJob (DB)', () => {
   afterAll(async () => {
     const owner = await pool.connect();
     try {
-      await owner.query(`DELETE FROM audit_event WHERE client_id = $1`, [clientId]);
-      await owner.query(`DELETE FROM export_acknowledgement WHERE client_id = $1`, [clientId]);
-      await owner.query(`DELETE FROM claim WHERE client_id = $1`, [clientId]);
-      await owner.query(`DELETE FROM client WHERE id = $1`, [clientId]);
+      await owner.query(`DELETE FROM audit_event WHERE account_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM export_acknowledgement WHERE account_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM claim WHERE account_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM account WHERE id = $1`, [clientId]);
     } finally {
       owner.release();
     }
@@ -44,7 +44,7 @@ describe('handleExportRecordJob (DB)', () => {
 
   async function seedClaim(client: pg.PoolClient): Promise<string> {
     const { rows } = await client.query<{ id: string }>(
-      `INSERT INTO claim (client_id, amount_claimed, currency, status) VALUES ($1, '250.0000', 'USD', 'open') RETURNING id`,
+      `INSERT INTO claim (account_id, amount_claimed, currency, status) VALUES ($1, '250.0000', 'USD', 'open') RETURNING id`,
       [clientId],
     );
     return rows[0]!.id;
@@ -76,7 +76,7 @@ describe('handleExportRecordJob (DB)', () => {
       await handleExportRecordJob(client, payload, deps(adapter));
 
       const rows = await client.query(
-        `SELECT status FROM export_acknowledgement WHERE client_id = $1 AND dedupe_key = $2`,
+        `SELECT status FROM export_acknowledgement WHERE account_id = $1 AND dedupe_key = $2`,
         [clientId, `dk-${tag}-redelivery`],
       );
       return { rowCount: rows.rows.length, adapterEffectCount: adapter.effectCount };
@@ -109,7 +109,7 @@ describe('handleExportRecordJob (DB)', () => {
       }
 
       const rows = await client.query(
-        `SELECT status, reason FROM export_acknowledgement WHERE client_id = $1 AND dedupe_key = $2`,
+        `SELECT status, reason FROM export_acknowledgement WHERE account_id = $1 AND dedupe_key = $2`,
         [clientId, `dk-${tag}-fail`],
       );
       return { thrown, row: rows.rows[0] };
@@ -138,7 +138,7 @@ describe('handleExportRecordJob (DB)', () => {
       await expect(handleExportRecordJob(client, payload, deps(adapter))).resolves.toBeUndefined();
 
       const rows = await client.query(
-        `SELECT 1 FROM export_acknowledgement WHERE client_id = $1 AND dedupe_key = $2`,
+        `SELECT 1 FROM export_acknowledgement WHERE account_id = $1 AND dedupe_key = $2`,
         [clientId, `dk-${tag}-notconfigured`],
       );
       return rows.rows.length;

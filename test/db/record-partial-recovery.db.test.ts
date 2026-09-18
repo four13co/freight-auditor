@@ -33,9 +33,9 @@ describe('recordPartialRecovery (DB)', () => {
     pool = getPool();
     const owner = await pool.connect();
     try {
-      const a = await owner.query(`INSERT INTO client (name, slug) VALUES ('PR-A', $1) RETURNING id`, [`${tag}-a`]);
+      const a = await owner.query(`INSERT INTO account (name, slug) VALUES ('PR-A', $1) RETURNING id`, [`${tag}-a`]);
       clientAId = a.rows[0].id;
-      const b = await owner.query(`INSERT INTO client (name, slug) VALUES ('PR-B', $1) RETURNING id`, [`${tag}-b`]);
+      const b = await owner.query(`INSERT INTO account (name, slug) VALUES ('PR-B', $1) RETURNING id`, [`${tag}-b`]);
       clientBId = b.rows[0].id;
     } finally {
       owner.release();
@@ -45,10 +45,10 @@ describe('recordPartialRecovery (DB)', () => {
   afterAll(async () => {
     const owner = await pool.connect();
     try {
-      await owner.query(`DELETE FROM audit_event WHERE client_id IN ($1, $2)`, [clientAId, clientBId]);
-      await owner.query(`DELETE FROM recovery_event WHERE client_id IN ($1, $2)`, [clientAId, clientBId]);
-      await owner.query(`DELETE FROM claim WHERE client_id IN ($1, $2)`, [clientAId, clientBId]);
-      await owner.query(`DELETE FROM client WHERE id IN ($1, $2)`, [clientAId, clientBId]);
+      await owner.query(`DELETE FROM audit_event WHERE account_id IN ($1, $2)`, [clientAId, clientBId]);
+      await owner.query(`DELETE FROM recovery_event WHERE account_id IN ($1, $2)`, [clientAId, clientBId]);
+      await owner.query(`DELETE FROM claim WHERE account_id IN ($1, $2)`, [clientAId, clientBId]);
+      await owner.query(`DELETE FROM account WHERE id IN ($1, $2)`, [clientAId, clientBId]);
     } finally {
       owner.release();
     }
@@ -57,7 +57,7 @@ describe('recordPartialRecovery (DB)', () => {
 
   async function seedClaim(client: pg.PoolClient, opts: { clientId: string; amountClaimed?: string }): Promise<string> {
     const { rows } = await client.query<{ id: string }>(
-      `INSERT INTO claim (client_id, amount_claimed, currency, status) VALUES ($1, $2, 'USD', 'open') RETURNING id`,
+      `INSERT INTO claim (account_id, amount_claimed, currency, status) VALUES ($1, $2, 'USD', 'open') RETURNING id`,
       [opts.clientId, opts.amountClaimed ?? '500.0000'],
     );
     return rows[0]!.id;
@@ -146,23 +146,23 @@ describe('recordPartialRecovery -> reconciliation export enqueue (DB)', () => {
     await grantJobSchemaAccessToAppRole(boss);
 
     clientId = (await getPool().query(
-      `INSERT INTO client (name, slug) VALUES ('PR Export Co', $1) RETURNING id`,
+      `INSERT INTO account (name, slug) VALUES ('PR Export Co', $1) RETURNING id`,
       [tag],
     )).rows[0].id;
   });
 
   afterAll(async () => {
     await boss.stop({ graceful: false, close: true });
-    await getPool().query(`DELETE FROM audit_event WHERE client_id = $1`, [clientId]);
-    await getPool().query(`DELETE FROM recovery_event WHERE client_id = $1`, [clientId]);
-    await getPool().query(`DELETE FROM claim WHERE client_id = $1`, [clientId]);
-    await getPool().query(`DELETE FROM client WHERE id = $1`, [clientId]);
+    await getPool().query(`DELETE FROM audit_event WHERE account_id = $1`, [clientId]);
+    await getPool().query(`DELETE FROM recovery_event WHERE account_id = $1`, [clientId]);
+    await getPool().query(`DELETE FROM claim WHERE account_id = $1`, [clientId]);
+    await getPool().query(`DELETE FROM account WHERE id = $1`, [clientId]);
     await closePool();
   });
 
   async function seedClaim(client: pg.PoolClient, amountClaimed = '500.0000'): Promise<string> {
     const { rows } = await client.query<{ id: string }>(
-      `INSERT INTO claim (client_id, amount_claimed, currency, status) VALUES ($1, $2, 'USD', 'open') RETURNING id`,
+      `INSERT INTO claim (account_id, amount_claimed, currency, status) VALUES ($1, $2, 'USD', 'open') RETURNING id`,
       [clientId, amountClaimed],
     );
     return rows[0]!.id;
@@ -261,7 +261,7 @@ describe('recordPartialRecovery -> reconciliation export enqueue (DB)', () => {
     expect(failingBoss.send).toHaveBeenCalledTimes(1);
 
     const { rows } = await getPool().query(
-      `SELECT id, amount_recovered FROM recovery_event WHERE client_id = $1 AND claim_id = $2 AND id = $3`,
+      `SELECT id, amount_recovered FROM recovery_event WHERE account_id = $1 AND claim_id = $2 AND id = $3`,
       [clientId, claimId, recoveryEventId],
     );
     expect(rows).toHaveLength(1);

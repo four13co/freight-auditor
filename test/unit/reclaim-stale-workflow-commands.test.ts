@@ -77,7 +77,7 @@ describe('reclaimStaleWorkflowCommandsForActiveClients', () => {
     reclaimed?: Record<string, { id: string; workflow_instance_id: string; attempts: number; status: string }[]>;
   }): { client: pg.PoolClient; query: ReturnType<typeof vi.fn> } {
     const query = vi.fn().mockImplementation(async (sql: string, params?: unknown[]) => {
-      if (sql.includes('FROM client')) {
+      if (sql.includes('FROM account')) {
         return { rows: rows.clients ?? [] };
       }
       if (sql.includes('UPDATE workflow_command')) {

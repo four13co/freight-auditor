@@ -29,21 +29,21 @@ export interface ClaimDocumentRef {
  * join naturally yields nothing -- no special-casing needed) or that
  * dispute's lines resolve no source documents yet.
  */
-export async function listClientClaimDocuments(
+export async function listAccountClaimDocuments(
   client: pg.PoolClient,
   clientId: string,
   claimId: string,
 ): Promise<ClaimDocumentRef[] | null> {
-  const claimCheck = await client.query(`SELECT id FROM claim WHERE client_id = $1 AND id = $2`, [clientId, claimId]);
+  const claimCheck = await client.query(`SELECT id FROM claim WHERE account_id = $1 AND id = $2`, [clientId, claimId]);
   if (!claimCheck.rowCount) return null;
 
   const { rows } = await client.query<{ id: string; sha256: string; storage_uri: string }>(
     `SELECT DISTINCT sd.id, sd.sha256, sd.storage_uri
        FROM claim c
-       JOIN dispute_line dl ON dl.client_id = c.client_id AND dl.dispute_id = c.dispute_id
-       JOIN variance_finding vf ON vf.client_id = c.client_id AND vf.id = dl.variance_finding_id
+       JOIN dispute_line dl ON dl.account_id = c.account_id AND dl.dispute_id = c.dispute_id
+       JOIN variance_finding vf ON vf.account_id = c.account_id AND vf.id = dl.variance_finding_id
        JOIN source_document sd ON sd.id = vf.source_document_id
-      WHERE c.client_id = $1 AND c.id = $2
+      WHERE c.account_id = $1 AND c.id = $2
       ORDER BY sd.id`,
     [clientId, claimId],
   );

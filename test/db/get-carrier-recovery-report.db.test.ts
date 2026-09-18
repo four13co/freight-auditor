@@ -15,38 +15,38 @@ describe.skipIf(!DATABASE_URL)('getCarrierRecoveryReport (database)', () => {
   const recoveredClaimId = randomUUID();
 
   beforeAll(async () => {
-    await getPool().query(`INSERT INTO client (id, name, slug) VALUES ($1, 'Carrier Report Co', $2)`, [clientId, `carrier-report-${clientId}`]);
+    await getPool().query(`INSERT INTO account (id, name, slug) VALUES ($1, 'Carrier Report Co', $2)`, [clientId, `carrier-report-${clientId}`]);
     await getPool().query(`INSERT INTO carrier (id, name) VALUES ($1, 'Test Carrier')`, [carrierId]);
     // Two disputes, not one with two claims: `claim_dispute_unique_idx`
     // (migration 0045) allows at most one claim per dispute.
     await getPool().query(
-      `INSERT INTO dispute (id, client_id, carrier_id, status) VALUES ($1, $2, $3, 'draft')`,
+      `INSERT INTO dispute (id, account_id, carrier_id, status) VALUES ($1, $2, $3, 'draft')`,
       [openDisputeId, clientId, carrierId],
     );
     await getPool().query(
-      `INSERT INTO dispute (id, client_id, carrier_id, status) VALUES ($1, $2, $3, 'draft')`,
+      `INSERT INTO dispute (id, account_id, carrier_id, status) VALUES ($1, $2, $3, 'draft')`,
       [recoveredDisputeId, clientId, carrierId],
     );
     await getPool().query(
-      `INSERT INTO claim (id, client_id, dispute_id, amount_claimed, currency, status) VALUES ($1, $2, $3, '400.0000', 'USD', 'open')`,
+      `INSERT INTO claim (id, account_id, dispute_id, amount_claimed, currency, status) VALUES ($1, $2, $3, '400.0000', 'USD', 'open')`,
       [openClaimId, clientId, openDisputeId],
     );
     await getPool().query(
-      `INSERT INTO claim (id, client_id, dispute_id, amount_claimed, currency, status) VALUES ($1, $2, $3, '600.0000', 'USD', 'recovered')`,
+      `INSERT INTO claim (id, account_id, dispute_id, amount_claimed, currency, status) VALUES ($1, $2, $3, '600.0000', 'USD', 'recovered')`,
       [recoveredClaimId, clientId, recoveredDisputeId],
     );
     await getPool().query(
-      `INSERT INTO recovery_event (client_id, claim_id, amount_recovered, currency) VALUES ($1, $2, '600.0000', 'USD')`,
+      `INSERT INTO recovery_event (account_id, claim_id, amount_recovered, currency) VALUES ($1, $2, '600.0000', 'USD')`,
       [clientId, recoveredClaimId],
     );
   });
 
   afterAll(async () => {
-    await getPool().query(`DELETE FROM recovery_event WHERE client_id = $1`, [clientId]);
-    await getPool().query(`DELETE FROM claim WHERE client_id = $1`, [clientId]);
-    await getPool().query(`DELETE FROM dispute WHERE client_id = $1`, [clientId]);
+    await getPool().query(`DELETE FROM recovery_event WHERE account_id = $1`, [clientId]);
+    await getPool().query(`DELETE FROM claim WHERE account_id = $1`, [clientId]);
+    await getPool().query(`DELETE FROM dispute WHERE account_id = $1`, [clientId]);
     await getPool().query(`DELETE FROM carrier WHERE id = $1`, [carrierId]);
-    await getPool().query(`DELETE FROM client WHERE id = $1`, [clientId]);
+    await getPool().query(`DELETE FROM account WHERE id = $1`, [clientId]);
     await closePool();
   });
 

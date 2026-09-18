@@ -27,18 +27,18 @@ describe('dispute communications log (DB)', () => {
     pool = getPool();
     const owner = await pool.connect();
     try {
-      const a = await owner.query(`INSERT INTO client (name, slug) VALUES ('DC-A', $1) RETURNING id`, [`${tag}-a`]);
+      const a = await owner.query(`INSERT INTO account (name, slug) VALUES ('DC-A', $1) RETURNING id`, [`${tag}-a`]);
       clientAId = a.rows[0].id;
-      const b = await owner.query(`INSERT INTO client (name, slug) VALUES ('DC-B', $1) RETURNING id`, [`${tag}-b`]);
+      const b = await owner.query(`INSERT INTO account (name, slug) VALUES ('DC-B', $1) RETURNING id`, [`${tag}-b`]);
       clientBId = b.rows[0].id;
 
       const disputeA = await owner.query(
-        `INSERT INTO dispute (client_id, status, amount_claimed, currency) VALUES ($1, 'draft', '500.0000', 'USD') RETURNING id`,
+        `INSERT INTO dispute (account_id, status, amount_claimed, currency) VALUES ($1, 'draft', '500.0000', 'USD') RETURNING id`,
         [clientAId],
       );
       disputeAId = disputeA.rows[0].id;
       const disputeB = await owner.query(
-        `INSERT INTO dispute (client_id, status, amount_claimed, currency) VALUES ($1, 'draft', '250.0000', 'USD') RETURNING id`,
+        `INSERT INTO dispute (account_id, status, amount_claimed, currency) VALUES ($1, 'draft', '250.0000', 'USD') RETURNING id`,
         [clientBId],
       );
       disputeBId = disputeB.rows[0].id;
@@ -50,16 +50,16 @@ describe('dispute communications log (DB)', () => {
   afterAll(async () => {
     const owner = await pool.connect();
     try {
-      await owner.query(`DELETE FROM dispute_comm WHERE client_id IN ($1, $2)`, [clientAId, clientBId]);
-      await owner.query(`DELETE FROM dispute WHERE client_id IN ($1, $2)`, [clientAId, clientBId]);
-      await owner.query(`DELETE FROM client WHERE id IN ($1, $2)`, [clientAId, clientBId]);
+      await owner.query(`DELETE FROM dispute_comm WHERE account_id IN ($1, $2)`, [clientAId, clientBId]);
+      await owner.query(`DELETE FROM dispute WHERE account_id IN ($1, $2)`, [clientAId, clientBId]);
+      await owner.query(`DELETE FROM account WHERE id IN ($1, $2)`, [clientAId, clientBId]);
     } finally {
       owner.release();
     }
     await closePool();
   });
 
-  it('records an inbound communication and derives client_id from the dispute row', async () => {
+  it('records an inbound communication and derives account_id from the dispute row', async () => {
     const result = await withTenantTx({ clientIds: [clientAId], internal: false }, (client) =>
       recordDisputeCommunication(client, {
         disputeId: disputeAId,
@@ -70,11 +70,11 @@ describe('dispute communications log (DB)', () => {
     expect(result.created).toBe(true);
 
     const { rows } = await pool.query(
-      `SELECT client_id, dispute_id, direction, body FROM dispute_comm WHERE id = $1`,
+      `SELECT account_id, dispute_id, direction, body FROM dispute_comm WHERE id = $1`,
       [result.disputeCommId],
     );
     expect(rows[0]).toMatchObject({
-      client_id: clientAId, dispute_id: disputeAId, direction: 'inbound', body: 'Carrier called to dispute the amount.',
+      account_id: clientAId, dispute_id: disputeAId, direction: 'inbound', body: 'Carrier called to dispute the amount.',
     });
   });
 

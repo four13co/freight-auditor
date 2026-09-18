@@ -9,7 +9,7 @@ export interface ClientRow {
   createdAt: Date;
 }
 
-export interface ListClientsOptions {
+export interface ListAccountsOptions {
   limit?: number;
   offset?: number;
   /** Keyset position (cursor-pagination.ts's KeysetCursor.id, same convention as list-portal-members.ts). */
@@ -24,15 +24,15 @@ const DEFAULT_LIMIT = 50;
  * data), so this is a plain query with no tenant context required beyond
  * the route's own internal-analyst gate.
  */
-export async function listClients(client: pg.PoolClient, options: ListClientsOptions = {}): Promise<ClientRow[]> {
+export async function listClients(client: pg.PoolClient, options: ListAccountsOptions = {}): Promise<ClientRow[]> {
   const conditions: string[] = [];
   const params: unknown[] = [];
-  let fromClause = 'FROM client';
+  let fromClause = 'FROM account';
 
   if (options.cursor) {
-    const anchor = buildKeysetAnchorFrom(params, { table: 'client', tsColumn: 'created_at', cursorId: options.cursor.id });
+    const anchor = buildKeysetAnchorFrom(params, { table: 'account', tsColumn: 'created_at', cursorId: options.cursor.id });
     fromClause += anchor.fromClauseAddition;
-    conditions.push(buildKeysetTieBreak('client.created_at', 'client.id', anchor.anchorTsAlias));
+    conditions.push(buildKeysetTieBreak('account.created_at', 'account.id', anchor.anchorTsAlias));
   }
 
   const limit = options.limit ?? DEFAULT_LIMIT;
@@ -43,10 +43,10 @@ export async function listClients(client: pg.PoolClient, options: ListClientsOpt
   const { rows } = await client.query<{
     id: string; name: string; slug: string; is_active: boolean; created_at: Date;
   }>(
-    `SELECT client.id, client.name, client.slug, client.is_active, client.created_at
+    `SELECT account.id, account.name, account.slug, account.is_active, account.created_at
        ${fromClause}
       ${where}
-      ORDER BY client.created_at DESC, client.id ASC
+      ORDER BY account.created_at DESC, account.id ASC
       ${limitOffsetClause}`,
     params,
   );

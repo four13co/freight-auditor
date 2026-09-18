@@ -48,7 +48,7 @@ describe('POST /api/auth/* (DB, e2e) -- better-auth handler mounted', () => {
     const pool = getPool();
     const owner = await pool.connect();
     try {
-      await owner.query(`DELETE FROM audit_event WHERE client_id IS NULL AND entity IN ('authentication', 'authorization')`);
+      await owner.query(`DELETE FROM audit_event WHERE account_id IS NULL AND entity IN ('authentication', 'authorization')`);
       await owner.query(`DELETE FROM ba_session WHERE user_id IN (SELECT id FROM app_user WHERE email LIKE $1)`, [`${tag}%`]);
       await owner.query(`DELETE FROM ba_account WHERE user_id IN (SELECT id FROM app_user WHERE email LIKE $1)`, [`${tag}%`]);
       await owner.query(`DELETE FROM app_user WHERE email LIKE $1`, [`${tag}%`]);

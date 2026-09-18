@@ -40,14 +40,14 @@ export async function persistRawDocumentAnalysis(
   const result = await client.query<{ id: string; created: boolean }>(
     `WITH inserted AS (
        INSERT INTO raw_document_analysis
-         (client_id, source_document_id, provider, api_version, model_id, operation_location, response_hash, raw_response)
+         (account_id, source_document_id, provider, api_version, model_id, operation_location, response_hash, raw_response)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb)
-       ON CONFLICT (client_id, provider, operation_location) DO NOTHING RETURNING id
+       ON CONFLICT (account_id, provider, operation_location) DO NOTHING RETURNING id
      )
      SELECT id, true created FROM inserted
      UNION ALL
      SELECT id, false created FROM raw_document_analysis
-      WHERE client_id=$1 AND provider=$3 AND operation_location=$6
+      WHERE account_id=$1 AND provider=$3 AND operation_location=$6
         AND source_document_id=$2 AND api_version=$4 AND model_id=$5
         AND response_hash=$7 AND raw_response=$8::jsonb
         AND NOT EXISTS (SELECT 1 FROM inserted)`,

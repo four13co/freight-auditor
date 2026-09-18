@@ -26,7 +26,7 @@ describe('cross-document shipment-reference checks', () => {
       'client-1',
       [' SHIP-1 ', 'ship-1', 'BOL-2'],
     )).resolves.toBe(true);
-    expect(query).toHaveBeenCalledWith(expect.stringContaining('client_id = $1'), [
+    expect(query).toHaveBeenCalledWith(expect.stringContaining('account_id = $1'), [
       'client-1', ['ship-1', 'bol-2'],
     ]);
   });

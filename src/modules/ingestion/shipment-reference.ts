@@ -11,7 +11,7 @@ export async function resolveShipmentReferenceMatch(
 
   const result = await client.query(
     `SELECT 1 FROM shipment
-     WHERE client_id = $1 AND lower(btrim(reference)) = ANY($2::text[])
+     WHERE account_id = $1 AND lower(btrim(reference)) = ANY($2::text[])
      LIMIT 1`,
     [clientId, normalized],
   );

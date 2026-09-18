@@ -66,7 +66,7 @@ export async function recordPartialRecovery(
   const input = schema.parse(untrusted);
 
   const { rows: claimRows } = await client.query<{ id: string; amount_claimed: string; currency: string | null }>(
-    `SELECT id, amount_claimed, currency FROM claim WHERE client_id = $1 AND id = $2`,
+    `SELECT id, amount_claimed, currency FROM claim WHERE account_id = $1 AND id = $2`,
     [input.clientId, input.claimId],
   );
   const claimRow = claimRows[0];
@@ -74,7 +74,7 @@ export async function recordPartialRecovery(
   const claim: ClaimRow = { id: claimRow.id, amountClaimed: claimRow.amount_claimed, currency: claimRow.currency };
 
   const { rows: priorRows } = await client.query<{ total: string }>(
-    `SELECT COALESCE(SUM(amount_recovered), 0)::text AS total FROM recovery_event WHERE client_id = $1 AND claim_id = $2`,
+    `SELECT COALESCE(SUM(amount_recovered), 0)::text AS total FROM recovery_event WHERE account_id = $1 AND claim_id = $2`,
     [input.clientId, input.claimId],
   );
   const priorTotal = priorRows[0]!.total;
@@ -82,7 +82,7 @@ export async function recordPartialRecovery(
   const validated = validatePartialRecovery(claim, input.amountRecovered, input.currency, priorTotal);
 
   const { rows: inserted } = await client.query<{ id: string }>(
-    `INSERT INTO recovery_event (client_id, claim_id, variance_finding_id, amount_recovered, currency)
+    `INSERT INTO recovery_event (account_id, claim_id, variance_finding_id, amount_recovered, currency)
      VALUES ($1, $2, $3, $4, $5) RETURNING id`,
     [input.clientId, input.claimId, input.varianceFindingId ?? null, validated.amountRecovered, validated.currency],
   );

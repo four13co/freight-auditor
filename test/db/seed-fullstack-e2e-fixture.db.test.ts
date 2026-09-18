@@ -43,24 +43,24 @@ describe('seedFullstackE2eFixture (DB)', () => {
   // charge_finding/gate_failure are append-only under freight_app's grants
   // (migration 0010), so only the owning role can clean them up between tests.
   async function cleanupFixtureRows() {
-    await pool.query(`DELETE FROM variance_finding WHERE client_id = $1`, [DEV_CLIENT_ID]);
-    await pool.query(`DELETE FROM scorecard WHERE client_id = $1`, [DEV_CLIENT_ID]);
-    await pool.query(`DELETE FROM charge_finding WHERE client_id = $1`, [DEV_CLIENT_ID]);
-    await pool.query(`DELETE FROM gate_failure WHERE client_id = $1`, [DEV_CLIENT_ID]);
-    await pool.query(`DELETE FROM audit_event WHERE client_id = $1`, [DEV_CLIENT_ID]);
-    await pool.query(`DELETE FROM audit_replay_manifest WHERE client_id = $1`, [DEV_CLIENT_ID]);
+    await pool.query(`DELETE FROM variance_finding WHERE account_id = $1`, [DEV_CLIENT_ID]);
+    await pool.query(`DELETE FROM scorecard WHERE account_id = $1`, [DEV_CLIENT_ID]);
+    await pool.query(`DELETE FROM charge_finding WHERE account_id = $1`, [DEV_CLIENT_ID]);
+    await pool.query(`DELETE FROM gate_failure WHERE account_id = $1`, [DEV_CLIENT_ID]);
+    await pool.query(`DELETE FROM audit_event WHERE account_id = $1`, [DEV_CLIENT_ID]);
+    await pool.query(`DELETE FROM audit_replay_manifest WHERE account_id = $1`, [DEV_CLIENT_ID]);
     // 86e367r9x: persistAuditRun now wires a payment_gate_decision row per run.
-    await pool.query(`DELETE FROM payment_gate_decision WHERE client_id = $1`, [DEV_CLIENT_ID]);
-    await pool.query(`DELETE FROM audit_run WHERE client_id = $1`, [DEV_CLIENT_ID]);
-    await pool.query(`DELETE FROM charge_fact WHERE client_id = $1`, [DEV_CLIENT_ID]);
-    await pool.query(`DELETE FROM source_document WHERE client_id = $1`, [DEV_CLIENT_ID]);
-    await pool.query(`DELETE FROM invoice WHERE client_id = $1 AND invoice_number LIKE $2`, [
+    await pool.query(`DELETE FROM payment_gate_decision WHERE account_id = $1`, [DEV_CLIENT_ID]);
+    await pool.query(`DELETE FROM audit_run WHERE account_id = $1`, [DEV_CLIENT_ID]);
+    await pool.query(`DELETE FROM charge_fact WHERE account_id = $1`, [DEV_CLIENT_ID]);
+    await pool.query(`DELETE FROM source_document WHERE account_id = $1`, [DEV_CLIENT_ID]);
+    await pool.query(`DELETE FROM invoice WHERE account_id = $1 AND invoice_number LIKE $2`, [
       DEV_CLIENT_ID,
       `${FIXTURE_INVOICE_NUMBER}%`,
     ]);
-    await pool.query(`DELETE FROM contract_rate WHERE client_id = $1`, [DEV_CLIENT_ID]);
-    await pool.query(`DELETE FROM contract_version WHERE client_id = $1`, [DEV_CLIENT_ID]);
-    await pool.query(`DELETE FROM contract WHERE client_id = $1`, [DEV_CLIENT_ID]);
+    await pool.query(`DELETE FROM contract_rate WHERE account_id = $1`, [DEV_CLIENT_ID]);
+    await pool.query(`DELETE FROM contract_version WHERE account_id = $1`, [DEV_CLIENT_ID]);
+    await pool.query(`DELETE FROM contract WHERE account_id = $1`, [DEV_CLIENT_ID]);
     await pool.query(`DELETE FROM carrier WHERE name = $1`, [FIXTURE_CARRIER_NAME]);
   }
 
@@ -129,7 +129,7 @@ describe('seedFullstackE2eFixture (DB)', () => {
            WHERE invoice.invoice_number = $1 AND variance_finding.direction = 'OVERCHARGE'`,
           [FIXTURE_INVOICE_NUMBER],
         );
-        const contract = await c.query(`SELECT count(*)::int AS n FROM contract WHERE client_id = $1`, [
+        const contract = await c.query(`SELECT count(*)::int AS n FROM contract WHERE account_id = $1`, [
           DEV_CLIENT_ID,
         ]);
         return { invoice: invoice.rows[0].n, finding: finding.rows[0].n, contract: contract.rows[0].n };
@@ -152,12 +152,12 @@ describe('seedFullstackE2eFixture (DB)', () => {
     try {
       const auditRunId = await withTenantTx({ clientIds: [DEV_CLIENT_ID], internal: true }, async (c) => {
         const inv = await c.query(
-          `INSERT INTO invoice (client_id, transaction_set, invoice_number, currency, parser_version)
+          `INSERT INTO invoice (account_id, transaction_set, invoice_number, currency, parser_version)
            VALUES ($1, '210', $2, 'USD', 'test') RETURNING id`,
           [DEV_CLIENT_ID, `${FIXTURE_INVOICE_NUMBER}-guard-check`],
         );
         const run = await c.query(
-          `INSERT INTO audit_run (client_id, invoice_id, engine_spec_version, outcome) VALUES ($1, $2, 'test', 'SCORED') RETURNING id`,
+          `INSERT INTO audit_run (account_id, invoice_id, engine_spec_version, outcome) VALUES ($1, $2, 'test', 'SCORED') RETURNING id`,
           [DEV_CLIENT_ID, inv.rows[0].id],
         );
         return run.rows[0].id as string;
@@ -183,12 +183,12 @@ describe('seedFullstackE2eFixture (DB)', () => {
       await expect(
         withTenantTx({ clientIds: [DEV_CLIENT_ID], internal: true }, async (c) => {
           const inv = await c.query(
-            `INSERT INTO invoice (client_id, transaction_set, invoice_number, currency, parser_version)
+            `INSERT INTO invoice (account_id, transaction_set, invoice_number, currency, parser_version)
              VALUES ($1, '210', $2, 'USD', 'test') RETURNING id`,
             [DEV_CLIENT_ID, invoiceNumber],
           );
           const run = await c.query(
-            `INSERT INTO audit_run (client_id, invoice_id, engine_spec_version, outcome) VALUES ($1, $2, 'test', 'SCORED') RETURNING id`,
+            `INSERT INTO audit_run (account_id, invoice_id, engine_spec_version, outcome) VALUES ($1, $2, 'test', 'SCORED') RETURNING id`,
             [DEV_CLIENT_ID, inv.rows[0].id],
           );
           await assertVarianceFindingDerived(c, run.rows[0].id); // throws: no variance_finding was written

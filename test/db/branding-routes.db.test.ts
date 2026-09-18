@@ -26,18 +26,18 @@ describe('GET /api/branding against a live database (database)', () => {
     pool = getPool();
     const owner = await pool.connect();
     try {
-      const a = await owner.query(`INSERT INTO client (name, slug) VALUES ('Bank A', $1) RETURNING id`, [`${tag}-a`]);
+      const a = await owner.query(`INSERT INTO account (name, slug) VALUES ('Bank A', $1) RETURNING id`, [`${tag}-a`]);
       clientAId = a.rows[0].id;
-      const b = await owner.query(`INSERT INTO client (name, slug) VALUES ('Bank B', $1) RETURNING id`, [`${tag}-b`]);
+      const b = await owner.query(`INSERT INTO account (name, slug) VALUES ('Bank B', $1) RETURNING id`, [`${tag}-b`]);
       clientBId = b.rows[0].id;
 
       await owner.query(
-        `INSERT INTO customer_branding (client_id, domain, logo_url, primary_color, secondary_color)
+        `INSERT INTO customer_branding (account_id, domain, logo_url, primary_color, secondary_color)
          VALUES ($1, $2, $3, $4, $5)`,
         [clientAId, domainA, 'https://cdn.example.com/bank-a/logo.png', '#111111', '#222222'],
       );
       await owner.query(
-        `INSERT INTO customer_branding (client_id, domain, logo_url, primary_color, secondary_color)
+        `INSERT INTO customer_branding (account_id, domain, logo_url, primary_color, secondary_color)
          VALUES ($1, $2, $3, $4, $5)`,
         [clientBId, domainB, 'https://cdn.example.com/bank-b/logo.png', '#333333', '#444444'],
       );
@@ -52,8 +52,8 @@ describe('GET /api/branding against a live database (database)', () => {
     await app.close();
     const owner = await pool.connect();
     try {
-      await owner.query(`DELETE FROM customer_branding WHERE client_id = ANY($1)`, [[clientAId, clientBId]]);
-      await owner.query(`DELETE FROM client WHERE id = ANY($1)`, [[clientAId, clientBId]]);
+      await owner.query(`DELETE FROM customer_branding WHERE account_id = ANY($1)`, [[clientAId, clientBId]]);
+      await owner.query(`DELETE FROM account WHERE id = ANY($1)`, [[clientAId, clientBId]]);
     } finally {
       owner.release();
     }

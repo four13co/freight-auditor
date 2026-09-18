@@ -17,7 +17,7 @@ import { encodeCursor } from '../../src/shared/cursor-pagination.js';
  * admin-only preHandler (round-39's own lesson: a 403/401 proof is only
  * meaningful when a route actually exists to be rejected from).
  *
- * client-viewer-auth.js's mock also stubs registerClientViewerAuthPreHandler
+ * account-viewer-auth.js's mock also stubs registerAccountViewerAuthPreHandler
  * (unused by this file's own routes) because buildApp() registers
  * portal-content-routes.ts (P6.B.1) alongside portal-admin-routes.ts in the
  * same app, and that module's registration-time import needs the export to
@@ -25,9 +25,9 @@ import { encodeCursor } from '../../src/shared/cursor-pagination.js';
  * portal-content-routes.test.ts uses for its own mock.
  */
 function mockAuth(admin: unknown, viewer: unknown) {
-  vi.doMock('../../src/modules/identity/client-admin-auth.js', () => ({
-    resolveClientAdminContext: vi.fn().mockResolvedValue(admin),
-    registerClientAdminAuthPreHandler: async (routes: FastifyInstance) => {
+  vi.doMock('../../src/modules/identity/account-admin-auth.js', () => ({
+    resolveAccountAdminContext: vi.fn().mockResolvedValue(admin),
+    registerAccountAdminAuthPreHandler: async (routes: FastifyInstance) => {
       routes.addHook('preHandler', async (request, reply) => {
         if (!admin) {
           await reply.code(401).send({ error: 'unauthorized' });
@@ -39,9 +39,9 @@ function mockAuth(admin: unknown, viewer: unknown) {
       });
     },
   }));
-  vi.doMock('../../src/modules/identity/client-viewer-auth.js', () => ({
-    resolveClientViewerContext: vi.fn().mockResolvedValue(viewer),
-    registerClientViewerAuthPreHandler: async (routes: FastifyInstance) => {
+  vi.doMock('../../src/modules/identity/account-viewer-auth.js', () => ({
+    resolveAccountViewerContext: vi.fn().mockResolvedValue(viewer),
+    registerAccountViewerAuthPreHandler: async (routes: FastifyInstance) => {
       routes.addHook('preHandler', async (request, reply) => {
         if (!viewer) {
           await reply.code(401).send({ error: 'unauthorized' });
@@ -63,8 +63,8 @@ describe('portal-admin routes (unit, mocked withTenantTx + auth)', () => {
     app = undefined;
     vi.resetModules();
     vi.doUnmock('../../src/db/tenant-context.js');
-    vi.doUnmock('../../src/modules/identity/client-admin-auth.js');
-    vi.doUnmock('../../src/modules/identity/client-viewer-auth.js');
+    vi.doUnmock('../../src/modules/identity/account-admin-auth.js');
+    vi.doUnmock('../../src/modules/identity/account-viewer-auth.js');
     vi.doUnmock('../../src/modules/identity/list-portal-members.js');
     vi.doUnmock('../../src/modules/identity/update-portal-member-role.js');
   });
@@ -228,11 +228,11 @@ describe('portal-admin routes (unit, mocked withTenantTx + auth)', () => {
 
       expect(res.statusCode).toBe(200);
       expect(res.json()).toEqual({ id: membershipId, role: 'client_admin' });
-      expect(updatePortalMemberRole).toHaveBeenCalledWith({}, CLIENT_ID, membershipId, 'client_admin', 'user-1');
+      expect(updatePortalMemberRole).toHaveBeenCalledWith({}, CLIENT_ID, membershipId, 'account_admin', 'user-1');
     });
 
     it('rejects an authorized-but-non-admin (client_viewer) caller with 401, never reaching the handler -- a real write route sits under the admin-only preHandler here', async () => {
-      // admin resolves null (not client_admin); registerClientAdminAuthPreHandler's own mock replies 401 exactly as it does when auth fails.
+      // admin resolves null (not client_admin); registerAccountAdminAuthPreHandler's own mock replies 401 exactly as it does when auth fails.
       mockAuth(null, { clientIds: [CLIENT_ID], internal: false });
       const updatePortalMemberRole = vi.fn();
       vi.doMock('../../src/db/tenant-context.js', () => ({ withTenantTx: vi.fn() }));

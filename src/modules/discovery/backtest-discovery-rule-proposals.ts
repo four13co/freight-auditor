@@ -54,7 +54,7 @@ export async function backtestDiscoveryRuleProposals(client: pg.PoolClient, untr
   const suppliedIds = input.proposals.map((item) => item.proposalId);
   if (new Set(suppliedIds).size !== suppliedIds.length) throw new DiscoveryProposalBacktestError('DUPLICATE_PROPOSAL');
   const rows = (await client.query<ProposalRow>(`SELECT id,proposal_hash,ast_hash,ast,expected_inputs
-    FROM discovery_rule_proposal WHERE client_id=$1 AND audit_run_id=$2 ORDER BY id`,
+    FROM discovery_rule_proposal WHERE account_id=$1 AND audit_run_id=$2 ORDER BY id`,
   [input.clientId, input.auditRunId])).rows;
   if (rows.length !== suppliedIds.length || rows.some((row) => !suppliedIds.includes(row.id)))
     throw new DiscoveryProposalBacktestError('PROPOSAL_SET_MISMATCH');
@@ -71,13 +71,13 @@ export async function backtestDiscoveryRuleProposals(client: pg.PoolClient, untr
     const corpusHash = hash({ schemaVersion: input.corpusSchemaVersion, proposalHash: proposal.proposal_hash,
       astHash: proposal.ast_hash, cases: evidence.map(({ caseKey, inputHash, expectedHash }) => ({ caseKey, inputHash, expectedHash })) });
     const inserted = await client.query<{ id: string }>(`INSERT INTO discovery_rule_proposal_backtest
-      (client_id,proposal_id,corpus_schema_version,corpus_hash,proposal_hash,ast_hash,passed,pass_count,regression_count,actor_user_id)
-      VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) ON CONFLICT(client_id,proposal_id,corpus_hash) DO NOTHING RETURNING id`,
+      (account_id,proposal_id,corpus_schema_version,corpus_hash,proposal_hash,ast_hash,passed,pass_count,regression_count,actor_user_id)
+      VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) ON CONFLICT(account_id,proposal_id,corpus_hash) DO NOTHING RETURNING id`,
     [input.clientId, proposal.id, input.corpusSchemaVersion, corpusHash, proposal.proposal_hash, proposal.ast_hash,
       passed, evidence.length - regressionCount, regressionCount, input.actorUserId]);
     let backtestId = inserted.rows[0]?.id; if (backtestId) createdCount += 1;
     if (!backtestId) backtestId = (await client.query<{ id: string }>(`SELECT id FROM discovery_rule_proposal_backtest
-      WHERE client_id=$1 AND proposal_id=$2 AND corpus_hash=$3 AND proposal_hash=$4 AND ast_hash=$5 AND passed=$6
+      WHERE account_id=$1 AND proposal_id=$2 AND corpus_hash=$3 AND proposal_hash=$4 AND ast_hash=$5 AND passed=$6
       AND pass_count=$7 AND regression_count=$8 AND actor_user_id=$9`, [input.clientId, proposal.id, corpusHash,
       proposal.proposal_hash, proposal.ast_hash, passed, evidence.length - regressionCount, regressionCount, input.actorUserId])).rows[0]?.id;
     if (!backtestId) throw new DiscoveryProposalBacktestError('PARTIAL_CONFLICT');
@@ -85,9 +85,9 @@ export async function backtestDiscoveryRuleProposals(client: pg.PoolClient, untr
       const params = [input.clientId, backtestId, item.caseKey, JSON.stringify(item.facts), item.expectedVerdict,
         item.actualVerdict, item.passed, item.inputHash, item.expectedHash, item.actualHash, JSON.stringify(item.evaluatedAst)];
       const result = await client.query(`INSERT INTO discovery_rule_proposal_backtest_case
-        (client_id,backtest_id,case_key,facts,expected_verdict,actual_verdict,passed,input_hash,expected_hash,actual_hash,evaluated_ast)
-        VALUES($1,$2,$3,$4::jsonb,$5,$6,$7,$8,$9,$10,$11::jsonb) ON CONFLICT(client_id,backtest_id,case_key) DO NOTHING`, params);
-      if (result.rowCount !== 1 && !(await client.query(`SELECT 1 FROM discovery_rule_proposal_backtest_case WHERE client_id=$1
+        (account_id,backtest_id,case_key,facts,expected_verdict,actual_verdict,passed,input_hash,expected_hash,actual_hash,evaluated_ast)
+        VALUES($1,$2,$3,$4::jsonb,$5,$6,$7,$8,$9,$10,$11::jsonb) ON CONFLICT(account_id,backtest_id,case_key) DO NOTHING`, params);
+      if (result.rowCount !== 1 && !(await client.query(`SELECT 1 FROM discovery_rule_proposal_backtest_case WHERE account_id=$1
         AND backtest_id=$2 AND case_key=$3 AND facts IS NOT DISTINCT FROM $4::jsonb AND expected_verdict=$5 AND actual_verdict=$6
         AND passed=$7 AND input_hash=$8 AND expected_hash=$9 AND actual_hash=$10 AND evaluated_ast IS NOT DISTINCT FROM $11::jsonb`, params)).rowCount)
         throw new DiscoveryProposalBacktestError('PARTIAL_CONFLICT');

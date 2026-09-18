@@ -30,22 +30,22 @@ describe('verified contract version finalization (DB)', () => {
 
   beforeAll(async () => {
     pool = makePool();
-    clientId = (await pool.query(`INSERT INTO client(name,slug) VALUES('Verified',$1) RETURNING id`, [tag])).rows[0].id;
-    otherClientId = (await pool.query(`INSERT INTO client(name,slug) VALUES('Other',$1) RETURNING id`, [`${tag}-other`])).rows[0].id;
+    clientId = (await pool.query(`INSERT INTO account(name,slug) VALUES('Verified',$1) RETURNING id`, [tag])).rows[0].id;
+    otherClientId = (await pool.query(`INSERT INTO account(name,slug) VALUES('Other',$1) RETURNING id`, [`${tag}-other`])).rows[0].id;
     userId = (await pool.query(`INSERT INTO app_user(email) VALUES($1) RETURNING id`, [`${tag}@example.com`])).rows[0].id;
     carrierId = (await pool.query(`INSERT INTO carrier(name) VALUES($1) RETURNING id`, [tag])).rows[0].id;
-    sourceDocumentId = (await pool.query(`INSERT INTO source_document(client_id,sha256,content_type,byte_size,storage_uri)
+    sourceDocumentId = (await pool.query(`INSERT INTO source_document(account_id,sha256,content_type,byte_size,storage_uri)
       VALUES($1,$2,'application/pdf',1,$3) RETURNING id`, [clientId, sourceSha, `local://${tag}`])).rows[0].id;
-    contractId = (await pool.query(`INSERT INTO contract(client_id,carrier_id,name) VALUES($1,$2,'Verified') RETURNING id`,
+    contractId = (await pool.query(`INSERT INTO contract(account_id,carrier_id,name) VALUES($1,$2,'Verified') RETURNING id`,
       [clientId, carrierId])).rows[0].id;
-    contractVersionId = (await pool.query(`INSERT INTO contract_version(client_id,contract_id,valid_from,source_document_id)
+    contractVersionId = (await pool.query(`INSERT INTO contract_version(account_id,contract_id,valid_from,source_document_id)
       VALUES($1,$2,'2026-01-01',$3) RETURNING id`, [clientId, contractId, sourceDocumentId])).rows[0].id;
     extractionResponseHash = contractExtractionIdempotencyKey(extraction());
     await withCommittedTenant([clientId], (client) => persistContractExtraction(client, {
       clientId, sourceDocumentId, actorUserId: null, idempotencyKey: extractionResponseHash, extraction: extraction(),
     }));
-    fieldId = (await pool.query(`SELECT id FROM extraction_field WHERE client_id=$1 AND correction_hash IS NULL`, [clientId])).rows[0].id;
-    questionId = (await pool.query(`INSERT INTO clarifying_question(client_id,source_document_id,field_path,question,
+    fieldId = (await pool.query(`SELECT id FROM extraction_field WHERE account_id=$1 AND correction_hash IS NULL`, [clientId])).rows[0].id;
+    questionId = (await pool.query(`INSERT INTO clarifying_question(account_id,source_document_id,field_path,question,
       extraction_response_hash,abstention_status,abstention_reason,policy_version,question_hash)
       VALUES($1,$2,'contract.currency','Confirm currency',$3,'AMBIGUOUS','LOW_CONFIDENCE','abstention/1',$4) RETURNING id`,
     [clientId, sourceDocumentId, extractionResponseHash, 'd'.repeat(64)])).rows[0].id;
@@ -59,15 +59,15 @@ describe('verified contract version finalization (DB)', () => {
   }
 
   afterAll(async () => {
-    await pool.query(`DELETE FROM audit_event WHERE client_id=$1`, [clientId]);
-    await pool.query(`DELETE FROM verified_contract_version WHERE client_id=$1`, [clientId]);
-    await pool.query(`DELETE FROM clarifying_question WHERE client_id=$1`, [clientId]);
-    await pool.query(`DELETE FROM extraction_field WHERE client_id=$1`, [clientId]);
+    await pool.query(`DELETE FROM audit_event WHERE account_id=$1`, [clientId]);
+    await pool.query(`DELETE FROM verified_contract_version WHERE account_id=$1`, [clientId]);
+    await pool.query(`DELETE FROM clarifying_question WHERE account_id=$1`, [clientId]);
+    await pool.query(`DELETE FROM extraction_field WHERE account_id=$1`, [clientId]);
     await pool.query(`DELETE FROM contract_version WHERE id=$1`, [contractVersionId]);
     await pool.query(`DELETE FROM contract WHERE id=$1`, [contractId]);
     await pool.query(`DELETE FROM source_document WHERE id=$1`, [sourceDocumentId]);
     await pool.query(`DELETE FROM app_user WHERE id=$1`, [userId]);
-    await pool.query(`DELETE FROM client WHERE id IN($1,$2)`, [clientId, otherClientId]);
+    await pool.query(`DELETE FROM account WHERE id IN($1,$2)`, [clientId, otherClientId]);
     await pool.query(`DELETE FROM carrier WHERE id=$1`, [carrierId]); await pool.end();
   });
 

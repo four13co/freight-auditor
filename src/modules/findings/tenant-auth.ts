@@ -39,9 +39,9 @@ declare module 'fastify' {
  *     an environment where the flag wasn't explicitly set.
  *
  * The membership lookup itself must run BEFORE any tenant scope exists for
- * the request -- membership carries FORCE RLS keyed on client_id (migration
+ * the request -- membership carries FORCE RLS keyed on account_id (migration
  * 0009), so it can only be read via an internal-scoped transaction (which
- * bypasses the client_id check), never via the scope we're still deciding
+ * bypasses the account_id check), never via the scope we're still deciding
  * whether to grant.
  */
 export function readHeader(value: string | string[] | undefined): string | undefined {
@@ -69,8 +69,8 @@ export function readHeader(value: string | string[] | undefined): string | undef
 async function lookupMembership(userId: string, clientId: string): Promise<string | null> {
   return withTenantTx({ internal: true }, async (client) => {
     const result = await client.query<{ role: string }>(
-      `SELECT m.role FROM membership m JOIN client c ON c.id = m.client_id
-       WHERE m.user_id = $1 AND m.client_id = $2 AND c.is_active = true AND m.is_active = true LIMIT 1`,
+      `SELECT m.role FROM membership m JOIN account c ON c.id = m.account_id
+       WHERE m.user_id = $1 AND m.account_id = $2 AND c.is_active = true AND m.is_active = true LIMIT 1`,
       [userId, clientId],
     );
     return result.rows[0]?.role ?? null;
@@ -82,16 +82,16 @@ async function lookupMembership(userId: string, clientId: string): Promise<strin
  * WHICH client they're scoped to -- resolveViaSession still requires an
  * explicit x-client-id, and nothing told the frontend what value to send.
  * This is the lookup the new GET /api/auth/memberships route (app.ts) uses
- * to answer that, so login can store a client_id and start sending it.
+ * to answer that, so login can store a account_id and start sending it.
  * Same internal-scoped-transaction shape as lookupMembership -- membership
- * carries FORCE RLS keyed on client_id, so listing a user's own rows across
+ * carries FORCE RLS keyed on account_id, so listing a user's own rows across
  * clients also needs the internal scope, not a tenant scope that doesn't
  * exist yet.
  */
 export async function listMembershipClientIds(userId: string): Promise<string[]> {
   return withTenantTx({ internal: true }, async (client) => {
-    const result = await client.query(`SELECT client_id FROM membership WHERE user_id = $1`, [userId]);
-    return result.rows.map((row: { client_id: string }) => row.client_id);
+    const result = await client.query(`SELECT account_id FROM membership WHERE user_id = $1`, [userId]);
+    return result.rows.map((row: { account_id: string }) => row.account_id);
   });
 }
 
@@ -101,7 +101,7 @@ export async function listMembershipClientIds(userId: string): Promise<string[]>
  * not, their portal membership role (client_viewer/client_admin). A pure
  * read, alongside listMembershipClientIds above (same internal-scoped-
  * transaction shape, same reason: app_user carries no RLS but membership
- * does, keyed on client_id, migration 0009). Does not touch
+ * does, keyed on account_id, migration 0009). Does not touch
  * resolveViaSession/resolveViaDevHeaders or grant any access -- App.tsx uses
  * this only to pick which UI shell to render, never as an authorization
  * decision (every tenant-scoped route still enforces its own boundary via
@@ -114,7 +114,7 @@ export async function listMembershipClientIds(userId: string): Promise<string[]>
  */
 /**
  * 86e38pz8e: the profile page's "org/tenant name" field -- GET
- * /api/auth/memberships already resolves a portal member's client_id
+ * /api/auth/memberships already resolves a portal member's account_id
  * (listMembershipClientIds above); this is the same single-membership-per-
  * user lookup, widened to also return that client's display name, for
  * showing "Acme Corp" rather than a bare UUID. Same internal-scoped-
@@ -127,7 +127,7 @@ export async function listMembershipClientIds(userId: string): Promise<string[]>
 export async function lookupClientName(userId: string): Promise<string | null> {
   return withTenantTx({ internal: true }, async (client) => {
     const result = await client.query<{ name: string }>(
-      `SELECT c.name FROM membership m JOIN client c ON c.id = m.client_id WHERE m.user_id = $1 LIMIT 1`,
+      `SELECT c.name FROM membership m JOIN account c ON c.id = m.account_id WHERE m.user_id = $1 LIMIT 1`,
       [userId],
     );
     return result.rows[0]?.name ?? null;

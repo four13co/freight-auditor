@@ -3,7 +3,7 @@ import type pg from 'pg';
 export interface ClauseImpact { clauseReference: string; change: 'ADDED' | 'REMOVED' | 'CHANGED'; oldClauseId: string | null; newClauseId: string | null; affectedRuleVersionIds: string[] }
 export async function analyzeAmendmentImpact(client: pg.PoolClient, input: { clientId: string; amendmentId: string }): Promise<ClauseImpact[]> {
   const amendment = (await client.query<{ supersedes_version_id: string | null; new_version_id: string | null }>(
-    `SELECT supersedes_version_id, new_version_id FROM contract_amendment WHERE id=$1 AND client_id=$2`,
+    `SELECT supersedes_version_id, new_version_id FROM contract_amendment WHERE id=$1 AND account_id=$2`,
     [input.amendmentId, input.clientId])).rows[0];
   if (!amendment) throw new Error(`contract amendment not found for tenant: ${input.amendmentId}`);
   if (!amendment.supersedes_version_id || !amendment.new_version_id) throw new Error('contract amendment must link old and new versions');

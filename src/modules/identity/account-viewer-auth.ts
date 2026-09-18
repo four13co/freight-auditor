@@ -35,7 +35,7 @@ declare module 'fastify' {
  * primitives ship and are reviewable independently.
  *
  * Read-only is enforced STRUCTURALLY, not left to each route handler to
- * remember: registerClientViewerAuthPreHandler rejects any request whose
+ * remember: registerAccountViewerAuthPreHandler rejects any request whose
  * method isn't GET/HEAD with 403 before the route handler ever runs, and
  * sets request.clientPortalReadOnly = true on every request it lets
  * through, so any future write escape route in this surface is easy to
@@ -45,7 +45,7 @@ declare module 'fastify' {
 const SAFE_METHODS = new Set(['GET', 'HEAD']);
 
 /**
- * membership carries FORCE RLS keyed on client_id (migration 0009), so the
+ * membership carries FORCE RLS keyed on account_id (migration 0009), so the
  * role lookup must run inside an internal-scoped transaction -- same shape
  * as tenant-auth.ts's own lookupMembership, which this deliberately does
  * not import (see module header): that function only proves a membership
@@ -59,8 +59,8 @@ const SAFE_METHODS = new Set(['GET', 'HEAD']);
 async function lookupMembershipRole(userId: string, clientId: string): Promise<string | null> {
   return withTenantTx({ internal: true }, async (client) => {
     const result = await client.query<{ role: string }>(
-      `SELECT m.role FROM membership m JOIN client c ON c.id = m.client_id
-       WHERE m.user_id = $1 AND m.client_id = $2 AND c.is_active = true LIMIT 1`,
+      `SELECT m.role FROM membership m JOIN account c ON c.id = m.account_id
+       WHERE m.user_id = $1 AND m.account_id = $2 AND c.is_active = true LIMIT 1`,
       [userId, clientId],
     );
     return result.rows[0]?.role ?? null;
@@ -74,7 +74,7 @@ async function resolveViaDevHeaders(request: FastifyRequest): Promise<TenantCont
   if (!clientId || !userId) return null;
 
   const role = await lookupMembershipRole(userId, clientId);
-  if (role !== 'client_viewer') return null;
+  if (role !== 'account_viewer') return null;
   request.actorUserId = userId;
   return { clientIds: [clientId], internal: false };
 }
@@ -90,12 +90,12 @@ async function resolveViaSession(request: FastifyRequest): Promise<TenantContext
   if (!clientId) return null;
 
   const role = await lookupMembershipRole(session.user.id, clientId);
-  if (role !== 'client_viewer') return null;
+  if (role !== 'account_viewer') return null;
   request.actorUserId = session.user.id;
   return { clientIds: [clientId], internal: false };
 }
 
-export async function resolveClientViewerContext(request: FastifyRequest): Promise<TenantContext | null> {
+export async function resolveAccountViewerContext(request: FastifyRequest): Promise<TenantContext | null> {
   if (process.env.DEV_AUTH_HEADERS === '1') return resolveViaDevHeaders(request);
   return resolveViaSession(request);
 }
@@ -110,9 +110,9 @@ export async function resolveClientViewerContext(request: FastifyRequest): Promi
  * accidentally accept a write just because a future author forgot to check
  * the role themselves.
  */
-export async function registerClientViewerAuthPreHandler(routes: FastifyInstance): Promise<void> {
+export async function registerAccountViewerAuthPreHandler(routes: FastifyInstance): Promise<void> {
   routes.addHook('preHandler', async (request: FastifyRequest, reply: FastifyReply) => {
-    const ctx = await resolveClientViewerContext(request);
+    const ctx = await resolveAccountViewerContext(request);
     if (!ctx) {
       await reply.code(401).send({ error: 'unauthorized' });
       return;

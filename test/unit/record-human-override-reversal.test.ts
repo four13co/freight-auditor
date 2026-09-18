@@ -15,11 +15,11 @@ function mockClient(opts: {
   const {
     clientRows = [{ id: CLIENT_ID }], criterionRows = [{ id: CRITERION_ID }],
     insertRows = [{ id: 'override-1' }], ruleRows = [{ rule_type: 'STRUCTURAL', lifecycle_state: 'ACTIVE' }],
-    policyRows = [{ client_id: CLIENT_ID, rule_type: 'STRUCTURAL', n1_confirm: 3, n2_confirm: 5, max_reversals: 5 }],
+    policyRows = [{ account_id: CLIENT_ID, rule_type: 'STRUCTURAL', n1_confirm: 3, n2_confirm: 5, max_reversals: 5 }],
     sumRows = [{ count: '1' }],
   } = opts;
   const query = vi.fn().mockImplementation((sql: string) => {
-    if (sql.includes('FROM client WHERE')) return Promise.resolve({ rows: clientRows, rowCount: clientRows.length });
+    if (sql.includes('FROM account WHERE')) return Promise.resolve({ rows: clientRows, rowCount: clientRows.length });
     if (sql.includes('FROM criterion WHERE')) return Promise.resolve({ rows: criterionRows, rowCount: criterionRows.length });
     if (sql.includes('INSERT INTO human_override')) return Promise.resolve({ rows: insertRows });
     if (sql.includes('FROM rule_version rv JOIN rule')) return Promise.resolve({ rows: ruleRows });
@@ -72,7 +72,7 @@ describe('recordHumanOverrideReversal', () => {
   });
 
   it('inserts reversal_count=1, confirm_count=0 and does not quarantine when under threshold', async () => {
-    const { client, query } = mockClient({ sumRows: [{ count: '1' }], policyRows: [{ client_id: CLIENT_ID, rule_type: 'STRUCTURAL', n1_confirm: 3, n2_confirm: 5, max_reversals: 5 }] });
+    const { client, query } = mockClient({ sumRows: [{ count: '1' }], policyRows: [{ account_id: CLIENT_ID, rule_type: 'STRUCTURAL', n1_confirm: 3, n2_confirm: 5, max_reversals: 5 }] });
     const result = await recordHumanOverrideReversal(client, VALID_INPUT);
     expect(result).toEqual({ humanOverrideId: 'override-1', quarantined: false, ruleVersionId: RULE_VERSION_ID });
     const insertCall = query.mock.calls.find((c) => (c[0] as string).includes('INSERT INTO human_override'))!;
@@ -88,7 +88,7 @@ describe('recordHumanOverrideReversal', () => {
   // when quarantine.quarantined is true.
   it('increments freight_rule_quarantine_total when the reversal triggers a quarantine', async () => {
     resetQuarantineAlertMetricsForTest();
-    const { client } = mockClient({ sumRows: [{ count: '6' }], policyRows: [{ client_id: CLIENT_ID, rule_type: 'STRUCTURAL', n1_confirm: 3, n2_confirm: 5, max_reversals: 5 }] });
+    const { client } = mockClient({ sumRows: [{ count: '6' }], policyRows: [{ account_id: CLIENT_ID, rule_type: 'STRUCTURAL', n1_confirm: 3, n2_confirm: 5, max_reversals: 5 }] });
     const result = await recordHumanOverrideReversal(client, VALID_INPUT);
     expect(result.quarantined).toBe(true);
     expect(renderQuarantineAlertMetrics()).toContain('freight_rule_quarantine_total 1');

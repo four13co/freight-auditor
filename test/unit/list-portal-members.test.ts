@@ -15,7 +15,7 @@ function mockRow() {
     id: 'm1',
     user_id: 'u1',
     email: 'viewer@example.com',
-    role: 'client_viewer' as const,
+    role: 'account_viewer' as const,
     created_at: new Date('2026-01-01T00:00:00Z'),
   };
 }
@@ -34,13 +34,13 @@ describe('listPortalMembers (unit, mocked client)', () => {
     ]);
   });
 
-  it('filters on client_id and restricts to the two portal roles only', async () => {
+  it('filters on account_id and restricts to the two portal roles only', async () => {
     const { client, query } = mockClient([]);
     await listPortalMembers(client, 'client-1');
     const [sql, params] = query.mock.calls[0] as [string, unknown[]];
-    expect(sql).toMatch(/membership\.client_id = \$1/);
+    expect(sql).toMatch(/membership\.account_id = \$1/);
     expect(sql).toMatch(/membership\.role = ANY\(\$2::membership_role\[\]\)/);
-    expect(params).toEqual(['client-1', ['client_viewer', 'client_admin'], 50, 0]);
+    expect(params).toEqual(['client-1', ['account_viewer', 'account_admin'], 50, 0]);
   });
 
   it('orders by created_at DESC with id ASC as a total-order tiebreaker', async () => {
@@ -55,18 +55,18 @@ describe('listPortalMembers (unit, mocked client)', () => {
     await listPortalMembers(client, 'client-1', { limit: 10, offset: 20 });
     const [sql, params] = query.mock.calls[0] as [string, unknown[]];
     expect(sql).toMatch(/LIMIT \$3 OFFSET \$4/);
-    expect(params).toEqual(['client-1', ['client_viewer', 'client_admin'], 10, 20]);
+    expect(params).toEqual(['client-1', ['account_viewer', 'account_admin'], 10, 20]);
   });
 
   it('uses a keyset predicate anchored on the cursor row itself and omits OFFSET when a cursor is given', async () => {
     const { client, query } = mockClient([]);
     await listPortalMembers(client, 'client-1', { cursor: { id: 'm5' }, limit: 10 });
     const [sql, params] = query.mock.calls[0] as [string, unknown[]];
-    expect(sql).toMatch(/FROM membership AS cursor_row\s*WHERE cursor_row\.id = \$3 AND cursor_row\.client_id = \$1/);
+    expect(sql).toMatch(/FROM membership AS cursor_row\s*WHERE cursor_row\.id = \$3 AND cursor_row\.account_id = \$1/);
     expect(sql).toMatch(/\(membership\.created_at < cursor_anchor\.anchor_created_at OR \(membership\.created_at = cursor_anchor\.anchor_created_at AND membership\.id > cursor_anchor\.anchor_id\)\)/);
     expect(sql).not.toMatch(/OFFSET/);
     expect(sql).toMatch(/LIMIT \$4$/m);
-    expect(params).toEqual(['client-1', ['client_viewer', 'client_admin'], 'm5', 10]);
+    expect(params).toEqual(['client-1', ['account_viewer', 'account_admin'], 'm5', 10]);
   });
 
   it('returns an empty array when the query has no matching rows', async () => {

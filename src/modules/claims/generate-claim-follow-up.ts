@@ -20,7 +20,7 @@ export interface GenerateClaimFollowUpResult {
 
 interface ClaimRow {
   id: string;
-  client_id: string;
+  account_id: string;
   status: string;
   aging_deadline_at: Date | null;
 }
@@ -44,7 +44,7 @@ export async function generateClaimFollowUp(
   now: Date = new Date(),
 ): Promise<GenerateClaimFollowUpResult> {
   const result = await client.query<ClaimRow>(
-    `SELECT id, client_id, status, aging_deadline_at FROM claim WHERE client_id = $1 AND id = $2`,
+    `SELECT id, account_id, status, aging_deadline_at FROM claim WHERE account_id = $1 AND id = $2`,
     [clientId, claimId],
   );
   const claim = result.rows[0];
@@ -53,10 +53,10 @@ export async function generateClaimFollowUp(
   if (!claim.aging_deadline_at) throw new GenerateClaimFollowUpError('NO_DEADLINE_SET');
   if (claim.aging_deadline_at.getTime() > now.getTime()) throw new GenerateClaimFollowUpError('DEADLINE_NOT_PASSED');
 
-  const auditEventId = deterministicAuditEventId(claim.client_id, claim.id, CLAIM_FOLLOW_UP_EVENT);
+  const auditEventId = deterministicAuditEventId(claim.account_id, claim.id, CLAIM_FOLLOW_UP_EVENT);
   const { created } = await writeAuditEvent(client, {
     id: auditEventId,
-    clientId: claim.client_id,
+    clientId: claim.account_id,
     entity: 'claim',
     entityId: claim.id,
     event: CLAIM_FOLLOW_UP_EVENT,

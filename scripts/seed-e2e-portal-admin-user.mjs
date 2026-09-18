@@ -35,8 +35,8 @@ export async function seedE2ePortalAdminUser({ pool } = {}) {
     }
 
     await client.query(
-      `INSERT INTO membership (user_id, client_id, role) VALUES ($1, $2, 'client_admin')
-       ON CONFLICT (user_id, client_id) DO NOTHING`,
+      `INSERT INTO membership (user_id, account_id, role) VALUES ($1, $2, 'account_admin')
+       ON CONFLICT (user_id, account_id) DO NOTHING`,
       [userId, DEV_CLIENT_ID],
     );
   } finally {

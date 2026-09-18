@@ -34,7 +34,7 @@ export async function setClaimAgingDeadline(
   const input = schema.parse(untrusted);
 
   const { rows } = await client.query<{ opened_at: Date }>(
-    `SELECT opened_at FROM claim WHERE client_id = $1 AND id = $2`,
+    `SELECT opened_at FROM claim WHERE account_id = $1 AND id = $2`,
     [input.clientId, input.claimId],
   );
   const claimRow = rows[0];
@@ -42,7 +42,7 @@ export async function setClaimAgingDeadline(
 
   const deadline = computeClaimAgingDeadline({ openedAt: claimRow.opened_at, agingDays: input.agingDays });
 
-  await client.query(`UPDATE claim SET aging_deadline_at = $3 WHERE client_id = $1 AND id = $2`, [
+  await client.query(`UPDATE claim SET aging_deadline_at = $3 WHERE account_id = $1 AND id = $2`, [
     input.clientId, input.claimId, deadline.toISOString(),
   ]);
 

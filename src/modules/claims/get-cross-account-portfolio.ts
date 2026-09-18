@@ -1,5 +1,5 @@
 import type pg from 'pg';
-import { aggregateCrossClientPortfolio, type ClientPortfolioBucket } from './aggregate-cross-client-portfolio.js';
+import { aggregateCrossAccountPortfolio, type AccountPortfolioBucket } from './aggregate-cross-account-portfolio.js';
 
 /**
  * Cross-client portfolio reporting for internal analysts (P5.C.3). No
@@ -12,17 +12,17 @@ import { aggregateCrossClientPortfolio, type ClientPortfolioBucket } from './agg
  * itself stays safe even if a future caller gets that wrong:
  * get-cross-client-portfolio.db.test.ts proves that under a NON-internal
  * (regular tenant) transaction, this query returns only that tenant's own
- * rows -- RLS's `client_id = ANY(app_current_client_ids())` branch still
+ * rows -- RLS's `account_id = ANY(app_current_account_ids())` branch still
  * applies, `app_is_internal()` is simply false, so a caller with a normal
  * single-client scope can't use this function to see anyone else's data.
  */
-export async function getCrossClientPortfolio(client: pg.PoolClient): Promise<ClientPortfolioBucket[]> {
+export async function getCrossAccountPortfolio(client: pg.PoolClient): Promise<AccountPortfolioBucket[]> {
   const { rows: claimRows } = await client.query<{
-    client_id: string; client_name: string | null; claim_id: string; amount_claimed: string; currency: string | null; status: string;
+    account_id: string; client_name: string | null; claim_id: string; amount_claimed: string; currency: string | null; status: string;
   }>(
-    `SELECT c.client_id, cl.name AS client_name, c.id AS claim_id, c.amount_claimed, c.currency, c.status
+    `SELECT c.account_id, cl.name AS client_name, c.id AS claim_id, c.amount_claimed, c.currency, c.status
        FROM claim c
-       JOIN client cl ON cl.id = c.client_id`,
+       JOIN account cl ON cl.id = c.account_id`,
   );
 
   if (claimRows.length === 0) return [];
@@ -33,9 +33,9 @@ export async function getCrossClientPortfolio(client: pg.PoolClient): Promise<Cl
     [claimIds],
   );
 
-  return aggregateCrossClientPortfolio(
+  return aggregateCrossAccountPortfolio(
     claimRows.map((r) => ({
-      clientId: r.client_id, clientName: r.client_name, claimId: r.claim_id,
+      clientId: r.account_id, clientName: r.client_name, claimId: r.claim_id,
       amountClaimed: r.amount_claimed, currency: r.currency, status: r.status,
     })),
     eventRows.map((r) => ({ claimId: r.claim_id, amountRecovered: r.amount_recovered, currency: r.currency })),

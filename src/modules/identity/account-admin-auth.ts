@@ -39,7 +39,7 @@ import { readHeader, toFetchHeaders } from '../findings/tenant-auth.js';
  */
 
 /**
- * membership carries FORCE RLS keyed on client_id (migration 0009), so the
+ * membership carries FORCE RLS keyed on account_id (migration 0009), so the
  * role lookup must run inside an internal-scoped transaction -- same shape
  * as tenant-auth.ts's own lookupMembership and client-viewer-auth.ts's own
  * lookupMembershipRole, neither of which this module reuses (see module
@@ -55,8 +55,8 @@ import { readHeader, toFetchHeaders } from '../findings/tenant-auth.js';
 async function lookupMembershipRole(userId: string, clientId: string): Promise<string | null> {
   return withTenantTx({ internal: true }, async (client) => {
     const result = await client.query<{ role: string }>(
-      `SELECT m.role FROM membership m JOIN client c ON c.id = m.client_id
-       WHERE m.user_id = $1 AND m.client_id = $2 AND c.is_active = true LIMIT 1`,
+      `SELECT m.role FROM membership m JOIN account c ON c.id = m.account_id
+       WHERE m.user_id = $1 AND m.account_id = $2 AND c.is_active = true LIMIT 1`,
       [userId, clientId],
     );
     return result.rows[0]?.role ?? null;
@@ -70,7 +70,7 @@ async function resolveViaDevHeaders(request: FastifyRequest): Promise<TenantCont
   if (!clientId || !userId) return null;
 
   const role = await lookupMembershipRole(userId, clientId);
-  if (role !== 'client_admin') return null;
+  if (role !== 'account_admin') return null;
   request.actorUserId = userId;
   return { clientIds: [clientId], internal: false };
 }
@@ -86,12 +86,12 @@ async function resolveViaSession(request: FastifyRequest): Promise<TenantContext
   if (!clientId) return null;
 
   const role = await lookupMembershipRole(session.user.id, clientId);
-  if (role !== 'client_admin') return null;
+  if (role !== 'account_admin') return null;
   request.actorUserId = session.user.id;
   return { clientIds: [clientId], internal: false };
 }
 
-export async function resolveClientAdminContext(request: FastifyRequest): Promise<TenantContext | null> {
+export async function resolveAccountAdminContext(request: FastifyRequest): Promise<TenantContext | null> {
   if (process.env.DEV_AUTH_HEADERS === '1') return resolveViaDevHeaders(request);
   return resolveViaSession(request);
 }
@@ -104,9 +104,9 @@ export async function resolveClientAdminContext(request: FastifyRequest): Promis
  * method restriction -- see the module header for why client_admin is
  * granted full read+write within its own client scope.
  */
-export async function registerClientAdminAuthPreHandler(routes: FastifyInstance): Promise<void> {
+export async function registerAccountAdminAuthPreHandler(routes: FastifyInstance): Promise<void> {
   routes.addHook('preHandler', async (request: FastifyRequest, reply: FastifyReply) => {
-    const ctx = await resolveClientAdminContext(request);
+    const ctx = await resolveAccountAdminContext(request);
     if (!ctx) {
       await reply.code(401).send({ error: 'unauthorized' });
       return;

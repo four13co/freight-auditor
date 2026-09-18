@@ -46,7 +46,7 @@ export async function selectApplicableRubricVersions(
        rv.valid_from, rv.valid_to, rv.recorded_at
      FROM rubric r
      JOIN rubric_version rv ON rv.rubric_id = r.id
-     WHERE (r.scope_client_id IS NULL OR r.scope_client_id = $1)
+     WHERE (r.scope_account_id IS NULL OR r.scope_account_id = $1)
        AND (r.scope_contract_id IS NULL OR r.scope_contract_id = $2)
        AND (r.mode_filter IS NULL OR $3::transport_mode = ANY(r.mode_filter))
        AND rv.valid_from <= $4::date

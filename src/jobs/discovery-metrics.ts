@@ -4,7 +4,7 @@ import { escapeLabelValue } from './format-metrics.js';
 /**
  * Aggregate-only observability for the discovery/proposal pipeline (P3.D.9):
  * counts, never tenant-identifying rows -- dimensioned by model/prompt version,
- * abstention reason, and lifecycle stage, never by client_id.
+ * abstention reason, and lifecycle stage, never by account_id.
  *
  * The four source tables (contract_rule_proposal, clarifying_question,
  * extraction_field, contract_rule_proposal_ratification) all carry FORCE ROW

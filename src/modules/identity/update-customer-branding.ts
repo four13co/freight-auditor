@@ -16,7 +16,7 @@ export interface UpdatedCustomerBranding {
  * 86e37r2t4: PATCH /api/internal/branding's backing write. Runs inside the
  * caller's withTenantTx -- RLS is FORCE-enabled on customer_branding
  * (migration 0077), so an UPDATE issued outside that transaction, or scoped
- * to a client_id the transaction doesn't carry, silently affects zero rows.
+ * to a account_id the transaction doesn't carry, silently affects zero rows.
  * `clientId` is passed explicitly (not derived from RLS alone) only to
  * report a real 404 distinctly from "wrong tenant" -- the WHERE clause is the
  * actual security boundary, this is a targeting convenience.
@@ -40,7 +40,7 @@ export async function updateCustomerBranding(
   }>(
     `UPDATE customer_branding
         SET logo_url = $2, primary_color = $3, secondary_color = $4, updated_at = now()
-      WHERE client_id = $1
+      WHERE account_id = $1
       RETURNING logo_url, primary_color, secondary_color`,
     [clientId, input.logoUrl, input.primaryColor, input.secondaryColor],
   );

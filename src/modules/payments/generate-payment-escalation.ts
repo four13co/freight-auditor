@@ -62,7 +62,7 @@ export async function generatePaymentEscalation(
 ): Promise<GeneratePaymentEscalationResult> {
   const holdResult = await client.query<HoldRow>(
     `SELECT recorded_at FROM payment_gate_decision
-     WHERE client_id = $1 AND audit_run_id = $2 AND action = 'hold'
+     WHERE account_id = $1 AND audit_run_id = $2 AND action = 'hold'
      ORDER BY recorded_at DESC LIMIT 1`,
     [clientId, auditRunId],
   );
@@ -70,7 +70,7 @@ export async function generatePaymentEscalation(
   if (!hold) throw new GeneratePaymentEscalationError('NO_HOLD_DECISION');
 
   const approveResult = await client.query(
-    `SELECT 1 FROM payment_gate_decision WHERE client_id = $1 AND audit_run_id = $2 AND action = 'approve'`,
+    `SELECT 1 FROM payment_gate_decision WHERE account_id = $1 AND audit_run_id = $2 AND action = 'approve'`,
     [clientId, auditRunId],
   );
   if (approveResult.rowCount) throw new GeneratePaymentEscalationError('ALREADY_APPROVED');

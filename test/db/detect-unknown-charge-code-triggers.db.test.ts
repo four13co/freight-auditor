@@ -18,7 +18,7 @@ describe('detectUnknownChargeCodeTriggers (DB)', () => {
     pool = getPool();
     const owner = await pool.connect();
     try {
-      const c = await owner.query(`INSERT INTO client (name, slug) VALUES ('UCCT', $1) RETURNING id`, [tag]);
+      const c = await owner.query(`INSERT INTO account (name, slug) VALUES ('UCCT', $1) RETURNING id`, [tag]);
       clientId = c.rows[0].id;
       const carrier = await owner.query(`INSERT INTO carrier (name) VALUES ($1) RETURNING id`, [`Carrier-${tag}`]);
       carrierId = carrier.rows[0].id;
@@ -30,15 +30,15 @@ describe('detectUnknownChargeCodeTriggers (DB)', () => {
   afterAll(async () => {
     const owner = await pool.connect();
     try {
-      await owner.query(`DELETE FROM unknown_charge_code_trigger WHERE client_id = $1`, [clientId]);
-      await owner.query(`DELETE FROM audit_event WHERE client_id = $1`, [clientId]);
-      await owner.query(`DELETE FROM charge_fact WHERE client_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM unknown_charge_code_trigger WHERE account_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM audit_event WHERE account_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM charge_fact WHERE account_id = $1`, [clientId]);
       // 86e367r9x: persistAuditRun now wires a payment_gate_decision row per run.
-      await owner.query(`DELETE FROM payment_gate_decision WHERE client_id = $1`, [clientId]);
-      await owner.query(`DELETE FROM audit_run WHERE client_id = $1`, [clientId]);
-      await owner.query(`DELETE FROM invoice WHERE client_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM payment_gate_decision WHERE account_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM audit_run WHERE account_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM invoice WHERE account_id = $1`, [clientId]);
       await owner.query(`DELETE FROM carrier WHERE id = $1`, [carrierId]);
-      await owner.query(`DELETE FROM client WHERE id = $1`, [clientId]);
+      await owner.query(`DELETE FROM account WHERE id = $1`, [clientId]);
     } finally {
       owner.release();
     }
@@ -50,14 +50,14 @@ describe('detectUnknownChargeCodeTriggers (DB)', () => {
     charges: Array<{ code: string; category: string | null }>,
   ): Promise<{ auditRunId: string }> {
     const inv = await client.query(
-      `INSERT INTO invoice (client_id, carrier_id, transaction_set, invoice_number, currency, parser_version)
+      `INSERT INTO invoice (account_id, carrier_id, transaction_set, invoice_number, currency, parser_version)
        VALUES ($1, $2, '210', $3, 'USD', 'test') RETURNING id`,
       [clientId, carrierId, `INV-${tag}-${Math.random().toString(36).slice(2)}`],
     );
     const invoiceId = inv.rows[0].id;
 
     const run = await client.query(
-      `INSERT INTO audit_run (client_id, invoice_id, engine_spec_version, outcome)
+      `INSERT INTO audit_run (account_id, invoice_id, engine_spec_version, outcome)
        VALUES ($1, $2, 'test', 'SCORED') RETURNING id`,
       [clientId, invoiceId],
     );
@@ -65,7 +65,7 @@ describe('detectUnknownChargeCodeTriggers (DB)', () => {
 
     for (const charge of charges) {
       await client.query(
-        `INSERT INTO charge_fact (client_id, invoice_id, code, category, amount, currency)
+        `INSERT INTO charge_fact (account_id, invoice_id, code, category, amount, currency)
          VALUES ($1, $2, $3, $4, '100.0000', 'USD')`,
         [clientId, invoiceId, charge.code, charge.category],
       );
@@ -90,7 +90,7 @@ describe('detectUnknownChargeCodeTriggers (DB)', () => {
       expect(second.triggerIds).toEqual(first.triggerIds);
 
       const rows = await owner.query(
-        `SELECT source_code FROM unknown_charge_code_trigger WHERE client_id = $1 AND audit_run_id = $2`,
+        `SELECT source_code FROM unknown_charge_code_trigger WHERE account_id = $1 AND audit_run_id = $2`,
         [clientId, auditRunId],
       );
       expect(rows.rows).toEqual([{ source_code: 'ZZZ' }]);

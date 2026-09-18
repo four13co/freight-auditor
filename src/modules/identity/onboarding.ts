@@ -34,7 +34,7 @@ export async function createClient(
   input: OnboardClientInput,
 ): Promise<{ id: string }> {
   const { rows } = await client.query<{ id: string }>(
-    `INSERT INTO client (name, slug) VALUES ($1, $2) RETURNING id`,
+    `INSERT INTO account (name, slug) VALUES ($1, $2) RETURNING id`,
     [input.name, input.slug],
   );
   return { id: rows[0]!.id };

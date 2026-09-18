@@ -50,8 +50,8 @@ export async function seedE2ePortalUser({ pool } = {}) {
     // fixtures this harness exercises both membership roles at least once,
     // not just is_internal true/false.
     await client.query(
-      `INSERT INTO membership (user_id, client_id, role) VALUES ($1, $2, 'client_viewer')
-       ON CONFLICT (user_id, client_id) DO NOTHING`,
+      `INSERT INTO membership (user_id, account_id, role) VALUES ($1, $2, 'account_viewer')
+       ON CONFLICT (user_id, account_id) DO NOTHING`,
       [userId, DEV_CLIENT_ID],
     );
   } finally {

@@ -9,7 +9,7 @@ import { getPool, getReplicaPool, APP_ROLE } from './pool.js';
  *   internal   — an internal analyst: RLS grants cross-client (portfolio) read.
  *
  * These map 1:1 onto the transaction-scoped GUCs the RLS policies read
- * (`app.current_client_ids`, `app.is_internal` — see migrations 0001/0009).
+ * (`app.current_account_ids`, `app.is_internal` — see migrations 0001/0009).
  */
 export interface TenantContext {
   clientIds?: string[];
@@ -20,10 +20,10 @@ export interface TenantContext {
  * Set the transaction-local tenant GUCs, then drop into the RLS-bound app role.
  *
  * This is the runtime crux of Phase 0 (Master Spec §11, §1.7). Tenant isolation
- * is STRUCTURAL — enforced by Postgres RLS, never by app-level `WHERE client_id`.
+ * is STRUCTURAL — enforced by Postgres RLS, never by app-level `WHERE account_id`.
  * For the policies to bind, three things must all hold *inside one transaction*:
  *
- *   1. `set_config('app.current_client_ids', …, true)` — the request's client
+ *   1. `set_config('app.current_account_ids', …, true)` — the request's client
  *      scope, transaction-local (the `true` third arg = SET LOCAL semantics).
  *   2. `set_config('app.is_internal', …, true)` — the portfolio-access flag.
  *   3. `SET LOCAL ROLE freight_app` — drop any superuser/owner BYPASSRLS
@@ -39,7 +39,7 @@ export interface TenantContext {
  */
 export async function setTenantTxScope(client: pg.PoolClient, ctx: TenantContext): Promise<void> {
   await client.query('SELECT set_config($1, $2, true)', [
-    'app.current_client_ids',
+    'app.current_account_ids',
     (ctx.clientIds ?? []).join(','),
   ]);
   await client.query('SELECT set_config($1, $2, true)', [

@@ -4,14 +4,19 @@ import { requireSingleClientId } from '../modules/ingestion/raw-upload-route.js'
 import { isUuid } from '../shared/request-validation.js';
 import { decodeCursor, paginateKeyset } from '../shared/cursor-pagination.js';
 import { parseLimitOffset } from '../shared/parse-limit-offset.js';
-import { resolveClientAdminContext, registerClientAdminAuthPreHandler } from '../modules/identity/client-admin-auth.js';
-import { resolveClientViewerContext } from '../modules/identity/client-viewer-auth.js';
+import { resolveAccountAdminContext, registerAccountAdminAuthPreHandler } from '../modules/identity/account-admin-auth.js';
+import { resolveAccountViewerContext } from '../modules/identity/account-viewer-auth.js';
 import { listPortalMembers } from '../modules/identity/list-portal-members.js';
-import { updatePortalMemberRole, PORTAL_ROLES, type PortalRole } from '../modules/identity/update-portal-member-role.js';
+import { updatePortalMemberRole, type PortalRole } from '../modules/identity/update-portal-member-role.js';
+import { roleWireToDb } from '../modules/identity/role-wire-mapping.js';
 
 const MAX_LIMIT = 200;
 const DEFAULT_LIMIT = 50;
-const ASSIGNABLE_ROLES = new Set<string>(PORTAL_ROLES);
+// Wire-facing values (frozen by AC5/the No-go on touching web/) -- NOT the
+// same set as update-portal-member-role.ts's PORTAL_ROLES, which is the DB
+// enum's current labels. Translated via roleWireToDb() before it reaches
+// the DB-facing call below.
+const ASSIGNABLE_ROLES = new Set<string>(['client_viewer', 'client_admin']);
 
 /**
  * Portal-specific tenant-scoped APIs (P6.A.4) -- the first routes to use
@@ -24,7 +29,7 @@ const ASSIGNABLE_ROLES = new Set<string>(PORTAL_ROLES);
  * global even across sibling `app.register()` calls, so a single GET path
  * usable by either role needs a composite preHandler in one group, while
  * the admin-only write lives in a completely separate group using the
- * existing registerClientAdminAuthPreHandler unmodified.
+ * existing registerAccountAdminAuthPreHandler unmodified.
  *
  * Distinct from portal-content-routes.ts (P6.B.1, PR #256 as of this
  * writing): that module builds read-only client_viewer content views
@@ -43,7 +48,7 @@ export async function registerPortalAdminRoutes(app: FastifyInstance): Promise<v
   // preHandlers already behave individually.
   await app.register(async (readRoutes) => {
     readRoutes.addHook('preHandler', async (request: FastifyRequest, reply: FastifyReply) => {
-      const ctx: TenantContext | null = (await resolveClientAdminContext(request)) ?? (await resolveClientViewerContext(request));
+      const ctx: TenantContext | null = (await resolveAccountAdminContext(request)) ?? (await resolveAccountViewerContext(request));
       if (!ctx) {
         await reply.code(401).send({ error: 'unauthorized' });
         return;
@@ -91,10 +96,10 @@ export async function registerPortalAdminRoutes(app: FastifyInstance): Promise<v
     });
   });
 
-  // Write: client_admin only, full-stop -- registerClientAdminAuthPreHandler
+  // Write: client_admin only, full-stop -- registerAccountAdminAuthPreHandler
   // unmodified, same as every other route that opts into it.
   await app.register(async (adminRoutes) => {
-    await registerClientAdminAuthPreHandler(adminRoutes);
+    await registerAccountAdminAuthPreHandler(adminRoutes);
 
     adminRoutes.patch('/api/portal/members/:id/role', async (request, reply) => {
       const clientId = requireSingleClientId(request.tenantContext!);
@@ -116,7 +121,7 @@ export async function registerPortalAdminRoutes(app: FastifyInstance): Promise<v
       }
 
       const result = await withTenantTx(request.tenantContext!, (client) =>
-        updatePortalMemberRole(client, clientId, id, body.role as PortalRole, request.actorUserId),
+        updatePortalMemberRole(client, clientId, id, roleWireToDb(body.role as string) as PortalRole, request.actorUserId),
       );
       if (!result.found) {
         await reply.code(404).send({ error: 'membership not found' });

@@ -10,8 +10,8 @@ import { claimDueWorkflowCommands, completeWorkflowCommand } from '../../src/mod
  * tracked defect class, 4th occurrence): the original afterAll deleted
  * workflow_command -> workflow_instance -> client, but never deleted
  * audit_event -- scheduleWorkflowCommand's writeAuditEvent call writes a
- * row referencing client_id, so deleting client while that row still
- * exists violates audit_event_client_id_fkey. Teardown here is
+ * row referencing account_id, so deleting client while that row still
+ * exists violates audit_event_account_id_fkey. Teardown here is
  * deepest-child-first: workflow_command -> audit_event -> workflow_instance
  * -> client.
  */
@@ -23,21 +23,21 @@ describe.skipIf(!DATABASE_URL)('workflow_command (database)', () => {
 
   beforeAll(async () => {
     await getPool().query(
-      `INSERT INTO client (id, name, slug) VALUES ($1, 'Workflow Command Co', $2)`,
+      `INSERT INTO account (id, name, slug) VALUES ($1, 'Workflow Command Co', $2)`,
       [clientId, `workflow-command-${clientId}`],
     );
     await getPool().query(
-      `INSERT INTO workflow_instance (id, client_id, workflow_type, subject_entity, subject_entity_id, current_state)
+      `INSERT INTO workflow_instance (id, account_id, workflow_type, subject_entity, subject_entity_id, current_state)
        VALUES ($1, $2, 'dispute_resolution', 'dispute', $3, 'awaiting_response')`,
       [workflowInstanceId, clientId, randomUUID()],
     );
   });
 
   afterAll(async () => {
-    await getPool().query(`DELETE FROM workflow_command WHERE client_id = $1`, [clientId]);
-    await getPool().query(`DELETE FROM audit_event WHERE client_id = $1`, [clientId]);
-    await getPool().query(`DELETE FROM workflow_instance WHERE client_id = $1`, [clientId]);
-    await getPool().query(`DELETE FROM client WHERE id = $1`, [clientId]);
+    await getPool().query(`DELETE FROM workflow_command WHERE account_id = $1`, [clientId]);
+    await getPool().query(`DELETE FROM audit_event WHERE account_id = $1`, [clientId]);
+    await getPool().query(`DELETE FROM workflow_instance WHERE account_id = $1`, [clientId]);
+    await getPool().query(`DELETE FROM account WHERE id = $1`, [clientId]);
     await closePool();
   });
 
@@ -95,7 +95,7 @@ describe.skipIf(!DATABASE_URL)('workflow_command (database)', () => {
     expect([a.created, b.created].filter(Boolean)).toHaveLength(1);
 
     const rows = await getPool().query(
-      `SELECT id FROM workflow_command WHERE client_id = $1 AND command_type = 'concurrent_probe'`,
+      `SELECT id FROM workflow_command WHERE account_id = $1 AND command_type = 'concurrent_probe'`,
       [clientId],
     );
     expect(rows.rowCount).toBe(1);

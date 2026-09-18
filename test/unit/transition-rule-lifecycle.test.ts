@@ -23,7 +23,7 @@ describe('rule lifecycle transitions', () => {
   // guarantee this fix preserves.
 
   // 86e36zket: ruleBacktestId is the additive corpus-backtest evidence path
-  // (rule_backtest.client_id is nullable as of migration 0079) -- this proves
+  // (rule_backtest.account_id is nullable as of migration 0079) -- this proves
   // it reaches the promotion_event insert alongside the existing
   // dualControlAnalystId passthrough, not just that the call resolves.
   it('threads ruleBacktestId into the promotion_event insert as evidence for the ACTIVE transition', async () => {

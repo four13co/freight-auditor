@@ -15,8 +15,8 @@ interface MockOpts {
 function mockClient(opts: MockOpts = {}) {
   const { disputeFound = true, insertedId = COMM_ID, existingId = null } = opts;
   const query = vi.fn().mockImplementation((sql: string) => {
-    if (sql.includes('SELECT client_id FROM dispute')) {
-      return Promise.resolve({ rows: disputeFound ? [{ client_id: CLIENT_ID }] : [], rowCount: disputeFound ? 1 : 0 });
+    if (sql.includes('SELECT account_id FROM dispute')) {
+      return Promise.resolve({ rows: disputeFound ? [{ account_id: CLIENT_ID }] : [], rowCount: disputeFound ? 1 : 0 });
     }
     if (sql.includes('INSERT INTO dispute_comm')) {
       return Promise.resolve({ rows: insertedId ? [{ id: insertedId }] : [], rowCount: insertedId ? 1 : 0 });
@@ -48,7 +48,7 @@ describe('recordDisputeCommunication', () => {
     ).rejects.toBeInstanceOf(RecordDisputeCommunicationError);
   });
 
-  it('inserts a new communication and returns created: true, deriving client_id from the dispute row', async () => {
+  it('inserts a new communication and returns created: true, deriving account_id from the dispute row', async () => {
     const { client, query } = mockClient();
     const result = await recordDisputeCommunication(client, {
       disputeId: DISPUTE_ID,

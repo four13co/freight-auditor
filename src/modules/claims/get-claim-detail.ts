@@ -29,7 +29,7 @@ export interface ClaimDetail {
  * the same ambiguity ("doesn't exist" vs "not yours" are indistinguishable
  * and MUST stay that way for a cross-tenant request).
  *
- * `client_id = $N` is explicit on both queries below, not left to RLS
+ * `account_id = $N` is explicit on both queries below, not left to RLS
  * alone: an internal (cross-client) analyst scope grants RLS-level
  * visibility across every client, so RLS by itself would let an internal
  * caller who passes the wrong clientId still read another tenant's claim.
@@ -47,7 +47,7 @@ export async function getClaimDetail(
     status: string; opened_at: Date; aging_deadline_at: Date | null;
   }>(
     `SELECT id, dispute_id, amount_claimed, currency, status, opened_at, aging_deadline_at
-       FROM claim WHERE client_id = $1 AND id = $2`,
+       FROM claim WHERE account_id = $1 AND id = $2`,
     [clientId, claimId],
   );
   const claimRow = claimRows[0];
@@ -57,7 +57,7 @@ export async function getClaimDetail(
     id: string; amount_recovered: string; currency: string | null; variance_finding_id: string | null; recorded_at: Date;
   }>(
     `SELECT id, amount_recovered, currency, variance_finding_id, recorded_at
-       FROM recovery_event WHERE client_id = $1 AND claim_id = $2 ORDER BY recorded_at ASC`,
+       FROM recovery_event WHERE account_id = $1 AND claim_id = $2 ORDER BY recorded_at ASC`,
     [clientId, claimId],
   );
 

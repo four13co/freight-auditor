@@ -49,14 +49,14 @@ export async function recordHumanOverrideReversal(
   if (!isUuid(input.ruleVersionId)) throw new InvalidReversalRequestError('INVALID_RULE_VERSION_ID', 'ruleVersionId must be a well-formed UUID');
   if (!input.caseFingerprint.trim()) throw new InvalidReversalRequestError('INVALID_CASE_FINGERPRINT', 'caseFingerprint is required');
 
-  const clientRow = await client.query(`SELECT id FROM client WHERE id = $1`, [input.clientId]);
+  const clientRow = await client.query(`SELECT id FROM account WHERE id = $1`, [input.clientId]);
   if (!clientRow.rowCount) throw new InvalidReversalRequestError('CLIENT_NOT_FOUND', `client not found: ${input.clientId}`);
 
   const criterionRow = await client.query(`SELECT id FROM criterion WHERE id = $1`, [input.criterionId]);
   if (!criterionRow.rowCount) throw new InvalidReversalRequestError('CRITERION_NOT_FOUND', `criterion not found: ${input.criterionId}`);
 
   const inserted = await client.query<{ id: string }>(
-    `INSERT INTO human_override (client_id, criterion_id, case_fingerprint, asserted_value, confirm_count, reversal_count)
+    `INSERT INTO human_override (account_id, criterion_id, case_fingerprint, asserted_value, confirm_count, reversal_count)
      VALUES ($1, $2, $3, $4::jsonb, 0, 1)
      RETURNING id`,
     [input.clientId, input.criterionId, input.caseFingerprint, JSON.stringify(input.assertedValue)],

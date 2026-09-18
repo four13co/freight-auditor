@@ -37,7 +37,7 @@ describe('generateShortPayDecision (DB)', () => {
     pool = getPool();
     const owner = await pool.connect();
     try {
-      const c = await owner.query(`INSERT INTO client (name, slug) VALUES ('SHORTPAY', $1) RETURNING id`, [tag]);
+      const c = await owner.query(`INSERT INTO account (name, slug) VALUES ('SHORTPAY', $1) RETURNING id`, [tag]);
       clientId = c.rows[0].id;
     } finally {
       owner.release();
@@ -47,18 +47,18 @@ describe('generateShortPayDecision (DB)', () => {
   afterAll(async () => {
     const owner = await pool.connect();
     try {
-      await owner.query(`DELETE FROM audit_event WHERE client_id = $1`, [clientId]);
-      await owner.query(`DELETE FROM payment_gate_decision WHERE client_id = $1`, [clientId]);
-      await owner.query(`DELETE FROM audit_replay_manifest WHERE client_id = $1`, [clientId]);
-      await owner.query(`DELETE FROM finding_status_event WHERE client_id = $1`, [clientId]);
-      await owner.query(`DELETE FROM variance_finding WHERE client_id = $1`, [clientId]);
-      await owner.query(`DELETE FROM scorecard WHERE client_id = $1`, [clientId]);
-      await owner.query(`DELETE FROM gate_failure WHERE client_id = $1`, [clientId]);
-      await owner.query(`DELETE FROM charge_finding WHERE client_id = $1`, [clientId]);
-      await owner.query(`DELETE FROM audit_run WHERE client_id = $1`, [clientId]);
-      await owner.query(`DELETE FROM charge_fact WHERE client_id = $1`, [clientId]);
-      await owner.query(`DELETE FROM invoice WHERE client_id = $1`, [clientId]);
-      await owner.query(`DELETE FROM client WHERE id = $1`, [clientId]);
+      await owner.query(`DELETE FROM audit_event WHERE account_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM payment_gate_decision WHERE account_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM audit_replay_manifest WHERE account_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM finding_status_event WHERE account_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM variance_finding WHERE account_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM scorecard WHERE account_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM gate_failure WHERE account_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM charge_finding WHERE account_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM audit_run WHERE account_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM charge_fact WHERE account_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM invoice WHERE account_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM account WHERE id = $1`, [clientId]);
     } finally {
       owner.release();
     }
@@ -122,20 +122,20 @@ describe('generateShortPayDecision (DB)', () => {
       const p = await persistAuditRun(c, { clientId, invoice: inv, result, rubricSnapshotId: null });
 
       const chargeTotal = await c.query<{ sum: string }>(
-        `SELECT SUM(amount)::text AS sum FROM charge_fact WHERE client_id = $1 AND invoice_id = $2`,
+        `SELECT SUM(amount)::text AS sum FROM charge_fact WHERE account_id = $1 AND invoice_id = $2`,
         [clientId, p.invoiceId],
       );
       const invoiceTotal = chargeTotal.rows[0]!.sum;
 
       const findingResult = await c.query<{ id: string }>(
         `INSERT INTO variance_finding
-           (client_id, audit_run_id, charge_fact_id, criterion_id, rule_version_id, direction, variance_amount, currency, status, evaluated_expr)
+           (account_id, audit_run_id, charge_fact_id, criterion_id, rule_version_id, direction, variance_amount, currency, status, evaluated_expr)
          SELECT $1, $2, cf.id, crit.id, rv.id, 'OVERCHARGE', '10.0000', 'USD', 'accepted', '{}'::jsonb
            FROM charge_fact cf
            JOIN criterion crit ON crit.criterion_key = 'CONTRACT.RATE_VARIANCE'
            JOIN rule r ON r.slug = 'contract-rate_variance'
            JOIN rule_version rv ON rv.rule_id = r.id
-          WHERE cf.client_id = $1 AND cf.invoice_id = $3
+          WHERE cf.account_id = $1 AND cf.invoice_id = $3
           ORDER BY rv.recorded_at DESC
           LIMIT 1
          RETURNING id`,
@@ -149,7 +149,7 @@ describe('generateShortPayDecision (DB)', () => {
       // wires the default 'hold' decision for this SCORED run alongside the
       // short_pay one this test is actually about.
       const decisions = await c.query(
-        `SELECT action, actor_kind, amount, currency FROM payment_gate_decision WHERE client_id = $1 AND audit_run_id = $2 AND action = 'short_pay'`,
+        `SELECT action, actor_kind, amount, currency FROM payment_gate_decision WHERE account_id = $1 AND audit_run_id = $2 AND action = 'short_pay'`,
         [clientId, p.auditRunId],
       );
       return { first, retry, decisions: decisions.rows, invoiceTotal, findingId };

@@ -39,13 +39,13 @@ export async function resolveBrandingByDomain(
 ): Promise<CustomerBranding | null> {
   const domain = normalizeDomain(host);
   const result = await client.query<{
-    client_id: string;
+    account_id: string;
     domain: string;
     logo_url: string;
     primary_color: string;
     secondary_color: string | null;
   }>(
-    `SELECT client_id, domain, logo_url, primary_color, secondary_color
+    `SELECT account_id, domain, logo_url, primary_color, secondary_color
        FROM customer_branding
       WHERE domain = $1`,
     [domain],
@@ -53,7 +53,7 @@ export async function resolveBrandingByDomain(
   const row = result.rows[0];
   if (!row) return null;
   return {
-    clientId: row.client_id,
+    clientId: row.account_id,
     domain: row.domain,
     logoUrl: row.logo_url,
     primaryColor: row.primary_color,

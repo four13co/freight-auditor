@@ -4,7 +4,7 @@ import { registerTenantAuthPreHandler } from '../modules/findings/tenant-auth.js
 import { updateUserProfile } from '../modules/identity/update-user-profile.js';
 import { isValidHttpUrl } from '../shared/request-validation.js';
 
-const BLOCKED_FIELDS = ['role', 'clientId', 'client_id', 'tenantId', 'tenant_id', 'isInternal', 'is_internal', 'email'];
+const BLOCKED_FIELDS = ['role', 'clientId', 'account_id', 'tenantId', 'tenant_id', 'isInternal', 'is_internal', 'email'];
 
 /**
  * 86e38pz8e: PATCH /api/profile -- "any authenticated user may edit only

@@ -25,14 +25,14 @@ describe.skipIf(!DATABASE_URL)('central audit-event writer (database)', () => {
 
   beforeAll(async () => {
     await getPool().query(
-      `INSERT INTO client (id, name, slug) VALUES ($1, 'Ledger A', $2), ($3, 'Ledger B', $4)`,
+      `INSERT INTO account (id, name, slug) VALUES ($1, 'Ledger A', $2), ($3, 'Ledger B', $4)`,
       [clientId, `ledger-a-${clientId}`, otherClientId, `ledger-b-${otherClientId}`],
     );
   });
 
   afterAll(async () => {
     await getPool().query(`DELETE FROM audit_event WHERE id = $1`, [eventId]);
-    await getPool().query(`DELETE FROM client WHERE id = ANY($1::uuid[])`, [[clientId, otherClientId]]);
+    await getPool().query(`DELETE FROM account WHERE id = ANY($1::uuid[])`, [[clientId, otherClientId]]);
     await closePool();
   });
 

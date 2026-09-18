@@ -19,9 +19,9 @@ describe('workflow_instance (DB)', () => {
     pool = getPool();
     const owner = await pool.connect();
     try {
-      const a = await owner.query(`INSERT INTO client (name, slug) VALUES ('WFI-A', $1) RETURNING id`, [`${tag}-a`]);
+      const a = await owner.query(`INSERT INTO account (name, slug) VALUES ('WFI-A', $1) RETURNING id`, [`${tag}-a`]);
       clientAId = a.rows[0].id;
-      const b = await owner.query(`INSERT INTO client (name, slug) VALUES ('WFI-B', $1) RETURNING id`, [`${tag}-b`]);
+      const b = await owner.query(`INSERT INTO account (name, slug) VALUES ('WFI-B', $1) RETURNING id`, [`${tag}-b`]);
       clientBId = b.rows[0].id;
     } finally {
       owner.release();
@@ -31,9 +31,9 @@ describe('workflow_instance (DB)', () => {
   afterAll(async () => {
     const owner = await pool.connect();
     try {
-      await owner.query(`DELETE FROM audit_event WHERE client_id IN ($1, $2)`, [clientAId, clientBId]);
-      await owner.query(`DELETE FROM workflow_instance WHERE client_id IN ($1, $2)`, [clientAId, clientBId]);
-      await owner.query(`DELETE FROM client WHERE id IN ($1, $2)`, [clientAId, clientBId]);
+      await owner.query(`DELETE FROM audit_event WHERE account_id IN ($1, $2)`, [clientAId, clientBId]);
+      await owner.query(`DELETE FROM workflow_instance WHERE account_id IN ($1, $2)`, [clientAId, clientBId]);
+      await owner.query(`DELETE FROM account WHERE id IN ($1, $2)`, [clientAId, clientBId]);
     } finally {
       owner.release();
     }
@@ -78,7 +78,7 @@ describe('workflow_instance (DB)', () => {
         subjectEntityId: subjectId, initialState: 'opened',
       });
       const count = await c.query(
-        `SELECT count(*)::int AS n FROM workflow_instance WHERE client_id = $1 AND subject_entity_id = $2`,
+        `SELECT count(*)::int AS n FROM workflow_instance WHERE account_id = $1 AND subject_entity_id = $2`,
         [clientAId, subjectId],
       );
       return { first, second, count: count.rows[0].n };

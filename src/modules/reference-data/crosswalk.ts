@@ -10,7 +10,7 @@ import type pg from 'pg';
  *
  * The precedence is materialised on the row as `precedence_rank`, so resolution
  * is a single ORDER BY: match any applicable rule, take the highest rank. Rows
- * with client_id IS NULL are the shared global catalog (readable across tenants
+ * with account_id IS NULL are the shared global catalog (readable across tenants
  * via RLS, §6.10); a client-specific row outranks them.
  *
  * Must run inside a tenant transaction (withTenantTx): the query relies on RLS
@@ -35,7 +35,7 @@ export async function resolveChargeCode(
   //   - exact code match for this carrier (ranks 3/4), OR
   //   - a pattern match for this carrier (rank 2), OR
   //   - a carrier-agnostic global rule (carrier_id IS NULL).
-  // RLS already restricts client_id to {caller's clients} ∪ {NULL global}, so
+  // RLS already restricts account_id to {caller's clients} ∪ {NULL global}, so
   // we never leak another tenant's client-specific override.
   const { rows } = await client.query<{
     canonical_category: string;

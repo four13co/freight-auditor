@@ -14,20 +14,20 @@ export async function finalizeContractVersion(
   input: { clientId: string; contractVersionId: string; actorUserId: string; extractionResponseHash: string },
 ): Promise<{ id: string; verificationHash: string; fieldCount: number; created: boolean }> {
   const version = (await client.query<{ source_document_id: string }>(
-    `SELECT source_document_id FROM contract_version WHERE id=$1 AND client_id=$2`, [input.contractVersionId, input.clientId],
+    `SELECT source_document_id FROM contract_version WHERE id=$1 AND account_id=$2`, [input.contractVersionId, input.clientId],
   )).rows[0];
   if (!version?.source_document_id) throw new ContractVersionFinalizationError('CONTRACT_VERSION_NOT_FOUND');
-  const extractionAudit = (await client.query(`SELECT 1 FROM audit_event WHERE client_id=$1 AND entity='contract_extraction'
+  const extractionAudit = (await client.query(`SELECT 1 FROM audit_event WHERE account_id=$1 AND entity='contract_extraction'
       AND entity_id=$2 AND event='persisted' AND detail->>'responseHash'=$3 LIMIT 1`,
   [input.clientId, version.source_document_id, input.extractionResponseHash])).rowCount;
   if (!extractionAudit) throw new ContractVersionFinalizationError('EXTRACTION_NOT_FOUND');
   const fields = (await client.query<FieldRow>(`SELECT id,field_path,ai_value,human_value,correction_hash,confidence,page_ref,bbox,
       model_version,prompt_version,extraction_status,citations,recorded_at
-    FROM extraction_field WHERE client_id=$1 AND source_document_id=$2 AND extraction_response_hash=$3
+    FROM extraction_field WHERE account_id=$1 AND source_document_id=$2 AND extraction_response_hash=$3
     ORDER BY field_path,recorded_at,id`, [input.clientId, version.source_document_id, input.extractionResponseHash])).rows;
   const originals = fields.filter((field) => field.correction_hash === null);
   if (!originals.length) throw new ContractVersionFinalizationError('EXTRACTION_NOT_FOUND');
-  const unanswered = (await client.query(`SELECT 1 FROM clarifying_question WHERE client_id=$1 AND source_document_id=$2
+  const unanswered = (await client.query(`SELECT 1 FROM clarifying_question WHERE account_id=$1 AND source_document_id=$2
       AND extraction_response_hash=$3 AND answer IS NULL LIMIT 1`,
   [input.clientId, version.source_document_id, input.extractionResponseHash])).rowCount;
   if (unanswered) throw new ContractVersionFinalizationError('UNANSWERED_CLARIFICATIONS');
@@ -44,14 +44,14 @@ export async function finalizeContractVersion(
     extractionResponseHash: input.extractionResponseHash, resolvedFields: resolved });
   const verificationHash = createHash('sha256').update(canonical).digest('hex');
   const inserted = await client.query<{ id: string }>(`INSERT INTO verified_contract_version
-      (client_id,contract_version_id,source_document_id,extraction_response_hash,verification_hash,resolved_fields,verified_by)
+      (account_id,contract_version_id,source_document_id,extraction_response_hash,verification_hash,resolved_fields,verified_by)
     VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7)
-    ON CONFLICT (client_id,contract_version_id,extraction_response_hash) DO NOTHING RETURNING id`,
+    ON CONFLICT (account_id,contract_version_id,extraction_response_hash) DO NOTHING RETURNING id`,
   [input.clientId, input.contractVersionId, version.source_document_id, input.extractionResponseHash,
     verificationHash, JSON.stringify(resolved), input.actorUserId]);
   let id = inserted.rows[0]?.id;
   const created = Boolean(id);
-  if (!id) id = (await client.query<{ id: string }>(`SELECT id FROM verified_contract_version WHERE client_id=$1
+  if (!id) id = (await client.query<{ id: string }>(`SELECT id FROM verified_contract_version WHERE account_id=$1
       AND contract_version_id=$2 AND extraction_response_hash=$3 AND verification_hash=$4
       AND resolved_fields IS NOT DISTINCT FROM $5::jsonb AND verified_by=$6`,
     [input.clientId, input.contractVersionId, input.extractionResponseHash, verificationHash,

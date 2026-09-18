@@ -42,37 +42,37 @@ describe.skipIf(!DATABASE_URL)('discover-triggers job pipeline (database)', () =
     await registerJobConsumers(boss);
 
     clientId = (await getPool().query(
-      `INSERT INTO client (name, slug) VALUES ('Discover Triggers Pipeline Co', $1) RETURNING id`,
+      `INSERT INTO account (name, slug) VALUES ('Discover Triggers Pipeline Co', $1) RETURNING id`,
       [tag],
     )).rows[0].id;
     invoiceId = (await getPool().query(
-      `INSERT INTO invoice (client_id, transaction_set, invoice_number, currency, parser_version)
+      `INSERT INTO invoice (account_id, transaction_set, invoice_number, currency, parser_version)
        VALUES ($1, '210', $2, 'USD', 'test') RETURNING id`,
       [clientId, `INV-${tag}`],
     )).rows[0].id;
     auditRunId = (await getPool().query(
-      `INSERT INTO audit_run (client_id, invoice_id, engine_spec_version, outcome) VALUES ($1, $2, 'test', 'SCORED') RETURNING id`,
+      `INSERT INTO audit_run (account_id, invoice_id, engine_spec_version, outcome) VALUES ($1, $2, 'test', 'SCORED') RETURNING id`,
       [clientId, invoiceId],
     )).rows[0].id;
     // category IS NULL deterministically gives detectUnknownChargeCodeTriggers
     // something to find -- same trick rerun-discovery-for-amendment.db.test.ts
     // uses -- so the pipeline test has a real, checkable side effect to poll for.
     await getPool().query(
-      `INSERT INTO charge_fact (client_id, invoice_id, code, category, amount, currency) VALUES ($1, $2, 'XYZ', NULL, 10, 'USD')`,
+      `INSERT INTO charge_fact (account_id, invoice_id, code, category, amount, currency) VALUES ($1, $2, 'XYZ', NULL, 10, 'USD')`,
       [clientId, invoiceId],
     );
   });
 
   afterAll(async () => {
     await boss.stop({ graceful: false, close: true });
-    await getPool().query(`DELETE FROM audit_event WHERE client_id = $1`, [clientId]);
-    await getPool().query(`DELETE FROM unknown_charge_code_trigger WHERE client_id = $1`, [clientId]);
-    await getPool().query(`DELETE FROM charge_fact WHERE client_id = $1`, [clientId]);
+    await getPool().query(`DELETE FROM audit_event WHERE account_id = $1`, [clientId]);
+    await getPool().query(`DELETE FROM unknown_charge_code_trigger WHERE account_id = $1`, [clientId]);
+    await getPool().query(`DELETE FROM charge_fact WHERE account_id = $1`, [clientId]);
     // 86e367r9x: persistAuditRun now wires a payment_gate_decision row per run.
-    await getPool().query(`DELETE FROM payment_gate_decision WHERE client_id = $1`, [clientId]);
-    await getPool().query(`DELETE FROM audit_run WHERE client_id = $1`, [clientId]);
-    await getPool().query(`DELETE FROM invoice WHERE client_id = $1`, [clientId]);
-    await getPool().query(`DELETE FROM client WHERE id = $1`, [clientId]);
+    await getPool().query(`DELETE FROM payment_gate_decision WHERE account_id = $1`, [clientId]);
+    await getPool().query(`DELETE FROM audit_run WHERE account_id = $1`, [clientId]);
+    await getPool().query(`DELETE FROM invoice WHERE account_id = $1`, [clientId]);
+    await getPool().query(`DELETE FROM account WHERE id = $1`, [clientId]);
     await closePool();
   });
 
@@ -96,7 +96,7 @@ describe.skipIf(!DATABASE_URL)('discover-triggers job pipeline (database)', () =
     let found = false;
     while (Date.now() < deadline && !found) {
       const { rows } = await getPool().query(
-        `SELECT 1 FROM audit_event WHERE client_id = $1 AND entity = 'unknown_charge_code_trigger' AND entity_id = $2 AND event = 'unknown_charge_code_detected'`,
+        `SELECT 1 FROM audit_event WHERE account_id = $1 AND entity = 'unknown_charge_code_trigger' AND entity_id = $2 AND event = 'unknown_charge_code_detected'`,
         [clientId, auditRunId],
       );
       found = rows.length > 0;
@@ -105,7 +105,7 @@ describe.skipIf(!DATABASE_URL)('discover-triggers job pipeline (database)', () =
     expect(found).toBe(true);
 
     const { rows: triggerRows } = await getPool().query(
-      `SELECT source_code FROM unknown_charge_code_trigger WHERE client_id = $1 AND audit_run_id = $2`,
+      `SELECT source_code FROM unknown_charge_code_trigger WHERE account_id = $1 AND audit_run_id = $2`,
       [clientId, auditRunId],
     );
     expect(triggerRows).toHaveLength(1);
@@ -116,13 +116,13 @@ describe.skipIf(!DATABASE_URL)('discover-triggers job pipeline (database)', () =
     // this run) -- their own summary audit_events are the proof they were
     // actually invoked, not skipped.
     const { rows: unassessableEvent } = await getPool().query(
-      `SELECT 1 FROM audit_event WHERE client_id = $1 AND entity = 'discovery_trigger' AND entity_id = $2 AND event = 'unassessable_detected'`,
+      `SELECT 1 FROM audit_event WHERE account_id = $1 AND entity = 'discovery_trigger' AND entity_id = $2 AND event = 'unassessable_detected'`,
       [clientId, auditRunId],
     );
     expect(unassessableEvent).toHaveLength(1);
 
     const { rows: suspiciousPassEvent } = await getPool().query(
-      `SELECT 1 FROM audit_event WHERE client_id = $1 AND entity = 'suspicious_pass_trigger' AND entity_id = $2`,
+      `SELECT 1 FROM audit_event WHERE account_id = $1 AND entity = 'suspicious_pass_trigger' AND entity_id = $2`,
       [clientId, auditRunId],
     );
     expect(suspiciousPassEvent.length).toBeGreaterThanOrEqual(1);

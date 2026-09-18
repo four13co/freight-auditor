@@ -2,9 +2,9 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import type pg from 'pg';
 import { getPool, closePool } from '../../src/db/pool.js';
 import { withTenantTx } from '../../src/db/tenant-context.js';
-import { listClients } from '../../src/modules/identity/list-clients.js';
-import { getClientDetail } from '../../src/modules/identity/get-client-detail.js';
-import { updateClient } from '../../src/modules/identity/update-client.js';
+import { listClients } from '../../src/modules/identity/list-accounts.js';
+import { getAccountDetail } from '../../src/modules/identity/get-account-detail.js';
+import { updateClient } from '../../src/modules/identity/update-account.js';
 import { listTenantMembers } from '../../src/modules/identity/list-tenant-members.js';
 import { removeMembership } from '../../src/modules/identity/remove-membership.js';
 import { updateTenantMembership } from '../../src/modules/identity/update-tenant-membership.js';
@@ -12,7 +12,7 @@ import { listAllTenantMembers } from '../../src/modules/identity/list-all-tenant
 
 /**
  * 86e38rdnm: the read/update queries behind the Tenant Admin UI's list,
- * detail, and members surfaces -- listClients/getClientDetail/updateClient
+ * detail, and members surfaces -- listClients/getAccountDetail/updateClient
  * (client carries no RLS -- it's the tenant root, migration 0009's own
  * pairs list excludes it) and listTenantMembers/removeMembership (RLS via
  * an internal context, same as create-membership.ts).
@@ -28,13 +28,13 @@ describe('tenant-admin queries (DB)', () => {
     pool = getPool();
     const owner = await pool.connect();
     try {
-      const created = await owner.query(`INSERT INTO client (name, slug) VALUES ('TAQ Client', $1) RETURNING id`, [tag]);
+      const created = await owner.query(`INSERT INTO account (name, slug) VALUES ('TAQ Client', $1) RETURNING id`, [tag]);
       clientId = created.rows[0].id;
 
       const user = await owner.query(`INSERT INTO app_user (email, full_name) VALUES ($1, 'TAQ User') RETURNING id`, [`${tag}@example.test`]);
       userId = user.rows[0].id;
 
-      const membership = await owner.query(`INSERT INTO membership (user_id, client_id, role) VALUES ($1, $2, 'analyst') RETURNING id`, [userId, clientId]);
+      const membership = await owner.query(`INSERT INTO membership (user_id, account_id, role) VALUES ($1, $2, 'analyst') RETURNING id`, [userId, clientId]);
       membershipId = membership.rows[0].id;
     } finally {
       owner.release();
@@ -45,9 +45,9 @@ describe('tenant-admin queries (DB)', () => {
     const owner = await pool.connect();
     try {
       await owner.query(`DELETE FROM audit_event WHERE actor_user_id = $1`, [userId]);
-      await owner.query(`DELETE FROM membership WHERE client_id = $1`, [clientId]);
+      await owner.query(`DELETE FROM membership WHERE account_id = $1`, [clientId]);
       await owner.query(`DELETE FROM app_user WHERE id = $1`, [userId]);
-      await owner.query(`DELETE FROM client WHERE id = $1`, [clientId]);
+      await owner.query(`DELETE FROM account WHERE id = $1`, [clientId]);
     } finally {
       owner.release();
     }
@@ -59,13 +59,13 @@ describe('tenant-admin queries (DB)', () => {
     expect(rows.some((r) => r.id === clientId && r.name === 'TAQ Client')).toBe(true);
   });
 
-  it('getClientDetail returns branding: null and the real member count for a fresh tenant', async () => {
-    const detail = await withTenantTx({ internal: true }, (client) => getClientDetail(client, clientId));
+  it('getAccountDetail returns branding: null and the real member count for a fresh tenant', async () => {
+    const detail = await withTenantTx({ internal: true }, (client) => getAccountDetail(client, clientId));
     expect(detail).toMatchObject({ id: clientId, name: 'TAQ Client', isActive: true, branding: null, memberCount: 1 });
   });
 
-  it('getClientDetail returns null for an unknown id', async () => {
-    const detail = await withTenantTx({ internal: true }, (client) => getClientDetail(client, '00000000-0000-4000-8000-000000000000'));
+  it('getAccountDetail returns null for an unknown id', async () => {
+    const detail = await withTenantTx({ internal: true }, (client) => getAccountDetail(client, '00000000-0000-4000-8000-000000000000'));
     expect(detail).toBeNull();
   });
 
@@ -73,7 +73,7 @@ describe('tenant-admin queries (DB)', () => {
     const updated = await withTenantTx({ internal: true }, (client) => updateClient(client, clientId, { name: 'TAQ Client Renamed', isActive: false }));
     expect(updated).toEqual({ id: clientId, name: 'TAQ Client Renamed', slug: tag, isActive: false });
 
-    const detail = await withTenantTx({ internal: true }, (client) => getClientDetail(client, clientId));
+    const detail = await withTenantTx({ internal: true }, (client) => getAccountDetail(client, clientId));
     expect(detail).toMatchObject({ name: 'TAQ Client Renamed', isActive: false });
   });
 
@@ -112,18 +112,18 @@ describe('tenant-admin queries (DB)', () => {
   });
 
   it('AC2: updateTenantMembership returns found: false for a membership scoped to a different tenant, and changes nothing', async () => {
-    const otherTenant = await withTenantTx({ internal: true }, (client) => client.query(`INSERT INTO client (name, slug) VALUES ('TAQ Other', $1) RETURNING id`, [`${tag}-other`]));
+    const otherTenant = await withTenantTx({ internal: true }, (client) => client.query(`INSERT INTO account (name, slug) VALUES ('TAQ Other', $1) RETURNING id`, [`${tag}-other`]));
     const otherClientId = otherTenant.rows[0].id;
     try {
       const result = await withTenantTx({ internal: true }, (client) =>
-        updateTenantMembership(client, otherClientId, membershipId, { role: 'client_admin' }, userId),
+        updateTenantMembership(client, otherClientId, membershipId, { role: 'account_admin' }, userId),
       );
       expect(result).toEqual({ found: false });
 
       const members = await withTenantTx({ internal: true }, (client) => listTenantMembers(client, clientId));
       expect(members[0]?.role).toBe('lead');
     } finally {
-      await withTenantTx({ internal: true }, (client) => client.query(`DELETE FROM client WHERE id = $1`, [otherClientId]));
+      await withTenantTx({ internal: true }, (client) => client.query(`DELETE FROM account WHERE id = $1`, [otherClientId]));
     }
   });
 
@@ -155,12 +155,12 @@ describe('tenant-admin queries (DB)', () => {
   });
 
   it('AC4: listAllTenantMembers aggregates membership rows across tenants, keyed by their own client', async () => {
-    const other = await withTenantTx({ internal: true }, (client) => client.query(`INSERT INTO client (name, slug) VALUES ('TAQ Cross', $1) RETURNING id`, [`${tag}-cross`]));
+    const other = await withTenantTx({ internal: true }, (client) => client.query(`INSERT INTO account (name, slug) VALUES ('TAQ Cross', $1) RETURNING id`, [`${tag}-cross`]));
     const otherClientId = other.rows[0].id;
     const otherUser = await withTenantTx({ internal: true }, (client) => client.query(`INSERT INTO app_user (email, full_name) VALUES ($1, 'TAQ Cross User') RETURNING id`, [`${tag}-cross@example.test`]));
     const otherUserId = otherUser.rows[0].id;
     const otherMembership = await withTenantTx({ internal: true }, (client) =>
-      client.query(`INSERT INTO membership (user_id, client_id, role) VALUES ($1, $2, 'client_viewer') RETURNING id`, [otherUserId, otherClientId]),
+      client.query(`INSERT INTO membership (user_id, account_id, role) VALUES ($1, $2, 'account_viewer') RETURNING id`, [otherUserId, otherClientId]),
     );
     const otherMembershipId = otherMembership.rows[0].id;
 
@@ -187,9 +187,9 @@ describe('tenant-admin queries (DB)', () => {
       expect(seen).toEqual(expect.arrayContaining([membershipId, otherMembershipId]));
       expect(new Set(seen).size).toBe(seen.length);
     } finally {
-      await withTenantTx({ internal: true }, (client) => client.query(`DELETE FROM membership WHERE client_id = $1`, [otherClientId]));
+      await withTenantTx({ internal: true }, (client) => client.query(`DELETE FROM membership WHERE account_id = $1`, [otherClientId]));
       await withTenantTx({ internal: true }, (client) => client.query(`DELETE FROM app_user WHERE id = $1`, [otherUserId]));
-      await withTenantTx({ internal: true }, (client) => client.query(`DELETE FROM client WHERE id = $1`, [otherClientId]));
+      await withTenantTx({ internal: true }, (client) => client.query(`DELETE FROM account WHERE id = $1`, [otherClientId]));
     }
   });
 

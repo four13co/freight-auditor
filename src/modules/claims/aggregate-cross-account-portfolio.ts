@@ -22,11 +22,11 @@ import {
  * (clientId+currency) and output shape (clientName, reconciles) are
  * specific to this module.
  *
- * clientId is never null here (claim.client_id is NOT NULL, migrations/0008),
+ * clientId is never null here (claim.account_id is NOT NULL, migrations/0008),
  * unlike aggregate-carrier-recovery.ts's carrierId (dispute.carrier_id is
  * nullable via the LEFT JOIN there).
  */
-export interface ClientPortfolioClaimRow {
+export interface AccountPortfolioClaimRow {
   clientId: string;
   clientName: string | null;
   claimId: string;
@@ -35,13 +35,13 @@ export interface ClientPortfolioClaimRow {
   status: string;
 }
 
-export interface ClientPortfolioRecoveryEventRow {
+export interface AccountPortfolioRecoveryEventRow {
   claimId: string;
   amountRecovered: string;
   currency: string | null;
 }
 
-export interface ClientPortfolioBucket {
+export interface AccountPortfolioBucket {
   clientId: string;
   clientName: string | null;
   currency: string | null;
@@ -58,11 +58,11 @@ export interface ClientPortfolioBucket {
   reconciles: boolean;
 }
 
-export function aggregateCrossClientPortfolio(
-  claims: readonly ClientPortfolioClaimRow[],
-  recoveryEvents: readonly ClientPortfolioRecoveryEventRow[],
-): ClientPortfolioBucket[] {
-  const eventsByClaim = new Map<string, ClientPortfolioRecoveryEventRow[]>();
+export function aggregateCrossAccountPortfolio(
+  claims: readonly AccountPortfolioClaimRow[],
+  recoveryEvents: readonly AccountPortfolioRecoveryEventRow[],
+): AccountPortfolioBucket[] {
+  const eventsByClaim = new Map<string, AccountPortfolioRecoveryEventRow[]>();
   for (const event of recoveryEvents) {
     const list = eventsByClaim.get(event.claimId) ?? [];
     list.push(event);

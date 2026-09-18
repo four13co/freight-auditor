@@ -18,7 +18,7 @@ const DEFAULT_LIMIT = 50;
  * registerInternalAnalystAuthPreHandler (internal-analyst-auth.ts) -- that
  * resolver deliberately grants `{ internal: true }` with NO clientIds at all
  * (see its own header comment: reserved for genuinely cross-client routes
- * like portfolio-routes.ts's GET /api/portfolio/cross-client-recovery), so
+ * like portfolio-routes.ts's GET /api/portfolio/cross-account-recovery), so
  * every tenant's invoices leaked into every request regardless of caller.
  * This item's own AC1 requires per-tenant RLS scoping ("every invoice
  * visible under RLS" for THIS caller, mirroring list-findings.db.test.ts's

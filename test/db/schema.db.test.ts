@@ -26,7 +26,7 @@ describe('canonical data model', () => {
       );
       const names = new Set(rows.map((r) => r.tablename));
       for (const t of [
-        'client', 'contract_version', 'rule_version', 'rubric_snapshot',
+        'account', 'contract_version', 'rule_version', 'rubric_snapshot',
         'charge_fact', 'variance_finding', 'transport_document', 'audit_event',
       ]) {
         expect(names.has(t), `missing table ${t}`).toBe(true);
@@ -56,7 +56,7 @@ describe('canonical data model', () => {
     // statement affects 0 rows; we only assert it is not a privilege error).
     await withAppTx(pool, { internal: true }, async (c) => {
       await expect(
-        c.query(`UPDATE client SET name=name WHERE false`),
+        c.query(`UPDATE account SET name=name WHERE false`),
       ).resolves.toBeDefined();
     });
   });
@@ -65,25 +65,25 @@ describe('canonical data model', () => {
     await expect(
       withOwnerTx(pool, async (c) => {
         const { rows: cl } = await c.query(
-          `INSERT INTO client (name, slug) VALUES ('T','t-${Date.now()}') RETURNING id`,
+          `INSERT INTO account (name, slug) VALUES ('T','t-${Date.now()}') RETURNING id`,
         );
         const clientId = cl[0].id;
         const { rows: ca } = await c.query(
           `INSERT INTO carrier (name) VALUES ('C') RETURNING id`,
         );
         const { rows: co } = await c.query(
-          `INSERT INTO contract (client_id, carrier_id, name) VALUES ($1,$2,'K') RETURNING id`,
+          `INSERT INTO contract (account_id, carrier_id, name) VALUES ($1,$2,'K') RETURNING id`,
           [clientId, ca[0].id],
         );
         const contractId = co[0].id;
         await c.query(
-          `INSERT INTO contract_version (client_id, contract_id, valid_from, valid_to)
+          `INSERT INTO contract_version (account_id, contract_id, valid_from, valid_to)
            VALUES ($1,$2,'2026-01-01','2026-06-01')`,
           [clientId, contractId],
         );
         // Overlaps [2026-01-01, 2026-06-01) → must be excluded.
         await c.query(
-          `INSERT INTO contract_version (client_id, contract_id, valid_from, valid_to)
+          `INSERT INTO contract_version (account_id, contract_id, valid_from, valid_to)
            VALUES ($1,$2,'2026-03-01','2026-09-01')`,
           [clientId, contractId],
         );
@@ -94,24 +94,24 @@ describe('canonical data model', () => {
   it('contract_version allows non-overlapping ranges (control)', async () => {
     await withOwnerTx(pool, async (c) => {
       const { rows: cl } = await c.query(
-        `INSERT INTO client (name, slug) VALUES ('T','t2-${Date.now()}') RETURNING id`,
+        `INSERT INTO account (name, slug) VALUES ('T','t2-${Date.now()}') RETURNING id`,
       );
       const clientId = cl[0].id;
       const { rows: ca } = await c.query(`INSERT INTO carrier (name) VALUES ('C') RETURNING id`);
       const { rows: co } = await c.query(
-        `INSERT INTO contract (client_id, carrier_id, name) VALUES ($1,$2,'K') RETURNING id`,
+        `INSERT INTO contract (account_id, carrier_id, name) VALUES ($1,$2,'K') RETURNING id`,
         [clientId, ca[0].id],
       );
       const contractId = co[0].id;
       await c.query(
-        `INSERT INTO contract_version (client_id, contract_id, valid_from, valid_to)
+        `INSERT INTO contract_version (account_id, contract_id, valid_from, valid_to)
          VALUES ($1,$2,'2026-01-01','2026-06-01')`,
         [clientId, contractId],
       );
       // Abuts, does not overlap [2026-06-01, ...) → allowed.
       await expect(
         c.query(
-          `INSERT INTO contract_version (client_id, contract_id, valid_from, valid_to)
+          `INSERT INTO contract_version (account_id, contract_id, valid_from, valid_to)
            VALUES ($1,$2,'2026-06-01','2026-12-01')`,
           [clientId, contractId],
         ),
@@ -122,29 +122,29 @@ describe('canonical data model', () => {
   it('transport_document ↔ variance_finding evidence chain round-trips', async () => {
     await withOwnerTx(pool, async (c) => {
       const { rows: cl } = await c.query(
-        `INSERT INTO client (name, slug) VALUES ('T','t3-${Date.now()}') RETURNING id`,
+        `INSERT INTO account (name, slug) VALUES ('T','t3-${Date.now()}') RETURNING id`,
       );
       const clientId = cl[0].id;
       const { rows: td } = await c.query(
         `INSERT INTO transport_document
-           (client_id, document_number, document_type, transport_mode, document)
+           (account_id, document_number, document_type, transport_mode, document)
          VALUES ($1,'HLCUBSC2603BBTO1','MASTER_BILL_OF_LADING','OCEAN',$2)
          RETURNING id`,
         [clientId, JSON.stringify({ parties: [{ role: 'SHIPPER', company_name: 'ACME' }] })],
       );
       const { rows: inv } = await c.query(
-        `INSERT INTO invoice (client_id, transaction_set, parser_version)
+        `INSERT INTO invoice (account_id, transaction_set, parser_version)
          VALUES ($1,'310','v1') RETURNING id`,
         [clientId],
       );
       const { rows: run } = await c.query(
-        `INSERT INTO audit_run (client_id, invoice_id, engine_spec_version, outcome)
+        `INSERT INTO audit_run (account_id, invoice_id, engine_spec_version, outcome)
          VALUES ($1,$2,'e1','SCORED') RETURNING id`,
         [clientId, inv[0].id],
       );
       await c.query(
         `INSERT INTO variance_finding
-           (client_id, audit_run_id, transport_document_id, criterion_id, rule_version_id, variance_amount, currency, direction, evaluated_expr)
+           (account_id, audit_run_id, transport_document_id, criterion_id, rule_version_id, variance_amount, currency, direction, evaluated_expr)
          SELECT $1, $2, $3, c.id, rv.id, 412.1800, 'USD', 'OVERCHARGE', '{}'::jsonb
          FROM criterion c JOIN rule r ON r.slug = 'contract-rate_variance'
          JOIN rule_version rv ON rv.rule_id = r.id
@@ -156,7 +156,7 @@ describe('canonical data model', () => {
         `SELECT vf.variance_amount, td.document_number, td.document->'parties'->0->>'company_name' AS shipper
            FROM variance_finding vf
            JOIN transport_document td ON td.id = vf.transport_document_id
-          WHERE vf.client_id = $1`,
+          WHERE vf.account_id = $1`,
         [clientId],
       );
       expect(rows).toHaveLength(1);
@@ -169,17 +169,17 @@ describe('canonical data model', () => {
   it('money round-trips at numeric(18,4) with no float drift', async () => {
     await withOwnerTx(pool, async (c) => {
       const { rows: cl } = await c.query(
-        `INSERT INTO client (name, slug) VALUES ('T','t4-${Date.now()}') RETURNING id`,
+        `INSERT INTO account (name, slug) VALUES ('T','t4-${Date.now()}') RETURNING id`,
       );
       const clientId = cl[0].id;
       const { rows: inv } = await c.query(
-        `INSERT INTO invoice (client_id, transaction_set, parser_version)
+        `INSERT INTO invoice (account_id, transaction_set, parser_version)
          VALUES ($1,'210','v1') RETURNING id`,
         [clientId],
       );
       // A value that IEEE float would mangle (0.1+0.2) plus a 4dp boundary.
       const { rows } = await c.query(
-        `INSERT INTO charge_fact (client_id, invoice_id, amount, currency)
+        `INSERT INTO charge_fact (account_id, invoice_id, amount, currency)
          VALUES ($1,$2, 0.3000, 'USD')
          RETURNING amount, (amount = 0.3000) AS exact`,
         [clientId, inv[0].id],

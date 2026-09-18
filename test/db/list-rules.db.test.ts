@@ -30,7 +30,7 @@ describe('listRules (db)', () => {
     pool = makePool();
     const owner = await pool.connect();
     try {
-      const client = await owner.query(`INSERT INTO client (name, slug) VALUES ('LR Client', $1) RETURNING id`, [tag]);
+      const client = await owner.query(`INSERT INTO account (name, slug) VALUES ('LR Client', $1) RETURNING id`, [tag]);
       clientId = client.rows[0].id;
 
       const gatingCriterion = await owner.query(
@@ -51,10 +51,10 @@ describe('listRules (db)', () => {
       );
 
       const standardRubric = await owner.query(
-        `INSERT INTO rubric (tier, scope_client_id, scope_contract_id) VALUES ('STANDARD', NULL, NULL) RETURNING id`,
+        `INSERT INTO rubric (tier, scope_account_id, scope_contract_id) VALUES ('STANDARD', NULL, NULL) RETURNING id`,
       );
       const clientRubric = await owner.query(
-        `INSERT INTO rubric (tier, scope_client_id, scope_contract_id) VALUES ('CLIENT', $1, NULL) RETURNING id`,
+        `INSERT INTO rubric (tier, scope_account_id, scope_contract_id) VALUES ('CLIENT', $1, NULL) RETURNING id`,
         [clientId],
       );
       standardRubricId = standardRubric.rows[0].id;
@@ -125,7 +125,7 @@ describe('listRules (db)', () => {
       await owner.query(`DELETE FROM rubric WHERE id = ANY($1)`, [[standardRubricId, clientRubricId]]);
       await owner.query(`DELETE FROM criterion_version WHERE criterion_id IN (SELECT id FROM criterion WHERE criterion_key LIKE $1)`, [`${tag}-%`]);
       await owner.query(`DELETE FROM criterion WHERE criterion_key LIKE $1`, [`${tag}-%`]);
-      await owner.query(`DELETE FROM client WHERE id = $1`, [clientId]);
+      await owner.query(`DELETE FROM account WHERE id = $1`, [clientId]);
     } finally {
       owner.release();
     }

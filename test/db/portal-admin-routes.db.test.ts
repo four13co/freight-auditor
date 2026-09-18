@@ -12,7 +12,7 @@ import { updatePortalMemberRole } from '../../src/modules/identity/update-portal
  * exercised at the HTTP layer with DEV_AUTH_HEADERS=1, same pattern as
  * claim-recovery-endpoint.db.test.ts. RLS is FORCE-enabled on membership
  * (migration 0009), so the internal-role exclusion and the explicit
- * client_id predicate can only be proven against a real Postgres, not a
+ * account_id predicate can only be proven against a real Postgres, not a
  * mocked client -- see test/unit/{list-portal-members,
  * update-portal-member-role}.test.ts for the query-building unit coverage.
  */
@@ -36,9 +36,9 @@ describe('portal-admin routes (DB, e2e)', () => {
     pool = getPool();
     const owner = await pool.connect();
     try {
-      const c = await owner.query(`INSERT INTO client (name, slug) VALUES ('PAR', $1) RETURNING id`, [tag]);
+      const c = await owner.query(`INSERT INTO account (name, slug) VALUES ('PAR', $1) RETURNING id`, [tag]);
       clientId = c.rows[0].id;
-      const c2 = await owner.query(`INSERT INTO client (name, slug) VALUES ('PAR-other', $1) RETURNING id`, [`${tag}-other`]);
+      const c2 = await owner.query(`INSERT INTO account (name, slug) VALUES ('PAR-other', $1) RETURNING id`, [`${tag}-other`]);
       otherClientId = c2.rows[0].id;
 
       const uAdmin = await owner.query(`INSERT INTO app_user (email) VALUES ($1) RETURNING id`, [`${tag}-admin@example.com`]);
@@ -48,11 +48,11 @@ describe('portal-admin routes (DB, e2e)', () => {
       const uAnalyst = await owner.query(`INSERT INTO app_user (email, is_internal) VALUES ($1, true) RETURNING id`, [`${tag}-analyst@example.com`]);
       analystUserId = uAnalyst.rows[0].id;
 
-      const mAdmin = await owner.query(`INSERT INTO membership (user_id, client_id, role) VALUES ($1, $2, 'client_admin') RETURNING id`, [adminUserId, clientId]);
+      const mAdmin = await owner.query(`INSERT INTO membership (user_id, account_id, role) VALUES ($1, $2, 'account_admin') RETURNING id`, [adminUserId, clientId]);
       adminMembershipId = mAdmin.rows[0].id;
-      const mViewer = await owner.query(`INSERT INTO membership (user_id, client_id, role) VALUES ($1, $2, 'client_viewer') RETURNING id`, [viewerUserId, clientId]);
+      const mViewer = await owner.query(`INSERT INTO membership (user_id, account_id, role) VALUES ($1, $2, 'account_viewer') RETURNING id`, [viewerUserId, clientId]);
       viewerMembershipId = mViewer.rows[0].id;
-      const mAnalyst = await owner.query(`INSERT INTO membership (user_id, client_id, role) VALUES ($1, $2, 'analyst') RETURNING id`, [analystUserId, clientId]);
+      const mAnalyst = await owner.query(`INSERT INTO membership (user_id, account_id, role) VALUES ($1, $2, 'analyst') RETURNING id`, [analystUserId, clientId]);
       analystMembershipId = mAnalyst.rows[0].id;
     } finally {
       owner.release();
@@ -66,10 +66,10 @@ describe('portal-admin routes (DB, e2e)', () => {
     await app.close();
     const owner = await pool.connect();
     try {
-      await owner.query(`DELETE FROM audit_event WHERE client_id = ANY($1)`, [[clientId, otherClientId]]);
-      await owner.query(`DELETE FROM membership WHERE client_id = ANY($1)`, [[clientId, otherClientId]]);
+      await owner.query(`DELETE FROM audit_event WHERE account_id = ANY($1)`, [[clientId, otherClientId]]);
+      await owner.query(`DELETE FROM membership WHERE account_id = ANY($1)`, [[clientId, otherClientId]]);
       await owner.query(`DELETE FROM app_user WHERE id = ANY($1)`, [[adminUserId, viewerUserId, analystUserId]]);
-      await owner.query(`DELETE FROM client WHERE id = ANY($1)`, [[clientId, otherClientId]]);
+      await owner.query(`DELETE FROM account WHERE id = ANY($1)`, [[clientId, otherClientId]]);
     } finally {
       owner.release();
     }
@@ -112,19 +112,19 @@ describe('portal-admin routes (DB, e2e)', () => {
     const owner = await pool.connect();
     try {
       const row = await owner.query(`SELECT role FROM membership WHERE id = $1`, [viewerMembershipId]);
-      expect(row.rows[0].role).toBe('client_admin');
+      expect(row.rows[0].role).toBe('account_admin');
       const audit = await owner.query(
-        `SELECT entity, entity_id, event, actor_kind, actor_user_id, detail FROM audit_event WHERE entity_id = $1 AND event = 'membership.role_changed_to_client_admin'`,
+        `SELECT entity, entity_id, event, actor_kind, actor_user_id, detail FROM audit_event WHERE entity_id = $1 AND event = 'membership.role_changed_to_account_admin'`,
         [viewerMembershipId],
       );
       expect(audit.rows).toHaveLength(1);
       expect(audit.rows[0]).toMatchObject({
         entity: 'membership', actor_kind: 'client', actor_user_id: adminUserId,
-        detail: { fromRole: 'client_viewer', toRole: 'client_admin' },
+        detail: { fromRole: 'account_viewer', toRole: 'account_admin' },
       });
     } finally {
       // restore for later tests in this suite that assume the original role
-      await owner.query(`UPDATE membership SET role = 'client_viewer' WHERE id = $1`, [viewerMembershipId]);
+      await owner.query(`UPDATE membership SET role = 'account_viewer' WHERE id = $1`, [viewerMembershipId]);
       owner.release();
     }
   });
@@ -179,7 +179,7 @@ describe('portal-admin routes (DB, e2e)', () => {
     try {
       const u = await cAdmin.query(`INSERT INTO app_user (email) VALUES ($1) RETURNING id`, [`${tag}-other-admin@example.com`]);
       otherAdminUserId = u.rows[0].id;
-      await cAdmin.query(`INSERT INTO membership (user_id, client_id, role) VALUES ($1, $2, 'client_admin')`, [otherAdminUserId, otherClientId]);
+      await cAdmin.query(`INSERT INTO membership (user_id, account_id, role) VALUES ($1, $2, 'account_admin')`, [otherAdminUserId, otherClientId]);
     } finally {
       cAdmin.release();
     }
@@ -214,15 +214,15 @@ describe('portal-admin routes (DB, e2e)', () => {
 });
 
 /**
- * Direct module coverage of the explicit client_id predicate on
+ * Direct module coverage of the explicit account_id predicate on
  * listPortalMembers/updatePortalMemberRole, independent of RLS -- same
- * shape as claim-recovery-endpoint.db.test.ts's own "explicit client_id
+ * shape as claim-recovery-endpoint.db.test.ts's own "explicit account_id
  * predicate" block (86e31a9ch/#216 precedent). An internal (cross-client)
  * scope grants RLS-level visibility across every client, so these tests
  * prove the explicit predicate -- not RLS -- is what rejects a mismatched
  * clientId.
  */
-describe('portal-admin query modules: explicit client_id predicate (DB)', () => {
+describe('portal-admin query modules: explicit account_id predicate (DB)', () => {
   let pool: pg.Pool;
   let clientAId: string;
   let userId: string;
@@ -233,11 +233,11 @@ describe('portal-admin query modules: explicit client_id predicate (DB)', () => 
     pool = getPool();
     const owner = await pool.connect();
     try {
-      const a = await owner.query(`INSERT INTO client (name, slug) VALUES ('PARP-A', $1) RETURNING id`, [`${tag}-a`]);
+      const a = await owner.query(`INSERT INTO account (name, slug) VALUES ('PARP-A', $1) RETURNING id`, [`${tag}-a`]);
       clientAId = a.rows[0].id;
       const u = await owner.query(`INSERT INTO app_user (email) VALUES ($1) RETURNING id`, [`${tag}@example.com`]);
       userId = u.rows[0].id;
-      const m = await owner.query(`INSERT INTO membership (user_id, client_id, role) VALUES ($1, $2, 'client_viewer') RETURNING id`, [userId, clientAId]);
+      const m = await owner.query(`INSERT INTO membership (user_id, account_id, role) VALUES ($1, $2, 'account_viewer') RETURNING id`, [userId, clientAId]);
       membershipId = m.rows[0].id;
     } finally {
       owner.release();
@@ -247,10 +247,10 @@ describe('portal-admin query modules: explicit client_id predicate (DB)', () => 
   afterAll(async () => {
     const owner = await pool.connect();
     try {
-      await owner.query(`DELETE FROM audit_event WHERE client_id = $1`, [clientAId]);
-      await owner.query(`DELETE FROM membership WHERE client_id = $1`, [clientAId]);
+      await owner.query(`DELETE FROM audit_event WHERE account_id = $1`, [clientAId]);
+      await owner.query(`DELETE FROM membership WHERE account_id = $1`, [clientAId]);
       await owner.query(`DELETE FROM app_user WHERE id = $1`, [userId]);
-      await owner.query(`DELETE FROM client WHERE id = $1`, [clientAId]);
+      await owner.query(`DELETE FROM account WHERE id = $1`, [clientAId]);
     } finally {
       owner.release();
     }
@@ -265,7 +265,7 @@ describe('portal-admin query modules: explicit client_id predicate (DB)', () => 
   });
 
   it('the explicit predicate rejects a mismatched clientId on updatePortalMemberRole, even under an internal (cross-client) RLS scope', async () => {
-    const result = await withTenantTx({ internal: true }, (c) => updatePortalMemberRole(c, otherClientId, membershipId, 'client_admin', userId));
+    const result = await withTenantTx({ internal: true }, (c) => updatePortalMemberRole(c, otherClientId, membershipId, 'account_admin', userId));
     expect(result.found).toBe(false);
     const check = await withTenantTx({ internal: true }, (c) => listPortalMembers(c, clientAId));
     expect(check.find((r) => r.id === membershipId)?.role).toBe('client_viewer');
@@ -275,7 +275,7 @@ describe('portal-admin query modules: explicit client_id predicate (DB)', () => 
     const rows = await withTenantTx({ internal: true }, (c) => listPortalMembers(c, clientAId));
     expect(rows.some((r) => r.id === membershipId)).toBe(true);
 
-    const result = await withTenantTx({ internal: true }, (c) => updatePortalMemberRole(c, clientAId, membershipId, 'client_admin', userId));
+    const result = await withTenantTx({ internal: true }, (c) => updatePortalMemberRole(c, clientAId, membershipId, 'account_admin', userId));
     expect(result.found).toBe(true);
   });
 });

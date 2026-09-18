@@ -11,7 +11,7 @@ import type pg from 'pg';
  * than intended still can't leak another tenant's invoices through this
  * function.
  */
-export interface ClientInvoiceRow {
+export interface AccountInvoiceRow {
   id: string;
   invoiceNumber: string | null;
   carrierId: string | null;
@@ -29,7 +29,7 @@ export interface ClientInvoiceRow {
   auditRunId: string | null;
 }
 
-export interface ListClientInvoicesOptions {
+export interface ListAccountInvoicesOptions {
   status?: string;
   limit?: number;
   offset?: number;
@@ -44,12 +44,12 @@ const DEFAULT_LIMIT = 50;
  * surfaces. Carrier name is joined in for display (client_viewer never
  * sees raw carrier ids), a LEFT JOIN since invoice.carrier_id is nullable.
  */
-export async function listClientInvoices(
+export async function listAccountInvoices(
   client: pg.PoolClient,
   clientId: string,
-  options: ListClientInvoicesOptions = {},
-): Promise<ClientInvoiceRow[]> {
-  const conditions: string[] = ['i.client_id = $1'];
+  options: ListAccountInvoicesOptions = {},
+): Promise<AccountInvoiceRow[]> {
+  const conditions: string[] = ['i.account_id = $1'];
   const params: unknown[] = [clientId];
 
   if (options.status) {

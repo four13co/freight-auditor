@@ -21,19 +21,19 @@ describe('contract extraction provenance persistence (DB)', () => {
 
   beforeAll(async () => {
     pool = makePool();
-    clientId = (await pool.query(`INSERT INTO client (name,slug) VALUES ('Extraction',$1) RETURNING id`, [tag])).rows[0].id;
-    otherClientId = (await pool.query(`INSERT INTO client (name,slug) VALUES ('Other',$1) RETURNING id`, [`${tag}-other`])).rows[0].id;
+    clientId = (await pool.query(`INSERT INTO account (name,slug) VALUES ('Extraction',$1) RETURNING id`, [tag])).rows[0].id;
+    otherClientId = (await pool.query(`INSERT INTO account (name,slug) VALUES ('Other',$1) RETURNING id`, [`${tag}-other`])).rows[0].id;
     userId = (await pool.query(`INSERT INTO app_user (email) VALUES ($1) RETURNING id`, [`${tag}@example.com`])).rows[0].id;
     sourceDocumentId = (await pool.query(`INSERT INTO source_document
-      (client_id,sha256,content_type,byte_size,storage_uri) VALUES ($1,$2,'application/pdf',1,$3) RETURNING id`,
+      (account_id,sha256,content_type,byte_size,storage_uri) VALUES ($1,$2,'application/pdf',1,$3) RETURNING id`,
     [clientId, sha, `local://${tag}`])).rows[0].id;
   });
   afterAll(async () => {
-    await pool.query(`DELETE FROM audit_event WHERE client_id=$1`, [clientId]);
-    await pool.query(`DELETE FROM extraction_field WHERE client_id=$1`, [clientId]);
+    await pool.query(`DELETE FROM audit_event WHERE account_id=$1`, [clientId]);
+    await pool.query(`DELETE FROM extraction_field WHERE account_id=$1`, [clientId]);
     await pool.query(`DELETE FROM source_document WHERE id=$1`, [sourceDocumentId]);
     await pool.query(`DELETE FROM app_user WHERE id=$1`, [userId]);
-    await pool.query(`DELETE FROM client WHERE id IN ($1,$2)`, [clientId, otherClientId]);
+    await pool.query(`DELETE FROM account WHERE id IN ($1,$2)`, [clientId, otherClientId]);
     await pool.end();
   });
 
@@ -127,10 +127,10 @@ describe('contract extraction provenance persistence (DB)', () => {
   });
 
   // app_is_internal() (86e31a9ch) grants RLS-level visibility across every
-  // client, so this exercises the query-level client_id predicate directly:
+  // client, so this exercises the query-level account_id predicate directly:
   // an internal caller passing the WRONG clientId must still not find the
   // row, regardless of what RLS alone would have allowed through.
-  it('the explicit client_id predicate rejects a mismatched clientId even under an internal (cross-client) RLS scope', async () => {
+  it('the explicit account_id predicate rejects a mismatched clientId even under an internal (cross-client) RLS scope', async () => {
     await expect(withAppTx(pool, { internal: true }, (client) => persistExtractionFieldCorrection(client, {
       clientId: otherClientId, fieldId: originalFieldId, actorUserId: userId,
       correction: { human_value: 'wrong tenant via internal scope', answer_source: 'analyst_knowledge' },

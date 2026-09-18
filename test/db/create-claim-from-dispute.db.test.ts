@@ -24,9 +24,9 @@ describe('createClaimFromDispute (DB)', () => {
     pool = getPool();
     const owner = await pool.connect();
     try {
-      const a = await owner.query(`INSERT INTO client (name, slug) VALUES ('CCFD-A', $1) RETURNING id`, [`${tag}-a`]);
+      const a = await owner.query(`INSERT INTO account (name, slug) VALUES ('CCFD-A', $1) RETURNING id`, [`${tag}-a`]);
       clientAId = a.rows[0].id;
-      const b = await owner.query(`INSERT INTO client (name, slug) VALUES ('CCFD-B', $1) RETURNING id`, [`${tag}-b`]);
+      const b = await owner.query(`INSERT INTO account (name, slug) VALUES ('CCFD-B', $1) RETURNING id`, [`${tag}-b`]);
       clientBId = b.rows[0].id;
       const u = await owner.query(`INSERT INTO app_user (email) VALUES ($1) RETURNING id`, [`${tag}@example.com`]);
       actorUserId = u.rows[0].id;
@@ -51,7 +51,7 @@ describe('createClaimFromDispute (DB)', () => {
     opts: { clientId: string; status?: string; amountClaimed?: string | null; currency?: string | null },
   ): Promise<string> {
     const row = await client.query(
-      `INSERT INTO dispute (client_id, status, amount_claimed, currency) VALUES ($1, $2, $3, $4) RETURNING id`,
+      `INSERT INTO dispute (account_id, status, amount_claimed, currency) VALUES ($1, $2, $3, $4) RETURNING id`,
       [opts.clientId, opts.status ?? 'accepted', opts.amountClaimed ?? '500.0000', opts.currency ?? 'USD'],
     );
     return row.rows[0].id;
@@ -92,7 +92,7 @@ describe('createClaimFromDispute (DB)', () => {
       const disputeId = await seedDispute(c, { clientId: clientAId });
       const first = await createClaimFromDispute(c, { clientId: clientAId, disputeId });
       const second = await createClaimFromDispute(c, { clientId: clientAId, disputeId });
-      const count = await c.query(`SELECT count(*)::int AS n FROM claim WHERE client_id = $1 AND dispute_id = $2`, [
+      const count = await c.query(`SELECT count(*)::int AS n FROM claim WHERE account_id = $1 AND dispute_id = $2`, [
         clientAId, disputeId,
       ]);
       return { first, second, count: count.rows[0].n };

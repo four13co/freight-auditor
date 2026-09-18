@@ -2,9 +2,9 @@ import type { FastifyInstance } from 'fastify';
 import { withTenantTx } from '../db/tenant-context.js';
 import { registerTenantAdminAuthPreHandler } from '../modules/identity/tenant-admin-auth.js';
 import { createClient as createClientRow } from '../modules/identity/onboarding.js';
-import { listClients } from '../modules/identity/list-clients.js';
-import { getClientDetail } from '../modules/identity/get-client-detail.js';
-import { updateClient } from '../modules/identity/update-client.js';
+import { listClients } from '../modules/identity/list-accounts.js';
+import { getAccountDetail } from '../modules/identity/get-account-detail.js';
+import { updateClient } from '../modules/identity/update-account.js';
 import { createCustomerBranding } from '../modules/identity/create-customer-branding.js';
 import { updateCustomerBranding } from '../modules/identity/update-customer-branding.js';
 import { createMembership } from '../modules/identity/create-membership.js';
@@ -12,6 +12,7 @@ import { listTenantMembers } from '../modules/identity/list-tenant-members.js';
 import { removeMembership } from '../modules/identity/remove-membership.js';
 import { updateTenantMembership } from '../modules/identity/update-tenant-membership.js';
 import { listAllTenantMembers } from '../modules/identity/list-all-tenant-members.js';
+import { roleDbToWire, roleWireToDb } from '../modules/identity/role-wire-mapping.js';
 import { isUuid, validateBrandingFields } from '../shared/request-validation.js';
 import { decodeCursor, paginateKeyset } from '../shared/cursor-pagination.js';
 import { parseLimitOffset } from '../shared/parse-limit-offset.js';
@@ -114,7 +115,7 @@ export async function registerTenantAdminRoutes(routes: FastifyInstance): Promis
         return;
       }
 
-      const detail = await withTenantTx(request.tenantContext!, (client) => getClientDetail(client, id));
+      const detail = await withTenantTx(request.tenantContext!, (client) => getAccountDetail(client, id));
       if (!detail) {
         await reply.code(404).send({ error: 'tenant not found' });
         return;
@@ -260,7 +261,7 @@ export async function registerTenantAdminRoutes(routes: FastifyInstance): Promis
           clientId: id,
           email: body.email as string,
           fullName: (body.fullName as string | null | undefined) ?? null,
-          role: body.role as string,
+          role: roleWireToDb(body.role as string),
         }),
       );
 
@@ -297,7 +298,7 @@ export async function registerTenantAdminRoutes(routes: FastifyInstance): Promis
           client,
           id,
           membershipId,
-          { role: body.role as string | undefined, isActive: body.isActive as boolean | undefined },
+          { role: body.role !== undefined ? roleWireToDb(body.role as string) : undefined, isActive: body.isActive as boolean | undefined },
           request.actorUserId,
         ),
       );
@@ -305,7 +306,7 @@ export async function registerTenantAdminRoutes(routes: FastifyInstance): Promis
         await reply.code(404).send({ error: 'membership not found' });
         return;
       }
-      return { id: result.id, role: result.role, isActive: result.isActive };
+      return { id: result.id, role: roleDbToWire(result.role), isActive: result.isActive };
     });
 
     adminRoutes.delete('/api/internal/tenants/:id/members/:membershipId', async (request, reply) => {

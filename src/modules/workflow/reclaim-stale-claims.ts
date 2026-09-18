@@ -59,7 +59,7 @@ export async function reclaimStaleClaims(
          claimed_at = NULL
      WHERE id IN (
        SELECT id FROM ${config.table}
-       WHERE client_id = $1 AND status = 'claimed' AND claimed_at <= $2
+       WHERE account_id = $1 AND status = 'claimed' AND claimed_at <= $2
        ORDER BY claimed_at
        LIMIT $3
        FOR UPDATE SKIP LOCKED
@@ -86,7 +86,7 @@ export async function reclaimStaleClaimsForActiveClients(
   now: Date = new Date(),
 ): Promise<ReclaimStaleClaimsResult> {
   const clients = await client.query<{ id: string }>(
-    `SELECT id FROM client WHERE is_active = true`,
+    `SELECT id FROM account WHERE is_active = true`,
   );
 
   let reclaimed = 0;

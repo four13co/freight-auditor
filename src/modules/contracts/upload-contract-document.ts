@@ -52,7 +52,7 @@ async function existingUpload(client: pg.PoolClient, clientId: string, sourceDoc
   const result = await client.query<{ contract_id: string; id: string; sha256: string }>(
     `SELECT cv.contract_id, cv.id, sd.sha256 FROM contract_version cv
      JOIN source_document sd ON sd.id = cv.source_document_id
-     WHERE cv.client_id = $1 AND cv.source_document_id = $2`,
+     WHERE cv.account_id = $1 AND cv.source_document_id = $2`,
     [clientId, sourceDocumentId],
   );
   const row = result.rows[0];
@@ -74,7 +74,7 @@ export async function uploadContractDocument(client: pg.PoolClient, store: Objec
   const carrier = await client.query(`SELECT 1 FROM carrier WHERE id = $1`, [metadata.carrierId]);
   if (!carrier.rowCount) throw new ContractUploadConflictError('carrier not found');
   const contract = await client.query<{ id: string }>(
-    `INSERT INTO contract (client_id, carrier_id, name) VALUES ($1,$2,$3) RETURNING id`,
+    `INSERT INTO contract (account_id, carrier_id, name) VALUES ($1,$2,$3) RETURNING id`,
     [input.clientId, metadata.carrierId, metadata.name],
   );
   const contractId = contract.rows[0]!.id;
@@ -93,7 +93,7 @@ export async function uploadContractVersionDocument(
     if (retry.contractId !== input.contractId) throw new ContractUploadConflictError('source document already belongs to another contract');
     return retry;
   }
-  const found = await client.query(`SELECT 1 FROM contract WHERE id = $1 AND client_id = $2`, [input.contractId, input.clientId]);
+  const found = await client.query(`SELECT 1 FROM contract WHERE id = $1 AND account_id = $2`, [input.contractId, input.clientId]);
   if (!found.rowCount) throw new ContractNotFoundError();
   return insertVersion(client, input, source, input.contractId, metadata);
 }
@@ -106,7 +106,7 @@ async function insertVersion(
   metadata: ContractVersionUploadMetadata,
 ): Promise<ContractUploadResult> {
   const version = await client.query<{ id: string }>(
-    `INSERT INTO contract_version (client_id, contract_id, version_label, valid_from, valid_to, source_document_id)
+    `INSERT INTO contract_version (account_id, contract_id, version_label, valid_from, valid_to, source_document_id)
      VALUES ($1,$2,$3,$4,$5,$6) RETURNING id`,
     [input.clientId, contractId, metadata.versionLabel ?? null, metadata.validFrom, metadata.validTo ?? null, source.id],
   );

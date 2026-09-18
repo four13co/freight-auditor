@@ -53,7 +53,7 @@ export async function persistAuditRun(
   // 1. invoice header (always persisted — the audit trail covers rejected
   // invoices too, via gate_failure below).
   const inv = await client.query<{ id: string }>(
-    `INSERT INTO invoice (client_id, shipment_id, carrier_id, transaction_set, invoice_number, currency, parser_version)
+    `INSERT INTO invoice (account_id, shipment_id, carrier_id, transaction_set, invoice_number, currency, parser_version)
      VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
     [clientId, input.shipmentId ?? null, input.carrierId ?? null, invoice.transactionSet, invoice.invoiceNumber ?? null, invoice.headerCurrency ?? null, invoice.parserVersion],
   );
@@ -82,7 +82,7 @@ export async function persistAuditRun(
       }
       const cf = await client.query<{ id: string }>(
         `INSERT INTO charge_fact
-           (client_id, invoice_id, code, x12_element, category, amount, currency, basis, rate, raw_description, source_loop)
+           (account_id, invoice_id, code, x12_element, category, amount, currency, basis, rate, raw_description, source_loop)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING id`,
         [
           clientId, invoiceId, c.code ?? null, c.x12Element ?? null, c.category ?? null,
@@ -99,7 +99,7 @@ export async function persistAuditRun(
 
   // 2. audit_run pinned to the snapshot + engine spec.
   const run = await client.query<{ id: string }>(
-    `INSERT INTO audit_run (client_id, invoice_id, rubric_snapshot_id, engine_spec_version, outcome)
+    `INSERT INTO audit_run (account_id, invoice_id, rubric_snapshot_id, engine_spec_version, outcome)
      VALUES ($1,$2,$3,$4,$5) RETURNING id`,
     [clientId, invoiceId, input.rubricSnapshotId, result.pins.engineSpecVersion, result.outcome],
   );
@@ -112,7 +112,7 @@ export async function persistAuditRun(
   for (const marker of result.coverageMarkers) {
     const persistedMarker = await client.query<{ id: string }>(
       `INSERT INTO coverage_marker
-         (client_id, audit_run_id, charge_index, marker_code, missing_fields)
+         (account_id, audit_run_id, charge_index, marker_code, missing_fields)
        VALUES ($1,$2,$3,$4,$5) RETURNING id`,
       [clientId, auditRunId, marker.chargeIndex, marker.code, marker.missingFields],
     );
@@ -132,7 +132,7 @@ export async function persistAuditRun(
   const gateFailureIds: string[] = [];
   for (const g of result.gateFailures) {
     const gf = await client.query<{ id: string }>(
-      `INSERT INTO gate_failure (client_id, audit_run_id, criterion_id, rule_version_id, clause_id, source_document_id, transport_document_id, defect, citation, evaluated_expr)
+      `INSERT INTO gate_failure (account_id, audit_run_id, criterion_id, rule_version_id, clause_id, source_document_id, transport_document_id, defect, citation, evaluated_expr)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id`,
       [clientId, auditRunId, resolvedIdsByCriterionKey.get(g.criterionKey)!.criterionId,
         resolvedIdsByCriterionKey.get(g.criterionKey)!.ruleVersionId, resolvedIdsByCriterionKey.get(g.criterionKey)!.clauseId,
@@ -148,7 +148,7 @@ export async function persistAuditRun(
   // just written above). Both were already built+tested but had zero callers
   // outside tests, so no payment_gate_decision row was ever created in
   // production -- this is the fix. holdThenApprove is read from
-  // client_payment_policy when a client has configured one, else the
+  // account_payment_policy when a client has configured one, else the
   // platform default (DEFAULT_PAYMENT_POLICY, matching generateHoldDecision's
   // own default parameter). generateShortPayDecision is deliberately NOT
   // wired here -- its precondition (accepted OVERCHARGE findings) can never
@@ -159,7 +159,7 @@ export async function persistAuditRun(
   // sketch didn't ask to solve.
   if (result.outcome === 'SCORED') {
     const policy = (await client.query<{ hold_then_approve: boolean }>(
-      `SELECT hold_then_approve FROM client_payment_policy WHERE client_id = $1`, [clientId],
+      `SELECT hold_then_approve FROM account_payment_policy WHERE account_id = $1`, [clientId],
     )).rows[0];
     await generateHoldDecision(client, {
       clientId, auditRunId, holdThenApprove: policy?.hold_then_approve ?? DEFAULT_PAYMENT_POLICY.holdThenApprove,
@@ -176,7 +176,7 @@ export async function persistAuditRun(
   for (const f of result.findings) {
     const resolved = resolvedIdsByCriterionKey.get(f.criterionKey)!;
     const cf = await client.query<{ id: string }>(
-      `INSERT INTO charge_finding (client_id, audit_run_id, criterion_id, rule_version_id, clause_id, source_document_id, transport_document_id, result, evaluated_expr)
+      `INSERT INTO charge_finding (account_id, audit_run_id, criterion_id, rule_version_id, clause_id, source_document_id, transport_document_id, result, evaluated_expr)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id`,
       [clientId, auditRunId, resolved.criterionId, resolved.ruleVersionId, resolved.clauseId, resolved.sourceDocumentId,
         transportDocumentId, f.result, JSON.stringify(f.evaluatedExpr)],
@@ -211,7 +211,7 @@ export async function persistAuditRun(
     const resolved = resolvedIdsByCriterionKey.get(f.criterionKey)!;
     await client.query(
       `INSERT INTO variance_finding
-         (client_id, audit_run_id, criterion_id, rule_version_id, clause_id, source_document_id, transport_document_id, charge_fact_id, direction, materiality, variance_amount, currency, classification, evaluated_expr, status)
+         (account_id, audit_run_id, criterion_id, rule_version_id, clause_id, source_document_id, transport_document_id, charge_fact_id, direction, materiality, variance_amount, currency, classification, evaluated_expr, status)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,'open')`,
       [
         clientId,
@@ -237,7 +237,7 @@ export async function persistAuditRun(
   if (result.scorecard) {
     const sc = await client.query<{ id: string }>(
       `INSERT INTO scorecard
-         (client_id, audit_run_id, conformed_count, variance_count, unassessable_count, total_overcharge, total_undercharge, currency)
+         (account_id, audit_run_id, conformed_count, variance_count, unassessable_count, total_overcharge, total_undercharge, currency)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id`,
       [
         clientId, auditRunId, result.scorecard.conformedCount, result.scorecard.varianceCount,
@@ -286,7 +286,7 @@ export async function persistAuditRun(
   };
   const manifestHash = replayManifestHash(manifest);
   await client.query(
-    `INSERT INTO audit_replay_manifest (client_id, audit_run_id, schema_version, content_hash, manifest)
+    `INSERT INTO audit_replay_manifest (account_id, audit_run_id, schema_version, content_hash, manifest)
      VALUES ($1, $2, 1, $3, $4)`,
     [clientId, auditRunId, manifestHash, JSON.stringify(manifest)],
   );

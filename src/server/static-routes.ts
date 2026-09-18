@@ -126,5 +126,34 @@ export async function registerStaticRoutes(app: FastifyInstance): Promise<void> 
       root: webDist,
       index: 'index.html',
     });
+
+    // 86e3ajb7t/86e3afpvd: SPA fallback -- every client-side route
+    // (/login, /employee/home, /client/home, etc.) is a React Router route,
+    // not a file under web/dist, so @fastify/static's own routing falls
+    // through to Fastify's default not-found handler on a direct/hard
+    // navigation (bookmark, refresh, shared link). Registered here, guarded
+    // by the same `if (webDist)` this file's static-plugin registration
+    // already uses, so the no-webDist behavior (e.g. local tsx dev, or a
+    // unit-test context that never built web/) is unchanged.
+    //
+    // Scoped to GET requests whose path doesn't start with /api/ -- every
+    // real route in this codebase lives under /api/ (see app.ts's registered
+    // domain modules) or is one of the two literal routes above (/health,
+    // /ready), both real Fastify routes that never reach this handler at
+    // all. A genuine API typo (or any non-GET method) must keep getting
+    // Fastify's normal JSON 404, so this handler reconstructs that exact
+    // shape for those cases rather than silently turning them into HTML.
+    const indexHtml = readFileSync(join(webDist, 'index.html'));
+    app.setNotFoundHandler((request, reply) => {
+      if (request.method === 'GET' && !request.url.startsWith('/api/')) {
+        reply.code(200).type('text/html').send(indexHtml);
+        return;
+      }
+      reply.code(404).send({
+        message: `Route ${request.method}:${request.url} not found`,
+        error: 'Not Found',
+        statusCode: 404,
+      });
+    });
   }
 }

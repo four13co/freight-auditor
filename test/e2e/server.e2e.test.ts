@@ -85,5 +85,42 @@ describe.skipIf(!existsSync(join(dirname(fileURLToPath(import.meta.url)), '..', 
       const res = await fetch(`${baseUrl}/api/findings`);
       expect(res.status).toBe(401);
     });
+
+    /**
+     * 86e3ajb7t/86e3afpvd: SPA fallback for a hard navigation to a
+     * client-side-only route. Covers /login (86e3ajb7t's own repro) and two
+     * routes under different role prefixes (86e3afpvd's /client/home, plus
+     * /employee/home per 86e3ajb7t's Rabbit holes note not to prove this
+     * against /login alone) -- same mechanism serves every nav-config.ts
+     * leaf, so these three are representative, not exhaustive.
+     */
+    it.each(['/login', '/employee/home', '/client/home'])(
+      'AC1: hard-navigating to %s serves the app (200, index.html), not a JSON 404',
+      async (route) => {
+        const res = await fetch(`${baseUrl}${route}`);
+        expect(res.status).toBe(200);
+        expect(res.headers.get('content-type')).toContain('text/html');
+        const html = await res.text();
+        expect(html).toContain('<div id="root">');
+      },
+    );
+
+    it('AC2 (negative): a genuine unmatched /api/* path still gets the normal JSON 404, not the SPA fallback', async () => {
+      const res = await fetch(`${baseUrl}/api/this-route-does-not-exist`);
+      expect(res.status).toBe(404);
+      expect(await res.json()).toMatchObject({
+        error: 'Not Found',
+        statusCode: 404,
+      });
+    });
+
+    it('a non-GET request to an unmatched path still gets the normal JSON 404, not the SPA fallback', async () => {
+      const res = await fetch(`${baseUrl}/some/unmatched/path`, { method: 'POST' });
+      expect(res.status).toBe(404);
+      expect(await res.json()).toMatchObject({
+        error: 'Not Found',
+        statusCode: 404,
+      });
+    });
   },
 );

@@ -6,9 +6,9 @@ import VendorsPage from '@/pages/employee/VendorsPage';
 
 /** See employee-grand-clients-page.test.tsx's comment: unique scope id per test avoids cross-test pollution of the shared in-memory store. */
 let nextId = 0;
-function freshGrandClient() {
+function freshClient() {
   nextId += 1;
-  return { id: `gc-${nextId}`, name: `Grand Client ${nextId}` };
+  return { id: `gc-${nextId}`, name: `Client ${nextId}` };
 }
 
 let activeGrandClient: { id: string; name: string } | null = null;
@@ -25,20 +25,20 @@ function renderPage() {
 }
 
 describe('VendorsPage', () => {
-  it('AC: prompts to select a Grand Client when none is active', () => {
+  it('AC: prompts to select a Client when none is active', () => {
     activeGrandClient = null;
     renderPage();
-    expect(screen.getByText('Select a Grand Client to view its vendors.')).toBeInTheDocument();
+    expect(screen.getByText('Select a Client to view its vendors.')).toBeInTheDocument();
   });
 
-  it('AC: empty state when a Grand Client has no vendors yet', () => {
-    activeGrandClient = freshGrandClient();
+  it('AC: empty state when a Client has no vendors yet', () => {
+    activeGrandClient = freshClient();
     renderPage();
     expect(screen.getByText(new RegExp(`No vendors yet for ${activeGrandClient.name}`))).toBeInTheDocument();
   });
 
   it('AC: CRUD operations work end-to-end (create with contact info, edit)', async () => {
-    activeGrandClient = freshGrandClient();
+    activeGrandClient = freshClient();
     const user = userEvent.setup();
     renderPage();
 
@@ -60,9 +60,9 @@ describe('VendorsPage', () => {
     expect(screen.getByText('Acme Trucking Co')).toBeInTheDocument();
   });
 
-  it('AC: vendors shown are scoped to the selected Grand Client only', async () => {
-    const gcA = freshGrandClient();
-    const gcB = freshGrandClient();
+  it('AC: vendors shown are scoped to the selected Client only', async () => {
+    const gcA = freshClient();
+    const gcB = freshClient();
     const user = userEvent.setup();
 
     activeGrandClient = gcA;
@@ -79,7 +79,7 @@ describe('VendorsPage', () => {
   });
 
   it('AC: Disable/Enable toggles this vendor status', async () => {
-    activeGrandClient = freshGrandClient();
+    activeGrandClient = freshClient();
     const user = userEvent.setup();
     renderPage();
     await user.click(screen.getByRole('button', { name: 'Create vendor' }));

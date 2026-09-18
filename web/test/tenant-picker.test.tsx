@@ -55,15 +55,15 @@ describe('TenantPicker', () => {
     expect(setActiveClient).toHaveBeenCalledWith({ id: 'c2', name: 'Beacon Logistics' });
   });
 
-  it('AC: Account role can search and select their own Grand Client', async () => {
+  it('AC: Account role can search and select their own Client', async () => {
     const setActiveGrandClient = vi.fn();
     useAuthMock.mockReturnValue({ role: 'account' });
     useTenantMock.mockReturnValue({
       options: [
-        { id: 'gc1', name: 'Grand Client One' },
-        { id: 'gc2', name: 'Grand Client Two' },
+        { id: 'gc1', name: 'Client One' },
+        { id: 'gc2', name: 'Client Two' },
       ],
-      activeGrandClient: { id: 'gc1', name: 'Grand Client One' },
+      activeGrandClient: { id: 'gc1', name: 'Client One' },
       setActiveGrandClient,
       isLoading: false,
     });
@@ -72,15 +72,15 @@ describe('TenantPicker', () => {
     render(<TenantPicker />);
 
     await user.click(screen.getByRole('combobox'));
-    await user.type(screen.getByPlaceholderText('Search grand clients…'), 'Two');
+    await user.type(screen.getByPlaceholderText('Search clients…'), 'Two');
 
-    await waitFor(() => expect(screen.getByText('Grand Client Two')).toBeInTheDocument());
-    await user.click(screen.getByText('Grand Client Two'));
+    await waitFor(() => expect(screen.getByText('Client Two')).toBeInTheDocument());
+    await user.click(screen.getByText('Client Two'));
 
-    expect(setActiveGrandClient).toHaveBeenCalledWith({ id: 'gc2', name: 'Grand Client Two' });
+    expect(setActiveGrandClient).toHaveBeenCalledWith({ id: 'gc2', name: 'Client Two' });
   });
 
-  it('AC: hidden for the Account role with zero Grand Clients (graceful empty handling)', () => {
+  it('AC: hidden for the Account role with zero Clients (graceful empty handling)', () => {
     useAuthMock.mockReturnValue({ role: 'account' });
     useTenantMock.mockReturnValue({
       options: [],

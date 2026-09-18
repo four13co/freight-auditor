@@ -7,19 +7,19 @@ describe('NAV_CONFIG', () => {
     expect(NAV_CONFIG.account.map((i) => i.label)).toEqual([
       'Home',
       'Users',
-      'Users (Grand Client)',
+      'Users (Client)',
       'Users (Vendor)',
-      'Grand Clients',
-      'Grand Client File Drop',
-      'Grand Client Rules & Rates',
+      'Clients',
+      'Client File Drop',
+      'Client Rules & Rates',
     ]);
     expect(NAV_CONFIG.grand_client.map((i) => i.label)).toEqual(['Home', 'Users']);
     expect(NAV_CONFIG.vendor.map((i) => i.label)).toEqual(['Home', 'Users']);
   });
 
-  it('AC: Employee Accounts → Grand Clients → Vendors is nested', () => {
+  it('AC: Employee Accounts → Clients → Vendors is nested', () => {
     const accounts = NAV_CONFIG.employee.find((i) => i.label === 'Accounts');
-    expect(accounts?.children?.[0].label).toBe('Grand Clients');
+    expect(accounts?.children?.[0].label).toBe('Clients');
     expect(accounts?.children?.[0].children?.[0].label).toBe('Vendors');
   });
 
@@ -42,8 +42,8 @@ describe('getBreadcrumbTrail', () => {
   it('AC: breadcrumbs update based on the current route', () => {
     expect(getBreadcrumbTrail('employee', '/employee/accounts')?.map((i) => i.label)).toEqual(['Accounts']);
     expect(
-      getBreadcrumbTrail('employee', '/employee/accounts/grand-clients/vendors')?.map((i) => i.label),
-    ).toEqual(['Accounts', 'Grand Clients', 'Vendors']);
+      getBreadcrumbTrail('employee', '/employee/accounts/clients/vendors')?.map((i) => i.label),
+    ).toEqual(['Accounts', 'Clients', 'Vendors']);
   });
 
   it('returns null for a path with no matching nav item', () => {

@@ -17,12 +17,12 @@ import { countScopedEntities, useScopedEntities, type ScopedEntity } from '@/lib
 import { useTenant } from '@/providers/TenantProvider';
 
 /**
- * "Grand Client" naming may change (86e3a6ren's own note) -- kept behind
+ * "Client" naming may change again (86e3a6ren's own note) -- kept behind
  * this one constant so a future rename touches one line.
  */
-const GRAND_CLIENT_LABEL = 'Grand Client';
+const CLIENT_LABEL = 'Client';
 
-function GrandClientFormDialog({
+function ClientFormDialog({
   open,
   onOpenChange,
   initial,
@@ -49,7 +49,7 @@ function GrandClientFormDialog({
           }}
         >
           <DialogHeader>
-            <DialogTitle>{initial ? `Edit ${GRAND_CLIENT_LABEL}` : `Create ${GRAND_CLIENT_LABEL}`}</DialogTitle>
+            <DialogTitle>{initial ? `Edit ${CLIENT_LABEL}` : `Create ${CLIENT_LABEL}`}</DialogTitle>
             <DialogDescription>
               In-memory for now — see this PR&apos;s Uncertainties for why there&apos;s no backend yet.
             </DialogDescription>
@@ -69,7 +69,7 @@ function GrandClientFormDialog({
   );
 }
 
-export default function GrandClientsPage() {
+export default function ClientsPage() {
   const navigate = useNavigate();
   const { activeClient, setActiveGrandClient } = useTenant();
   const scopeKey = activeClient ? `client:${activeClient.id}` : null;
@@ -79,13 +79,13 @@ export default function GrandClientsPage() {
 
   function goToVendors(entity: ScopedEntity) {
     setActiveGrandClient({ id: entity.id, name: entity.name });
-    navigate('/employee/accounts/grand-clients/vendors');
+    navigate('/employee/accounts/clients/vendors');
   }
 
   const columns: DataTableColumn<ScopedEntity>[] = [
     {
       key: 'name',
-      header: `${GRAND_CLIENT_LABEL} name`,
+      header: `${CLIENT_LABEL} name`,
       sortValue: (e) => e.name,
       render: (e) => (
         <button type="button" className="font-medium hover:underline" onClick={() => goToVendors(e)}>
@@ -102,8 +102,8 @@ export default function GrandClientsPage() {
     {
       key: 'vendors',
       header: 'Vendor count',
-      sortValue: (e) => countScopedEntities(`grandClient:${e.id}`),
-      render: (e) => countScopedEntities(`grandClient:${e.id}`),
+      sortValue: (e) => countScopedEntities(`client:${e.id}`),
+      render: (e) => countScopedEntities(`client:${e.id}`),
     },
     {
       key: 'created',
@@ -133,9 +133,9 @@ export default function GrandClientsPage() {
   if (!activeClient) {
     return (
       <div className="flex flex-col gap-2">
-        <h1 className="text-2xl font-semibold tracking-tight">{GRAND_CLIENT_LABEL}s</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">{CLIENT_LABEL}s</h1>
         <p className="text-sm text-muted-foreground">
-          Select a client from the Clients page (or the tenant picker) to view its {GRAND_CLIENT_LABEL.toLowerCase()}s.
+          Select a client from the Accounts page (or the tenant picker) to view its {CLIENT_LABEL.toLowerCase()}s.
         </p>
       </div>
     );
@@ -145,7 +145,7 @@ export default function GrandClientsPage() {
     <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold tracking-tight">
-          {GRAND_CLIENT_LABEL}s for {activeClient.name}
+          {CLIENT_LABEL}s for {activeClient.name}
         </h1>
       </div>
 
@@ -153,13 +153,13 @@ export default function GrandClientsPage() {
         rows={entities}
         columns={columns}
         getRowId={(e) => e.id}
-        searchPlaceholder={`Search ${GRAND_CLIENT_LABEL.toLowerCase()}s…`}
+        searchPlaceholder={`Search ${CLIENT_LABEL.toLowerCase()}s…`}
         searchPredicate={(e, q) => e.name.toLowerCase().includes(q.toLowerCase())}
-        toolbarEnd={<Button onClick={() => setCreateOpen(true)}>Create {GRAND_CLIENT_LABEL}</Button>}
-        emptyState={`No ${GRAND_CLIENT_LABEL.toLowerCase()}s yet for ${activeClient.name}.`}
+        toolbarEnd={<Button onClick={() => setCreateOpen(true)}>Create {CLIENT_LABEL}</Button>}
+        emptyState={`No ${CLIENT_LABEL.toLowerCase()}s yet for ${activeClient.name}.`}
       />
 
-      <GrandClientFormDialog
+      <ClientFormDialog
         open={createOpen}
         onOpenChange={setCreateOpen}
         onSubmit={(name) => {
@@ -168,7 +168,7 @@ export default function GrandClientsPage() {
         }}
       />
 
-      <GrandClientFormDialog
+      <ClientFormDialog
         open={editing !== null}
         onOpenChange={(open) => !open && setEditing(null)}
         initial={editing ? { name: editing.name } : undefined}

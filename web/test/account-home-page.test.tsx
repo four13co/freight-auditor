@@ -57,20 +57,20 @@ describe('AccountHomePage', () => {
 
     renderPage();
 
-    expect(screen.getByText('Active Grand Clients')).toBeInTheDocument();
+    expect(screen.getByText('Active Clients')).toBeInTheDocument();
     expect(screen.getByText('Transactions pending review')).toBeInTheDocument();
     expect(screen.getByText('Recent findings/variances')).toBeInTheDocument();
     expect(screen.getByText('Open disputes')).toBeInTheDocument();
   });
 
-  it('AC: Active Grand Clients count reflects only this client\'s active Grand Clients', () => {
+  it('AC: Active Clients count reflects only this client\'s active Clients', () => {
     ownClientId = freshOwnClientId();
     seedGrandClient(ownClientId, 'active');
     useAuthMock.mockReturnValue({ user: { name: 'Dana Admin', email: null, role: 'account' } });
 
     renderPage();
 
-    const card = screen.getByText('Active Grand Clients').closest('[data-slot="card"]')!;
+    const card = screen.getByText('Active Clients').closest('[data-slot="card"]')!;
     expect(card).toHaveTextContent('1');
   });
 
@@ -91,10 +91,10 @@ describe('AccountHomePage', () => {
 
     renderPage();
 
-    expect(screen.getByRole('link', { name: /View Grand Clients/ })).toHaveAttribute('href', '/account/grand-clients');
+    expect(screen.getByRole('link', { name: /View Clients/ })).toHaveAttribute('href', '/account/clients');
     expect(screen.getByRole('link', { name: /Manage users/ })).toHaveAttribute('href', '/account/users');
-    expect(screen.getByRole('link', { name: /Rules & rates/ })).toHaveAttribute('href', '/account/grand-clients/rules-rates');
-    await user.click(screen.getByRole('link', { name: /View Grand Clients/ }));
+    expect(screen.getByRole('link', { name: /Rules & rates/ })).toHaveAttribute('href', '/account/clients/rules-rates');
+    await user.click(screen.getByRole('link', { name: /View Clients/ }));
   });
 
   it('AC: responsive grid uses a stacked-to-2-up layout class for the summary cards', () => {

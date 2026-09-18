@@ -6,14 +6,14 @@ import { useScopedEntities } from '@/lib/in-memory-hierarchy-store';
 
 /** Same fresh-scope-per-test convention as employee-vendors-page.test.tsx. */
 let nextId = 0;
-function freshGrandClient() {
+function freshClient() {
   nextId += 1;
-  return { id: `gc-vendor-user-page-${nextId}`, name: `Grand Client ${nextId}` };
+  return { id: `gc-vendor-user-page-${nextId}`, name: `Client ${nextId}` };
 }
 
-/** Seeds a real Vendor entity (as Employee's VendorsPage / the eventual Client Vendors page would create) into the shared `grandClient:<id>` scope this page's vendor picker reads from. */
-function seedVendor(grandClientId: string, name: string) {
-  const { result } = renderHook(() => useScopedEntities(`grandClient:${grandClientId}`));
+/** Seeds a real Vendor entity (as Employee's VendorsPage / the eventual Client Vendors page would create) into the shared `client:<id>` scope this page's vendor picker reads from. */
+function seedVendor(clientId: string, name: string) {
+  const { result } = renderHook(() => useScopedEntities(`client:${clientId}`));
   act(() => result.current.create({ name }));
 }
 
@@ -27,21 +27,21 @@ function renderPage() {
 }
 
 describe('VendorUsersPage', () => {
-  it('AC: prompts to select a Grand Client when none is active', () => {
+  it('AC: prompts to select a Client when none is active', () => {
     activeGrandClient = null;
     renderPage();
-    expect(screen.getByText('Select a Grand Client to view its vendor users.')).toBeInTheDocument();
+    expect(screen.getByText('Select a Client to view its vendor users.')).toBeInTheDocument();
   });
 
-  it('AC: prompts to add a vendor first when the Grand Client has none', () => {
-    activeGrandClient = freshGrandClient();
+  it('AC: prompts to add a vendor first when the Client has none', () => {
+    activeGrandClient = freshClient();
     renderPage();
     expect(screen.getByText(new RegExp(`No vendors yet for ${activeGrandClient.name}`))).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Invite vendor user' })).toBeDisabled();
   });
 
   it('AC: invite/edit flows work end-to-end, scoped by vendor', async () => {
-    activeGrandClient = freshGrandClient();
+    activeGrandClient = freshClient();
     seedVendor(activeGrandClient.id, 'Acme Trucking');
     const user = userEvent.setup();
     renderPage();
@@ -66,7 +66,7 @@ describe('VendorUsersPage', () => {
   });
 
   it('AC: can filter by vendor', async () => {
-    activeGrandClient = freshGrandClient();
+    activeGrandClient = freshClient();
     seedVendor(activeGrandClient.id, 'Acme Trucking');
     seedVendor(activeGrandClient.id, 'Beacon Freight');
     const user = userEvent.setup();
@@ -93,9 +93,9 @@ describe('VendorUsersPage', () => {
     expect(screen.queryByText('Beacon User')).not.toBeInTheDocument();
   });
 
-  it('AC: vendor users shown are scoped to the selected Grand Client only', async () => {
-    const gcA = freshGrandClient();
-    const gcB = freshGrandClient();
+  it('AC: vendor users shown are scoped to the selected Client only', async () => {
+    const gcA = freshClient();
+    const gcB = freshClient();
     seedVendor(gcA.id, 'Acme Trucking');
     const user = userEvent.setup();
 

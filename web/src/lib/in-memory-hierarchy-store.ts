@@ -1,18 +1,20 @@
 import { useEffect, useState } from 'react';
 
 /**
- * Grand Client (86e3a6ren) and Vendor (86e3a6rf3) CRUD, in-memory only.
+ * Client (86e3a6ren, renamed from "Grand Client" per 86e3anfux) and Vendor
+ * (86e3a6rf3) CRUD, in-memory only.
  *
- * The backend has no "Grand Client" concept at all (grep confirms zero
- * grand_client/grandClient references anywhere in src/server/*) -- same gap
- * PR #403's Uncertainties already flagged and pushed to Bridge as
+ * The backend has no "Client"-entity concept at all here (grep confirms
+ * zero grand_client/grandClient references anywhere in src/server/*, and
+ * this is a distinct concept from the real `client` tenant table) -- same
+ * gap PR #403's Uncertainties already flagged and pushed to Bridge as
  * role-vocab-gap-86e3a6r53. There is nothing to fetch or persist to yet, so
  * this module is a deliberate stand-in: a session-lifetime, module-level Map
- * keyed by scope (a Client's id for Grand Clients, a Grand Client's id for
- * Vendors) so CRUD interactions are real and testable *as UI behavior*,
- * without pretending a backend API exists. Resets on page reload. The
- * moment a real endpoint exists, this hook's call sites swap for a
- * fetch-backed one with the same shape -- nothing else in either page
+ * keyed by scope (an Account's own client id for its Clients, a Client's id
+ * for its Vendors) so CRUD interactions are real and testable *as UI
+ * behavior*, without pretending a backend API exists. Resets on page
+ * reload. The moment a real endpoint exists, this hook's call sites swap
+ * for a fetch-backed one with the same shape -- nothing else in either page
  * should need to change.
  */
 export interface ScopedEntity {
@@ -20,7 +22,7 @@ export interface ScopedEntity {
   name: string;
   status: 'active' | 'disabled';
   createdAt: string;
-  /** Vendor-only free-text field; unused by Grand Clients. */
+  /** Vendor-only free-text field; unused by Clients. */
   contactInfo?: string;
 }
 
@@ -67,14 +69,13 @@ export function useScopedEntities(scopeKey: string | null) {
 }
 
 /**
- * Client-scoped Grand Client users (86e3a6rh4) and Vendor users (86e3a6rhj),
+ * Account-scoped Client users (86e3a6rh4) and Vendor users (86e3a6rhj),
  * in-memory only -- same reasoning and the same shared module as
  * ScopedEntity above (Bridge decision on task 86e3a6r3b / PR #406: route
- * every Grand Client/Vendor screen through this one store, no per-screen
- * mocks). A separate map from `stores` because these rows are user-shaped
+ * every Client/Vendor screen through this one store, no per-screen mocks).
+ * A separate map from `stores` because these rows are user-shaped
  * (email/role) rather than entity-shaped (name/contactInfo), but the same
- * scope-key convention: `grandClientUsers:<grandClientId>` and
- * `vendorUsers:<grandClientId>`.
+ * scope-key convention: `clientUsers:<clientId>` and `vendorUsers:<clientId>`.
  */
 export interface ScopedUser {
   id: string;
@@ -83,7 +84,7 @@ export interface ScopedUser {
   role: string;
   status: 'active' | 'disabled';
   createdAt: string;
-  /** Vendor-user-only: which Vendor entity (from that Grand Client's `grandClient:<id>` scope) this user belongs to. Unused by Grand-Client-scoped users. */
+  /** Vendor-user-only: which Vendor entity (from that Client's `client:<id>` scope) this user belongs to. Unused by Client-scoped users. */
   vendorId?: string;
   vendorName?: string;
 }
@@ -133,12 +134,12 @@ export function useScopedUsers(scopeKey: string | null) {
 }
 
 /**
- * Grand-Client-scoped Rules/Rates stand-ins (86e3a6rjr). The real
- * Rules/Rates surface (`/api/rules`, `/api/internal/tenants/:id/rates`,
- * PR #407) is internal-analyst-only server-side either way (rules) or
- * tenant-scoped to a REAL tenant, not a Grand Client (rates) -- there is no
- * backend concept of "rules/rates for a Grand Client" to fetch at all, same
- * gap as the Grand Client entity itself. Read-only in the page (86e3a6rjr's
+ * Client-scoped Rules/Rates stand-ins (86e3a6rjr). The real Rules/Rates
+ * surface (`/api/rules`, `/api/internal/tenants/:id/rates`, PR #407) is
+ * internal-analyst-only server-side either way (rules) or tenant-scoped to
+ * a REAL tenant, not this in-memory Client entity (rates) -- there is no
+ * backend concept of "rules/rates for a Client" to fetch at all, same gap
+ * as the Client entity itself. Read-only in the page (86e3a6rjr's
  * own AC: "Default to read-only... add edit as backend supports it"), but
  * `create` is kept on the hook (unused by the page today) so a future
  * "propose a rule" enhancement -- named as a TBD in that task's own body --
@@ -208,12 +209,12 @@ export function useScopedRates(scopeKey: string | null) {
 }
 
 /**
- * Grand-Client-scoped file drop uploads (86e3a6rj8), in-memory only -- same
- * gap as every other Grand-Client-scoped screen (Bridge decision on
- * 86e3a6r3b): a real upload route (portal-contract-upload-routes.ts's
- * pattern) needs a real `client_id` and an existing domain row (contract,
- * carrier) to attach to, and Grand Client is neither a real tenant nor a
- * real row anywhere in the schema. Scoped by `grandClientFiles:<id>`.
+ * Client-scoped file drop uploads (86e3a6rj8), in-memory only -- same gap
+ * as every other Client-scoped screen (Bridge decision on 86e3a6r3b): a
+ * real upload route (portal-contract-upload-routes.ts's pattern) needs a
+ * real `client_id` and an existing domain row (contract, carrier) to attach
+ * to, and this in-memory Client entity is neither a real tenant nor a real
+ * row anywhere in the schema. Scoped by `clientFiles:<id>`.
  */
 export interface ScopedFile {
   id: string;
@@ -239,7 +240,7 @@ export function useScopedFiles(scopeKey: string | null) {
      * Functional setState (not a `persist(next)` computed from the outer
      * `files` closure, unlike the other hooks above): multiple files
      * dropped together each run their own independent progress-timer
-     * closure (GrandClientFileDropPage), so two `submit` calls can land
+     * closure (ClientFileDropPage), so two `submit` calls can land
      * within the same render's stale `files` snapshot -- reading `prev` at
      * apply time is what keeps a second concurrent upload from clobbering
      * the first.

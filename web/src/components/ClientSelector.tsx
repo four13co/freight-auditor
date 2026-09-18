@@ -3,15 +3,15 @@ import { useScopedEntities } from '@/lib/in-memory-hierarchy-store';
 import { useTenant } from '@/providers/TenantProvider';
 
 /**
- * Shared by every Client-role Grand-Client-scoped screen (86e3a6rh4/rhj/
- * rj8/rjr): lets the client pick which of their own Grand Clients (from the
- * shared in-memory-hierarchy-store's `client:<ownClientId>` scope -- the
- * exact same scope Employee's GrandClientsPage writes into) to view. Sets
+ * Shared by every Account-role Client-scoped screen (86e3a6rh4/rhj/
+ * rj8/rjr): lets the account holder pick which of their own Clients (from
+ * the shared in-memory-hierarchy-store's `client:<ownClientId>` scope -- the
+ * exact same scope Employee's ClientsPage writes into) to view. Sets
  * `activeGrandClient` on TenantProvider, same context Employee's Vendors
  * page already reads, so the choice carries across all four of these pages
  * without re-selecting.
  */
-export function GrandClientSelector() {
+export function ClientSelector() {
   const ownClientId = getOwnClientId();
   const scopeKey = ownClientId ? `client:${ownClientId}` : null;
   const { entities } = useScopedEntities(scopeKey);
@@ -20,14 +20,14 @@ export function GrandClientSelector() {
   if (entities.length === 0) {
     return (
       <p className="text-sm text-muted-foreground">
-        No Grand Clients yet — create one from the Grand Clients page first.
+        No Clients yet — create one from the Clients page first.
       </p>
     );
   }
 
   return (
     <select
-      aria-label="Select Grand Client"
+      aria-label="Select Client"
       className="h-8 rounded-lg border border-input bg-transparent px-2.5 text-sm dark:bg-input/30"
       value={activeGrandClient?.id ?? ''}
       onChange={(e) => {
@@ -35,7 +35,7 @@ export function GrandClientSelector() {
         setActiveGrandClient(entity ? { id: entity.id, name: entity.name } : null);
       }}
     >
-      <option value="">Select a Grand Client…</option>
+      <option value="">Select a Client…</option>
       {entities.map((e) => (
         <option key={e.id} value={e.id}>
           {e.name}

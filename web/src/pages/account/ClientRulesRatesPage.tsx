@@ -2,12 +2,12 @@ import { useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { DataTable, type DataTableColumn } from '@/components/data-table/DataTable';
-import { GrandClientSelector } from '@/components/GrandClientSelector';
+import { ClientSelector } from '@/components/ClientSelector';
 import { useScopedRates, useScopedRules, type ScopedRate, type ScopedRule } from '@/lib/in-memory-hierarchy-store';
 import { useTenant } from '@/providers/TenantProvider';
 
-function RulesTab({ grandClientId }: { grandClientId: string }) {
-  const { rules } = useScopedRules(`grandClientRules:${grandClientId}`);
+function RulesTab({ clientId }: { clientId: string }) {
+  const { rules } = useScopedRules(`clientRules:${clientId}`);
 
   const columns: DataTableColumn<ScopedRule>[] = [
     { key: 'name', header: 'Name', sortValue: (r) => r.name, render: (r) => r.name },
@@ -23,13 +23,13 @@ function RulesTab({ grandClientId }: { grandClientId: string }) {
       getRowId={(r) => r.id}
       searchPlaceholder="Search rules…"
       searchPredicate={(r, q) => r.name.toLowerCase().includes(q.toLowerCase())}
-      emptyState="No rules configured yet for this Grand Client."
+      emptyState="No rules configured yet for this Client."
     />
   );
 }
 
-function RatesTab({ grandClientId }: { grandClientId: string }) {
-  const { rates } = useScopedRates(`grandClientRates:${grandClientId}`);
+function RatesTab({ clientId }: { clientId: string }) {
+  const { rates } = useScopedRates(`clientRates:${clientId}`);
 
   const columns: DataTableColumn<ScopedRate>[] = [
     { key: 'category', header: 'Category', sortValue: (r) => r.category, render: (r) => r.category },
@@ -44,38 +44,38 @@ function RatesTab({ grandClientId }: { grandClientId: string }) {
       getRowId={(r) => r.id}
       searchPlaceholder="Search rates…"
       searchPredicate={(r, q) => r.category.toLowerCase().includes(q.toLowerCase())}
-      emptyState="No rates configured yet for this Grand Client."
+      emptyState="No rates configured yet for this Client."
     />
   );
 }
 
 /**
- * 86e3a6rjr: a read-only, Grand-Client-scoped view of rules and rates
- * (task's own AC: "Default to read-only... add edit as backend supports
- * it"). Neither `/api/rules` (global, internal-analyst-only per PR #407's
- * Uncertainties) nor `/api/internal/tenants/:id/rates` (real-tenant-scoped,
- * also internal-only -- registerTenantAdminAuthPreHandler) has anything to
- * fetch for a Grand Client, which isn't a real tenant at all -- same gap as
- * every other Grand-Client-scoped screen in this epic, so this routes
- * through the shared in-memory-hierarchy-store's new ScopedRule/ScopedRate
- * (Bridge decision on 86e3a6r3b: one shared store, no per-screen mocks).
+ * 86e3a6rjr: a read-only, Client-scoped view of rules and rates (task's own
+ * AC: "Default to read-only... add edit as backend supports it"). Neither
+ * `/api/rules` (global, internal-analyst-only per PR #407's Uncertainties)
+ * nor `/api/internal/tenants/:id/rates` (real-tenant-scoped, also
+ * internal-only -- registerTenantAdminAuthPreHandler) has anything to fetch
+ * for a Client, which isn't a real tenant at all -- same gap as every other
+ * Client-scoped screen in this epic, so this routes through the shared
+ * in-memory-hierarchy-store's new ScopedRule/ScopedRate (Bridge decision on
+ * 86e3a6r3b: one shared store, no per-screen mocks).
  */
-export default function GrandClientRulesRatesPage() {
+export default function ClientRulesRatesPage() {
   const { activeGrandClient } = useTenant();
   const [tab, setTab] = useState<'rules' | 'rates'>('rules');
 
   return (
     <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold tracking-tight">Grand Client Rules & Rates</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">Client Rules & Rates</h1>
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
-        <GrandClientSelector />
+        <ClientSelector />
       </div>
 
       {!activeGrandClient ? (
-        <p className="text-sm text-muted-foreground">Select a Grand Client to view its rules and rates.</p>
+        <p className="text-sm text-muted-foreground">Select a Client to view its rules and rates.</p>
       ) : (
         <>
           <div role="tablist" aria-label="Rules & Rates sections" className="flex w-fit gap-1 rounded-lg border border-border bg-muted/40 p-1">
@@ -101,7 +101,7 @@ export default function GrandClientRulesRatesPage() {
             </Button>
           </div>
 
-          {tab === 'rules' ? <RulesTab grandClientId={activeGrandClient.id} /> : <RatesTab grandClientId={activeGrandClient.id} />}
+          {tab === 'rules' ? <RulesTab clientId={activeGrandClient.id} /> : <RatesTab clientId={activeGrandClient.id} />}
         </>
       )}
     </div>

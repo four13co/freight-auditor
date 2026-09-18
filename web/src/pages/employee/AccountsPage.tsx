@@ -88,9 +88,9 @@ export default function AccountsPage() {
     load();
   }, []);
 
-  function goToGrandClients(client: TenantSummary) {
+  function goToClients(client: TenantSummary) {
     setActiveClient({ id: client.id, name: client.name });
-    navigate('/employee/accounts/grand-clients');
+    navigate('/employee/accounts/clients');
   }
 
   async function handleDisableToggle(client: TenantSummary) {
@@ -109,7 +109,7 @@ export default function AccountsPage() {
       header: 'Account name',
       sortValue: (c) => c.name,
       render: (c) => (
-        <button type="button" className="font-medium hover:underline" onClick={() => goToGrandClients(c)}>
+        <button type="button" className="font-medium hover:underline" onClick={() => goToClients(c)}>
           {c.name}
         </button>
       ),
@@ -122,7 +122,7 @@ export default function AccountsPage() {
     },
     {
       key: 'grandClients',
-      header: 'Grand Client count',
+      header: 'Client count',
       sortValue: (c) => countScopedEntities(`client:${c.id}`),
       render: (c) => countScopedEntities(`client:${c.id}`),
     },
@@ -140,8 +140,8 @@ export default function AccountsPage() {
           <Button variant="ghost" size="sm" onClick={() => setEditing(c)}>
             Edit
           </Button>
-          <Button variant="ghost" size="sm" onClick={() => goToGrandClients(c)}>
-            View Grand Clients
+          <Button variant="ghost" size="sm" onClick={() => goToClients(c)}>
+            View Clients
           </Button>
           <Button variant="ghost" size="sm" onClick={() => handleDisableToggle(c)}>
             {c.isActive ? 'Disable' : 'Enable'}

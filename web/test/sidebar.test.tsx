@@ -39,23 +39,23 @@ describe('Sidebar', () => {
     expect(screen.getByRole('link', { name: /home/i })).not.toHaveAttribute('aria-current');
   });
 
-  it('AC: nested Accounts → Grand Clients → Vendors collapses/expands', async () => {
+  it('AC: nested Accounts → Clients → Vendors collapses/expands', async () => {
     const user = userEvent.setup();
     useAuthMock.mockReturnValue({ role: 'employee' });
     renderSidebar({ path: '/employee/home' });
 
     // Not on an active descendant route -- starts collapsed.
-    expect(screen.queryByRole('link', { name: 'Grand Clients' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Clients' })).not.toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: /expand accounts/i }));
-    expect(screen.getByRole('link', { name: 'Grand Clients' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Clients' })).toBeInTheDocument();
   });
 
   it('AC: a nested route auto-expands its ancestor group', () => {
     useAuthMock.mockReturnValue({ role: 'employee' });
-    renderSidebar({ path: '/employee/accounts/grand-clients' });
+    renderSidebar({ path: '/employee/accounts/clients' });
 
-    expect(screen.getByRole('link', { name: 'Grand Clients' })).toHaveAttribute('aria-current', 'page');
+    expect(screen.getByRole('link', { name: 'Clients' })).toHaveAttribute('aria-current', 'page');
   });
 
   it('AC: renders only icons when collapsed (labels hidden, tooltip available)', () => {

@@ -12,15 +12,15 @@ import HomePage from '@/pages/home';
 import EmployeeHomePage from '@/pages/employee/HomePage';
 import EmployeeUsersPage from '@/pages/employee/UsersPage';
 import EmployeeAccountsPage from '@/pages/employee/AccountsPage';
-import EmployeeGrandClientsPage from '@/pages/employee/GrandClientsPage';
+import EmployeeClientsPage from '@/pages/employee/ClientsPage';
 import EmployeeVendorsPage from '@/pages/employee/VendorsPage';
 import EmployeeRulesRatesPage from '@/pages/employee/RulesRatesPage';
 import AccountUsersPage from '@/pages/account/UsersPage';
-import AccountGrandClientUsersPage from '@/pages/account/GrandClientUsersPage';
+import AccountClientUsersPage from '@/pages/account/ClientUsersPage';
 import AccountVendorUsersPage from '@/pages/account/VendorUsersPage';
-import AccountGrandClientsPage from '@/pages/account/GrandClientsPage';
-import AccountGrandClientRulesRatesPage from '@/pages/account/GrandClientRulesRatesPage';
-import AccountGrandClientFileDropPage from '@/pages/account/GrandClientFileDropPage';
+import AccountClientsPage from '@/pages/account/ClientsPage';
+import AccountClientRulesRatesPage from '@/pages/account/ClientRulesRatesPage';
+import AccountClientFileDropPage from '@/pages/account/ClientFileDropPage';
 import AccountHomePage from '@/pages/account/HomePage';
 import { PlaceholderPage } from '@/components/navigation/PlaceholderPage';
 import { NAV_CONFIG, flattenNavItems } from '@/components/navigation/nav-config';
@@ -37,15 +37,15 @@ const PAGE_OVERRIDES: Partial<Record<string, () => ReactElement>> = {
   '/employee/home': EmployeeHomePage,
   '/employee/users': EmployeeUsersPage,
   '/employee/accounts': EmployeeAccountsPage,
-  '/employee/accounts/grand-clients': EmployeeGrandClientsPage,
-  '/employee/accounts/grand-clients/vendors': EmployeeVendorsPage,
+  '/employee/accounts/clients': EmployeeClientsPage,
+  '/employee/accounts/clients/vendors': EmployeeVendorsPage,
   '/employee/rules-rates': EmployeeRulesRatesPage,
   '/account/users': AccountUsersPage,
-  '/account/grand-client-users': AccountGrandClientUsersPage,
+  '/account/client-users': AccountClientUsersPage,
   '/account/vendor-users': AccountVendorUsersPage,
-  '/account/grand-clients': AccountGrandClientsPage,
-  '/account/grand-clients/rules-rates': AccountGrandClientRulesRatesPage,
-  '/account/grand-clients/file-drop': AccountGrandClientFileDropPage,
+  '/account/clients': AccountClientsPage,
+  '/account/clients/rules-rates': AccountClientRulesRatesPage,
+  '/account/clients/file-drop': AccountClientFileDropPage,
   '/account/home': AccountHomePage,
 };
 

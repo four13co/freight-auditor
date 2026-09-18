@@ -21,21 +21,25 @@ const TenantContext = createContext<TenantContextValue | undefined>(undefined);
 
 /**
  * 86e3a6rak. Employee switches between every Client (GET
- * /api/internal/tenants). The Account role switches between their own Grand
- * Clients, sourced from `in-memory-hierarchy-store.ts` (no real
- * `grand_client` backend concept exists yet -- Bridge approved this stand-in
- * 2026-09-17, tracked separately under 86e3a76bz) scoped by the tenant's own
- * client id (`CLIENT_ID_STORAGE_KEY`, the same id `authHeaders()` already
- * sends -- this is the Client tenant entity's id, unrelated to the 'account'
- * role rename per 86e3anfun). Grand Client/Vendor have no tenant to switch
- * between, so `options` stays empty for them and TenantPicker renders
- * nothing -- both AC "hidden for roles that don't need it" and the "no
- * tenants" graceful-handling case, by construction.
+ * /api/internal/tenants). The Account role switches between their own
+ * (in-memory) Clients -- renamed from "Grand Client" by 86e3anfux, sourced
+ * from `in-memory-hierarchy-store.ts` (no real `grand_client` backend
+ * concept exists yet -- Bridge approved this stand-in 2026-09-17, tracked
+ * separately under 86e3a76bz) scoped by the tenant's own client id
+ * (`CLIENT_ID_STORAGE_KEY`, the same id `authHeaders()` already sends --
+ * this is the *backend* Client tenant entity's id, unrelated to both the
+ * 'account' role rename per 86e3anfun and the in-memory Client entity this
+ * comment is otherwise describing -- three distinct "Client"s in one
+ * sentence; see 86e3anfux's PR body Ambiguity notes). Grand Client/Vendor
+ * (the still-unreachable AppRole values) have no tenant to switch between,
+ * so `options` stays empty for them and TenantPicker renders nothing --
+ * both AC "hidden for roles that don't need it" and the "no tenants"
+ * graceful-handling case, by construction.
  *
  * `activeGrandClient`/`setActiveGrandClient` also serves the Employee's own
- * hierarchy drill-down (GrandClientsPage -> VendorsPage): an ad-hoc,
- * unpersisted selection unrelated to the Account role's own persisted pick
- * below -- only one of the two is ever live in a given session.
+ * hierarchy drill-down (ClientsPage -> VendorsPage): an ad-hoc, unpersisted
+ * selection unrelated to the Account role's own persisted pick below --
+ * only one of the two is ever live in a given session.
  */
 export function TenantProvider({ children }: { children: React.ReactNode }) {
   const { role } = useAuth();

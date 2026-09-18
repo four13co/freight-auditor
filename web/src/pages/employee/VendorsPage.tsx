@@ -72,7 +72,7 @@ function VendorFormDialog({
 
 export default function VendorsPage() {
   const { activeGrandClient } = useTenant();
-  const scopeKey = activeGrandClient ? `grandClient:${activeGrandClient.id}` : null;
+  const scopeKey = activeGrandClient ? `client:${activeGrandClient.id}` : null;
   const { entities, create, update, toggleStatus } = useScopedEntities(scopeKey);
   const [createOpen, setCreateOpen] = useState(false);
   const [editing, setEditing] = useState<ScopedEntity | null>(null);
@@ -112,7 +112,7 @@ export default function VendorsPage() {
     return (
       <div className="flex flex-col gap-2">
         <h1 className="text-2xl font-semibold tracking-tight">Vendors</h1>
-        <p className="text-sm text-muted-foreground">Select a Grand Client to view its vendors.</p>
+        <p className="text-sm text-muted-foreground">Select a Client to view its vendors.</p>
       </div>
     );
   }

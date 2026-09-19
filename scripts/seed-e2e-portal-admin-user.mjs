@@ -34,9 +34,11 @@ export async function seedE2ePortalAdminUser({ pool } = {}) {
       userId = result.user.id;
     }
 
+    // 86e3a76bz (migration 0084): ON CONFLICT target updated to match the
+    // new unique index -- see scripts/seed-membership.mjs's own comment.
     await client.query(
       `INSERT INTO membership (user_id, account_id, role) VALUES ($1, $2, 'account_admin')
-       ON CONFLICT (user_id, account_id) DO NOTHING`,
+       ON CONFLICT (user_id, COALESCE(vendor_id, client_id, account_id)) DO NOTHING`,
       [userId, DEV_CLIENT_ID],
     );
   } finally {

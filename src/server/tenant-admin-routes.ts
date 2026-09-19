@@ -8,6 +8,8 @@ import { updateClient } from '../modules/identity/update-account.js';
 import { createCustomerBranding } from '../modules/identity/create-customer-branding.js';
 import { updateCustomerBranding } from '../modules/identity/update-customer-branding.js';
 import { createMembership } from '../modules/identity/create-membership.js';
+import { createTenantClient, listTenantClients, updateTenantClient } from '../modules/identity/tenant-client.js';
+import { createTenantVendor, listTenantVendors, updateTenantVendor } from '../modules/identity/tenant-vendor.js';
 import { listTenantMembers } from '../modules/identity/list-tenant-members.js';
 import { removeMembership } from '../modules/identity/remove-membership.js';
 import { updateTenantMembership } from '../modules/identity/update-tenant-membership.js';
@@ -20,7 +22,19 @@ import {
   listContractRates, createContractRate, updateContractRate, deleteContractRate, ContractRateNotFoundError,
 } from '../modules/rate-engine/contract-rate-admin.js';
 
-const MEMBERSHIP_ROLES = new Set(['analyst', 'lead', 'account_viewer', 'account_admin']);
+const MEMBERSHIP_ROLES = new Set([
+  'analyst', 'lead', 'account_viewer', 'account_admin',
+  // 86e3a76bz (migration 0084): Client- and Vendor-level roles. NOT a
+  // reuse of the client_viewer/client_admin literals migration 0083 freed --
+  // see that migration's own header comment for why reuse was rejected.
+  'client_scope_viewer', 'client_scope_admin', 'vendor_scope_viewer', 'vendor_scope_admin',
+]);
+// 86e3a76bz: role sets accepted at each NEW scope level's own membership-assignment
+// endpoint -- narrower than the full MEMBERSHIP_ROLES set above (which stays the
+// account-level endpoint's own validation, unchanged) so a Client-scoped invite can't
+// be handed an account_admin or vendor_scope_* role that means something else entirely.
+const CLIENT_SCOPE_MEMBERSHIP_ROLES = new Set(['analyst', 'lead', 'client_scope_viewer', 'client_scope_admin']);
+const VENDOR_SCOPE_MEMBERSHIP_ROLES = new Set(['analyst', 'lead', 'vendor_scope_viewer', 'vendor_scope_admin']);
 const MAX_LIMIT = 200;
 const DEFAULT_LIMIT = 50;
 
@@ -321,6 +335,227 @@ export async function registerTenantAdminRoutes(routes: FastifyInstance): Promis
         return;
       }
       await reply.code(204).send();
+    });
+
+    // 86e3a76bz: Client (middle-tier) CRUD, replacing
+    // web/src/lib/in-memory-hierarchy-store.ts's session-lifetime stand-in
+    // -- see that module's header comment and this PR's description for the
+    // migration plan swapping its call sites over to these endpoints.
+    adminRoutes.post('/api/internal/tenants/:id/clients', async (request, reply) => {
+      const { id } = request.params as { id: string };
+      if (!isUuid(id)) {
+        await reply.code(400).send({ error: 'invalid tenant id: must be a well-formed UUID' });
+        return;
+      }
+      const body = request.body as { name?: unknown };
+      if (typeof body.name !== 'string' || body.name.trim() === '') {
+        await reply.code(400).send({ error: 'invalid name: must be a non-empty string' });
+        return;
+      }
+
+      try {
+        const created = await withTenantTx(request.tenantContext!, (client) =>
+          createTenantClient(client, { accountId: id, name: body.name as string }),
+        );
+        await reply.code(201).send({ id: created.id, accountId: id, name: body.name, isActive: true });
+      } catch (err) {
+        if (isUniqueViolation(err)) {
+          await reply.code(409).send({ error: 'a client with this name already exists for this tenant' });
+          return;
+        }
+        throw err;
+      }
+    });
+
+    adminRoutes.get('/api/internal/tenants/:id/clients', async (request, reply) => {
+      const { id } = request.params as { id: string };
+      if (!isUuid(id)) {
+        await reply.code(400).send({ error: 'invalid tenant id: must be a well-formed UUID' });
+        return;
+      }
+      const clients = await withTenantTx(request.tenantContext!, (client) => listTenantClients(client, id));
+      return { clients };
+    });
+
+    adminRoutes.patch('/api/internal/tenants/:id/clients/:clientId', async (request, reply) => {
+      const { id, clientId } = request.params as { id: string; clientId: string };
+      if (!isUuid(id) || !isUuid(clientId)) {
+        await reply.code(400).send({ error: 'invalid id: must be a well-formed UUID' });
+        return;
+      }
+      const body = request.body as { name?: unknown; isActive?: unknown };
+      if (body.name !== undefined && (typeof body.name !== 'string' || body.name.trim() === '')) {
+        await reply.code(400).send({ error: 'invalid name: must be a non-empty string' });
+        return;
+      }
+      if (body.isActive !== undefined && typeof body.isActive !== 'boolean') {
+        await reply.code(400).send({ error: 'invalid isActive: must be a boolean' });
+        return;
+      }
+
+      const updated = await withTenantTx(request.tenantContext!, (client) =>
+        updateTenantClient(client, id, clientId, { name: body.name as string | undefined, isActive: body.isActive as boolean | undefined }),
+      );
+      if (!updated) {
+        await reply.code(404).send({ error: 'client not found' });
+        return;
+      }
+      return updated;
+    });
+
+    // 86e3a76bz: Client-scoped membership assignment -- same
+    // idempotent-insert-then-409-on-conflict pattern as the account-level
+    // POST .../members above, scoped one level down.
+    adminRoutes.post('/api/internal/tenants/:id/clients/:clientId/members', async (request, reply) => {
+      const { id, clientId } = request.params as { id: string; clientId: string };
+      if (!isUuid(id) || !isUuid(clientId)) {
+        await reply.code(400).send({ error: 'invalid id: must be a well-formed UUID' });
+        return;
+      }
+      const body = request.body as { email?: unknown; fullName?: unknown; role?: unknown };
+      if (typeof body.email !== 'string' || body.email.trim() === '') {
+        await reply.code(400).send({ error: 'invalid email: must be a non-empty string' });
+        return;
+      }
+      if (typeof body.role !== 'string' || !CLIENT_SCOPE_MEMBERSHIP_ROLES.has(body.role)) {
+        await reply.code(400).send({ error: `invalid role: must be one of ${[...CLIENT_SCOPE_MEMBERSHIP_ROLES].join(', ')}` });
+        return;
+      }
+      if (body.fullName !== undefined && body.fullName !== null && typeof body.fullName !== 'string') {
+        await reply.code(400).send({ error: 'invalid fullName: must be a string' });
+        return;
+      }
+
+      const result = await withTenantTx(request.tenantContext!, (client) =>
+        createMembership(client, {
+          clientId: id,
+          scopeClientId: clientId,
+          email: body.email as string,
+          fullName: (body.fullName as string | null | undefined) ?? null,
+          role: body.role as string,
+        }),
+      );
+
+      if (!result.created) {
+        await reply.code(409).send({ error: 'this user is already a member at this scope' });
+        return;
+      }
+      await reply.code(201).send({ membershipId: result.membershipId, userId: result.userId, isNewUser: result.isNewUser, role: body.role });
+    });
+
+    // 86e3a76bz: Vendor (bottom-tier) CRUD, nested under its owning Client.
+    adminRoutes.post('/api/internal/tenants/:id/clients/:clientId/vendors', async (request, reply) => {
+      const { id, clientId } = request.params as { id: string; clientId: string };
+      if (!isUuid(id) || !isUuid(clientId)) {
+        await reply.code(400).send({ error: 'invalid id: must be a well-formed UUID' });
+        return;
+      }
+      const body = request.body as { name?: unknown; contactInfo?: unknown };
+      if (typeof body.name !== 'string' || body.name.trim() === '') {
+        await reply.code(400).send({ error: 'invalid name: must be a non-empty string' });
+        return;
+      }
+      if (body.contactInfo !== undefined && body.contactInfo !== null && typeof body.contactInfo !== 'string') {
+        await reply.code(400).send({ error: 'invalid contactInfo: must be a string' });
+        return;
+      }
+
+      try {
+        const created = await withTenantTx(request.tenantContext!, (client) =>
+          createTenantVendor(client, { accountId: id, clientId, name: body.name as string, contactInfo: (body.contactInfo as string | null | undefined) ?? null }),
+        );
+        await reply.code(201).send({ id: created.id, accountId: id, clientId, name: body.name, contactInfo: body.contactInfo ?? null, isActive: true });
+      } catch (err) {
+        if (isUniqueViolation(err)) {
+          await reply.code(409).send({ error: 'a vendor with this name already exists for this client' });
+          return;
+        }
+        throw err;
+      }
+    });
+
+    adminRoutes.get('/api/internal/tenants/:id/clients/:clientId/vendors', async (request, reply) => {
+      const { id, clientId } = request.params as { id: string; clientId: string };
+      if (!isUuid(id) || !isUuid(clientId)) {
+        await reply.code(400).send({ error: 'invalid id: must be a well-formed UUID' });
+        return;
+      }
+      const vendors = await withTenantTx(request.tenantContext!, (client) => listTenantVendors(client, id, clientId));
+      return { vendors };
+    });
+
+    adminRoutes.patch('/api/internal/tenants/:id/clients/:clientId/vendors/:vendorId', async (request, reply) => {
+      const { id, clientId, vendorId } = request.params as { id: string; clientId: string; vendorId: string };
+      if (!isUuid(id) || !isUuid(clientId) || !isUuid(vendorId)) {
+        await reply.code(400).send({ error: 'invalid id: must be a well-formed UUID' });
+        return;
+      }
+      const body = request.body as { name?: unknown; contactInfo?: unknown; isActive?: unknown };
+      if (body.name !== undefined && (typeof body.name !== 'string' || body.name.trim() === '')) {
+        await reply.code(400).send({ error: 'invalid name: must be a non-empty string' });
+        return;
+      }
+      if (body.contactInfo !== undefined && body.contactInfo !== null && typeof body.contactInfo !== 'string') {
+        await reply.code(400).send({ error: 'invalid contactInfo: must be a string' });
+        return;
+      }
+      if (body.isActive !== undefined && typeof body.isActive !== 'boolean') {
+        await reply.code(400).send({ error: 'invalid isActive: must be a boolean' });
+        return;
+      }
+
+      const updated = await withTenantTx(request.tenantContext!, (client) =>
+        updateTenantVendor(client, id, clientId, vendorId, {
+          name: body.name as string | undefined,
+          contactInfo: body.contactInfo as string | null | undefined,
+          isActive: body.isActive as boolean | undefined,
+        }),
+      );
+      if (!updated) {
+        await reply.code(404).send({ error: 'vendor not found' });
+        return;
+      }
+      return updated;
+    });
+
+    // 86e3a76bz: Vendor-scoped membership assignment -- same pattern as the
+    // Client-scoped endpoint above, one level deeper.
+    adminRoutes.post('/api/internal/tenants/:id/clients/:clientId/vendors/:vendorId/members', async (request, reply) => {
+      const { id, clientId, vendorId } = request.params as { id: string; clientId: string; vendorId: string };
+      if (!isUuid(id) || !isUuid(clientId) || !isUuid(vendorId)) {
+        await reply.code(400).send({ error: 'invalid id: must be a well-formed UUID' });
+        return;
+      }
+      const body = request.body as { email?: unknown; fullName?: unknown; role?: unknown };
+      if (typeof body.email !== 'string' || body.email.trim() === '') {
+        await reply.code(400).send({ error: 'invalid email: must be a non-empty string' });
+        return;
+      }
+      if (typeof body.role !== 'string' || !VENDOR_SCOPE_MEMBERSHIP_ROLES.has(body.role)) {
+        await reply.code(400).send({ error: `invalid role: must be one of ${[...VENDOR_SCOPE_MEMBERSHIP_ROLES].join(', ')}` });
+        return;
+      }
+      if (body.fullName !== undefined && body.fullName !== null && typeof body.fullName !== 'string') {
+        await reply.code(400).send({ error: 'invalid fullName: must be a string' });
+        return;
+      }
+
+      const result = await withTenantTx(request.tenantContext!, (client) =>
+        createMembership(client, {
+          clientId: id,
+          scopeClientId: clientId,
+          scopeVendorId: vendorId,
+          email: body.email as string,
+          fullName: (body.fullName as string | null | undefined) ?? null,
+          role: body.role as string,
+        }),
+      );
+
+      if (!result.created) {
+        await reply.code(409).send({ error: 'this user is already a member at this scope' });
+        return;
+      }
+      await reply.code(201).send({ membershipId: result.membershipId, userId: result.userId, isNewUser: result.isNewUser, role: body.role });
     });
 
     // 86e3a6rg1 Rates tab: contract-version picker for the create-rate form.

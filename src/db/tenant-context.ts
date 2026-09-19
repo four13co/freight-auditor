@@ -7,13 +7,26 @@ import { getPool, getReplicaPool, APP_ROLE } from './pool.js';
  *   clientIds  — the client uuids this request may see. Empty + non-internal
  *                means "no tenant rows visible" (only shared catalog rows).
  *   internal   — an internal analyst: RLS grants cross-client (portfolio) read.
+ *   scopedClientIds / scopedVendorIds — 86e3a76bz: the Client- and
+ *                Vendor-level scope GUCs `apply_hierarchical_tenant_rls()`
+ *                (migration 0084) reads on the `client`/`vendor` tables.
+ *                DORMANT as of 0084: nothing populates these from a real
+ *                session yet (no portal auth resolver reads a Client- or
+ *                Vendor-scoped membership) — they exist so the schema is
+ *                ready, and so a test can exercise the RLS branch directly.
+ *                Named `scoped*` rather than reusing `clientIds` to avoid
+ *                colliding with that field's own (pre-0083-rename-legacy)
+ *                name, which actually holds ACCOUNT ids.
  *
  * These map 1:1 onto the transaction-scoped GUCs the RLS policies read
- * (`app.current_account_ids`, `app.is_internal` — see migrations 0001/0009).
+ * (`app.current_account_ids`, `app.is_internal` — see migrations 0001/0009 —
+ * plus `app.current_client_ids`/`app.current_vendor_ids`, migration 0084).
  */
 export interface TenantContext {
   clientIds?: string[];
   internal?: boolean;
+  scopedClientIds?: string[];
+  scopedVendorIds?: string[];
 }
 
 /**
@@ -41,6 +54,14 @@ export async function setTenantTxScope(client: pg.PoolClient, ctx: TenantContext
   await client.query('SELECT set_config($1, $2, true)', [
     'app.current_account_ids',
     (ctx.clientIds ?? []).join(','),
+  ]);
+  await client.query('SELECT set_config($1, $2, true)', [
+    'app.current_scoped_client_ids',
+    (ctx.scopedClientIds ?? []).join(','),
+  ]);
+  await client.query('SELECT set_config($1, $2, true)', [
+    'app.current_scoped_vendor_ids',
+    (ctx.scopedVendorIds ?? []).join(','),
   ]);
   await client.query('SELECT set_config($1, $2, true)', [
     'app.is_internal',

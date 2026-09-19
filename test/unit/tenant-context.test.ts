@@ -30,21 +30,27 @@ function mockClient() {
 }
 
 describe('setTenantTxScope', () => {
-  it('sets the client-scope and internal GUCs, then drops into the app role, in order', async () => {
+  it('sets the client-scope, scoped-client/vendor, and internal GUCs, then drops into the app role, in order', async () => {
     const client = mockClient();
-    await setTenantTxScope(client, { clientIds: ['a', 'b'], internal: true });
+    await setTenantTxScope(client, { clientIds: ['a', 'b'], internal: true, scopedClientIds: ['c'], scopedVendorIds: ['d'] });
     const calls = (client.query as ReturnType<typeof vi.fn>).mock.calls;
     expect(calls[0]).toEqual(['SELECT set_config($1, $2, true)', ['app.current_account_ids', 'a,b']]);
-    expect(calls[1]).toEqual(['SELECT set_config($1, $2, true)', ['app.is_internal', 'true']]);
-    expect(calls[2]).toEqual(['SET LOCAL ROLE freight_app']);
+    // 86e3a76bz (migration 0084): two new dormant scope GUCs, set between the
+    // account-scope and is_internal GUCs.
+    expect(calls[1]).toEqual(['SELECT set_config($1, $2, true)', ['app.current_scoped_client_ids', 'c']]);
+    expect(calls[2]).toEqual(['SELECT set_config($1, $2, true)', ['app.current_scoped_vendor_ids', 'd']]);
+    expect(calls[3]).toEqual(['SELECT set_config($1, $2, true)', ['app.is_internal', 'true']]);
+    expect(calls[4]).toEqual(['SET LOCAL ROLE freight_app']);
   });
 
-  it('defaults to an empty client scope and non-internal when the context omits both', async () => {
+  it('defaults to an empty client scope, empty scoped-client/vendor scope, and non-internal when the context omits all', async () => {
     const client = mockClient();
     await setTenantTxScope(client, {});
     const calls = (client.query as ReturnType<typeof vi.fn>).mock.calls;
     expect(calls[0]).toEqual(['SELECT set_config($1, $2, true)', ['app.current_account_ids', '']]);
-    expect(calls[1]).toEqual(['SELECT set_config($1, $2, true)', ['app.is_internal', 'false']]);
+    expect(calls[1]).toEqual(['SELECT set_config($1, $2, true)', ['app.current_scoped_client_ids', '']]);
+    expect(calls[2]).toEqual(['SELECT set_config($1, $2, true)', ['app.current_scoped_vendor_ids', '']]);
+    expect(calls[3]).toEqual(['SELECT set_config($1, $2, true)', ['app.is_internal', 'false']]);
   });
 });
 
@@ -158,8 +164,10 @@ describe('withTenantReadTx', () => {
     const calls = (replicaClient.query as ReturnType<typeof vi.fn>).mock.calls;
     expect(calls[0]).toEqual(['BEGIN']);
     expect(calls[1]).toEqual(['SELECT set_config($1, $2, true)', ['app.current_account_ids', 'a,b']]);
-    expect(calls[2]).toEqual(['SELECT set_config($1, $2, true)', ['app.is_internal', 'true']]);
-    expect(calls[3]).toEqual(['SET LOCAL ROLE freight_app']);
+    expect(calls[2]).toEqual(['SELECT set_config($1, $2, true)', ['app.current_scoped_client_ids', '']]);
+    expect(calls[3]).toEqual(['SELECT set_config($1, $2, true)', ['app.current_scoped_vendor_ids', '']]);
+    expect(calls[4]).toEqual(['SELECT set_config($1, $2, true)', ['app.is_internal', 'true']]);
+    expect(calls[5]).toEqual(['SET LOCAL ROLE freight_app']);
     vi.doUnmock('../../src/db/pool.js');
   });
 

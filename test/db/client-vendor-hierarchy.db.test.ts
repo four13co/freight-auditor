@@ -1,6 +1,8 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import type pg from 'pg';
 import { makePool, withOwnerTx, withAppTx } from './helpers.js';
+import { createTenantVendor, TenantVendorParentNotFoundError, vendorBelongsToClient } from '../../src/modules/identity/tenant-vendor.js';
+import { clientBelongsToAccount } from '../../src/modules/identity/tenant-client.js';
 
 /**
  * 86e3a76bz (migration 0084): RLS isolation for the new `client`/`vendor`
@@ -231,6 +233,88 @@ describe('membership scope uniqueness (DB)', () => {
           [userId, accountId, clientId, vendorId],
         ),
       ).rejects.toThrow(/duplicate key|unique constraint/i);
+    });
+  });
+});
+
+/**
+ * 86e3a76bz Review fix (PR #419 FAIL): `createTenantVendor` and the
+ * vendor-scoped membership-assignment route took `accountId`/`clientId`/
+ * `vendorId` as independent URL path params with no verification that they
+ * actually form a real ancestor chain -- mirrors contract-rate-admin.ts's
+ * createContractRate ownership-check pattern.
+ */
+describe('parent-ownership validation (DB)', () => {
+  let pool: pg.Pool;
+  let accountA: string;
+  let accountB: string;
+  let clientUnderA: string;
+  let clientUnderB: string;
+  let vendorUnderClientA: string;
+  const tag = `pov-${Date.now()}`;
+
+  beforeAll(async () => {
+    pool = makePool();
+    const owner = await pool.connect();
+    try {
+      const a = await owner.query(`INSERT INTO account (name, slug) VALUES ('POV-A', $1) RETURNING id`, [`${tag}-a`]);
+      const b = await owner.query(`INSERT INTO account (name, slug) VALUES ('POV-B', $1) RETURNING id`, [`${tag}-b`]);
+      accountA = a.rows[0].id;
+      accountB = b.rows[0].id;
+
+      const ca = await owner.query(`INSERT INTO client (account_id, name) VALUES ($1, 'POV Client A') RETURNING id`, [accountA]);
+      const cb = await owner.query(`INSERT INTO client (account_id, name) VALUES ($1, 'POV Client B') RETURNING id`, [accountB]);
+      clientUnderA = ca.rows[0].id;
+      clientUnderB = cb.rows[0].id;
+
+      const v = await owner.query(`INSERT INTO vendor (account_id, client_id, name) VALUES ($1, $2, 'POV Vendor A') RETURNING id`, [accountA, clientUnderA]);
+      vendorUnderClientA = v.rows[0].id;
+    } finally {
+      owner.release();
+    }
+  });
+
+  afterAll(async () => {
+    const owner = await pool.connect();
+    try {
+      await owner.query(`DELETE FROM vendor WHERE account_id = ANY($1)`, [[accountA, accountB]]);
+      await owner.query(`DELETE FROM client WHERE account_id = ANY($1)`, [[accountA, accountB]]);
+      await owner.query(`DELETE FROM account WHERE id = ANY($1)`, [[accountA, accountB]]);
+    } finally {
+      owner.release();
+    }
+    await pool.end();
+  });
+
+  it('clientBelongsToAccount is true for the real pair, false for a mismatched one', async () => {
+    await withOwnerTx(pool, async (c) => {
+      expect(await clientBelongsToAccount(c, accountA, clientUnderA)).toBe(true);
+      expect(await clientBelongsToAccount(c, accountB, clientUnderA)).toBe(false);
+    });
+  });
+
+  it('vendorBelongsToClient is true for the real pair, false for a mismatched one', async () => {
+    await withOwnerTx(pool, async (c) => {
+      expect(await vendorBelongsToClient(c, clientUnderA, vendorUnderClientA)).toBe(true);
+      expect(await vendorBelongsToClient(c, clientUnderB, vendorUnderClientA)).toBe(false);
+    });
+  });
+
+  it('createTenantVendor throws TenantVendorParentNotFoundError when clientId does not belong to accountId', async () => {
+    await withOwnerTx(pool, async (c) => {
+      await expect(
+        createTenantVendor(c, { accountId: accountB, clientId: clientUnderA, name: 'Sneaky Vendor' }),
+      ).rejects.toBeInstanceOf(TenantVendorParentNotFoundError);
+
+      const { rows } = await c.query(`SELECT 1 FROM vendor WHERE name = 'Sneaky Vendor'`);
+      expect(rows).toHaveLength(0);
+    });
+  });
+
+  it('createTenantVendor succeeds when clientId genuinely belongs to accountId', async () => {
+    await withOwnerTx(pool, async (c) => {
+      const created = await createTenantVendor(c, { accountId: accountA, clientId: clientUnderA, name: 'Legit Vendor' });
+      expect(created.id).toBeTruthy();
     });
   });
 });

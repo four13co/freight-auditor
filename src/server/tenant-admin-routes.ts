@@ -8,8 +8,8 @@ import { updateClient } from '../modules/identity/update-account.js';
 import { createCustomerBranding } from '../modules/identity/create-customer-branding.js';
 import { updateCustomerBranding } from '../modules/identity/update-customer-branding.js';
 import { createMembership } from '../modules/identity/create-membership.js';
-import { createTenantClient, listTenantClients, updateTenantClient } from '../modules/identity/tenant-client.js';
-import { createTenantVendor, listTenantVendors, updateTenantVendor } from '../modules/identity/tenant-vendor.js';
+import { createTenantClient, listTenantClients, updateTenantClient, clientBelongsToAccount } from '../modules/identity/tenant-client.js';
+import { createTenantVendor, listTenantVendors, updateTenantVendor, vendorBelongsToClient, TenantVendorParentNotFoundError } from '../modules/identity/tenant-vendor.js';
 import { listTenantMembers } from '../modules/identity/list-tenant-members.js';
 import { removeMembership } from '../modules/identity/remove-membership.js';
 import { updateTenantMembership } from '../modules/identity/update-tenant-membership.js';
@@ -426,16 +426,26 @@ export async function registerTenantAdminRoutes(routes: FastifyInstance): Promis
         return;
       }
 
-      const result = await withTenantTx(request.tenantContext!, (client) =>
-        createMembership(client, {
+      const result = await withTenantTx(request.tenantContext!, async (client) => {
+        // 86e3a76bz Review fix: `id` (account) and `clientId` are two independent
+        // URL path params -- verify the ancestor chain before inserting a
+        // membership row that would otherwise carry a mismatched pair.
+        if (!(await clientBelongsToAccount(client, id, clientId))) {
+          return { parentNotFound: true as const };
+        }
+        return { parentNotFound: false as const, ...(await createMembership(client, {
           clientId: id,
           scopeClientId: clientId,
           email: body.email as string,
           fullName: (body.fullName as string | null | undefined) ?? null,
           role: body.role as string,
-        }),
-      );
+        })) };
+      });
 
+      if (result.parentNotFound) {
+        await reply.code(404).send({ error: 'client not found for this tenant' });
+        return;
+      }
       if (!result.created) {
         await reply.code(409).send({ error: 'this user is already a member at this scope' });
         return;
@@ -466,6 +476,10 @@ export async function registerTenantAdminRoutes(routes: FastifyInstance): Promis
         );
         await reply.code(201).send({ id: created.id, accountId: id, clientId, name: body.name, contactInfo: body.contactInfo ?? null, isActive: true });
       } catch (err) {
+        if (err instanceof TenantVendorParentNotFoundError) {
+          await reply.code(404).send({ error: 'client not found for this tenant' });
+          return;
+        }
         if (isUniqueViolation(err)) {
           await reply.code(409).send({ error: 'a vendor with this name already exists for this client' });
           return;
@@ -540,17 +554,28 @@ export async function registerTenantAdminRoutes(routes: FastifyInstance): Promis
         return;
       }
 
-      const result = await withTenantTx(request.tenantContext!, (client) =>
-        createMembership(client, {
+      const result = await withTenantTx(request.tenantContext!, async (client) => {
+        // 86e3a76bz Review fix: verify the FULL ancestor chain (client belongs
+        // to account, vendor belongs to client) before inserting a membership
+        // row -- three independent URL path params, nothing else ties them
+        // together. See createTenantVendor's own comment for the full rationale.
+        if (!(await clientBelongsToAccount(client, id, clientId)) || !(await vendorBelongsToClient(client, clientId, vendorId))) {
+          return { parentNotFound: true as const };
+        }
+        return { parentNotFound: false as const, ...(await createMembership(client, {
           clientId: id,
           scopeClientId: clientId,
           scopeVendorId: vendorId,
           email: body.email as string,
           fullName: (body.fullName as string | null | undefined) ?? null,
           role: body.role as string,
-        }),
-      );
+        })) };
+      });
 
+      if (result.parentNotFound) {
+        await reply.code(404).send({ error: 'client or vendor not found for this tenant' });
+        return;
+      }
       if (!result.created) {
         await reply.code(409).send({ error: 'this user is already a member at this scope' });
         return;

@@ -1291,6 +1291,7 @@ describe('tenant-admin-routes', () => {
     it('creates a Client-scoped membership and returns 201', async () => {
       mockAuth(true);
       mockTx();
+      vi.doMock('../../src/modules/identity/tenant-client.js', () => ({ clientBelongsToAccount: vi.fn(async () => true) }));
       const createMembership = vi.fn(async () => ({ created: true, membershipId: MEMBERSHIP_ID, userId: 'user-1', isNewUser: true }));
       vi.doMock('../../src/modules/identity/create-membership.js', () => ({ createMembership }));
       const { registerTenantAdminRoutes } = await import('../../src/server/tenant-admin-routes.js');
@@ -1306,6 +1307,27 @@ describe('tenant-admin-routes', () => {
       expect(createMembership).toHaveBeenCalledWith({}, {
         clientId: TENANT_ID, scopeClientId: CLIENT_ENTITY_ID, email: 'new@example.com', fullName: null, role: 'client_scope_admin',
       });
+    });
+
+    it('86e3a76bz Review fix: returns 404 without calling createMembership when clientId does not belong to accountId', async () => {
+      mockAuth(true);
+      mockTx();
+      const clientBelongsToAccount = vi.fn(async () => false);
+      vi.doMock('../../src/modules/identity/tenant-client.js', () => ({ clientBelongsToAccount }));
+      const createMembership = vi.fn(async () => ({ created: true, membershipId: MEMBERSHIP_ID, userId: 'user-1', isNewUser: true }));
+      vi.doMock('../../src/modules/identity/create-membership.js', () => ({ createMembership }));
+      const { registerTenantAdminRoutes } = await import('../../src/server/tenant-admin-routes.js');
+      app = Fastify();
+      await app.register(registerTenantAdminRoutes);
+      await app.ready();
+
+      const response = await app.inject({
+        method: 'POST', url: `/api/internal/tenants/${TENANT_ID}/clients/${CLIENT_ENTITY_ID}/members`,
+        payload: { email: 'new@example.com', role: 'client_scope_admin' },
+      });
+      expect(response.statusCode).toBe(404);
+      expect(clientBelongsToAccount).toHaveBeenCalledWith({}, TENANT_ID, CLIENT_ENTITY_ID);
+      expect(createMembership).not.toHaveBeenCalled();
     });
 
     it('rejects an account-level role with 400 (not valid at Client scope)', async () => {
@@ -1326,6 +1348,7 @@ describe('tenant-admin-routes', () => {
     it('returns 409 when already a member at this scope', async () => {
       mockAuth(true);
       mockTx();
+      vi.doMock('../../src/modules/identity/tenant-client.js', () => ({ clientBelongsToAccount: vi.fn(async () => true) }));
       vi.doMock('../../src/modules/identity/create-membership.js', () => ({
         createMembership: vi.fn(async () => ({ created: false, reason: 'already_member' })),
       }));
@@ -1379,9 +1402,13 @@ describe('tenant-admin-routes', () => {
     it('POST .../vendors returns 409 on a duplicate vendor name for this client', async () => {
       mockAuth(true);
       mockTx();
-      vi.doMock('../../src/modules/identity/tenant-vendor.js', () => ({
-        createTenantVendor: vi.fn(async () => { throw { code: '23505' }; }),
-      }));
+      vi.doMock('../../src/modules/identity/tenant-vendor.js', async () => {
+        const actual = await vi.importActual<typeof import('../../src/modules/identity/tenant-vendor.js')>('../../src/modules/identity/tenant-vendor.js');
+        return {
+          ...actual,
+          createTenantVendor: vi.fn(async () => { throw { code: '23505' }; }),
+        };
+      });
       const { registerTenantAdminRoutes } = await import('../../src/server/tenant-admin-routes.js');
       app = Fastify();
       await app.register(registerTenantAdminRoutes);
@@ -1391,6 +1418,27 @@ describe('tenant-admin-routes', () => {
         method: 'POST', url: `/api/internal/tenants/${TENANT_ID}/clients/${CLIENT_ENTITY_ID}/vendors`, payload: { name: 'dup' },
       });
       expect(response.statusCode).toBe(409);
+    });
+
+    it('86e3a76bz Review fix: POST .../vendors returns 404 when clientId does not belong to accountId', async () => {
+      mockAuth(true);
+      mockTx();
+      vi.doMock('../../src/modules/identity/tenant-vendor.js', async () => {
+        const actual = await vi.importActual<typeof import('../../src/modules/identity/tenant-vendor.js')>('../../src/modules/identity/tenant-vendor.js');
+        return {
+          ...actual,
+          createTenantVendor: vi.fn(async () => { throw new actual.TenantVendorParentNotFoundError('client not found for this tenant'); }),
+        };
+      });
+      const { registerTenantAdminRoutes } = await import('../../src/server/tenant-admin-routes.js');
+      app = Fastify();
+      await app.register(registerTenantAdminRoutes);
+      await app.ready();
+
+      const response = await app.inject({
+        method: 'POST', url: `/api/internal/tenants/${TENANT_ID}/clients/${CLIENT_ENTITY_ID}/vendors`, payload: { name: 'x' },
+      });
+      expect(response.statusCode).toBe(404);
     });
 
     it('GET .../vendors lists vendors for the client', async () => {
@@ -1448,6 +1496,8 @@ describe('tenant-admin-routes', () => {
     it('creates a Vendor-scoped membership and returns 201', async () => {
       mockAuth(true);
       mockTx();
+      vi.doMock('../../src/modules/identity/tenant-client.js', () => ({ clientBelongsToAccount: vi.fn(async () => true) }));
+      vi.doMock('../../src/modules/identity/tenant-vendor.js', () => ({ vendorBelongsToClient: vi.fn(async () => true) }));
       const createMembership = vi.fn(async () => ({ created: true, membershipId: MEMBERSHIP_ID, userId: 'user-1', isNewUser: true }));
       vi.doMock('../../src/modules/identity/create-membership.js', () => ({ createMembership }));
       const { registerTenantAdminRoutes } = await import('../../src/server/tenant-admin-routes.js');
@@ -1464,6 +1514,48 @@ describe('tenant-admin-routes', () => {
         clientId: TENANT_ID, scopeClientId: CLIENT_ENTITY_ID, scopeVendorId: VENDOR_ID,
         email: 'new@example.com', fullName: null, role: 'vendor_scope_viewer',
       });
+    });
+
+    it('86e3a76bz Review fix: returns 404 without calling createMembership when clientId does not belong to accountId', async () => {
+      mockAuth(true);
+      mockTx();
+      vi.doMock('../../src/modules/identity/tenant-client.js', () => ({ clientBelongsToAccount: vi.fn(async () => false) }));
+      vi.doMock('../../src/modules/identity/tenant-vendor.js', () => ({ vendorBelongsToClient: vi.fn(async () => true) }));
+      const createMembership = vi.fn(async () => ({ created: true, membershipId: MEMBERSHIP_ID, userId: 'user-1', isNewUser: true }));
+      vi.doMock('../../src/modules/identity/create-membership.js', () => ({ createMembership }));
+      const { registerTenantAdminRoutes } = await import('../../src/server/tenant-admin-routes.js');
+      app = Fastify();
+      await app.register(registerTenantAdminRoutes);
+      await app.ready();
+
+      const response = await app.inject({
+        method: 'POST', url: `/api/internal/tenants/${TENANT_ID}/clients/${CLIENT_ENTITY_ID}/vendors/${VENDOR_ID}/members`,
+        payload: { email: 'new@example.com', role: 'vendor_scope_viewer' },
+      });
+      expect(response.statusCode).toBe(404);
+      expect(createMembership).not.toHaveBeenCalled();
+    });
+
+    it('86e3a76bz Review fix: returns 404 without calling createMembership when vendorId does not belong to clientId', async () => {
+      mockAuth(true);
+      mockTx();
+      vi.doMock('../../src/modules/identity/tenant-client.js', () => ({ clientBelongsToAccount: vi.fn(async () => true) }));
+      const vendorBelongsToClient = vi.fn(async () => false);
+      vi.doMock('../../src/modules/identity/tenant-vendor.js', () => ({ vendorBelongsToClient }));
+      const createMembership = vi.fn(async () => ({ created: true, membershipId: MEMBERSHIP_ID, userId: 'user-1', isNewUser: true }));
+      vi.doMock('../../src/modules/identity/create-membership.js', () => ({ createMembership }));
+      const { registerTenantAdminRoutes } = await import('../../src/server/tenant-admin-routes.js');
+      app = Fastify();
+      await app.register(registerTenantAdminRoutes);
+      await app.ready();
+
+      const response = await app.inject({
+        method: 'POST', url: `/api/internal/tenants/${TENANT_ID}/clients/${CLIENT_ENTITY_ID}/vendors/${VENDOR_ID}/members`,
+        payload: { email: 'new@example.com', role: 'vendor_scope_viewer' },
+      });
+      expect(response.statusCode).toBe(404);
+      expect(vendorBelongsToClient).toHaveBeenCalledWith({}, CLIENT_ENTITY_ID, VENDOR_ID);
+      expect(createMembership).not.toHaveBeenCalled();
     });
 
     it('rejects a client-scope role with 400 (not valid at Vendor scope)', async () => {

@@ -33,6 +33,19 @@ function toRow(r: { id: string; account_id: string; name: string; is_active: boo
   return { id: r.id, accountId: r.account_id, name: r.name, isActive: r.is_active, createdAt: r.created_at };
 }
 
+/**
+ * 86e3a76bz Review fix: verifies `clientId` actually belongs to `accountId`
+ * before a caller is allowed to create a Vendor under it or assign a
+ * Client-/Vendor-scoped membership against it -- see
+ * tenant-vendor.ts's createTenantVendor for the full rationale (same check,
+ * same gap: two independent URL path params with nothing else tying them
+ * together).
+ */
+export async function clientBelongsToAccount(client: pg.PoolClient, accountId: string, clientId: string): Promise<boolean> {
+  const { rowCount } = await client.query(`SELECT 1 FROM client WHERE id = $1 AND account_id = $2`, [clientId, accountId]);
+  return (rowCount ?? 0) > 0;
+}
+
 export async function createTenantClient(
   client: pg.PoolClient,
   input: { accountId: string; name: string },

@@ -18,9 +18,19 @@
  * @returns {Promise<void>}
  */
 export async function upsertAnalystMembership(client, { userId, clientId }) {
+  // 86e3a76bz (migration 0084): the plain UNIQUE (user_id, account_id)
+  // constraint this ON CONFLICT target used to name was replaced by a
+  // unique index on (user_id, COALESCE(vendor_id, client_id, account_id))
+  // -- see that migration's own header comment for why (a user can now
+  // hold a separate Client-/Vendor-level membership in the same account).
+  // This seed helper always inserts an Account-level row (client_id/
+  // vendor_id both implicitly NULL), so its ON CONFLICT target must name
+  // the same expression the new index actually indexes, not the old
+  // plain-column pair -- Postgres infers the target index by matching the
+  // expression list exactly.
   await client.query(
     `INSERT INTO membership (user_id, account_id, role) VALUES ($1, $2, 'analyst')
-     ON CONFLICT (user_id, account_id) DO UPDATE SET role = EXCLUDED.role`,
+     ON CONFLICT (user_id, COALESCE(vendor_id, client_id, account_id)) DO UPDATE SET role = EXCLUDED.role`,
     [userId, clientId],
   );
 }

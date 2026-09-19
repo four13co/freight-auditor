@@ -49,9 +49,11 @@ export async function seedE2ePortalUser({ pool } = {}) {
     // seed-e2e-auth-user.mjs's fixture, so between the two real-session
     // fixtures this harness exercises both membership roles at least once,
     // not just is_internal true/false.
+    // 86e3a76bz (migration 0084): ON CONFLICT target updated to match the
+    // new unique index -- see scripts/seed-membership.mjs's own comment.
     await client.query(
       `INSERT INTO membership (user_id, account_id, role) VALUES ($1, $2, 'account_viewer')
-       ON CONFLICT (user_id, account_id) DO NOTHING`,
+       ON CONFLICT (user_id, COALESCE(vendor_id, client_id, account_id)) DO NOTHING`,
       [userId, DEV_CLIENT_ID],
     );
   } finally {

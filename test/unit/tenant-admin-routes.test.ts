@@ -67,6 +67,8 @@ describe('tenant-admin-routes', () => {
     vi.doUnmock('../../src/modules/rate-engine/contract-rate-admin.js');
     vi.doUnmock('../../src/modules/identity/update-tenant-membership.js');
     vi.doUnmock('../../src/modules/identity/list-all-tenant-members.js');
+    vi.doUnmock('../../src/modules/identity/tenant-client.js');
+    vi.doUnmock('../../src/modules/identity/tenant-vendor.js');
   });
 
   it('requires authentication: 401 with no identity at all', async () => {
@@ -1155,5 +1157,435 @@ describe('tenant-admin-routes', () => {
     expect(response.statusCode).toBe(200);
     expect(response.json().members).toHaveLength(1);
     expect(response.json().members[0]).toMatchObject({ id: MEMBERSHIP_ID, clientId: TENANT_ID, clientName: 'Acme' });
+  });
+
+  // 86e3a76bz: Client (middle-tier) CRUD + membership assignment.
+  const CLIENT_ENTITY_ID = '77777777-7777-4777-8777-777777777777';
+  const VENDOR_ID = '88888888-8888-4888-8888-888888888888';
+
+  describe('.../clients (Client entity CRUD)', () => {
+    it('POST .../clients creates a client and returns 201', async () => {
+      mockAuth(true);
+      mockTx();
+      const createTenantClient = vi.fn(async () => ({ id: CLIENT_ENTITY_ID }));
+      vi.doMock('../../src/modules/identity/tenant-client.js', () => ({ createTenantClient }));
+      const { registerTenantAdminRoutes } = await import('../../src/server/tenant-admin-routes.js');
+      app = Fastify();
+      await app.register(registerTenantAdminRoutes);
+      await app.ready();
+
+      const response = await app.inject({
+        method: 'POST', url: `/api/internal/tenants/${TENANT_ID}/clients`, payload: { name: 'Acme Client' },
+      });
+      expect(response.statusCode).toBe(201);
+      expect(response.json()).toMatchObject({ id: CLIENT_ENTITY_ID, accountId: TENANT_ID, name: 'Acme Client', isActive: true });
+      expect(createTenantClient).toHaveBeenCalledWith({}, { accountId: TENANT_ID, name: 'Acme Client' });
+    });
+
+    it('POST .../clients rejects a missing name with 400', async () => {
+      mockAuth(true);
+      mockTx();
+      const { registerTenantAdminRoutes } = await import('../../src/server/tenant-admin-routes.js');
+      app = Fastify();
+      await app.register(registerTenantAdminRoutes);
+      await app.ready();
+
+      const response = await app.inject({ method: 'POST', url: `/api/internal/tenants/${TENANT_ID}/clients`, payload: {} });
+      expect(response.statusCode).toBe(400);
+    });
+
+    it('POST .../clients rejects an invalid tenant id with 400', async () => {
+      mockAuth(true);
+      mockTx();
+      const { registerTenantAdminRoutes } = await import('../../src/server/tenant-admin-routes.js');
+      app = Fastify();
+      await app.register(registerTenantAdminRoutes);
+      await app.ready();
+
+      const response = await app.inject({ method: 'POST', url: `/api/internal/tenants/${INVALID_ID}/clients`, payload: { name: 'x' } });
+      expect(response.statusCode).toBe(400);
+    });
+
+    it('POST .../clients returns 409 on a duplicate client name for this tenant', async () => {
+      mockAuth(true);
+      mockTx();
+      vi.doMock('../../src/modules/identity/tenant-client.js', () => ({
+        createTenantClient: vi.fn(async () => { throw { code: '23505' }; }),
+      }));
+      const { registerTenantAdminRoutes } = await import('../../src/server/tenant-admin-routes.js');
+      app = Fastify();
+      await app.register(registerTenantAdminRoutes);
+      await app.ready();
+
+      const response = await app.inject({
+        method: 'POST', url: `/api/internal/tenants/${TENANT_ID}/clients`, payload: { name: 'Acme Client' },
+      });
+      expect(response.statusCode).toBe(409);
+    });
+
+    it('GET .../clients lists clients for the tenant', async () => {
+      mockAuth(true);
+      mockTx();
+      vi.doMock('../../src/modules/identity/tenant-client.js', () => ({
+        listTenantClients: vi.fn(async () => [{ id: CLIENT_ENTITY_ID, accountId: TENANT_ID, name: 'Acme Client', isActive: true, createdAt: new Date() }]),
+      }));
+      const { registerTenantAdminRoutes } = await import('../../src/server/tenant-admin-routes.js');
+      app = Fastify();
+      await app.register(registerTenantAdminRoutes);
+      await app.ready();
+
+      const response = await app.inject({ method: 'GET', url: `/api/internal/tenants/${TENANT_ID}/clients` });
+      expect(response.statusCode).toBe(200);
+      expect(response.json().clients).toHaveLength(1);
+    });
+
+    it('PATCH .../clients/:clientId updates the client and returns 200', async () => {
+      mockAuth(true);
+      mockTx();
+      const updateTenantClient = vi.fn(async () => ({ id: CLIENT_ENTITY_ID, accountId: TENANT_ID, name: 'Renamed', isActive: false, createdAt: new Date() }));
+      vi.doMock('../../src/modules/identity/tenant-client.js', () => ({ updateTenantClient }));
+      const { registerTenantAdminRoutes } = await import('../../src/server/tenant-admin-routes.js');
+      app = Fastify();
+      await app.register(registerTenantAdminRoutes);
+      await app.ready();
+
+      const response = await app.inject({
+        method: 'PATCH', url: `/api/internal/tenants/${TENANT_ID}/clients/${CLIENT_ENTITY_ID}`, payload: { name: 'Renamed', isActive: false },
+      });
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toMatchObject({ name: 'Renamed', isActive: false });
+      expect(updateTenantClient).toHaveBeenCalledWith({}, TENANT_ID, CLIENT_ENTITY_ID, { name: 'Renamed', isActive: false });
+    });
+
+    it('PATCH .../clients/:clientId returns 404 when not found', async () => {
+      mockAuth(true);
+      mockTx();
+      vi.doMock('../../src/modules/identity/tenant-client.js', () => ({ updateTenantClient: vi.fn(async () => null) }));
+      const { registerTenantAdminRoutes } = await import('../../src/server/tenant-admin-routes.js');
+      app = Fastify();
+      await app.register(registerTenantAdminRoutes);
+      await app.ready();
+
+      const response = await app.inject({
+        method: 'PATCH', url: `/api/internal/tenants/${TENANT_ID}/clients/${CLIENT_ENTITY_ID}`, payload: { name: 'x' },
+      });
+      expect(response.statusCode).toBe(404);
+    });
+
+    it('PATCH .../clients/:clientId rejects an invalid id with 400', async () => {
+      mockAuth(true);
+      mockTx();
+      const { registerTenantAdminRoutes } = await import('../../src/server/tenant-admin-routes.js');
+      app = Fastify();
+      await app.register(registerTenantAdminRoutes);
+      await app.ready();
+
+      const response = await app.inject({
+        method: 'PATCH', url: `/api/internal/tenants/${TENANT_ID}/clients/${INVALID_ID}`, payload: { name: 'x' },
+      });
+      expect(response.statusCode).toBe(400);
+    });
+  });
+
+  describe('.../clients/:clientId/members (Client-scoped membership assignment)', () => {
+    it('creates a Client-scoped membership and returns 201', async () => {
+      mockAuth(true);
+      mockTx();
+      vi.doMock('../../src/modules/identity/tenant-client.js', () => ({ clientBelongsToAccount: vi.fn(async () => true) }));
+      const createMembership = vi.fn(async () => ({ created: true, membershipId: MEMBERSHIP_ID, userId: 'user-1', isNewUser: true }));
+      vi.doMock('../../src/modules/identity/create-membership.js', () => ({ createMembership }));
+      const { registerTenantAdminRoutes } = await import('../../src/server/tenant-admin-routes.js');
+      app = Fastify();
+      await app.register(registerTenantAdminRoutes);
+      await app.ready();
+
+      const response = await app.inject({
+        method: 'POST', url: `/api/internal/tenants/${TENANT_ID}/clients/${CLIENT_ENTITY_ID}/members`,
+        payload: { email: 'new@example.com', role: 'client_scope_admin' },
+      });
+      expect(response.statusCode).toBe(201);
+      expect(createMembership).toHaveBeenCalledWith({}, {
+        clientId: TENANT_ID, scopeClientId: CLIENT_ENTITY_ID, email: 'new@example.com', fullName: null, role: 'client_scope_admin',
+      });
+    });
+
+    it('86e3a76bz Review fix: returns 404 without calling createMembership when clientId does not belong to accountId', async () => {
+      mockAuth(true);
+      mockTx();
+      const clientBelongsToAccount = vi.fn(async () => false);
+      vi.doMock('../../src/modules/identity/tenant-client.js', () => ({ clientBelongsToAccount }));
+      const createMembership = vi.fn(async () => ({ created: true, membershipId: MEMBERSHIP_ID, userId: 'user-1', isNewUser: true }));
+      vi.doMock('../../src/modules/identity/create-membership.js', () => ({ createMembership }));
+      const { registerTenantAdminRoutes } = await import('../../src/server/tenant-admin-routes.js');
+      app = Fastify();
+      await app.register(registerTenantAdminRoutes);
+      await app.ready();
+
+      const response = await app.inject({
+        method: 'POST', url: `/api/internal/tenants/${TENANT_ID}/clients/${CLIENT_ENTITY_ID}/members`,
+        payload: { email: 'new@example.com', role: 'client_scope_admin' },
+      });
+      expect(response.statusCode).toBe(404);
+      expect(clientBelongsToAccount).toHaveBeenCalledWith({}, TENANT_ID, CLIENT_ENTITY_ID);
+      expect(createMembership).not.toHaveBeenCalled();
+    });
+
+    it('rejects an account-level role with 400 (not valid at Client scope)', async () => {
+      mockAuth(true);
+      mockTx();
+      const { registerTenantAdminRoutes } = await import('../../src/server/tenant-admin-routes.js');
+      app = Fastify();
+      await app.register(registerTenantAdminRoutes);
+      await app.ready();
+
+      const response = await app.inject({
+        method: 'POST', url: `/api/internal/tenants/${TENANT_ID}/clients/${CLIENT_ENTITY_ID}/members`,
+        payload: { email: 'new@example.com', role: 'account_admin' },
+      });
+      expect(response.statusCode).toBe(400);
+    });
+
+    it('returns 409 when already a member at this scope', async () => {
+      mockAuth(true);
+      mockTx();
+      vi.doMock('../../src/modules/identity/tenant-client.js', () => ({ clientBelongsToAccount: vi.fn(async () => true) }));
+      vi.doMock('../../src/modules/identity/create-membership.js', () => ({
+        createMembership: vi.fn(async () => ({ created: false, reason: 'already_member' })),
+      }));
+      const { registerTenantAdminRoutes } = await import('../../src/server/tenant-admin-routes.js');
+      app = Fastify();
+      await app.register(registerTenantAdminRoutes);
+      await app.ready();
+
+      const response = await app.inject({
+        method: 'POST', url: `/api/internal/tenants/${TENANT_ID}/clients/${CLIENT_ENTITY_ID}/members`,
+        payload: { email: 'existing@example.com', role: 'client_scope_viewer' },
+      });
+      expect(response.statusCode).toBe(409);
+    });
+  });
+
+  describe('.../clients/:clientId/vendors (Vendor entity CRUD)', () => {
+    it('POST .../vendors creates a vendor and returns 201', async () => {
+      mockAuth(true);
+      mockTx();
+      const createTenantVendor = vi.fn(async () => ({ id: VENDOR_ID }));
+      vi.doMock('../../src/modules/identity/tenant-vendor.js', () => ({ createTenantVendor }));
+      const { registerTenantAdminRoutes } = await import('../../src/server/tenant-admin-routes.js');
+      app = Fastify();
+      await app.register(registerTenantAdminRoutes);
+      await app.ready();
+
+      const response = await app.inject({
+        method: 'POST', url: `/api/internal/tenants/${TENANT_ID}/clients/${CLIENT_ENTITY_ID}/vendors`,
+        payload: { name: 'Acme Vendor', contactInfo: 'ops@vendor.test' },
+      });
+      expect(response.statusCode).toBe(201);
+      expect(response.json()).toMatchObject({ id: VENDOR_ID, accountId: TENANT_ID, clientId: CLIENT_ENTITY_ID, name: 'Acme Vendor' });
+      expect(createTenantVendor).toHaveBeenCalledWith({}, { accountId: TENANT_ID, clientId: CLIENT_ENTITY_ID, name: 'Acme Vendor', contactInfo: 'ops@vendor.test' });
+    });
+
+    it('POST .../vendors rejects a missing name with 400', async () => {
+      mockAuth(true);
+      mockTx();
+      const { registerTenantAdminRoutes } = await import('../../src/server/tenant-admin-routes.js');
+      app = Fastify();
+      await app.register(registerTenantAdminRoutes);
+      await app.ready();
+
+      const response = await app.inject({
+        method: 'POST', url: `/api/internal/tenants/${TENANT_ID}/clients/${CLIENT_ENTITY_ID}/vendors`, payload: {},
+      });
+      expect(response.statusCode).toBe(400);
+    });
+
+    it('POST .../vendors returns 409 on a duplicate vendor name for this client', async () => {
+      mockAuth(true);
+      mockTx();
+      vi.doMock('../../src/modules/identity/tenant-vendor.js', async () => {
+        const actual = await vi.importActual<typeof import('../../src/modules/identity/tenant-vendor.js')>('../../src/modules/identity/tenant-vendor.js');
+        return {
+          ...actual,
+          createTenantVendor: vi.fn(async () => { throw { code: '23505' }; }),
+        };
+      });
+      const { registerTenantAdminRoutes } = await import('../../src/server/tenant-admin-routes.js');
+      app = Fastify();
+      await app.register(registerTenantAdminRoutes);
+      await app.ready();
+
+      const response = await app.inject({
+        method: 'POST', url: `/api/internal/tenants/${TENANT_ID}/clients/${CLIENT_ENTITY_ID}/vendors`, payload: { name: 'dup' },
+      });
+      expect(response.statusCode).toBe(409);
+    });
+
+    it('86e3a76bz Review fix: POST .../vendors returns 404 when clientId does not belong to accountId', async () => {
+      mockAuth(true);
+      mockTx();
+      vi.doMock('../../src/modules/identity/tenant-vendor.js', async () => {
+        const actual = await vi.importActual<typeof import('../../src/modules/identity/tenant-vendor.js')>('../../src/modules/identity/tenant-vendor.js');
+        return {
+          ...actual,
+          createTenantVendor: vi.fn(async () => { throw new actual.TenantVendorParentNotFoundError('client not found for this tenant'); }),
+        };
+      });
+      const { registerTenantAdminRoutes } = await import('../../src/server/tenant-admin-routes.js');
+      app = Fastify();
+      await app.register(registerTenantAdminRoutes);
+      await app.ready();
+
+      const response = await app.inject({
+        method: 'POST', url: `/api/internal/tenants/${TENANT_ID}/clients/${CLIENT_ENTITY_ID}/vendors`, payload: { name: 'x' },
+      });
+      expect(response.statusCode).toBe(404);
+    });
+
+    it('GET .../vendors lists vendors for the client', async () => {
+      mockAuth(true);
+      mockTx();
+      vi.doMock('../../src/modules/identity/tenant-vendor.js', () => ({
+        listTenantVendors: vi.fn(async () => [{ id: VENDOR_ID, accountId: TENANT_ID, clientId: CLIENT_ENTITY_ID, name: 'V', contactInfo: null, isActive: true, createdAt: new Date() }]),
+      }));
+      const { registerTenantAdminRoutes } = await import('../../src/server/tenant-admin-routes.js');
+      app = Fastify();
+      await app.register(registerTenantAdminRoutes);
+      await app.ready();
+
+      const response = await app.inject({ method: 'GET', url: `/api/internal/tenants/${TENANT_ID}/clients/${CLIENT_ENTITY_ID}/vendors` });
+      expect(response.statusCode).toBe(200);
+      expect(response.json().vendors).toHaveLength(1);
+    });
+
+    it('PATCH .../vendors/:vendorId updates the vendor and returns 200', async () => {
+      mockAuth(true);
+      mockTx();
+      const updateTenantVendor = vi.fn(async () => ({ id: VENDOR_ID, accountId: TENANT_ID, clientId: CLIENT_ENTITY_ID, name: 'Renamed', contactInfo: null, isActive: false, createdAt: new Date() }));
+      vi.doMock('../../src/modules/identity/tenant-vendor.js', () => ({ updateTenantVendor }));
+      const { registerTenantAdminRoutes } = await import('../../src/server/tenant-admin-routes.js');
+      app = Fastify();
+      await app.register(registerTenantAdminRoutes);
+      await app.ready();
+
+      const response = await app.inject({
+        method: 'PATCH', url: `/api/internal/tenants/${TENANT_ID}/clients/${CLIENT_ENTITY_ID}/vendors/${VENDOR_ID}`,
+        payload: { name: 'Renamed', isActive: false },
+      });
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toMatchObject({ name: 'Renamed', isActive: false });
+      expect(updateTenantVendor).toHaveBeenCalledWith({}, TENANT_ID, CLIENT_ENTITY_ID, VENDOR_ID, { name: 'Renamed', contactInfo: undefined, isActive: false });
+    });
+
+    it('PATCH .../vendors/:vendorId returns 404 when not found', async () => {
+      mockAuth(true);
+      mockTx();
+      vi.doMock('../../src/modules/identity/tenant-vendor.js', () => ({ updateTenantVendor: vi.fn(async () => null) }));
+      const { registerTenantAdminRoutes } = await import('../../src/server/tenant-admin-routes.js');
+      app = Fastify();
+      await app.register(registerTenantAdminRoutes);
+      await app.ready();
+
+      const response = await app.inject({
+        method: 'PATCH', url: `/api/internal/tenants/${TENANT_ID}/clients/${CLIENT_ENTITY_ID}/vendors/${VENDOR_ID}`, payload: { name: 'x' },
+      });
+      expect(response.statusCode).toBe(404);
+    });
+  });
+
+  describe('.../clients/:clientId/vendors/:vendorId/members (Vendor-scoped membership assignment)', () => {
+    it('creates a Vendor-scoped membership and returns 201', async () => {
+      mockAuth(true);
+      mockTx();
+      vi.doMock('../../src/modules/identity/tenant-client.js', () => ({ clientBelongsToAccount: vi.fn(async () => true) }));
+      vi.doMock('../../src/modules/identity/tenant-vendor.js', () => ({ vendorBelongsToClient: vi.fn(async () => true) }));
+      const createMembership = vi.fn(async () => ({ created: true, membershipId: MEMBERSHIP_ID, userId: 'user-1', isNewUser: true }));
+      vi.doMock('../../src/modules/identity/create-membership.js', () => ({ createMembership }));
+      const { registerTenantAdminRoutes } = await import('../../src/server/tenant-admin-routes.js');
+      app = Fastify();
+      await app.register(registerTenantAdminRoutes);
+      await app.ready();
+
+      const response = await app.inject({
+        method: 'POST', url: `/api/internal/tenants/${TENANT_ID}/clients/${CLIENT_ENTITY_ID}/vendors/${VENDOR_ID}/members`,
+        payload: { email: 'new@example.com', role: 'vendor_scope_viewer' },
+      });
+      expect(response.statusCode).toBe(201);
+      expect(createMembership).toHaveBeenCalledWith({}, {
+        clientId: TENANT_ID, scopeClientId: CLIENT_ENTITY_ID, scopeVendorId: VENDOR_ID,
+        email: 'new@example.com', fullName: null, role: 'vendor_scope_viewer',
+      });
+    });
+
+    it('86e3a76bz Review fix: returns 404 without calling createMembership when clientId does not belong to accountId', async () => {
+      mockAuth(true);
+      mockTx();
+      vi.doMock('../../src/modules/identity/tenant-client.js', () => ({ clientBelongsToAccount: vi.fn(async () => false) }));
+      vi.doMock('../../src/modules/identity/tenant-vendor.js', () => ({ vendorBelongsToClient: vi.fn(async () => true) }));
+      const createMembership = vi.fn(async () => ({ created: true, membershipId: MEMBERSHIP_ID, userId: 'user-1', isNewUser: true }));
+      vi.doMock('../../src/modules/identity/create-membership.js', () => ({ createMembership }));
+      const { registerTenantAdminRoutes } = await import('../../src/server/tenant-admin-routes.js');
+      app = Fastify();
+      await app.register(registerTenantAdminRoutes);
+      await app.ready();
+
+      const response = await app.inject({
+        method: 'POST', url: `/api/internal/tenants/${TENANT_ID}/clients/${CLIENT_ENTITY_ID}/vendors/${VENDOR_ID}/members`,
+        payload: { email: 'new@example.com', role: 'vendor_scope_viewer' },
+      });
+      expect(response.statusCode).toBe(404);
+      expect(createMembership).not.toHaveBeenCalled();
+    });
+
+    it('86e3a76bz Review fix: returns 404 without calling createMembership when vendorId does not belong to clientId', async () => {
+      mockAuth(true);
+      mockTx();
+      vi.doMock('../../src/modules/identity/tenant-client.js', () => ({ clientBelongsToAccount: vi.fn(async () => true) }));
+      const vendorBelongsToClient = vi.fn(async () => false);
+      vi.doMock('../../src/modules/identity/tenant-vendor.js', () => ({ vendorBelongsToClient }));
+      const createMembership = vi.fn(async () => ({ created: true, membershipId: MEMBERSHIP_ID, userId: 'user-1', isNewUser: true }));
+      vi.doMock('../../src/modules/identity/create-membership.js', () => ({ createMembership }));
+      const { registerTenantAdminRoutes } = await import('../../src/server/tenant-admin-routes.js');
+      app = Fastify();
+      await app.register(registerTenantAdminRoutes);
+      await app.ready();
+
+      const response = await app.inject({
+        method: 'POST', url: `/api/internal/tenants/${TENANT_ID}/clients/${CLIENT_ENTITY_ID}/vendors/${VENDOR_ID}/members`,
+        payload: { email: 'new@example.com', role: 'vendor_scope_viewer' },
+      });
+      expect(response.statusCode).toBe(404);
+      expect(vendorBelongsToClient).toHaveBeenCalledWith({}, CLIENT_ENTITY_ID, VENDOR_ID);
+      expect(createMembership).not.toHaveBeenCalled();
+    });
+
+    it('rejects a client-scope role with 400 (not valid at Vendor scope)', async () => {
+      mockAuth(true);
+      mockTx();
+      const { registerTenantAdminRoutes } = await import('../../src/server/tenant-admin-routes.js');
+      app = Fastify();
+      await app.register(registerTenantAdminRoutes);
+      await app.ready();
+
+      const response = await app.inject({
+        method: 'POST', url: `/api/internal/tenants/${TENANT_ID}/clients/${CLIENT_ENTITY_ID}/vendors/${VENDOR_ID}/members`,
+        payload: { email: 'new@example.com', role: 'client_scope_admin' },
+      });
+      expect(response.statusCode).toBe(400);
+    });
+
+    it('rejects an invalid id with 400', async () => {
+      mockAuth(true);
+      mockTx();
+      const { registerTenantAdminRoutes } = await import('../../src/server/tenant-admin-routes.js');
+      app = Fastify();
+      await app.register(registerTenantAdminRoutes);
+      await app.ready();
+
+      const response = await app.inject({
+        method: 'POST', url: `/api/internal/tenants/${TENANT_ID}/clients/${CLIENT_ENTITY_ID}/vendors/${INVALID_ID}/members`,
+        payload: { email: 'new@example.com', role: 'vendor_scope_viewer' },
+      });
+      expect(response.statusCode).toBe(400);
+    });
   });
 });
